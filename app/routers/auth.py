@@ -4,7 +4,7 @@ from sqlalchemy import select
 from pydantic import BaseModel, EmailStr
 from app.core.database import get_db
 from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token
-from app.models.user import User, UserRole
+from app.models.user import User, UserRole, StudentProfile
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -47,9 +47,14 @@ async def student_signup(payload: StudentSignupRequest, db: AsyncSession = Depen
         hashed_password=hash_password(payload.password),
         full_name=payload.full_name,
         role=UserRole.student,
-        is_verified=True,   # auto-verify — OTP re-enabled later
+        is_verified=True,
     )
     db.add(user)
+    await db.flush()
+
+    # Auto-create student profile so /students/me works immediately
+    profile = StudentProfile(user_id=user.id, selected_subjects=[])
+    db.add(profile)
     await db.flush()
 
     return TokenResponse(

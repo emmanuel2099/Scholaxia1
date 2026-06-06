@@ -64,20 +64,27 @@ async def get_my_profile(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(User, StudentProfile)
-        .join(StudentProfile, StudentProfile.user_id == User.id)
-        .where(User.id == current_user["sub"])
+        select(User).where(User.id == current_user["sub"])
     )
-    row = result.first()
-    if not row:
-        raise HTTPException(status_code=404, detail="Profile not found")
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
 
-    user, profile = row
+    # Get or create student profile
+    p_result = await db.execute(
+        select(StudentProfile).where(StudentProfile.user_id == user.id)
+    )
+    profile = p_result.scalar_one_or_none()
+    if not profile:
+        profile = StudentProfile(user_id=user.id, selected_subjects=[])
+        db.add(profile)
+        await db.flush()
+
     return ProfileResponse(
         user_id=str(user.id),
         full_name=user.full_name,
         email=user.email,
-        exam_type=profile.exam_type,
+        exam_type=str(profile.exam_type) if profile.exam_type else None,
         selected_subjects=profile.selected_subjects or [],
         education_level=profile.education_level,
         has_active_subscription=profile.has_active_subscription,
