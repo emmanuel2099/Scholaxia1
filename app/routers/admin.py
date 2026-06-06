@@ -227,6 +227,25 @@ async def list_all_books(
     ]
 
 
+@router.post("/seed-cbt")
+async def trigger_cbt_seed(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin triggers CBT seed manually — useful after deploy."""
+    from app.core.seed import _seed_cbt_exams
+    await _seed_cbt_exams(db)
+    from sqlalchemy import select as sa_select
+    from app.models.cbt import CBTExam
+    result = await db.execute(sa_select(CBTExam).where(CBTExam.is_published == True))  # noqa
+    exams = result.scalars().all()
+    return {
+        "status": "done",
+        "exams_in_db": len(exams),
+        "titles": [e.title for e in exams],
+    }
+
+
 @router.delete("/library/books/{book_id}", status_code=204)
 async def remove_book(
     book_id: str,
