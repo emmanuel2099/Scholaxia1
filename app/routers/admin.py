@@ -232,17 +232,102 @@ async def trigger_cbt_seed(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Admin triggers CBT seed manually — useful after deploy."""
-    from app.core.seed import _seed_cbt_exams
-    await _seed_cbt_exams(db)
-    from sqlalchemy import select as sa_select
-    from app.models.cbt import CBTExam
-    result = await db.execute(sa_select(CBTExam).where(CBTExam.is_published == True))  # noqa
-    exams = result.scalars().all()
+    """Admin triggers CBT seed manually."""
+    import uuid as _uuid
+    from app.models.cbt import CBTExam as _Exam, CBTQuestion as _Q
+    from sqlalchemy import select as _sel
+
+    exams_data = [
+        {"title": "WAEC Mathematics Practice 2023", "subject": "Mathematics", "exam_type": "WAEC", "duration_minutes": 40,
+         "questions": [
+            {"question_text": "Simplify: (2x³y²) × (3xy⁴)", "option_a": "5x⁴y⁶", "option_b": "6x⁴y⁶", "option_c": "6x³y⁸", "option_d": "5x³y⁸", "correct_option": "B", "explanation": "2×3=6, x:3+1=4, y:2+4=6", "topic": "Algebra"},
+            {"question_text": "Simple interest on ₦5,000 for 3 years at 8% p.a.:", "option_a": "₦1,000", "option_b": "₦1,200", "option_c": "₦1,500", "option_d": "₦2,000", "correct_option": "B", "explanation": "PRT/100=₦1,200", "topic": "Simple Interest"},
+            {"question_text": "Gradient of line joining (2,3) and (4,7):", "option_a": "1", "option_b": "2", "option_c": "3", "option_d": "4", "correct_option": "B", "explanation": "(7-3)/(4-2)=2", "topic": "Coordinate Geometry"},
+            {"question_text": "If 3x - 5 = 16, find x.", "option_a": "5", "option_b": "6", "option_c": "7", "option_d": "8", "correct_option": "C", "explanation": "3x=21, x=7", "topic": "Algebra"},
+            {"question_text": "Bag: 4 red, 6 blue balls. P(red)?", "option_a": "2/5", "option_b": "3/5", "option_c": "1/4", "option_d": "2/3", "correct_option": "A", "explanation": "4/10=2/5", "topic": "Probability"},
+            {"question_text": "Evaluate: log₁₀ 1000", "option_a": "2", "option_b": "3", "option_c": "4", "option_d": "10", "correct_option": "B", "explanation": "log₁₀ 10³=3", "topic": "Logarithms"},
+            {"question_text": "Area of circle radius 7 cm (π=22/7):", "option_a": "44 cm²", "option_b": "154 cm²", "option_c": "22 cm²", "option_d": "308 cm²", "correct_option": "B", "explanation": "(22/7)×49=154 cm²", "topic": "Mensuration"},
+            {"question_text": "What is 15% of 200?", "option_a": "25", "option_b": "30", "option_c": "35", "option_d": "40", "correct_option": "B", "explanation": "15/100×200=30", "topic": "Percentages"},
+            {"question_text": "Mean of 3,5,7,x is 6. Find x.", "option_a": "7", "option_b": "8", "option_c": "9", "option_d": "10", "correct_option": "C", "explanation": "(15+x)/4=6→x=9", "topic": "Statistics"},
+            {"question_text": "Solve: x² - 5x + 6 = 0", "option_a": "x=1 or 6", "option_b": "x=2 or 3", "option_c": "x=-2 or -3", "option_d": "x=2 or -3", "correct_option": "B", "explanation": "(x-2)(x-3)=0", "topic": "Quadratic Equations"},
+         ]},
+        {"title": "WAEC English Language Practice 2023", "subject": "English Language", "exam_type": "WAEC", "duration_minutes": 45,
+         "questions": [
+            {"question_text": "Word closest to BENEVOLENT:", "option_a": "Cruel", "option_b": "Kind", "option_c": "Greedy", "option_d": "Fearful", "correct_option": "B", "explanation": "Benevolent=kindly/generous", "topic": "Vocabulary"},
+            {"question_text": "Correct sentence:", "option_a": "Each student have books.", "option_b": "Each has their books.", "option_c": "Each have his books.", "option_d": "Each of the students has his book.", "correct_option": "D", "explanation": "Each is singular", "topic": "Grammar"},
+            {"question_text": "Opposite of LOQUACIOUS:", "option_a": "Talkative", "option_b": "Verbose", "option_c": "Taciturn", "option_d": "Garrulous", "correct_option": "C", "explanation": "Taciturn=reserved", "topic": "Antonyms"},
+            {"question_text": "Figure of speech: The pen is mightier than the sword.", "option_a": "Simile", "option_b": "Personification", "option_c": "Metaphor", "option_d": "Synecdoche", "correct_option": "C", "explanation": "Metaphor compares without like/as", "topic": "Figures of Speech"},
+            {"question_text": "She _____ to Lagos last week.", "option_a": "go", "option_b": "goes", "option_c": "gone", "option_d": "went", "correct_option": "D", "explanation": "Past tense=went", "topic": "Tenses"},
+            {"question_text": "Correctly spelled:", "option_a": "Accomodation", "option_b": "Accommodation", "option_c": "Acomodation", "option_d": "Acommodation", "correct_option": "B", "explanation": "Double c and double m", "topic": "Spelling"},
+            {"question_text": "UBIQUITOUS means:", "option_a": "Rare", "option_b": "Present everywhere", "option_c": "Hidden", "option_d": "Dangerous", "correct_option": "B", "explanation": "Present everywhere", "topic": "Vocabulary"},
+            {"question_text": "Passive voice:", "option_a": "The boy kicked the ball.", "option_b": "They were eating.", "option_c": "The ball was kicked by the boy.", "option_d": "She sings.", "correct_option": "C", "explanation": "Subject receives action", "topic": "Active and Passive Voice"},
+            {"question_text": "He is good _____ mathematics.", "option_a": "in", "option_b": "at", "option_c": "on", "option_d": "for", "correct_option": "B", "explanation": "Good at is correct", "topic": "Prepositions"},
+            {"question_text": "Word meaning same as another:", "option_a": "Antonym", "option_b": "Homonym", "option_c": "Synonym", "option_d": "Acronym", "correct_option": "C", "explanation": "Synonym=same meaning", "topic": "Vocabulary"},
+         ]},
+        {"title": "NECO Biology Practice 2023", "subject": "Biology", "exam_type": "NECO", "duration_minutes": 40,
+         "questions": [
+            {"question_text": "Plants manufacture food via:", "option_a": "Respiration", "option_b": "Transpiration", "option_c": "Photosynthesis", "option_d": "Osmosis", "correct_option": "C", "explanation": "Photosynthesis uses sunlight CO2 water", "topic": "Photosynthesis"},
+            {"question_text": "NOT a liver function:", "option_a": "Bile production", "option_b": "Detoxification", "option_c": "Insulin production", "option_d": "Glycogen storage", "correct_option": "C", "explanation": "Insulin made by pancreas", "topic": "Digestive System"},
+            {"question_text": "Basic unit of life:", "option_a": "Atom", "option_b": "Tissue", "option_c": "Cell", "option_d": "Organ", "correct_option": "C", "explanation": "Cell is basic unit", "topic": "Cell Biology"},
+            {"question_text": "DNA found mainly in:", "option_a": "Cytoplasm", "option_b": "Nucleus", "option_c": "Ribosome", "option_d": "Cell membrane", "correct_option": "B", "explanation": "DNA is in nucleus", "topic": "Genetics"},
+            {"question_text": "Universal blood donor:", "option_a": "A", "option_b": "B", "option_c": "AB", "option_d": "O", "correct_option": "D", "explanation": "O negative no antigens", "topic": "Blood and Circulation"},
+            {"question_text": "Brain part for balance:", "option_a": "Cerebrum", "option_b": "Medulla oblongata", "option_c": "Cerebellum", "option_d": "Hypothalamus", "correct_option": "C", "explanation": "Cerebellum coordinates movement", "topic": "Nervous System"},
+            {"question_text": "Asexual reproduction example:", "option_a": "Fertilisation", "option_b": "Budding", "option_c": "Pollination", "option_d": "Meiosis", "correct_option": "B", "explanation": "Budding is asexual", "topic": "Reproduction"},
+            {"question_text": "Powerhouse of the cell:", "option_a": "Nucleus", "option_b": "Ribosome", "option_c": "Mitochondria", "option_d": "Golgi apparatus", "correct_option": "C", "explanation": "Mitochondria produce ATP", "topic": "Cell Biology"},
+            {"question_text": "Malaria caused by:", "option_a": "Bacteria", "option_b": "Virus", "option_c": "Plasmodium", "option_d": "Fungus", "correct_option": "C", "explanation": "Plasmodium parasite", "topic": "Diseases"},
+            {"question_text": "Protein synthesis site:", "option_a": "Nucleus", "option_b": "Mitochondria", "option_c": "Ribosome", "option_d": "Vacuole", "correct_option": "C", "explanation": "Ribosomes translate mRNA", "topic": "Cell Biology"},
+         ]},
+        {"title": "NECO Chemistry Practice 2023", "subject": "Chemistry", "exam_type": "NECO", "duration_minutes": 40,
+         "questions": [
+            {"question_text": "Chemical formula of water:", "option_a": "HO", "option_b": "H2O", "option_c": "H2O2", "option_d": "OH", "correct_option": "B", "explanation": "2H + O = H2O", "topic": "Chemical Formulae"},
+            {"question_text": "Atomic number of Carbon:", "option_a": "4", "option_b": "6", "option_c": "12", "option_d": "14", "correct_option": "B", "explanation": "Carbon has 6 protons", "topic": "Atomic Structure"},
+            {"question_text": "Gas when acid reacts with metal:", "option_a": "Oxygen", "option_b": "Carbon dioxide", "option_c": "Hydrogen", "option_d": "Nitrogen", "correct_option": "C", "explanation": "Acid+Metal=Salt+Hydrogen", "topic": "Acid-Base Reactions"},
+            {"question_text": "Which is a noble gas?", "option_a": "Nitrogen", "option_b": "Oxygen", "option_c": "Argon", "option_d": "Chlorine", "correct_option": "C", "explanation": "Argon Group 18", "topic": "Periodic Table"},
+            {"question_text": "pH of neutral solution:", "option_a": "0", "option_b": "7", "option_c": "10", "option_d": "14", "correct_option": "B", "explanation": "Neutral=pH 7", "topic": "Acids and Bases"},
+            {"question_text": "Bond by sharing electrons:", "option_a": "Ionic", "option_b": "Metallic", "option_c": "Covalent", "option_d": "Hydrogen", "correct_option": "C", "explanation": "Covalent shares electrons", "topic": "Chemical Bonding"},
+            {"question_text": "Rusting of iron:", "option_a": "Physical change", "option_b": "Chemical change", "option_c": "Nuclear change", "option_d": "Reversible", "correct_option": "B", "explanation": "Fe2O3 is new substance", "topic": "Chemical Changes"},
+            {"question_text": "Liquid to gas by heating:", "option_a": "Condensation", "option_b": "Sublimation", "option_c": "Evaporation", "option_d": "Distillation", "correct_option": "C", "explanation": "Evaporation", "topic": "States of Matter"},
+            {"question_text": "Symbol Na stands for:", "option_a": "Nitrogen", "option_b": "Nickel", "option_c": "Sodium", "option_d": "Neon", "correct_option": "C", "explanation": "Natrium=Sodium", "topic": "Periodic Table"},
+            {"question_text": "Electrolysis of brine: Cl2 at:", "option_a": "Cathode", "option_b": "Anode", "option_c": "Electrolyte", "option_d": "Both", "correct_option": "B", "explanation": "Cl- oxidised at anode", "topic": "Electrolysis"},
+         ]},
+    ]
+
+    seeded = []
+    skipped = []
+    errors = []
+
+    for ed in exams_data:
+        try:
+            res = await db.execute(_sel(_Exam).where(_Exam.title == ed["title"]))
+            if res.scalar_one_or_none():
+                skipped.append(ed["title"])
+                continue
+
+            exam = _Exam(
+                title=ed["title"],
+                subject=ed["subject"],
+                exam_type=ed["exam_type"],
+                duration_minutes=ed["duration_minutes"],
+                total_questions=len(ed["questions"]),
+                is_published=True,
+            )
+            db.add(exam)
+            await db.flush()
+
+            for q in ed["questions"]:
+                db.add(_Q(exam_id=exam.id, **q))
+
+            await db.commit()
+            seeded.append(ed["title"])
+        except Exception as e:
+            await db.rollback()
+            errors.append({"title": ed["title"], "error": str(e)})
+
     return {
         "status": "done",
-        "exams_in_db": len(exams),
-        "titles": [e.title for e in exams],
+        "seeded": seeded,
+        "skipped": skipped,
+        "errors": errors,
     }
 
 
