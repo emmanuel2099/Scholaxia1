@@ -310,6 +310,7 @@ async def trigger_cbt_seed(
                 duration_minutes=ed["duration_minutes"],
                 total_questions=len(ed["questions"]),
                 is_published=True,
+                created_by=current_user["sub"],
             )
             db.add(exam)
             await db.flush()
