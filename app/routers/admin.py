@@ -343,3 +343,265 @@ async def remove_book(
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
     book.is_active = False
+
+
+# ── CBT Management ────────────────────────────────────────────────────────────
+
+from app.models.cbt import CBTExam, CBTQuestion  # noqa: E402
+
+
+class CBTQuestionCreate(BaseModel):
+    question_text: str
+    option_a: str
+    option_b: str
+    option_c: str
+    option_d: str
+    correct_option: str   # A, B, C, or D
+    explanation: Optional[str] = None
+    topic: Optional[str] = None
+    image_url: Optional[str] = None
+
+
+class CBTExamCreate(BaseModel):
+    title: str
+    subject: str
+    exam_type: str          # JAMB | WAEC | NECO | SCHOOL
+    duration_minutes: int
+    questions: list[CBTQuestionCreate]
+    is_published: bool = True
+    is_school_exam: bool = False
+    ai_locked: bool = False
+    camera_required: bool = False
+    block_minimize: bool = False
+
+
+@router.post("/cbt/exams", status_code=201)
+async def create_cbt_exam(
+    payload: CBTExamCreate,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin creates a new CBT exam with questions."""
+    exam = CBTExam(
+        title=payload.title,
+        subject=payload.subject,
+        exam_type=payload.exam_type.upper(),
+        duration_minutes=payload.duration_minutes,
+        total_questions=len(payload.questions),
+        created_by=current_user["sub"],
+        is_published=payload.is_published,
+        is_school_exam=payload.is_school_exam,
+        ai_locked=payload.ai_locked,
+        camera_required=payload.camera_required,
+        block_minimize=payload.block_minimize,
+    )
+    db.add(exam)
+    await db.flush()
+
+    for q in payload.questions:
+        db.add(CBTQuestion(
+            exam_id=exam.id,
+            question_text=q.question_text,
+            option_a=q.option_a,
+            option_b=q.option_b,
+            option_c=q.option_c,
+            option_d=q.option_d,
+            correct_option=q.correct_option.upper(),
+            explanation=q.explanation,
+            topic=q.topic,
+            image_url=q.image_url,
+        ))
+
+    return {
+        "id": str(exam.id),
+        "title": exam.title,
+        "subject": exam.subject,
+        "exam_type": exam.exam_type,
+        "total_questions": exam.total_questions,
+        "is_published": exam.is_published,
+    }
+
+
+@router.get("/cbt/exams")
+async def admin_list_exams(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin lists all exams (published and unpublished)."""
+    result = await db.execute(select(CBTExam).order_by(CBTExam.created_at.desc()))
+    exams = result.scalars().all()
+    return [
+        {
+            "id": str(e.id),
+            "title": e.title,
+            "subject": e.subject,
+            "exam_type": e.exam_type,
+            "duration_minutes": e.duration_minutes,
+            "total_questions": e.total_questions,
+            "is_published": e.is_published,
+            "is_school_exam": e.is_school_exam,
+            "created_at": e.created_at,
+        }
+        for e in exams
+    ]
+
+
+@router.patch("/cbt/exams/{exam_id}/publish")
+async def toggle_exam_publish(
+    exam_id: str,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin publishes or unpublishes an exam."""
+    result = await db.execute(select(CBTExam).where(CBTExam.id == exam_id))
+    exam = result.scalar_one_or_none()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    exam.is_published = not exam.is_published
+    return {"id": exam_id, "is_published": exam.is_published}
+
+
+@router.delete("/cbt/exams/{exam_id}", status_code=204)
+async def delete_cbt_exam(
+    exam_id: str,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin deletes an exam and all its questions."""
+    result = await db.execute(select(CBTExam).where(CBTExam.id == exam_id))
+    exam = result.scalar_one_or_none()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    # Delete questions first
+    q_result = await db.execute(select(CBTQuestion).where(CBTQuestion.exam_id == exam_id))
+    for q in q_result.scalars().all():
+        await db.delete(q)
+    await db.delete(exam)
+
+
+# ── Admin: Create CBT Exam with Questions ─────────────────────────────────────
+
+from app.models.cbt import CBTExam, CBTQuestion
+
+
+class CBTQuestionCreate(BaseModel):
+    question_text: str
+    option_a: str
+    option_b: str
+    option_c: str
+    option_d: str
+    correct_option: str  # A, B, C or D
+    explanation: Optional[str] = None
+    topic: Optional[str] = None
+    image_url: Optional[str] = None
+
+
+class CreateCBTExamRequest(BaseModel):
+    title: str
+    subject: str
+    exam_type: str  # JAMB, WAEC, NECO, SCHOOL
+    duration_minutes: int
+    is_published: bool = True
+    is_school_exam: bool = False
+    ai_locked: bool = False
+    camera_required: bool = False
+    block_minimize: bool = False
+    questions: list[CBTQuestionCreate]
+
+
+class CBTExamResponse(BaseModel):
+    id: str
+    title: str
+    subject: str
+    exam_type: str
+    duration_minutes: int
+    total_questions: int
+    is_published: bool
+
+
+@router.post("/cbt/exams", response_model=CBTExamResponse, status_code=201)
+async def admin_create_cbt_exam(
+    payload: CreateCBTExamRequest,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin creates a CBT exam with all questions in one request."""
+    if not payload.questions:
+        raise HTTPException(status_code=400, detail="At least one question required")
+
+    exam = CBTExam(
+        title=payload.title,
+        subject=payload.subject,
+        exam_type=payload.exam_type.upper(),
+        duration_minutes=payload.duration_minutes,
+        total_questions=len(payload.questions),
+        is_published=payload.is_published,
+        is_school_exam=payload.is_school_exam,
+        ai_locked=payload.ai_locked,
+        camera_required=payload.camera_required,
+        block_minimize=payload.block_minimize,
+        created_by=current_user["sub"],
+    )
+    db.add(exam)
+    await db.flush()
+
+    for q in payload.questions:
+        if q.correct_option.upper() not in ("A", "B", "C", "D"):
+            raise HTTPException(status_code=400, detail=f"correct_option must be A/B/C/D, got: {q.correct_option}")
+        db.add(CBTQuestion(
+            exam_id=exam.id,
+            question_text=q.question_text,
+            option_a=q.option_a,
+            option_b=q.option_b,
+            option_c=q.option_c,
+            option_d=q.option_d,
+            correct_option=q.correct_option.upper(),
+            explanation=q.explanation,
+            topic=q.topic,
+            image_url=q.image_url,
+        ))
+
+    await db.flush()
+    return CBTExamResponse(
+        id=str(exam.id),
+        title=exam.title,
+        subject=exam.subject,
+        exam_type=exam.exam_type,
+        duration_minutes=exam.duration_minutes,
+        total_questions=exam.total_questions,
+        is_published=exam.is_published,
+    )
+
+
+@router.get("/cbt/exams", response_model=list[CBTExamResponse])
+async def admin_list_cbt_exams(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin lists all CBT exams (published and unpublished)."""
+    result = await db.execute(select(CBTExam).order_by(CBTExam.exam_type, CBTExam.subject))
+    exams = result.scalars().all()
+    return [
+        CBTExamResponse(
+            id=str(e.id), title=e.title, subject=e.subject,
+            exam_type=e.exam_type, duration_minutes=e.duration_minutes,
+            total_questions=e.total_questions, is_published=e.is_published,
+        )
+        for e in exams
+    ]
+
+
+@router.patch("/cbt/exams/{exam_id}/publish")
+async def admin_toggle_publish(
+    exam_id: str,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Toggle publish/unpublish an exam."""
+    result = await db.execute(select(CBTExam).where(CBTExam.id == exam_id))
+    exam = result.scalar_one_or_none()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    exam.is_published = not exam.is_published
+    await db.flush()
+    return {"id": str(exam.id), "is_published": exam.is_published}

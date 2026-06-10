@@ -1,224 +1,21 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 from app.core.database import get_db
-from app.core.deps import require_student, require_teacher, require_admin, get_current_user
+from app.core.deps import require_student, require_admin, get_current_user
 from app.models.cbt import CBTExam, CBTQuestion, CBTSession, ExamProctorLog
 
 router = APIRouter(prefix="/cbt", tags=["CBT"])
 
 
-# ── Public: List Exams (no auth needed) ──────────────────────────────────────
-
-@router.get("/exams")
-async def list_exams(
-    exam_type: Optional[str] = None,
-    subject: Optional[str] = None,
-    db: AsyncSession = Depends(get_db),
-):
-    """Public endpoint — lists all published exams. No login required."""
-    query = select(CBTExam).where(CBTExam.is_published == True)  # noqa: E712
-    if exam_type:
-        query = query.where(CBTExam.exam_type == exam_type.upper())
-    if subject:
-        query = query.where(CBTExam.subject.ilike(f"%{subject}%"))
-    result = await db.execute(query.order_by(CBTExam.created_at.desc()))
-    exams = result.scalars().all()
-    return [
-        {
-            "id": str(e.id),
-            "title": e.title,
-            "subject": e.subject,
-            "exam_type": e.exam_type,
-            "duration_minutes": e.duration_minutes,
-            "total_questions": e.total_questions,
-            "is_school_exam": e.is_school_exam,
-        }
-        for e in exams
-    ]
-
-
-@router.get("/exams/{exam_id}")
-async def get_exam_info(exam_id: str, db: AsyncSession = Depends(get_db)):
-    """Public — get exam metadata by ID."""
-    result = await db.execute(
-        select(CBTExam).where(CBTExam.id == exam_id, CBTExam.is_published == True)  # noqa: E712
-    )
-    exam = result.scalar_one_or_none()
-    if not exam:
-        raise HTTPException(status_code=404, detail="Exam not found")
-    return {
-        "id": str(exam.id),
-        "title": exam.title,
-        "subject": exam.subject,
-        "exam_type": exam.exam_type,
-        "duration_minutes": exam.duration_minutes,
-        "total_questions": exam.total_questions,
-        "is_school_exam": exam.is_school_exam,
-        "ai_locked": exam.ai_locked,
-        "camera_required": exam.camera_required,
-    }
-
-
-@router.get("/exams/{exam_id}/download")
-async def download_exam_for_offline(
-    exam_id: str,
-    current_user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Returns full exam with all questions for offline CBT.
-    Correct answers are NOT included — submitted separately via /sessions/submit.
-    """
-    result = await db.execute(
-        select(CBTExam).where(CBTExam.id == exam_id, CBTExam.is_published == True)  # noqa: E712
-    )
-    exam = result.scalar_one_or_none()
-    if not exam:
-        raise HTTPException(status_code=404, detail="Exam not found")
-
-    q_result = await db.execute(
-        select(CBTQuestion).where(CBTQuestion.exam_id == exam.id)
-    )
-    questions = q_result.scalars().all()
-
-    return {
-        "id": str(exam.id),
-        "title": exam.title,
-        "subject": exam.subject,
-        "exam_type": exam.exam_type,
-        "duration_minutes": exam.duration_minutes,
-        "total_questions": exam.total_questions,
-        "is_school_exam": exam.is_school_exam,
-        "ai_locked": exam.ai_locked,
-        "camera_required": exam.camera_required,
-        "block_minimize": exam.block_minimize,
-        "questions": [
-            {
-                "id": str(q.id),
-                "question_text": q.question_text,
-                "option_a": q.option_a,
-                "option_b": q.option_b,
-                "option_c": q.option_c,
-                "option_d": q.option_d,
-                "topic": q.topic,
-                "image_url": q.image_url,
-                # correct_option intentionally omitted
-            }
-            for q in questions
-        ],
-    }
-
-
-@router.get("/sessions/{session_id}/result")
-async def get_session_result(
-    session_id: str,
-    current_user: dict = Depends(require_student),
-    db: AsyncSession = Depends(get_db),
-):
-    """Get a previously submitted session result."""
-    result = await db.execute(
-        select(CBTSession).where(
-            CBTSession.id == session_id,
-            CBTSession.student_id == current_user["sub"],
-        )
-    )
-    session = result.scalar_one_or_none()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-    if not session.submitted_at:
-        raise HTTPException(status_code=400, detail="Session not yet submitted")
-    return {
-        "session_id": session_id,
-        "score": session.score,
-        "percentage": session.percentage,
-        "total_correct": session.total_correct,
-        "total_wrong": session.total_wrong,
-        "weak_topics": session.weak_topics,
-        "submitted_at": session.submitted_at,
-        "is_auto_submitted": session.is_auto_submitted,
-    }
-
-
-@router.get("/sessions/{session_id}/review")
-async def review_session(
-    session_id: str,
-    current_user: dict = Depends(require_student),
-    db: AsyncSession = Depends(get_db),
-):
-    """Returns all questions with correct answers + student's chosen answers after submission."""
-    result = await db.execute(
-        select(CBTSession).where(
-            CBTSession.id == session_id,
-            CBTSession.student_id == current_user["sub"],
-        )
-    )
-    session = result.scalar_one_or_none()
-    if not session or not session.submitted_at:
-        raise HTTPException(status_code=404, detail="Session not found or not submitted")
-
-    q_result = await db.execute(
-        select(CBTQuestion).where(CBTQuestion.exam_id == session.exam_id)
-    )
-    questions = q_result.scalars().all()
-
-    return {
-        "session_id": session_id,
-        "percentage": session.percentage,
-        "questions": [
-            {
-                "id": str(q.id),
-                "question_text": q.question_text,
-                "option_a": q.option_a,
-                "option_b": q.option_b,
-                "option_c": q.option_c,
-                "option_d": q.option_d,
-                "correct_option": q.correct_option,
-                "explanation": q.explanation,
-                "topic": q.topic,
-                "student_answer": session.answers.get(str(q.id)),
-                "is_correct": session.answers.get(str(q.id), "").upper() == q.correct_option.upper(),
-            }
-            for q in questions
-        ],
-    }
-
-
-@router.get("/my-sessions")
-async def get_my_sessions(
-    current_user: dict = Depends(require_student),
-    db: AsyncSession = Depends(get_db),
-):
-    """List all CBT sessions for the current student."""
-    result = await db.execute(
-        select(CBTSession, CBTExam)
-        .join(CBTExam, CBTExam.id == CBTSession.exam_id)
-        .where(CBTSession.student_id == current_user["sub"])
-        .order_by(CBTSession.started_at.desc())
-    )
-    rows = result.all()
-    return [
-        {
-            "session_id": str(s.id),
-            "exam_title": e.title,
-            "subject": e.subject,
-            "exam_type": e.exam_type,
-            "started_at": s.started_at,
-            "submitted_at": s.submitted_at,
-            "percentage": s.percentage,
-            "total_correct": s.total_correct,
-            "total_wrong": s.total_wrong,
-        }
-        for s, e in rows
-    ]
-
+# ── Schemas ───────────────────────────────────────────────────────────────────
 
 class SubmitAnswersRequest(BaseModel):
     session_id: str
-    answers: dict  # {question_id: "A" | "B" | "C" | "D"}
+    answers: dict  # {question_id: "A"|"B"|"C"|"D"}
     is_auto_submit: bool = False
 
 
@@ -228,7 +25,6 @@ class SessionResponse(BaseModel):
     started_at: datetime
     duration_minutes: int
     total_questions: int
-    # School exam security config sent to frontend
     is_school_exam: bool = False
     ai_locked: bool = False
     camera_required: bool = False
@@ -243,6 +39,129 @@ class ResultResponse(BaseModel):
     weak_topics: list
 
 
+class ExamSummary(BaseModel):
+    id: str
+    title: str
+    subject: str
+    exam_type: str
+    duration_minutes: int
+    total_questions: int
+    is_published: bool
+
+
+class QuestionOut(BaseModel):
+    id: str
+    question_text: str
+    option_a: str
+    option_b: str
+    option_c: str
+    option_d: str
+    topic: Optional[str]
+    image_url: Optional[str]
+
+
+class ExamDownload(BaseModel):
+    id: str
+    title: str
+    subject: str
+    exam_type: str
+    duration_minutes: int
+    total_questions: int
+    questions: List[QuestionOut]
+
+
+# ── List Exams (public) ───────────────────────────────────────────────────────
+
+@router.get("/exams", response_model=List[ExamSummary])
+async def list_exams(
+    exam_type: Optional[str] = Query(None),
+    subject: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all published exams. No auth required. Filterable by exam_type and subject."""
+    q = select(CBTExam).where(CBTExam.is_published == True)  # noqa: E712
+    if exam_type:
+        q = q.where(CBTExam.exam_type == exam_type.upper())
+    if subject:
+        q = q.where(CBTExam.subject.ilike(f"%{subject}%"))
+    result = await db.execute(q.order_by(CBTExam.exam_type, CBTExam.subject))
+    exams = result.scalars().all()
+    return [
+        ExamSummary(
+            id=str(e.id), title=e.title, subject=e.subject,
+            exam_type=e.exam_type, duration_minutes=e.duration_minutes,
+            total_questions=e.total_questions, is_published=e.is_published,
+        )
+        for e in exams
+    ]
+
+
+# ── Get Single Exam Info (public) ─────────────────────────────────────────────
+
+@router.get("/exams/{exam_id}", response_model=ExamSummary)
+async def get_exam(exam_id: str, db: AsyncSession = Depends(get_db)):
+    """Get exam metadata. No auth required."""
+    result = await db.execute(
+        select(CBTExam).where(CBTExam.id == exam_id, CBTExam.is_published == True)  # noqa: E712
+    )
+    exam = result.scalar_one_or_none()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    return ExamSummary(
+        id=str(exam.id), title=exam.title, subject=exam.subject,
+        exam_type=exam.exam_type, duration_minutes=exam.duration_minutes,
+        total_questions=exam.total_questions, is_published=exam.is_published,
+    )
+
+
+# ── Download Exam for Offline Use (auth required) ─────────────────────────────
+
+@router.get("/exams/{exam_id}/download", response_model=ExamDownload)
+async def download_exam(
+    exam_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns the full exam with questions (NO correct answers).
+    Used by the web/mobile client to cache exam for offline CBT.
+    """
+    result = await db.execute(
+        select(CBTExam).where(CBTExam.id == exam_id, CBTExam.is_published == True)  # noqa: E712
+    )
+    exam = result.scalar_one_or_none()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+
+    q_result = await db.execute(
+        select(CBTQuestion).where(CBTQuestion.exam_id == exam.id)
+    )
+    questions = q_result.scalars().all()
+
+    return ExamDownload(
+        id=str(exam.id),
+        title=exam.title,
+        subject=exam.subject,
+        exam_type=exam.exam_type,
+        duration_minutes=exam.duration_minutes,
+        total_questions=exam.total_questions,
+        questions=[
+            QuestionOut(
+                id=str(q.id),
+                question_text=q.question_text,
+                option_a=q.option_a,
+                option_b=q.option_b,
+                option_c=q.option_c,
+                option_d=q.option_d,
+                topic=q.topic,
+                image_url=q.image_url,
+                # NOTE: correct_option intentionally NOT included here
+            )
+            for q in questions
+        ],
+    )
+
+
 # ── Start Session ─────────────────────────────────────────────────────────────
 
 @router.post("/sessions/{exam_id}/start", response_model=SessionResponse)
@@ -251,7 +170,9 @@ async def start_session(
     current_user: dict = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(CBTExam).where(CBTExam.id == exam_id, CBTExam.is_published == True))
+    result = await db.execute(
+        select(CBTExam).where(CBTExam.id == exam_id, CBTExam.is_published == True)  # noqa: E712
+    )
     exam = result.scalar_one_or_none()
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
@@ -293,12 +214,14 @@ async def submit_session(
     if session.submitted_at:
         raise HTTPException(status_code=400, detail="Already submitted")
 
-    q_result = await db.execute(select(CBTQuestion).where(CBTQuestion.exam_id == session.exam_id))
+    q_result = await db.execute(
+        select(CBTQuestion).where(CBTQuestion.exam_id == session.exam_id)
+    )
     questions = q_result.scalars().all()
 
     correct = 0
     wrong = 0
-    weak_topics = set()
+    weak_topics: set = set()
 
     for q in questions:
         chosen = payload.answers.get(str(q.id))
@@ -320,6 +243,7 @@ async def submit_session(
     session.weak_topics = list(weak_topics)
     session.submitted_at = datetime.utcnow()
     session.is_auto_submitted = payload.is_auto_submit
+    await db.flush()
 
     return ResultResponse(
         score=correct,
@@ -330,7 +254,122 @@ async def submit_session(
     )
 
 
-# ── School Exam: AI Lock Check ────────────────────────────────────────────────
+# ── Get Session Result ────────────────────────────────────────────────────────
+
+@router.get("/sessions/{session_id}/result", response_model=ResultResponse)
+async def get_session_result(
+    session_id: str,
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(CBTSession).where(
+            CBTSession.id == session_id,
+            CBTSession.student_id == current_user["sub"],
+        )
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if not session.submitted_at:
+        raise HTTPException(status_code=400, detail="Session not yet submitted")
+
+    return ResultResponse(
+        score=session.score or 0,
+        percentage=session.percentage or 0.0,
+        total_correct=session.total_correct or 0,
+        total_wrong=session.total_wrong or 0,
+        weak_topics=session.weak_topics or [],
+    )
+
+
+# ── Get Session Review (with correct answers + explanations) ──────────────────
+
+@router.get("/sessions/{session_id}/review")
+async def get_session_review(
+    session_id: str,
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """Returns all questions with correct answers, student answers, and explanations."""
+    res = await db.execute(
+        select(CBTSession).where(
+            CBTSession.id == session_id,
+            CBTSession.student_id == current_user["sub"],
+        )
+    )
+    session = res.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    if not session.submitted_at:
+        raise HTTPException(status_code=400, detail="Session not yet submitted")
+
+    q_result = await db.execute(
+        select(CBTQuestion).where(CBTQuestion.exam_id == session.exam_id)
+    )
+    questions = q_result.scalars().all()
+    submitted_answers = session.answers or {}
+
+    return {
+        "session_id": session_id,
+        "percentage": session.percentage,
+        "total_correct": session.total_correct,
+        "total_wrong": session.total_wrong,
+        "questions": [
+            {
+                "id": str(q.id),
+                "question_text": q.question_text,
+                "option_a": q.option_a,
+                "option_b": q.option_b,
+                "option_c": q.option_c,
+                "option_d": q.option_d,
+                "correct_option": q.correct_option,
+                "explanation": q.explanation,
+                "topic": q.topic,
+                "student_answer": submitted_answers.get(str(q.id)),
+                "is_correct": (submitted_answers.get(str(q.id)) or "").upper() == q.correct_option.upper(),
+            }
+            for q in questions
+        ],
+    }
+
+
+# ── My Sessions ───────────────────────────────────────────────────────────────
+
+@router.get("/my-sessions")
+async def my_sessions(
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """Student's own submitted exam sessions."""
+    result = await db.execute(
+        select(CBTSession, CBTExam)
+        .join(CBTExam, CBTExam.id == CBTSession.exam_id)
+        .where(
+            CBTSession.student_id == current_user["sub"],
+            CBTSession.submitted_at.isnot(None),
+        )
+        .order_by(CBTSession.submitted_at.desc())
+    )
+    rows = result.all()
+    return [
+        {
+            "session_id": str(s.id),
+            "exam_id": str(e.id),
+            "exam_title": e.title,
+            "subject": e.subject,
+            "exam_type": e.exam_type,
+            "percentage": s.percentage,
+            "total_correct": s.total_correct,
+            "total_wrong": s.total_wrong,
+            "submitted_at": s.submitted_at,
+            "weak_topics": s.weak_topics or [],
+        }
+        for s, e in rows
+    ]
+
+
+# ── AI Lock Check ─────────────────────────────────────────────────────────────
 
 @router.get("/sessions/{session_id}/ai-status")
 async def check_ai_lock(
@@ -338,10 +377,6 @@ async def check_ai_lock(
     current_user: dict = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Frontend calls this before sending any AI request during an exam.
-    If ai_locked=True, the AI tutor must refuse to answer.
-    """
     result = await db.execute(
         select(CBTSession, CBTExam)
         .join(CBTExam, CBTExam.id == CBTSession.exam_id)
@@ -353,7 +388,6 @@ async def check_ai_lock(
     row = result.first()
     if not row:
         raise HTTPException(status_code=404, detail="Session not found")
-
     session, exam = row
     return {
         "session_id": session_id,
@@ -362,11 +396,11 @@ async def check_ai_lock(
     }
 
 
-# ── Proctoring: Log Violation Event ──────────────────────────────────────────
+# ── Proctoring ────────────────────────────────────────────────────────────────
 
 class ProctorEventRequest(BaseModel):
     session_id: str
-    event_type: str   # minimize_attempt | screenshot_attempt | tab_switch | camera_lost | camera_snapshot
+    event_type: str
     snapshot_url: Optional[str] = None
     metadata: Optional[dict] = None
 
@@ -377,17 +411,9 @@ async def log_proctor_event(
     current_user: dict = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Frontend sends this whenever a violation or camera snapshot occurs.
-    Stored for admin review. Student cannot see these logs.
-    """
-    VALID_EVENTS = {
-        "minimize_attempt", "screenshot_attempt",
-        "tab_switch", "camera_lost", "camera_snapshot",
-    }
+    VALID_EVENTS = {"minimize_attempt", "screenshot_attempt", "tab_switch", "camera_lost", "camera_snapshot"}
     if payload.event_type not in VALID_EVENTS:
         raise HTTPException(status_code=400, detail=f"Invalid event_type. Use: {VALID_EVENTS}")
-
     log = ExamProctorLog(
         session_id=payload.session_id,
         student_id=current_user["sub"],
@@ -400,15 +426,12 @@ async def log_proctor_event(
     return {"logged": True, "event": payload.event_type}
 
 
-# ── Admin: View Proctoring Logs ───────────────────────────────────────────────
-
 @router.get("/proctor/sessions/{session_id}/logs")
 async def get_proctor_logs(
     session_id: str,
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Admin views all violation events and camera snapshots for a session."""
     result = await db.execute(
         select(ExamProctorLog)
         .where(ExamProctorLog.session_id == session_id)
@@ -416,28 +439,18 @@ async def get_proctor_logs(
     )
     logs = result.scalars().all()
     return [
-        {
-            "id": str(l.id),
-            "student_id": str(l.student_id),
-            "event_type": l.event_type,
-            "snapshot_url": l.snapshot_url,
-            "extra_data": l.extra_data,
-            "at": l.created_at,
-        }
+        {"id": str(l.id), "student_id": str(l.student_id), "event_type": l.event_type,
+         "snapshot_url": l.snapshot_url, "extra_data": l.extra_data, "at": l.created_at}
         for l in logs
     ]
 
 
 @router.get("/proctor/exam/{exam_id}/active-students")
-async def get_active_students_in_exam(
+async def get_active_students(
     exam_id: str,
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Admin sees all students currently taking a school exam (not yet submitted).
-    Used to monitor live camera feeds from the admin dashboard.
-    """
     result = await db.execute(
         select(CBTSession).where(
             CBTSession.exam_id == exam_id,
@@ -445,11 +458,4 @@ async def get_active_students_in_exam(
         )
     )
     sessions = result.scalars().all()
-    return [
-        {
-            "session_id": str(s.id),
-            "student_id": str(s.student_id),
-            "started_at": s.started_at,
-        }
-        for s in sessions
-    ]
+    return [{"session_id": str(s.id), "student_id": str(s.student_id), "started_at": s.started_at} for s in sessions]

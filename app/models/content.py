@@ -109,3 +109,44 @@ class Syllabus(Base):
     exam_type: Mapped[str] = mapped_column(String(20), nullable=False)
     topics: Mapped[list] = mapped_column(ARRAY(String), default=[])
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# ── Book Recommendations ──────────────────────────────────────────────────────
+
+class RecommendationTarget(str, enum.Enum):
+    all = "all"           # both students and teachers
+    student = "student"
+    teacher = "teacher"
+
+
+class BookRecommendation(Base):
+    """
+    Admin posts a book recommendation — can reference an existing library book
+    or be a standalone recommendation with an external link.
+    """
+    __tablename__ = "book_recommendations"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    author: Mapped[str] = mapped_column(String(255), nullable=True)
+    subject: Mapped[str] = mapped_column(String(100), nullable=True)
+    description: Mapped[str] = mapped_column(Text, nullable=True)
+    cover_image_url: Mapped[str] = mapped_column(String(500), nullable=True)
+
+    # Optional: link to an internal library book
+    book_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("books.id"), nullable=True
+    )
+    # Optional: external link (Amazon, PDF, etc.)
+    external_url: Mapped[str] = mapped_column(String(500), nullable=True)
+
+    target: Mapped[RecommendationTarget] = mapped_column(
+        Enum(RecommendationTarget), default=RecommendationTarget.all
+    )
+    exam_type: Mapped[str] = mapped_column(String(20), nullable=True)  # JAMB | WAEC | NECO | ALL
+    education_level: Mapped[str] = mapped_column(String(50), nullable=True)  # SS1, SS2, SS3, JAMB
+
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

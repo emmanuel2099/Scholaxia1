@@ -2,9 +2,9 @@
 from app.models.user import User, StudentProfile, TeacherProfile
 from app.models.payment import Subscription, Payment
 from app.models.cbt import CBTExam, CBTQuestion, CBTSession, ExamProctorLog
-from app.models.community import CommunityChannel, CommunityMessage
+from app.models.community import CommunityChannel, CommunityMessage, AssignmentSubmission, MessageReport, CommunityPost, PostLike
 from app.models.live_class import LiveClass, ClassAttendance
-from app.models.content import Book, SavedBook, BookReadProgress, Video, Note, Syllabus
+from app.models.content import Book, SavedBook, BookReadProgress, Video, Note, Syllabus, BookRecommendation
 from app.models.notification import Notification
 from app.models.sia_note import SiaNote
 from app.models.api_key import ApiKey, ApiUsageLog, ApiDailyUsage

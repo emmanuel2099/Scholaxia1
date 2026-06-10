@@ -340,3 +340,263 @@ async def post_assignment_result(
     )
 
     return {"message": "Result posted", "submission_id": submission_id}
+
+
+# ── Messages GET ──────────────────────────────────────────────────────────────
+
+@router.get("/messages")
+async def get_messages(
+    channel_id: str,
+    limit: int = 50,
+    before_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    GET /api/v1/community/messages?channel_id=xxx
+    Returns recent messages in a channel, newest last.
+    Optional cursor: before_id for pagination.
+    """
+    from app.models.community import CommunityMessage
+    query = (
+        select(CommunityMessage)
+        .where(
+            CommunityMessage.channel_id == channel_id,
+            CommunityMessage.is_deleted == False,  # noqa: E712
+        )
+        .order_by(CommunityMessage.created_at.desc())
+        .limit(limit)
+    )
+    result = await db.execute(query)
+    msgs = result.scalars().all()
+    msgs = list(reversed(msgs))  # return oldest-first for display
+
+    # Fetch sender names in one query
+    sender_ids = list({str(m.sender_id) for m in msgs})
+    users_result = await db.execute(select(User).where(User.id.in_(sender_ids)))
+    users_map = {str(u.id): u.full_name for u in users_result.scalars().all()}
+
+    return [
+        {
+            "id": str(m.id),
+            "channel_id": str(m.channel_id),
+            "sender_id": str(m.sender_id),
+            "sender_name": users_map.get(str(m.sender_id), "Unknown"),
+            "content": m.content,
+            "media_url": m.media_url,
+            "media_type": m.media_type,
+            "created_at": m.created_at,
+        }
+        for m in msgs
+    ]
+
+
+# ── Posts (Feed) ──────────────────────────────────────────────────────────────
+
+from app.models.community import CommunityPost, PostLike
+
+
+class CreatePostRequest(BaseModel):
+    channel_id: str
+    content: str
+    media_url: Optional[str] = None
+    media_type: Optional[str] = None  # image | pdf | video
+
+
+@router.get("/posts")
+async def list_posts(
+    channel_id: str,
+    limit: int = 30,
+    offset: int = 0,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    GET /api/v1/community/posts?channel_id=xxx
+    Returns paginated posts for a channel, newest first.
+    """
+    result = await db.execute(
+        select(CommunityPost)
+        .where(
+            CommunityPost.channel_id == channel_id,
+            CommunityPost.is_deleted == False,  # noqa: E712
+        )
+        .order_by(CommunityPost.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    posts = result.scalars().all()
+
+    author_ids = list({str(p.author_id) for p in posts})
+    users_result = await db.execute(select(User).where(User.id.in_(author_ids)))
+    users_map = {str(u.id): u.full_name for u in users_result.scalars().all()}
+
+    # Check which posts the current user has liked
+    post_ids = [str(p.id) for p in posts]
+    likes_result = await db.execute(
+        select(PostLike).where(
+            PostLike.post_id.in_(post_ids),
+            PostLike.user_id == current_user["sub"],
+        )
+    )
+    liked_ids = {str(l.post_id) for l in likes_result.scalars().all()}
+
+    return [
+        {
+            "id": str(p.id),
+            "channel_id": str(p.channel_id),
+            "author_id": str(p.author_id),
+            "author_name": users_map.get(str(p.author_id), "Unknown"),
+            "content": p.content,
+            "media_url": p.media_url,
+            "media_type": p.media_type,
+            "is_pinned": p.is_pinned,
+            "like_count": p.like_count,
+            "liked_by_me": str(p.id) in liked_ids,
+            "created_at": p.created_at,
+        }
+        for p in posts
+    ]
+
+
+@router.post("/posts", status_code=201)
+async def create_post(
+    payload: CreatePostRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    POST /api/v1/community/posts
+    Any logged-in user can create a post. Students blocked in readonly channels.
+    """
+    channel_res = await db.execute(
+        select(CommunityChannel).where(CommunityChannel.id == payload.channel_id)
+    )
+    channel = channel_res.scalar_one_or_none()
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+
+    role = current_user.get("role")
+    if channel.is_readonly_for_students and role == "student":
+        raise HTTPException(status_code=403, detail="Only teachers and admins can post in this channel")
+
+    flagged, reason = await check_message_content(payload.content)
+    if flagged:
+        raise HTTPException(status_code=400, detail=f"Post blocked: {reason}")
+
+    post = CommunityPost(
+        channel_id=payload.channel_id,
+        author_id=current_user["sub"],
+        content=payload.content,
+        media_url=payload.media_url,
+        media_type=payload.media_type,
+    )
+    db.add(post)
+    await db.flush()
+
+    return {
+        "id": str(post.id),
+        "channel_id": str(post.channel_id),
+        "content": post.content,
+        "created_at": post.created_at,
+    }
+
+
+@router.post("/posts/{post_id}/like")
+async def toggle_like(
+    post_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    POST /api/v1/community/posts/{post_id}/like
+    Toggles like — like if not liked, unlike if already liked.
+    """
+    post_res = await db.execute(
+        select(CommunityPost).where(CommunityPost.id == post_id, CommunityPost.is_deleted == False)  # noqa: E712
+    )
+    post = post_res.scalar_one_or_none()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    existing = await db.execute(
+        select(PostLike).where(
+            PostLike.post_id == post_id,
+            PostLike.user_id == current_user["sub"],
+        )
+    )
+    like = existing.scalar_one_or_none()
+
+    if like:
+        await db.delete(like)
+        post.like_count = max(0, post.like_count - 1)
+        return {"liked": False, "like_count": post.like_count}
+    else:
+        db.add(PostLike(post_id=post_id, user_id=current_user["sub"]))
+        post.like_count += 1
+        return {"liked": True, "like_count": post.like_count}
+
+
+# ── Pinned Posts ──────────────────────────────────────────────────────────────
+
+@router.get("/channels/{channel_id}/pinned")
+async def get_pinned_posts(
+    channel_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    GET /api/v1/community/channels/{channel_id}/pinned
+    Returns all pinned posts for a channel.
+    """
+    result = await db.execute(
+        select(CommunityPost)
+        .where(
+            CommunityPost.channel_id == channel_id,
+            CommunityPost.is_pinned == True,  # noqa: E712
+            CommunityPost.is_deleted == False,  # noqa: E712
+        )
+        .order_by(CommunityPost.created_at.desc())
+    )
+    posts = result.scalars().all()
+
+    author_ids = list({str(p.author_id) for p in posts})
+    users_result = await db.execute(select(User).where(User.id.in_(author_ids)))
+    users_map = {str(u.id): u.full_name for u in users_result.scalars().all()}
+
+    return [
+        {
+            "id": str(p.id),
+            "author_id": str(p.author_id),
+            "author_name": users_map.get(str(p.author_id), "Unknown"),
+            "content": p.content,
+            "media_url": p.media_url,
+            "like_count": p.like_count,
+            "created_at": p.created_at,
+        }
+        for p in posts
+    ]
+
+
+@router.patch("/posts/{post_id}/pin")
+async def pin_post(
+    post_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    PATCH /api/v1/community/posts/{post_id}/pin
+    Teachers and admins can pin/unpin posts.
+    """
+    role = current_user.get("role")
+    if role not in ("teacher", "admin"):
+        raise HTTPException(status_code=403, detail="Teachers and admins only")
+    result = await db.execute(
+        select(CommunityPost).where(CommunityPost.id == post_id)
+    )
+    post = result.scalar_one_or_none()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    post.is_pinned = not post.is_pinned
+    return {"post_id": post_id, "is_pinned": post.is_pinned}
