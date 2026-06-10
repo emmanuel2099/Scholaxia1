@@ -217,3 +217,249 @@ async def remove_student(
         raise HTTPException(status_code=404, detail="Student not in class")
     attendance.is_removed = True
     return {"message": "Student removed"}
+
+
+# ── Session Listing Endpoints ─────────────────────────────────────────────────
+
+@router.get("/")
+async def list_live_classes(
+    subject: Optional[str] = None,
+    status: Optional[str] = None,   # live | upcoming | past
+    limit: int = 20,
+    offset: int = 0,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    GET /api/v1/live-classes/
+    Returns live class sessions filterable by subject and status.
+    - status=live      → only currently live classes
+    - status=upcoming  → scheduled in the future, not yet live
+    - status=past      → already ended (is_live=False and end_time is set)
+    - omit status      → all classes
+    """
+    now = datetime.utcnow()
+    query = select(LiveClass)
+
+    if subject:
+        query = query.where(LiveClass.subject == subject)
+
+    if status == "live":
+        query = query.where(LiveClass.is_live == True)  # noqa: E712
+    elif status == "upcoming":
+        query = query.where(
+            LiveClass.is_live == False,  # noqa: E712
+            LiveClass.start_time > now,
+        )
+    elif status == "past":
+        query = query.where(
+            LiveClass.is_live == False,  # noqa: E712
+            LiveClass.end_time.isnot(None),
+        )
+
+    # Teachers only see their own classes
+    role = current_user.get("role")
+    if role == "teacher":
+        query = query.where(LiveClass.teacher_id == current_user["sub"])
+
+    query = query.order_by(LiveClass.start_time.desc()).limit(limit).offset(offset)
+    result = await db.execute(query)
+    classes = result.scalars().all()
+
+    # Fetch teacher names
+    teacher_ids = list({str(c.teacher_id) for c in classes})
+    from app.models.user import User
+    users_res = await db.execute(
+        select(User).where(User.id.in_(teacher_ids))
+    )
+    teachers_map = {str(u.id): u.full_name for u in users_res.scalars().all()}
+
+    return [
+        {
+            "id": str(c.id),
+            "title": c.title,
+            "subject": c.subject,
+            "description": c.description,
+            "teacher_id": str(c.teacher_id),
+            "teacher_name": teachers_map.get(str(c.teacher_id), "Unknown"),
+            "start_time": c.start_time,
+            "end_time": c.end_time,
+            "is_live": c.is_live,
+            "room_id": c.room_id,
+            "recording_url": c.recording_url,
+            "created_at": c.created_at,
+        }
+        for c in classes
+    ]
+
+
+@router.get("/{class_id}")
+async def get_class_detail(
+    class_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    GET /api/v1/live-classes/{class_id}
+    Full details for a single class including attendance count.
+    """
+    result = await db.execute(select(LiveClass).where(LiveClass.id == class_id))
+    live_class = result.scalar_one_or_none()
+    if not live_class:
+        raise HTTPException(status_code=404, detail="Class not found")
+
+    # Attendance count
+    att_result = await db.execute(
+        select(ClassAttendance).where(ClassAttendance.live_class_id == class_id)
+    )
+    attendances = att_result.scalars().all()
+    active_count = sum(1 for a in attendances if not a.is_removed and a.left_at is None)
+
+    from app.models.user import User
+    teacher_res = await db.execute(select(User).where(User.id == live_class.teacher_id))
+    teacher = teacher_res.scalar_one_or_none()
+
+    return {
+        "id": str(live_class.id),
+        "title": live_class.title,
+        "subject": live_class.subject,
+        "description": live_class.description,
+        "teacher_id": str(live_class.teacher_id),
+        "teacher_name": teacher.full_name if teacher else "Unknown",
+        "start_time": live_class.start_time,
+        "end_time": live_class.end_time,
+        "is_live": live_class.is_live,
+        "room_id": live_class.room_id,
+        "recording_url": live_class.recording_url,
+        "is_recording_enabled": live_class.is_recording_enabled,
+        "total_attendees": len(attendances),
+        "active_attendees": active_count,
+        "created_at": live_class.created_at,
+    }
+
+
+@router.post("/{class_id}/end")
+async def end_class(
+    class_id: str,
+    recording_url: Optional[str] = None,
+    current_user: dict = Depends(require_teacher),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    POST /api/v1/live-classes/{class_id}/end
+    Teacher ends the class. Sets is_live=False, records end_time.
+    Optionally attach a recording URL.
+    """
+    result = await db.execute(select(LiveClass).where(LiveClass.id == class_id))
+    live_class = result.scalar_one_or_none()
+    if not live_class:
+        raise HTTPException(status_code=404, detail="Class not found")
+    if str(live_class.teacher_id) != current_user["sub"]:
+        raise HTTPException(status_code=403, detail="Not your class")
+
+    live_class.is_live = False
+    live_class.end_time = datetime.utcnow()
+    if recording_url:
+        live_class.recording_url = recording_url
+
+    # Mark all still-in-class students as left
+    att_res = await db.execute(
+        select(ClassAttendance).where(
+            ClassAttendance.live_class_id == class_id,
+            ClassAttendance.left_at.is_(None),
+        )
+    )
+    for att in att_res.scalars().all():
+        att.left_at = datetime.utcnow()
+
+    return {"message": "Class ended", "class_id": class_id, "end_time": live_class.end_time}
+
+
+@router.post("/{class_id}/leave")
+async def leave_class(
+    class_id: str,
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """Student leaves a live class — records left_at time."""
+    result = await db.execute(
+        select(ClassAttendance).where(
+            ClassAttendance.live_class_id == class_id,
+            ClassAttendance.student_id == current_user["sub"],
+            ClassAttendance.left_at.is_(None),
+        )
+    )
+    att = result.scalar_one_or_none()
+    if not att:
+        raise HTTPException(status_code=404, detail="Attendance record not found")
+
+    att.left_at = datetime.utcnow()
+    return {"message": "Left class", "left_at": att.left_at}
+
+
+@router.get("/history/mine")
+async def my_class_history(
+    limit: int = 20,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    GET /api/v1/live-classes/history/mine
+    Students: classes they attended.
+    Teachers: classes they hosted (past + upcoming).
+    """
+    role = current_user.get("role")
+
+    if role == "student":
+        result = await db.execute(
+            select(ClassAttendance, LiveClass)
+            .join(LiveClass, LiveClass.id == ClassAttendance.live_class_id)
+            .where(ClassAttendance.student_id == current_user["sub"])
+            .order_by(ClassAttendance.joined_at.desc())
+            .limit(limit)
+        )
+        rows = result.all()
+
+        from app.models.user import User
+        teacher_ids = list({str(lc.teacher_id) for _, lc in rows})
+        users_res = await db.execute(select(User).where(User.id.in_(teacher_ids)))
+        teachers_map = {str(u.id): u.full_name for u in users_res.scalars().all()}
+
+        return [
+            {
+                "class_id": str(lc.id),
+                "title": lc.title,
+                "subject": lc.subject,
+                "teacher_name": teachers_map.get(str(lc.teacher_id), "Unknown"),
+                "joined_at": att.joined_at,
+                "left_at": att.left_at,
+                "was_removed": att.is_removed,
+                "is_live": lc.is_live,
+                "recording_url": lc.recording_url,
+            }
+            for att, lc in rows
+        ]
+
+    elif role == "teacher":
+        result = await db.execute(
+            select(LiveClass)
+            .where(LiveClass.teacher_id == current_user["sub"])
+            .order_by(LiveClass.start_time.desc())
+            .limit(limit)
+        )
+        classes = result.scalars().all()
+        return [
+            {
+                "id": str(c.id),
+                "title": c.title,
+                "subject": c.subject,
+                "start_time": c.start_time,
+                "end_time": c.end_time,
+                "is_live": c.is_live,
+                "room_id": c.room_id,
+                "recording_url": c.recording_url,
+            }
+            for c in classes
+        ]
+
+    raise HTTPException(status_code=403, detail="Not authorised")
