@@ -113,7 +113,19 @@ async def db_check(db: AsyncSession = Depends(get_db)):
         return {"status": "error", "detail": str(e)}
 
 
-@app.post("/debug-sia")
+@app.get("/debug-posts")
+async def debug_posts(db: AsyncSession = Depends(get_db)):
+    """Temporary debug endpoint — remove after diagnosis."""
+    try:
+        from sqlalchemy import text
+        result = await db.execute(text(
+            "SELECT id, visibility, is_anonymous FROM community_posts LIMIT 3"
+        ))
+        rows = [dict(r._mapping) for r in result.fetchall()]
+        return {"status": "ok", "sample_rows": rows}
+    except Exception as e:
+        import traceback
+        return {"status": "error", "detail": str(e), "trace": traceback.format_exc()}
 async def debug_sia(db: AsyncSession = Depends(get_db)):
     """Debug endpoint to test Sia directly."""
     try:
