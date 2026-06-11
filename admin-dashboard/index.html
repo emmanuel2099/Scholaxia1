@@ -1,0 +1,1653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scholaxia Admin Dashboard</title>
+    
+    <!-- TailwindCSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.min.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- Recharts -->
+    <script src="https://unpkg.com/recharts@2.10.3/umd/Recharts.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+        
+        * {
+            font-family: 'Inter', sans-serif;
+        }
+        
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .sidebar-gradient {
+            background: linear-gradient(180deg, #1e1b4b 0%, #312e81 100%);
+        }
+        
+        .card-hover {
+            transition: all 0.3s ease;
+        }
+        
+        .card-hover:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        }
+        
+        .animate-fade-in {
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+        
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div id="root">Loading...</div>
+    
+    <script type="text/babel" data-presets="react,stage-3">
+        const { useState, useEffect, createContext, useContext } = React;
+        const { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } = Recharts;
+        
+        // API Base URL - Update this to match your backend
+        // For local development: 'http://localhost:8000/api/v1'
+        // For Render deployment: 'https://scholaxia-api.onrender.com/api/v1'
+        const API_BASE_URL = 'https://scholaxia-api.onrender.com/api/v1';
+        
+        // Auth Context
+        const AuthContext = createContext(null);
+        
+        // API Service Layer
+        const api = {
+            // Get auth token from localStorage
+            getToken: () => localStorage.getItem('admin_token'),
+            
+            // Set auth token
+            setToken: (token) => localStorage.setItem('admin_token', token),
+            
+            // Clear auth token
+            clearToken: () => localStorage.removeItem('admin_token'),
+            
+            // Generic fetch with auth
+            fetch: async (endpoint, options = {}) => {
+                const token = api.getToken();
+                const headers = {
+                    'Content-Type': 'application/json',
+                    ...(token && { 'Authorization': `Bearer ${token}` }),
+                    ...options.headers,
+                };
+                
+                try {
+                    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+                        ...options,
+                        headers,
+                    });
+                    
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.detail || 'API request failed');
+                    }
+                    
+                    return await response.json();
+                } catch (error) {
+                    console.error('API Error:', error);
+                    throw error;
+                }
+            },
+            
+            // Auth endpoints
+            auth: {
+                register: async (email, password, full_name, invite_code) => {
+                    return api.fetch('/admin/register', {
+                        method: 'POST',
+                        body: JSON.stringify({ email, password, full_name, invite_code }),
+                    });
+                },
+                
+                login: async (email, password) => {
+                    return api.fetch('/auth/login', {
+                        method: 'POST',
+                        body: JSON.stringify({ email, password }),
+                    });
+                },
+            },
+            
+            // Teacher endpoints
+            teachers: {
+                list: async () => {
+                    return api.fetch('/admin/teachers');
+                },
+                
+                create: async (email, password, full_name, subjects, bio) => {
+                    return api.fetch('/admin/teachers', {
+                        method: 'POST',
+                        body: JSON.stringify({ email, password, full_name, subjects, bio }),
+                    });
+                },
+                
+                delete: async (teacherId) => {
+                    return api.fetch(`/admin/teachers/${teacherId}`, {
+                        method: 'DELETE',
+                    });
+                },
+            },
+            
+            // Library endpoints
+            library: {
+                getUploadUrl: async () => {
+                    return api.fetch('/admin/library/upload-url');
+                },
+                
+                list: async (libraryTarget) => {
+                    const params = libraryTarget ? `?library_target=${libraryTarget}` : '';
+                    return api.fetch(`/admin/library/books${params}`);
+                },
+                
+                create: async (bookData) => {
+                    return api.fetch('/admin/library/books', {
+                        method: 'POST',
+                        body: JSON.stringify(bookData),
+                    });
+                },
+                
+                delete: async (bookId) => {
+                    return api.fetch(`/admin/library/books/${bookId}`, {
+                        method: 'DELETE',
+                    });
+                },
+            },
+            
+            // CBT Exam endpoints
+            exams: {
+                list: async () => {
+                    return api.fetch('/admin/cbt/exams');
+                },
+                
+                create: async (examData) => {
+                    return api.fetch('/admin/cbt/exams', {
+                        method: 'POST',
+                        body: JSON.stringify(examData),
+                    });
+                },
+                
+                togglePublish: async (examId) => {
+                    return api.fetch(`/admin/cbt/exams/${examId}/publish`, {
+                        method: 'PATCH',
+                    });
+                },
+                
+                delete: async (examId) => {
+                    return api.fetch(`/admin/cbt/exams/${examId}`, {
+                        method: 'DELETE',
+                    });
+                },
+            },
+            
+            // Performance endpoints
+            performance: {
+                getRecent: async (limit = 10) => {
+                    return api.fetch(`/performance/recent?limit=${limit}`);
+                },
+                
+                getSummary: async () => {
+                    return api.fetch('/performance/summary');
+                },
+                
+                getTrend: async (days = 30) => {
+                    return api.fetch(`/performance/trend?days=${days}`);
+                },
+            },
+            
+            // Community endpoints
+            community: {
+                getChannels: async () => {
+                    return api.fetch('/community/channels');
+                },
+                
+                getMessages: async (channelId, limit = 50) => {
+                    return api.fetch(`/community/messages?channel_id=${channelId}&limit=${limit}`);
+                },
+                
+                getPosts: async (channelId, limit = 30) => {
+                    return api.fetch(`/community/posts?channel_id=${channelId}&limit=${limit}`);
+                },
+            },
+        };
+        
+        // Icon Components using Lucide
+        const Icon = ({ name, size = 24, className = '' }) => {
+            useEffect(() => {
+                lucide.createIcons();
+            }, [name]);
+            
+            return <i data-lucide={name} className={className} style={{ width: size, height: size }}></i>;
+        };
+        
+        // Login Component
+        const Login = ({ onLogin }) => {
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [inviteCode, setInviteCode] = useState('');
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState('');
+            const [useRegister, setUseRegister] = useState(false);
+            
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                setLoading(true);
+                setError('');
+                
+                try {
+                    if (useRegister) {
+                        // Admin registration
+                        const response = await api.auth.register(email, password, email.split('@')[0], inviteCode);
+                        api.setToken(response.access_token);
+                        onLogin({ email, role: response.role, token: response.access_token, user: response.user });
+                    } else {
+                        // Regular login
+                        const response = await api.auth.login(email, password);
+                        api.setToken(response.access_token);
+                        onLogin({ email, role: response.role, token: response.access_token, user: response.user });
+                    }
+                } catch (err) {
+                    setError(err.message || 'Authentication failed. Please try again.');
+                } finally {
+                    setLoading(false);
+                }
+            };
+            
+            return (
+                <div className="min-h-screen gradient-bg flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md animate-fade-in">
+                        <div className="text-center mb-8">
+                            <div className="w-16 h-16 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                <Icon name="graduation-cap" size={32} className="text-white" />
+                            </div>
+                            <h1 className="text-3xl font-bold text-gray-900">Scholaxia Admin</h1>
+                            <p className="text-gray-600 mt-2">Sign in to manage your platform</p>
+                        </div>
+                        
+                        {error && (
+                            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
+                                {error}
+                            </div>
+                        )}
+                        
+                        <form onSubmit={handleSubmit} className="space-y-6">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                                <input
+                                    type="email"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                                    placeholder="admin@scholaxia.com"
+                                    required
+                                />
+                            </div>
+                            
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                                <input
+                                    type="password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                                    placeholder="••••••••"
+                                    required
+                                />
+                            </div>
+                            
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Invite Code</label>
+                                <input
+                                    type="text"
+                                    value={inviteCode}
+                                    onChange={(e) => setInviteCode(e.target.value)}
+                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                                    placeholder="Enter your invite code"
+                                    required
+                                />
+                            </div>
+                            
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 text-white py-3 rounded-lg font-semibold hover:opacity-90 transition disabled:opacity-50"
+                            >
+                                {loading ? 'Signing in...' : 'Sign In'}
+                            </button>
+                        </form>
+                        
+                        <div className="flex items-center justify-center gap-2 mt-6">
+                            <button
+                                type="button"
+                                onClick={() => setUseRegister(!useRegister)}
+                                className="text-indigo-600 hover:text-indigo-700 text-sm font-medium"
+                            >
+                                {useRegister ? 'Already have an account? Login' : 'Need to register? Sign up'}
+                            </button>
+                        </div>
+                        
+                        {useRegister && (
+                            <p className="text-center text-gray-500 text-xs mt-2">
+                                Admin registration requires valid invite code
+                            </p>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+        
+        // Sidebar Component
+        const Sidebar = ({ activeTab, setActiveTab, onLogout }) => {
+            const menuItems = [
+                { id: 'dashboard', label: 'Dashboard', icon: 'layout-dashboard' },
+                { id: 'teachers', label: 'Teachers', icon: 'users' },
+                { id: 'library', label: 'Library', icon: 'book-open' },
+                { id: 'exams', label: 'CBT Exams', icon: 'file-text' },
+                { id: 'performance', label: 'Performance', icon: 'bar-chart-3' },
+                { id: 'community', label: 'Community', icon: 'message-square' },
+                { id: 'settings', label: 'Settings', icon: 'settings' },
+            ];
+            
+            return (
+                <div className="sidebar-gradient w-64 min-h-screen text-white p-6 fixed left-0 top-0">
+                    <div className="flex items-center gap-3 mb-10">
+                        <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+                            <Icon name="graduation-cap" size={24} />
+                        </div>
+                        <span className="text-xl font-bold">Scholaxia</span>
+                    </div>
+                    
+                    <nav className="space-y-2">
+                        {menuItems.map((item) => (
+                            <button
+                                key={item.id}
+                                onClick={() => setActiveTab(item.id)}
+                                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition ${
+                                    activeTab === item.id 
+                                        ? 'bg-white/20 text-white' 
+                                        : 'text-white/70 hover:bg-white/10 hover:text-white'
+                                }`}
+                            >
+                                <Icon name={item.icon} size={20} />
+                                <span className="font-medium">{item.label}</span>
+                            </button>
+                        ))}
+                    </nav>
+                    
+                    <div className="absolute bottom-6 left-6 right-6">
+                        <button
+                            onClick={onLogout}
+                            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-white/70 hover:bg-white/10 hover:text-white transition"
+                        >
+                            <Icon name="log-out" size={20} />
+                            <span className="font-medium">Logout</span>
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+        
+        // Dashboard Overview Component
+        const DashboardOverview = () => {
+            const stats = [
+                { label: 'Total Students', value: '1,234', change: '+12%', icon: 'users', color: 'from-blue-500 to-blue-600' },
+                { label: 'Active Teachers', value: '45', change: '+5%', icon: 'user-check', color: 'from-green-500 to-green-600' },
+                { label: 'CBT Exams', value: '128', change: '+8%', icon: 'file-text', color: 'from-purple-500 to-purple-600' },
+                { label: 'Library Books', value: '567', change: '+15%', icon: 'book-open', color: 'from-orange-500 to-orange-600' },
+            ];
+            
+            return (
+                <div className="animate-fade-in">
+                    <h1 className="text-3xl font-bold text-gray-900 mb-8">Dashboard Overview</h1>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                        {stats.map((stat, index) => (
+                            <div key={index} className="bg-white rounded-2xl p-6 shadow-sm card-hover">
+                                <div className="flex items-center justify-between mb-4">
+                                    <div className={`w-12 h-12 bg-gradient-to-r ${stat.color} rounded-xl flex items-center justify-center`}>
+                                        <Icon name={stat.icon} size={24} className="text-white" />
+                                    </div>
+                                    <span className="text-green-600 text-sm font-semibold">{stat.change}</span>
+                                </div>
+                                <h3 className="text-3xl font-bold text-gray-900">{stat.value}</h3>
+                                <p className="text-gray-600 mt-1">{stat.label}</p>
+                            </div>
+                        ))}
+                    </div>
+                    
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="bg-white rounded-2xl p-6 shadow-sm">
+                            <h3 className="text-lg font-semibold text-gray-900 mb-6">Student Performance Trend</h3>
+                            <ResponsiveContainer width="100%" height={300}>
+                                <LineChart data={mockPerformanceData}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                                    <XAxis dataKey="name" stroke="#666" />
+                                    <YAxis stroke="#666" />
+                                    <Tooltip />
+                                    <Legend />
+                                    <Line type="monotone" dataKey="students" stroke="#667eea" strokeWidth={2} name="Students" />
+                                    <Line type="monotone" dataKey="avgScore" stroke="#764ba2" strokeWidth={2} name="Avg Score" />
+                                </LineChart>
+                            </ResponsiveContainer>
+                        </div>
+                        
+                        <div className="bg-white rounded-2xl p-6 shadow-sm">
+                            <h3 className="text-lg font-semibold text-gray-900 mb-6">Subject Distribution</h3>
+                            <ResponsiveContainer width="100%" height={300}>
+                                <PieChart>
+                                    <Pie
+                                        data={mockSubjectDistribution}
+                                        cx="50%"
+                                        cy="50%"
+                                        innerRadius={60}
+                                        outerRadius={100}
+                                        paddingAngle={5}
+                                        dataKey="value"
+                                    >
+                                        {mockSubjectDistribution.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={entry.color} />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip />
+                                    <Legend />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+        
+        // Teachers Management Component
+        const TeachersManagement = () => {
+            const [teachers, setTeachers] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [showModal, setShowModal] = useState(false);
+            const [newTeacher, setNewTeacher] = useState({ email: '', full_name: '', subjects: '', password: '', bio: '' });
+            const [error, setError] = useState('');
+            
+            // Fetch teachers on mount
+            useEffect(() => {
+                fetchTeachers();
+            }, []);
+            
+            const fetchTeachers = async () => {
+                try {
+                    setLoading(true);
+                    const data = await api.teachers.list();
+                    setTeachers(data);
+                } catch (err) {
+                    setError('Failed to load teachers');
+                    console.error(err);
+                } finally {
+                    setLoading(false);
+                }
+            };
+            
+            const handleAddTeacher = async () => {
+                try {
+                    setError('');
+                    const subjects = newTeacher.subjects.split(',').map(s => s.trim()).filter(s => s);
+                    await api.teachers.create(
+                        newTeacher.email,
+                        newTeacher.password,
+                        newTeacher.full_name,
+                        subjects,
+                        newTeacher.bio
+                    );
+                    setShowModal(false);
+                    setNewTeacher({ email: '', full_name: '', subjects: '', password: '', bio: '' });
+                    fetchTeachers(); // Refresh list
+                } catch (err) {
+                    setError(err.message || 'Failed to add teacher');
+                }
+            };
+            
+            const handleDeleteTeacher = async (id) => {
+                if (!confirm('Are you sure you want to delete this teacher?')) return;
+                
+                try {
+                    await api.teachers.delete(id);
+                    setTeachers(teachers.filter(t => t.id !== id));
+                } catch (err) {
+                    setError('Failed to delete teacher');
+                    console.error(err);
+                }
+            };
+            
+            return (
+                <div className="animate-fade-in">
+                    <div className="flex items-center justify-between mb-8">
+                        <h1 className="text-3xl font-bold text-gray-900">Teachers Management</h1>
+                        <button
+                            onClick={() => setShowModal(true)}
+                            className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl font-semibold hover:opacity-90 transition flex items-center gap-2"
+                        >
+                            <Icon name="plus" size={20} />
+                            Add Teacher
+                        </button>
+                    </div>
+                    
+                    {error && (
+                        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
+                            {error}
+                        </div>
+                    )}
+                    
+                    {loading ? (
+                        <div className="bg-white rounded-2xl shadow-sm p-8 text-center">
+                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+                            <p className="text-gray-600 mt-4">Loading teachers...</p>
+                        </div>
+                    ) : (
+                        <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+                            <table className="w-full">
+                                <thead className="bg-gray-50">
+                                    <tr>
+                                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Name</th>
+                                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Email</th>
+                                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Subjects</th>
+                                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                    {teachers.length === 0 ? (
+                                        <tr>
+                                            <td colSpan="4" className="px-6 py-8 text-center text-gray-500">
+                                                No teachers found. Add your first teacher to get started.
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        teachers.map((teacher) => (
+                                            <tr key={teacher.id} className="hover:bg-gray-50 transition">
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-10 h-10 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full flex items-center justify-center text-white font-semibold">
+                                                            {teacher.full_name.charAt(0)}
+                                                        </div>
+                                                        <span className="font-medium text-gray-900">{teacher.full_name}</span>
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4 text-gray-600">{teacher.email}</td>
+                                                <td className="px-6 py-4">
+                                                    <div className="flex gap-2 flex-wrap">
+                                                        {teacher.subjects.map((subject, idx) => (
+                                                            <span key={idx} className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-sm">
+                                                                {subject}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4">
+                                                    <button
+                                                        onClick={() => handleDeleteTeacher(teacher.id)}
+                                                        className="text-red-600 hover:text-red-700 transition"
+                                                    >
+                                                        <Icon name="trash-2" size={20} />
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                    
+                    {showModal && (
+                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+                            <div className="bg-white rounded-2xl p-8 w-full max-w-md animate-fade-in">
+                                <h2 className="text-2xl font-bold text-gray-900 mb-6">Add New Teacher</h2>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
+                                        <input
+                                            type="text"
+                                            value={newTeacher.full_name}
+                                            onChange={(e) => setNewTeacher({...newTeacher, full_name: e.target.value})}
+                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                            placeholder="Dr. John Doe"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                                        <input
+                                            type="email"
+                                            value={newTeacher.email}
+                                            onChange={(e) => setNewTeacher({...newTeacher, email: e.target.value})}
+                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                            placeholder="teacher@school.com"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                                        <input
+                                            type="password"
+                                            value={newTeacher.password}
+                                            onChange={(e) => setNewTeacher({...newTeacher, password: e.target.value})}
+                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                            placeholder="••••••••"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Subjects (comma separated)</label>
+                                        <input
+                                            type="text"
+                                            value={newTeacher.subjects}
+                                            onChange={(e) => setNewTeacher({...newTeacher, subjects: e.target.value})}
+                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                            placeholder="Mathematics, Physics"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Bio (optional)</label>
+                                        <textarea
+                                            value={newTeacher.bio}
+                                            onChange={(e) => setNewTeacher({...newTeacher, bio: e.target.value})}
+                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                            placeholder="Brief bio..."
+                                            rows="2"
+                                        />
+                                    </div>
+                                </div>
+                                {error && (
+                                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mt-4">
+                                        {error}
+                                    </div>
+                                )}
+                                <div className="flex gap-4 mt-6">
+                                    <button
+                                        onClick={() => {
+                                            setShowModal(false);
+                                            setError('');
+                                            setNewTeacher({ email: '', full_name: '', subjects: '', password: '', bio: '' });
+                                        }}
+                                        className="flex-1 px-6 py-3 border border-gray-300 rounded-lg font-semibold hover:bg-gray-50 transition"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={handleAddTeacher}
+                                        className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition"
+                                    >
+                                        Add Teacher
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+        
+        // Library Management Component
+        const LibraryManagement = () => {
+            const [books, setBooks] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [showModal, setShowModal] = useState(false);
+            const [newBook, setNewBook] = useState({ title: '', author: '', subject: '', exam_type: 'JAMB', file_key: '', description: '' });
+            const [error, setError] = useState('');
+            
+            // Fetch books on mount
+            useEffect(() => {
+                fetchBooks();
+            }, []);
+            
+            const fetchBooks = async () => {
+                try {
+                    setLoading(true);
+                    const data = await api.library.list();
+                    setBooks(data);
+                } catch (err) {
+                    setError('Failed to load books');
+                    console.error(err);
+                } finally {
+                    setLoading(false);
+                }
+            };
+            
+            const handleAddBook = async () => {
+                try {
+                    setError('');
+                    await api.library.create({
+                        title: newBook.title,
+                        author: newBook.author,
+                        subject: newBook.subject,
+                        exam_type: newBook.exam_type,
+                        file_key: newBook.file_key || 'placeholder-key',
+                        description: newBook.description,
+                        library_target: 'student',
+                    });
+                    setShowModal(false);
+                    setNewBook({ title: '', author: '', subject: '', exam_type: 'JAMB', file_key: '', description: '' });
+                    fetchBooks(); // Refresh list
+                } catch (err) {
+                    setError(err.message || 'Failed to add book');
+                }
+            };
+            
+            const handleDeleteBook = async (id) => {
+                if (!confirm('Are you sure you want to delete this book?')) return;
+                
+                try {
+                    await api.library.delete(id);
+                    setBooks(books.filter(b => b.id !== id));
+                } catch (err) {
+                    setError('Failed to delete book');
+                    console.error(err);
+                }
+            };
+            
+            return (
+                <div className="animate-fade-in">
+                    <div className="flex items-center justify-between mb-8">
+                        <h1 className="text-3xl font-bold text-gray-900">Library Management</h1>
+                        <button
+                            onClick={() => setShowModal(true)}
+                            className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl font-semibold hover:opacity-90 transition flex items-center gap-2"
+                        >
+                            <Icon name="plus" size={20} />
+                            Add Book
+                        </button>
+                    </div>
+                    
+                    {error && (
+                        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
+                            {error}
+                        </div>
+                    )}
+                    
+                    {loading ? (
+                        <div className="bg-white rounded-2xl shadow-sm p-8 text-center">
+                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+                            <p className="text-gray-600 mt-4">Loading books...</p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {books.length === 0 ? (
+                                <div className="col-span-full bg-white rounded-2xl shadow-sm p-8 text-center">
+                                    <Icon name="book-open" size={48} className="text-gray-300 mx-auto mb-4" />
+                                    <p className="text-gray-500">No books found. Add your first book to get started.</p>
+                                </div>
+                            ) : (
+                                books.map((book) => (
+                                    <div key={book.id} className="bg-white rounded-2xl p-6 shadow-sm card-hover">
+                                        <div className="w-12 h-12 bg-gradient-to-r from-orange-500 to-red-500 rounded-xl flex items-center justify-center mb-4">
+                                            <Icon name="book" size={24} className="text-white" />
+                                        </div>
+                                        <h3 className="text-lg font-semibold text-gray-900 mb-2">{book.title}</h3>
+                                        <p className="text-gray-600 text-sm mb-3">by {book.author}</p>
+                                        <div className="flex gap-2 mb-4">
+                                            <span className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-xs font-medium">
+                                                {book.subject}
+                                            </span>
+                                            <span className="bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-xs font-medium">
+                                                {book.exam_type}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-gray-500 text-sm">{book.created_at ? new Date(book.created_at).toLocaleDateString() : 'N/A'}</span>
+                                            <button
+                                                onClick={() => handleDeleteBook(book.id)}
+                                                className="text-red-600 hover:text-red-700 transition"
+                                            >
+                                                <Icon name="trash-2" size={18} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    )}
+                    
+                    {showModal && (
+                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+                            <div className="bg-white rounded-2xl p-8 w-full max-w-md animate-fade-in">
+                                <h2 className="text-2xl font-bold text-gray-900 mb-6">Add New Book</h2>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Title</label>
+                                        <input
+                                            type="text"
+                                            value={newBook.title}
+                                            onChange={(e) => setNewBook({...newBook, title: e.target.value})}
+                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                            placeholder="Book Title"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Author</label>
+                                        <input
+                                            type="text"
+                                            value={newBook.author}
+                                            onChange={(e) => setNewBook({...newBook, author: e.target.value})}
+                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                            placeholder="Author Name"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Subject</label>
+                                        <input
+                                            type="text"
+                                            value={newBook.subject}
+                                            onChange={(e) => setNewBook({...newBook, subject: e.target.value})}
+                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                            placeholder="Mathematics"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Exam Type</label>
+                                        <select
+                                            value={newBook.exam_type}
+                                            onChange={(e) => setNewBook({...newBook, exam_type: e.target.value})}
+                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                        >
+                                            <option value="JAMB">JAMB</option>
+                                            <option value="WAEC">WAEC</option>
+                                            <option value="NECO">NECO</option>
+                                            <option value="SCHOOL">SCHOOL</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Description (optional)</label>
+                                        <textarea
+                                            value={newBook.description}
+                                            onChange={(e) => setNewBook({...newBook, description: e.target.value})}
+                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                            placeholder="Brief description..."
+                                            rows="2"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">File Key (placeholder for now)</label>
+                                        <input
+                                            type="text"
+                                            value={newBook.file_key}
+                                            onChange={(e) => setNewBook({...newBook, file_key: e.target.value})}
+                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                            placeholder="file-key-from-upload"
+                                        />
+                                        <p className="text-gray-500 text-xs mt-1">In production, this would come from the upload URL endpoint</p>
+                                    </div>
+                                </div>
+                                {error && (
+                                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mt-4">
+                                        {error}
+                                    </div>
+                                )}
+                                <div className="flex gap-4 mt-6">
+                                    <button
+                                        onClick={() => {
+                                            setShowModal(false);
+                                            setError('');
+                                            setNewBook({ title: '', author: '', subject: '', exam_type: 'JAMB', file_key: '', description: '' });
+                                        }}
+                                        className="flex-1 px-6 py-3 border border-gray-300 rounded-lg font-semibold hover:bg-gray-50 transition"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={handleAddBook}
+                                        className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition"
+                                    >
+                                        Add Book
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+        
+        // CBT Exams Management Component
+        const ExamsManagement = () => {
+            const [exams, setExams] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [showModal, setShowModal] = useState(false);
+            const [newExam, setNewExam] = useState({ title: '', subject: '', exam_type: 'JAMB', duration_minutes: 60, total_questions: 40, questions: [] });
+            const [error, setError] = useState('');
+            
+            // Fetch exams on mount
+            useEffect(() => {
+                fetchExams();
+            }, []);
+            
+            const fetchExams = async () => {
+                try {
+                    setLoading(true);
+                    const data = await api.exams.list();
+                    setExams(data);
+                } catch (err) {
+                    setError('Failed to load exams');
+                    console.error(err);
+                } finally {
+                    setLoading(false);
+                }
+            };
+            
+            const handleAddExam = async () => {
+                try {
+                    setError('');
+                    // For now, create exam with placeholder questions
+                    const examData = {
+                        title: newExam.title,
+                        subject: newExam.subject,
+                        exam_type: newExam.exam_type,
+                        duration_minutes: newExam.duration_minutes,
+                        questions: [
+                            {
+                                question_text: "Sample question",
+                                option_a: "A",
+                                option_b: "B",
+                                option_c: "C",
+                                option_d: "D",
+                                correct_option: "A",
+                                explanation: "Sample explanation"
+                            }
+                        ],
+                        is_published: false,
+                        is_school_exam: false,
+                        ai_locked: false,
+                        camera_required: false,
+                        block_minimize: false,
+                    };
+                    await api.exams.create(examData);
+                    setShowModal(false);
+                    setNewExam({ title: '', subject: '', exam_type: 'JAMB', duration_minutes: 60, total_questions: 40, questions: [] });
+                    fetchExams(); // Refresh list
+                } catch (err) {
+                    setError(err.message || 'Failed to create exam');
+                }
+            };
+            
+            const handleTogglePublish = async (id) => {
+                try {
+                    await api.exams.togglePublish(id);
+                    setExams(exams.map(e => e.id === id ? {...e, is_published: !e.is_published} : e));
+                } catch (err) {
+                    setError('Failed to toggle publish status');
+                    console.error(err);
+                }
+            };
+            
+            const handleDeleteExam = async (id) => {
+                if (!confirm('Are you sure you want to delete this exam?')) return;
+                
+                try {
+                    await api.exams.delete(id);
+                    setExams(exams.filter(e => e.id !== id));
+                } catch (err) {
+                    setError('Failed to delete exam');
+                    console.error(err);
+                }
+            };
+            
+            return (
+                <div className="animate-fade-in">
+                    <div className="flex items-center justify-between mb-8">
+                        <h1 className="text-3xl font-bold text-gray-900">CBT Exams Management</h1>
+                        <button
+                            onClick={() => setShowModal(true)}
+                            className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-xl font-semibold hover:opacity-90 transition flex items-center gap-2"
+                        >
+                            <Icon name="plus" size={20} />
+                            Create Exam
+                        </button>
+                    </div>
+                    
+                    {error && (
+                        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
+                            {error}
+                        </div>
+                    )}
+                    
+                    {loading ? (
+                        <div className="bg-white rounded-2xl shadow-sm p-8 text-center">
+                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+                            <p className="text-gray-600 mt-4">Loading exams...</p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {exams.length === 0 ? (
+                                <div className="col-span-full bg-white rounded-2xl shadow-sm p-8 text-center">
+                                    <Icon name="file-text" size={48} className="text-gray-300 mx-auto mb-4" />
+                                    <p className="text-gray-500">No exams found. Create your first exam to get started.</p>
+                                </div>
+                            ) : (
+                                exams.map((exam) => (
+                                    <div key={exam.id} className="bg-white rounded-2xl p-6 shadow-sm card-hover">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-teal-500 rounded-xl flex items-center justify-center">
+                                                <Icon name="file-text" size={24} className="text-white" />
+                                            </div>
+                                            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${exam.is_published ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                                                {exam.is_published ? 'Published' : 'Draft'}
+                                            </span>
+                                        </div>
+                                        <h3 className="text-lg font-semibold text-gray-900 mb-2">{exam.title}</h3>
+                                        <div className="flex gap-2 mb-4">
+                                            <span className="bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full text-xs font-medium">
+                                                {exam.subject}
+                                            </span>
+                                            <span className="bg-purple-100 text-purple-700 px-3 py-1 rounded-full text-xs font-medium">
+                                                {exam.exam_type}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center justify-between text-sm text-gray-600 mb-4">
+                                            <span>{exam.total_questions} questions</span>
+                                            <span>{exam.duration_minutes} mins</span>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => handleTogglePublish(exam.id)}
+                                                className="flex-1 bg-indigo-100 text-indigo-700 px-4 py-2 rounded-lg font-medium hover:bg-indigo-200 transition"
+                                            >
+                                                {exam.is_published ? 'Unpublish' : 'Publish'}
+                                            </button>
+                                            <button
+                                                onClick={() => handleDeleteExam(exam.id)}
+                                                className="text-red-600 hover:text-red-700 transition px-2"
+                                            >
+                                                <Icon name="trash-2" size={18} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    )}
+                    
+                    {showModal && (
+                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+                            <div className="bg-white rounded-2xl p-8 w-full max-w-md animate-fade-in">
+                                <h2 className="text-2xl font-bold text-gray-900 mb-6">Create New Exam</h2>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Title</label>
+                                        <input
+                                            type="text"
+                                            value={newExam.title}
+                                            onChange={(e) => setNewExam({...newExam, title: e.target.value})}
+                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                            placeholder="Exam Title"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Subject</label>
+                                        <input
+                                            type="text"
+                                            value={newExam.subject}
+                                            onChange={(e) => setNewExam({...newExam, subject: e.target.value})}
+                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                            placeholder="Mathematics"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">Exam Type</label>
+                                        <select
+                                            value={newExam.exam_type}
+                                            onChange={(e) => setNewExam({...newExam, exam_type: e.target.value})}
+                                            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                        >
+                                            <option value="JAMB">JAMB</option>
+                                            <option value="WAEC">WAEC</option>
+                                            <option value="NECO">NECO</option>
+                                            <option value="SCHOOL">SCHOOL</option>
+                                        </select>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">Duration (mins)</label>
+                                            <input
+                                                type="number"
+                                                value={newExam.duration_minutes}
+                                                onChange={(e) => setNewExam({...newExam, duration_minutes: parseInt(e.target.value)})}
+                                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">Questions</label>
+                                            <input
+                                                type="number"
+                                                value={newExam.total_questions}
+                                                onChange={(e) => setNewExam({...newExam, total_questions: parseInt(e.target.value)})}
+                                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                                {error && (
+                                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mt-4">
+                                        {error}
+                                    </div>
+                                )}
+                                <div className="flex gap-4 mt-6">
+                                    <button
+                                        onClick={() => {
+                                            setShowModal(false);
+                                            setError('');
+                                            setNewExam({ title: '', subject: '', exam_type: 'JAMB', duration_minutes: 60, total_questions: 40, questions: [] });
+                                        }}
+                                        className="flex-1 px-6 py-3 border border-gray-300 rounded-lg font-semibold hover:bg-gray-50 transition"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={handleAddExam}
+                                        className="flex-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition"
+                                    >
+                                        Create Exam
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+        
+        // Performance Analytics Component
+        const PerformanceAnalytics = () => {
+            const [performanceData, setPerformanceData] = useState([]);
+            const [summary, setSummary] = useState(null);
+            const [trendData, setTrendData] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [error, setError] = useState('');
+            
+            useEffect(() => {
+                fetchPerformanceData();
+            }, []);
+            
+            const fetchPerformanceData = async () => {
+                try {
+                    setLoading(true);
+                    const [recent, summaryData, trend] = await Promise.all([
+                        api.performance.getRecent(20),
+                        api.performance.getSummary(),
+                        api.performance.getTrend(30),
+                    ]);
+                    setPerformanceData(recent);
+                    setSummary(summaryData);
+                    setTrendData(trend.data_points || []);
+                } catch (err) {
+                    setError('Failed to load performance data');
+                    console.error(err);
+                    // Use mock data as fallback
+                    setPerformanceData([
+                        { name: 'Jan', students: 65, avgScore: 72 },
+                        { name: 'Feb', students: 72, avgScore: 75 },
+                        { name: 'Mar', students: 68, avgScore: 78 },
+                        { name: 'Apr', students: 85, avgScore: 82 },
+                        { name: 'May', students: 92, avgScore: 85 },
+                        { name: 'Jun', students: 98, avgScore: 88 },
+                    ]);
+                    setTrendData([
+                        { name: 'Jan', students: 65, avgScore: 72 },
+                        { name: 'Feb', students: 72, avgScore: 75 },
+                        { name: 'Mar', students: 68, avgScore: 78 },
+                        { name: 'Apr', students: 85, avgScore: 82 },
+                        { name: 'May', students: 92, avgScore: 85 },
+                        { name: 'Jun', students: 98, avgScore: 88 },
+                    ]);
+                } finally {
+                    setLoading(false);
+                }
+            };
+            
+            // Fallback subject distribution
+            const subjectDistribution = [
+                { name: 'Mathematics', value: 35, color: '#667eea' },
+                { name: 'English', value: 25, color: '#764ba2' },
+                { name: 'Physics', value: 20, color: '#f093fb' },
+                { name: 'Chemistry', value: 12, color: '#f5576c' },
+                { name: 'Biology', value: 8, color: '#4facfe' },
+            ];
+            
+            const chartData = performanceData.length > 0 ? performanceData.map((p, i) => ({
+                name: new Date(p.taken_at || Date.now()).toLocaleDateString('en-US', { month: 'short' }),
+                students: p.total_correct || 0,
+                avgScore: p.percentage || 0,
+            })) : [];
+            
+            const trendChartData = trendData.length > 0 ? trendData.map(t => ({
+                name: new Date(t.date || Date.now()).toLocaleDateString('en-US', { month: 'short' }),
+                avgScore: t.percentage || 0,
+            })) : [];
+            
+            return (
+                <div className="animate-fade-in">
+                    <h1 className="text-3xl font-bold text-gray-900 mb-8">Performance Analytics</h1>
+                    
+                    {error && (
+                        <div className="bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-lg mb-6">
+                            {error} - Showing sample data
+                        </div>
+                    )}
+                    
+                    {loading ? (
+                        <div className="bg-white rounded-2xl shadow-sm p-8 text-center">
+                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+                            <p className="text-gray-600 mt-4">Loading performance data...</p>
+                        </div>
+                    ) : (
+                        <>
+                            {summary && (
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                                    <div className="bg-white rounded-2xl p-6 shadow-sm">
+                                        <h3 className="text-gray-600 text-sm mb-2">Total Sessions</h3>
+                                        <p className="text-3xl font-bold text-gray-900">{summary.total_sessions || 0}</p>
+                                    </div>
+                                    <div className="bg-white rounded-2xl p-6 shadow-sm">
+                                        <h3 className="text-gray-600 text-sm mb-2">Average Score</h3>
+                                        <p className="text-3xl font-bold text-gray-900">{summary.avg_percentage || 0}%</p>
+                                    </div>
+                                    <div className="bg-white rounded-2xl p-6 shadow-sm">
+                                        <h3 className="text-gray-600 text-sm mb-2">Best Score</h3>
+                                        <p className="text-3xl font-bold text-gray-900">{summary.best_percentage || 0}%</p>
+                                    </div>
+                                    <div className="bg-white rounded-2xl p-6 shadow-sm">
+                                        <h3 className="text-gray-600 text-sm mb-2">Study Streak</h3>
+                                        <p className="text-3xl font-bold text-gray-900">{summary.streak_days || 0} days</p>
+                                    </div>
+                                </div>
+                            )}
+                            
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                                <div className="bg-white rounded-2xl p-6 shadow-sm">
+                                    <h3 className="text-lg font-semibold text-gray-900 mb-6">Monthly Student Performance</h3>
+                                    <ResponsiveContainer width="100%" height={350}>
+                                        <BarChart data={chartData.length > 0 ? chartData : [
+                                            { name: 'Jan', students: 65, avgScore: 72 },
+                                            { name: 'Feb', students: 72, avgScore: 75 },
+                                            { name: 'Mar', students: 68, avgScore: 78 },
+                                            { name: 'Apr', students: 85, avgScore: 82 },
+                                            { name: 'May', students: 92, avgScore: 85 },
+                                            { name: 'Jun', students: 98, avgScore: 88 },
+                                        ]}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                                            <XAxis dataKey="name" stroke="#666" />
+                                            <YAxis stroke="#666" />
+                                            <Tooltip />
+                                            <Legend />
+                                            <Bar dataKey="students" fill="#667eea" radius={[8, 8, 0, 0]} name="Students" />
+                                            <Bar dataKey="avgScore" fill="#764ba2" radius={[8, 8, 0, 0]} name="Avg Score" />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                                
+                                <div className="bg-white rounded-2xl p-6 shadow-sm">
+                                    <h3 className="text-lg font-semibold text-gray-900 mb-6">Performance Trend</h3>
+                                    <ResponsiveContainer width="100%" height={350}>
+                                        <LineChart data={trendChartData.length > 0 ? trendChartData : [
+                                            { name: 'Jan', avgScore: 72 },
+                                            { name: 'Feb', avgScore: 75 },
+                                            { name: 'Mar', avgScore: 78 },
+                                            { name: 'Apr', avgScore: 82 },
+                                            { name: 'May', avgScore: 85 },
+                                            { name: 'Jun', avgScore: 88 },
+                                        ]}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                                            <XAxis dataKey="name" stroke="#666" />
+                                            <YAxis stroke="#666" />
+                                            <Tooltip />
+                                            <Legend />
+                                            <Line type="monotone" dataKey="avgScore" stroke="#667eea" strokeWidth={3} name="Average Score" dot={{ fill: '#667eea', strokeWidth: 2, r: 6 }} />
+                                        </LineChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                <div className="bg-white rounded-2xl p-6 shadow-sm">
+                                    <h3 className="text-lg font-semibold text-gray-900 mb-6">Top Performing Subjects</h3>
+                                    <div className="space-y-4">
+                                        {summary?.subject_averages ? Object.entries(summary.subject_averages).map(([subject, score], index) => (
+                                            <div key={index} className="flex items-center justify-between">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-3 h-3 rounded-full bg-indigo-500"></div>
+                                                    <span className="text-gray-700">{subject}</span>
+                                                </div>
+                                                <span className="font-semibold text-gray-900">{score}%</span>
+                                            </div>
+                                        )) : subjectDistribution.slice(0, 5).map((subject, index) => (
+                                            <div key={index} className="flex items-center justify-between">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: subject.color }}></div>
+                                                    <span className="text-gray-700">{subject.name}</span>
+                                                </div>
+                                                <span className="font-semibold text-gray-900">{subject.value}%</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                
+                                <div className="bg-white rounded-2xl p-6 shadow-sm lg:col-span-2">
+                                    <h3 className="text-lg font-semibold text-gray-900 mb-6">Subject Distribution</h3>
+                                    <ResponsiveContainer width="100%" height={250}>
+                                        <PieChart>
+                                            <Pie
+                                                data={subjectDistribution}
+                                                cx="50%"
+                                                cy="50%"
+                                                innerRadius={80}
+                                                outerRadius={120}
+                                                paddingAngle={5}
+                                                dataKey="value"
+                                                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                                            >
+                                                {subjectDistribution.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={entry.color} />
+                                                ))}
+                                            </Pie>
+                                            <Tooltip />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
+            );
+        };
+        
+        // Community Management Component
+        const CommunityManagement = () => {
+            const [channels, setChannels] = useState([]);
+            const [posts, setPosts] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [error, setError] = useState('');
+            
+            useEffect(() => {
+                fetchCommunityData();
+            }, []);
+            
+            const fetchCommunityData = async () => {
+                try {
+                    setLoading(true);
+                    const [channelsData] = await Promise.all([
+                        api.community.getChannels(),
+                    ]);
+                    setChannels(channelsData);
+                    
+                    // Fetch posts from first channel if available
+                    if (channelsData.length > 0) {
+                        const postsData = await api.community.getPosts(channelsData[0].id, 30);
+                        setPosts(postsData);
+                    }
+                } catch (err) {
+                    setError('Failed to load community data');
+                    console.error(err);
+                    // Use mock data as fallback
+                    setPosts([
+                        { id: '1', author_name: 'Dr. Sarah Johnson', content: 'Welcome to the new semester! Remember to submit your assignments on time.', like_count: 45, created_at: new Date(Date.now() - 2 * 60 * 60 * 1000) },
+                        { id: '2', author_name: 'Prof. Michael Chen', content: 'Great job on the physics practical exams! Keep up the good work.', like_count: 32, created_at: new Date(Date.now() - 5 * 60 * 60 * 1000) },
+                        { id: '3', author_name: 'Mrs. Emily Davis', content: 'New reading materials have been added to the library. Check them out!', like_count: 28, created_at: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+                    ]);
+                } finally {
+                    setLoading(false);
+                }
+            };
+            
+            return (
+                <div className="animate-fade-in">
+                    <h1 className="text-3xl font-bold text-gray-900 mb-8">Community Management</h1>
+                    
+                    {error && (
+                        <div className="bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-lg mb-6">
+                            {error} - Showing sample data
+                        </div>
+                    )}
+                    
+                    {loading ? (
+                        <div className="bg-white rounded-2xl shadow-sm p-8 text-center">
+                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto"></div>
+                            <p className="text-gray-600 mt-4">Loading community data...</p>
+                        </div>
+                    ) : (
+                        <>
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+                                <div className="bg-white rounded-2xl p-6 shadow-sm">
+                                    <div className="flex items-center gap-4 mb-4">
+                                        <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-xl flex items-center justify-center">
+                                            <Icon name="message-square" size={24} className="text-white" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-2xl font-bold text-gray-900">{posts.length}</h3>
+                                            <p className="text-gray-600">Total Posts</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div className="bg-white rounded-2xl p-6 shadow-sm">
+                                    <div className="flex items-center gap-4 mb-4">
+                                        <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl flex items-center justify-center">
+                                            <Icon name="users" size={24} className="text-white" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-2xl font-bold text-gray-900">{channels.length}</h3>
+                                            <p className="text-gray-600">Active Channels</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div className="bg-white rounded-2xl p-6 shadow-sm">
+                                    <div className="flex items-center gap-4 mb-4">
+                                        <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl flex items-center justify-center">
+                                            <Icon name="heart" size={24} className="text-white" />
+                                        </div>
+                                        <div>
+                                            <h3 className="text-2xl font-bold text-gray-900">{posts.reduce((sum, p) => sum + (p.like_count || 0), 0)}</h3>
+                                            <p className="text-gray-600">Total Likes</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div className="bg-white rounded-2xl shadow-sm">
+                                <div className="p-6 border-b border-gray-100">
+                                    <h3 className="text-lg font-semibold text-gray-900">Recent Posts</h3>
+                                </div>
+                                <div className="divide-y divide-gray-100">
+                                    {posts.length === 0 ? (
+                                        <div className="p-8 text-center text-gray-500">
+                                            No posts found. Community activity will appear here.
+                                        </div>
+                                    ) : (
+                                        posts.map((post) => (
+                                            <div key={post.id} className="p-6 hover:bg-gray-50 transition">
+                                                <div className="flex items-start justify-between">
+                                                    <div className="flex items-start gap-4">
+                                                        <div className="w-10 h-10 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full flex items-center justify-center text-white font-semibold">
+                                                            {post.author_name?.charAt(0) || 'U'}
+                                                        </div>
+                                                        <div>
+                                                            <h4 className="font-semibold text-gray-900">{post.author_name || 'Unknown'}</h4>
+                                                            <p className="text-gray-600 mt-1">{post.content}</p>
+                                                            <div className="flex items-center gap-4 mt-3 text-sm text-gray-500">
+                                                                <span className="flex items-center gap-1">
+                                                                    <Icon name="heart" size={16} />
+                                                                    {post.like_count || 0} likes
+                                                                </span>
+                                                                <span>{post.created_at ? new Date(post.created_at).toLocaleString() : 'Recently'}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <button className="text-red-600 hover:text-red-700 transition">
+                                                        <Icon name="trash-2" size={18} />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
+            );
+        };
+        
+        // Settings Component
+        const Settings = () => {
+            return (
+                <div className="animate-fade-in">
+                    <h1 className="text-3xl font-bold text-gray-900 mb-8">Settings</h1>
+                    
+                    <div className="bg-white rounded-2xl shadow-sm">
+                        <div className="p-6 border-b border-gray-100">
+                            <h3 className="text-lg font-semibold text-gray-900">General Settings</h3>
+                        </div>
+                        <div className="p-6 space-y-6">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Platform Name</label>
+                                <input
+                                    type="text"
+                                    defaultValue="Scholaxia"
+                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Admin Email</label>
+                                <input
+                                    type="email"
+                                    defaultValue="admin@scholaxia.com"
+                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                />
+                            </div>
+                            <div>
+                                <label className="flex items-center gap-3">
+                                    <input type="checkbox" defaultChecked className="w-5 h-5 text-indigo-600 rounded" />
+                                    <span className="text-gray-700">Enable email notifications</span>
+                                </label>
+                            </div>
+                            <div>
+                                <label className="flex items-center gap-3">
+                                    <input type="checkbox" defaultChecked className="w-5 h-5 text-indigo-600 rounded" />
+                                    <span className="text-gray-700">Enable community features</span>
+                                </label>
+                            </div>
+                            <button className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition">
+                                Save Changes
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+        
+        // Main App Component
+        const App = () => {
+            const [isAuthenticated, setIsAuthenticated] = useState(false);
+            const [user, setUser] = useState(null);
+            const [activeTab, setActiveTab] = useState('dashboard');
+            
+            // Check for existing token on mount
+            useEffect(() => {
+                const token = api.getToken();
+                if (token) {
+                    setIsAuthenticated(true);
+                    setUser({ email: 'admin@scholaxia.com', role: 'admin', token });
+                }
+            }, []);
+            
+            const handleLogin = (userData) => {
+                setUser(userData);
+                setIsAuthenticated(true);
+            };
+            
+            const handleLogout = () => {
+                api.clearToken();
+                setUser(null);
+                setIsAuthenticated(false);
+            };
+            
+            useEffect(() => {
+                lucide.createIcons();
+            }, [activeTab]);
+            
+            if (!isAuthenticated) {
+                return <Login onLogin={handleLogin} />;
+            }
+            
+            const renderContent = () => {
+                switch (activeTab) {
+                    case 'dashboard':
+                        return <DashboardOverview />;
+                    case 'teachers':
+                        return <TeachersManagement />;
+                    case 'library':
+                        return <LibraryManagement />;
+                    case 'exams':
+                        return <ExamsManagement />;
+                    case 'performance':
+                        return <PerformanceAnalytics />;
+                    case 'community':
+                        return <CommunityManagement />;
+                    case 'settings':
+                        return <Settings />;
+                    default:
+                        return <DashboardOverview />;
+                }
+            };
+            
+            return (
+                <div className="flex">
+                    <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} />
+                    <div className="ml-64 flex-1 p-8">
+                        {renderContent()}
+                    </div>
+                </div>
+            );
+        };
+        
+        // Render the app
+        window.addEventListener('load', () => {
+            try {
+                const root = ReactDOM.createRoot(document.getElementById('root'));
+                root.render(<App />);
+            } catch (error) {
+                console.error('Error rendering app:', error);
+                document.getElementById('root').innerHTML = `
+                    <div style="padding: 20px; text-align: center; color: #666;">
+                        <h2>Error loading dashboard</h2>
+                        <p>${error.message}</p>
+                        <p>Please check the browser console for details.</p>
+                    </div>
+                `;
+            }
+        });
+    </script>
+</body>
+</html>

@@ -39,6 +39,65 @@ async def list_channels(db: AsyncSession = Depends(get_db)):
     ]
 
 
+@router.get("/channels/{channel_id}/members")
+async def get_channel_members(
+    channel_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    GET /api/v1/community/channels/{channel_id}/members
+    Returns all members of a channel:
+      - Students who have joined this channel (via community_channel_id)
+      - All teachers and admins (they can access all channels)
+    """
+    # Verify channel exists
+    channel_result = await db.execute(select(CommunityChannel).where(CommunityChannel.id == channel_id))
+    channel = channel_result.scalar_one_or_none()
+    if not channel:
+        raise HTTPException(status_code=404, detail="Channel not found")
+
+    members = []
+
+    # Get students who have joined this channel
+    students_result = await db.execute(
+        select(StudentProfile, User)
+        .join(User, User.id == StudentProfile.user_id)
+        .where(StudentProfile.community_channel_id == channel_id)
+    )
+    for profile, user in students_result.all():
+        members.append({
+            "id": str(user.id),
+            "name": user.full_name,
+            "email": user.email,
+            "role": "student",
+            "joined_at": profile.created_at if profile.created_at else user.created_at,
+        })
+
+    # Get all teachers and admins (they can access all channels)
+    teachers_admins_result = await db.execute(
+        select(User).where(User.role.in_([UserRole.teacher, UserRole.admin]))
+    )
+    for user in teachers_admins_result.scalars().all():
+        members.append({
+            "id": str(user.id),
+            "name": user.full_name,
+            "email": user.email,
+            "role": user.role,
+            "joined_at": user.created_at,
+        })
+
+    # Sort by role (teachers/admins first), then by name
+    members.sort(key=lambda x: (0 if x["role"] in ["teacher", "admin"] else 1, x["name"]))
+
+    return {
+        "channel_id": channel_id,
+        "channel_name": channel.name,
+        "total_members": len(members),
+        "members": members,
+    }
+
+
 # ── Join ──────────────────────────────────────────────────────────────────────
 
 class JoinChannelRequest(BaseModel):

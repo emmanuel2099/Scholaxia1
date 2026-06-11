@@ -112,3 +112,12 @@ databases:
   # Root directory: scholaxia/sia-web
   # Publish directory: . (the sia-web folder itself)
   # No build command needed — pure HTML/CSS/JS
+
+- type: web
+  name: scholaxia-admin-dashboard
+  runtime: static
+  buildCommand: echo "No build needed"
+  startCommand: echo "No start command needed"
+  envVars:
+    - key: ALLOWED_ORIGINS
+      value: '["*"]'

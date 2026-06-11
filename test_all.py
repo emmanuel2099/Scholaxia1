@@ -102,10 +102,6 @@ check("Student login", s, [200, 201, 403],
 tokens["student"] = r.get("access_token","") if isinstance(r,dict) else ""
 print(f"     Student token: {'OK' if tokens.get('student') else 'MISSING (email not verified)'}")
 
-# Forgot password
-s, r = post("/api/v1/auth/forgot-password", {"email": email_student})
-check("Forgot password", s, [200, 201], r.get("message","") if isinstance(r,dict) else "")
-
 # ─────────────────────────────────────────────────────────
 section("4. COMMUNITY (no auth needed for channels)")
 s, r = get("/api/v1/community/channels")

@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin — Scholaxia</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="admin.css" />
+</head>
+<body>
+<div class="dash-layout">
+
+  <!-- ── Sidebar ── -->
+  <aside class="dash-sidebar">
+    <div class="dash-brand">
+      <div class="brand-mark">S</div>
+      <span>Scholaxia Admin</span>
+    </div>
+    <nav class="dash-nav">
+      <a class="dash-link active" onclick="nav('overview')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Overview
+      </a>
+      <a class="dash-link" onclick="nav('teachers')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Teachers
+      </a>
+      <a class="dash-link" onclick="nav('students')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        Students
+      </a>
+      <a class="dash-link" onclick="nav('cbt')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        CBT Exams
+      </a>
+      <a class="dash-link" onclick="nav('library')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        Library
+      </a>
+    </nav>
+    <div class="dash-bottom">
+      <button class="dash-link logout" onclick="logout()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Log out
+      </button>
+    </div>
+  </aside>
+
+  <!-- ── Main ── -->
+  <main class="dash-main">
+    <div class="dash-header">
+      <div>
+        <h1 id="page-title">Overview</h1>
+        <p id="page-desc">Welcome back, admin</p>
+      </div>
+      <div class="dash-user">
+        <div class="user-avatar" id="admin-avatar">A</div>
+        <span id="admin-name">Admin</span>
+      </div>
+    </div>
+
+    <!-- ── Overview ────────────────────────────────────────── -->
+    <div id="section-overview" class="dash-section">
+      <div class="stat-grid" id="stat-grid">
+        <div class="stat-card"><div class="stat-label">Total Students</div><div class="stat-val" id="stat-students">—</div></div>
+        <div class="stat-card"><div class="stat-label">Total Teachers</div><div class="stat-val" id="stat-teachers">—</div></div>
+        <div class="stat-card"><div class="stat-label">CBT Exams</div><div class="stat-val" id="stat-exams">—</div></div>
+        <div class="stat-card"><div class="stat-label">Library Books</div><div class="stat-val" id="stat-books">—</div></div>
+      </div>
+      <div class="section-title">Quick Actions</div>
+      <div class="quick-actions">
+        <button class="qa-btn" onclick="nav('teachers');setTimeout(()=>document.getElementById('btn-add-teacher').click(),200)">+ Add Teacher</button>
+        <button class="qa-btn" onclick="nav('cbt');setTimeout(()=>document.getElementById('btn-add-exam').click(),200)">+ Create CBT Exam</button>
+        <button class="qa-btn" onclick="nav('students')">View Students</button>
+        <button class="qa-btn" onclick="nav('library')">Manage Library</button>
+      </div>
+    </div>
+
+    <!-- ── Teachers ─────────────────────────────────────────── -->
+    <div id="section-teachers" class="dash-section" style="display:none">
+      <div class="sec-bar">
+        <button class="btn-primary" id="btn-add-teacher" onclick="showModal('modal-teacher')">+ Add Teacher</button>
+      </div>
+      <div id="teachers-list" class="card-list"><div class="loading">Loading…</div></div>
+    </div>
+
+    <!-- ── Students ─────────────────────────────────────────── -->
+    <div id="section-students" class="dash-section" style="display:none">
+      <div class="sec-bar">
+        <input id="student-search" class="search-input" type="text" placeholder="Search by name or email…" oninput="filterStudents()" />
+      </div>
+      <div id="students-list" class="card-list"><div class="loading">Loading…</div></div>
+    </div>
+
+    <!-- ── CBT ──────────────────────────────────────────────── -->
+    <div id="section-cbt" class="dash-section" style="display:none">
+      <div class="sec-bar">
+        <div class="filter-row">
+          <select id="cbt-filter-type" onchange="renderExams()">
+            <option value="">All Types</option>
+            <option value="WAEC">WAEC</option>
+            <option value="NECO">NECO</option>
+            <option value="JAMB">JAMB</option>
+            <option value="SCHOOL">SCHOOL</option>
+          </select>
+        </div>
+        <button class="btn-primary" id="btn-add-exam" onclick="showModal('modal-exam')">+ Create Exam</button>
+      </div>
+      <div id="exams-list" class="card-list"><div class="loading">Loading…</div></div>
+    </div>
+
+    <!-- ── Library ───────────────────────────────────────────── -->
+    <div id="section-library" class="dash-section" style="display:none">
+      <div class="sec-bar">
+        <button class="btn-primary" onclick="showModal('modal-book')">+ Add Book</button>
+      </div>
+      <div id="books-list" class="card-list"><div class="loading">Loading…</div></div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ═══════════════════ MODALS ═══════════════════ -->
+
+<!-- Add Teacher -->
+<div id="modal-teacher" class="modal-overlay" style="display:none" onclick="closeModal('modal-teacher')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-head"><h3>Add Teacher</h3><button class="modal-close" onclick="closeModal('modal-teacher')">✕</button></div>
+    <div class="form-group"><label>Full Name</label><input id="t-name" type="text" placeholder="Ngozi Okonkwo" /></div>
+    <div class="form-group"><label>Email</label><input id="t-email" type="email" placeholder="teacher@school.com" /></div>
+    <div class="form-group"><label>Password</label><input id="t-pass" type="password" placeholder="Min 8 characters" /></div>
+    <div class="form-group"><label>Subjects (comma-separated)</label><input id="t-subjects" type="text" placeholder="Mathematics, Physics" /></div>
+    <div class="form-group"><label>Bio</label><textarea id="t-bio" rows="3" placeholder="Brief bio…"></textarea></div>
+    <div id="teacher-error" class="form-error"></div>
+    <div class="modal-actions">
+      <button class="btn-primary" onclick="addTeacher()">Create Account</button>
+      <button class="btn-ghost" onclick="closeModal('modal-teacher')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Create CBT Exam -->
+<div id="modal-exam" class="modal-overlay" style="display:none" onclick="closeModal('modal-exam')">
+  <div class="modal modal-wide" onclick="event.stopPropagation()">
+    <div class="modal-head"><h3>Create CBT Exam</h3><button class="modal-close" onclick="closeModal('modal-exam')">✕</button></div>
+    <div class="form-row2">
+      <div class="form-group"><label>Title</label><input id="e-title" type="text" placeholder="WAEC Mathematics 2024" /></div>
+      <div class="form-group"><label>Subject</label><input id="e-subject" type="text" placeholder="Mathematics" /></div>
+    </div>
+    <div class="form-row2">
+      <div class="form-group">
+        <label>Exam Type</label>
+        <select id="e-type">
+          <option value="WAEC">WAEC</option>
+          <option value="NECO">NECO</option>
+          <option value="JAMB">JAMB</option>
+          <option value="SCHOOL">School</option>
+        </select>
+      </div>
+      <div class="form-group"><label>Duration (minutes)</label><input id="e-duration" type="number" value="40" min="5" /></div>
+    </div>
+    <div class="form-row2">
+      <div class="form-group check-group">
+        <label><input type="checkbox" id="e-published" checked /> Publish immediately</label>
+        <label><input type="checkbox" id="e-school" /> School exam (secure mode)</label>
+        <label><input type="checkbox" id="e-ailocked" /> Lock AI during exam</label>
+      </div>
+    </div>
+
+    <!-- Questions editor -->
+    <div class="q-editor-header">
+      <span>Questions</span>
+      <button class="btn-sm" onclick="addQuestionRow()">+ Add Question</button>
+    </div>
+    <div id="questions-container" class="questions-container">
+      <!-- rows added dynamically -->
+    </div>
+    <div class="q-paste-hint">Tip: paste JSON questions via the import button →
+      <button class="btn-sm" onclick="document.getElementById('json-import').style.display='block'">Import JSON</button>
+    </div>
+    <div id="json-import" style="display:none">
+      <textarea id="json-paste" rows="6" placeholder='[{"question_text":"...","option_a":"...","option_b":"...","option_c":"...","option_d":"...","correct_option":"A","explanation":"...","topic":"..."}]'></textarea>
+      <button class="btn-sm" onclick="importJSON()">Parse & Add</button>
+    </div>
+
+    <div id="exam-error" class="form-error"></div>
+    <div class="modal-actions">
+      <button class="btn-primary" onclick="createExam()">Create Exam</button>
+      <button class="btn-ghost" onclick="closeModal('modal-exam')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Add Book -->
+<div id="modal-book" class="modal-overlay" style="display:none" onclick="closeModal('modal-book')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-head"><h3>Add Book to Library</h3><button class="modal-close" onclick="closeModal('modal-book')">✕</button></div>
+    <div class="form-group"><label>Title</label><input id="b-title" type="text" placeholder="New General Mathematics SS3" /></div>
+    <div class="form-group"><label>Author</label><input id="b-author" type="text" placeholder="M.F. Macrae" /></div>
+    <div class="form-group"><label>Subject</label><input id="b-subject" type="text" placeholder="Mathematics" /></div>
+    <div class="form-row2">
+      <div class="form-group">
+        <label>Exam Type</label>
+        <select id="b-examtype">
+          <option value="">None</option>
+          <option value="WAEC">WAEC</option>
+          <option value="NECO">NECO</option>
+          <option value="JAMB">JAMB</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Library Target</label>
+        <select id="b-target">
+          <option value="student">Student</option>
+          <option value="teacher">Teacher</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group"><label>File Key (S3)</label><input id="b-filekey" type="text" placeholder="books/filename.pdf" /></div>
+    <div class="form-group"><label>Cover Image URL (optional)</label><input id="b-cover" type="text" placeholder="https://…" /></div>
+    <div id="book-error" class="form-error"></div>
+    <div class="modal-actions">
+      <button class="btn-primary" onclick="addBook()">Add Book</button>
+      <button class="btn-ghost" onclick="closeModal('modal-book')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Student detail modal -->
+<div id="modal-student" class="modal-overlay" style="display:none" onclick="closeModal('modal-student')">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-head"><h3>Student Profile</h3><button class="modal-close" onclick="closeModal('modal-student')">✕</button></div>
+    <div id="student-detail-body"></div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="toast" style="display:none"></div>
+
+<script src="admin.js"></script>
+</body>
+</html>
