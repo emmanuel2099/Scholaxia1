@@ -569,30 +569,33 @@ async def list_posts(
 
     viewer_id = current_user["sub"]
 
-    return [
-        {
-            "id": str(p.id),
-            "channel_id": str(p.channel_id),
-            # Hide author identity for anonymous posts unless the viewer is the author, teacher, or admin
-            "author_id": str(p.author_id) if (not p.is_anonymous or str(p.author_id) == viewer_id or role in ("teacher", "admin")) else None,
-            "author_name": (
-                users_map.get(str(p.author_id), "Unknown")
-                if (not p.is_anonymous or str(p.author_id) == viewer_id or role in ("teacher", "admin"))
-                else "Anonymous"
-            ),
-            "content": p.content,
-            "media_url": p.media_url,
-            "media_type": p.media_type,
-            "is_anonymous": p.is_anonymous,
-            "visibility": p.visibility,
-            "cbt_exam_id": str(p.cbt_exam_id) if p.cbt_exam_id else None,
-            "is_pinned": p.is_pinned,
-            "like_count": p.like_count,
-            "liked_by_me": str(p.id) in liked_ids,
-            "created_at": p.created_at,
-        }
-        for p in posts
-    ]
+    try:
+        return [
+            {
+                "id": str(p.id),
+                "channel_id": str(p.channel_id),
+                "author_id": str(p.author_id) if (not p.is_anonymous or str(p.author_id) == viewer_id or role in ("teacher", "admin")) else None,
+                "author_name": (
+                    users_map.get(str(p.author_id), "Unknown")
+                    if (not p.is_anonymous or str(p.author_id) == viewer_id or role in ("teacher", "admin"))
+                    else "Anonymous"
+                ),
+                "content": p.content,
+                "media_url": p.media_url,
+                "media_type": p.media_type,
+                "is_anonymous": p.is_anonymous,
+                "visibility": p.visibility,
+                "cbt_exam_id": str(p.cbt_exam_id) if p.cbt_exam_id else None,
+                "is_pinned": p.is_pinned,
+                "like_count": p.like_count,
+                "liked_by_me": str(p.id) in liked_ids,
+                "created_at": p.created_at,
+            }
+            for p in posts
+        ]
+    except Exception as e:
+        import traceback
+        raise HTTPException(status_code=500, detail=f"Serialization error: {str(e)}\n{traceback.format_exc()}")
 
 
 @router.post("/posts", status_code=201)
