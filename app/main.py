@@ -20,6 +20,11 @@ from app.websockets.live_class_ws import live_class_endpoint
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Fix: ensure created_by is nullable (schema drift correction)
+        from sqlalchemy import text
+        await conn.execute(text(
+            "ALTER TABLE cbt_exams ALTER COLUMN created_by DROP NOT NULL"
+        ))
     await init_redis()
     async with AsyncSessionLocal() as db:
         await seed_database(db)
