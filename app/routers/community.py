@@ -532,25 +532,6 @@ async def list_posts(
     """
     role = current_user.get("role")
 
-    # Build visibility filter based on viewer role
-    if role in ("teacher", "admin"):
-        # Teachers and admins see everything
-        visibility_filter = True
-    else:
-        # Students see "everyone" and "class_only" — not "teachers_only"
-        from sqlalchemy import or_
-        visibility_filter = CommunityPost.visibility.in_([
-            PostVisibility.everyone,
-            PostVisibility.class_only,
-        ])
-
-    query = select(CommunityPost).where(
-        CommunityPost.channel_id == channel_id,
-        CommunityPost.is_deleted == False,  # noqa: E712
-        visibility_filter if visibility_filter is not True else True,
-    ).order_by(CommunityPost.created_at.desc()).limit(limit).offset(offset)
-
-    # Rebuild cleanly to avoid passing literal True
     if role in ("teacher", "admin"):
         query = (
             select(CommunityPost)
@@ -559,7 +540,6 @@ async def list_posts(
             .limit(limit).offset(offset)
         )
     else:
-        from sqlalchemy import or_
         query = (
             select(CommunityPost)
             .where(

@@ -35,6 +35,13 @@ async def lifespan(app: FastAPI):
         await conn.execute(text(
             "ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS cbt_exam_id UUID NULL"
         ))
+        # Backfill any existing rows that got NULL before DEFAULT was set
+        await conn.execute(text(
+            "UPDATE community_posts SET visibility = 'everyone' WHERE visibility IS NULL"
+        ))
+        await conn.execute(text(
+            "UPDATE community_posts SET is_anonymous = FALSE WHERE is_anonymous IS NULL"
+        ))
     await init_redis()
     async with AsyncSessionLocal() as db:
         await seed_database(db)
