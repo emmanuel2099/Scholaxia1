@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
@@ -10,10 +10,12 @@ from app.core.deps import require_student, require_teacher, get_current_user
 from app.models.community import (
     CommunityChannel, CommunityMessage, MessageReport,
     AssignmentSubmission, AssignmentStatus, AssignmentFileType, ChannelType,
+    PostVisibility,
 )
 from app.models.user import StudentProfile, UserRole, User
 from app.services.moderation_service import check_message_content
 from app.services.notification_service import send_user_notification
+from app.services.media_service import upload_file
 
 router = APIRouter(prefix="/community", tags=["Community"])
 
@@ -117,7 +119,10 @@ async def join_channel(
     result = await db.execute(select(StudentProfile).where(StudentProfile.user_id == current_user["sub"]))
     profile = result.scalar_one_or_none()
     if not profile:
-        raise HTTPException(status_code=404, detail="Student profile not found")
+        # Auto-create a minimal profile for users who registered before setup-exam was required
+        profile = StudentProfile(user_id=current_user["sub"], selected_subjects=[])
+        db.add(profile)
+        await db.flush()
 
     if not profile.has_active_subscription:
         raise HTTPException(status_code=403, detail="Active subscription required to join community")
@@ -450,6 +455,52 @@ async def get_messages(
     ]
 
 
+# ── Upload ────────────────────────────────────────────────────────────────────
+
+COMMUNITY_ALLOWED_MIME = {
+    "image/jpeg": ("image", "images"),
+    "image/png": ("image", "images"),
+    "image/webp": ("image", "images"),
+    "application/pdf": ("pdf", "assignments"),
+    "application/msword": ("doc", "assignments"),
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ("doc", "assignments"),
+}
+
+
+@router.post("/upload")
+async def upload_community_file(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    POST /api/v1/community/upload
+    Upload an image or document for use in a community post.
+    Returns file_url and file_type to include in the post body.
+    Accepted: JPEG, PNG, WebP, PDF, DOC, DOCX (max 20MB).
+    """
+    if file.content_type not in COMMUNITY_ALLOWED_MIME:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type '{file.content_type}'. Allowed: image/jpeg, image/png, image/webp, application/pdf, .doc, .docx",
+        )
+
+    content = await file.read()
+    if len(content) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large. Maximum size is 20MB.")
+
+    file_type, folder = COMMUNITY_ALLOWED_MIME[file.content_type]
+
+    try:
+        result = upload_file(content, folder)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+    return {
+        "file_url": result["secure_url"],
+        "file_type": file_type,
+    }
+
+
 # ── Posts (Feed) ──────────────────────────────────────────────────────────────
 
 from app.models.community import CommunityPost, PostLike
@@ -458,8 +509,11 @@ from app.models.community import CommunityPost, PostLike
 class CreatePostRequest(BaseModel):
     channel_id: str
     content: str
+    is_anonymous: bool = False
+    visibility: PostVisibility = PostVisibility.everyone
     media_url: Optional[str] = None
-    media_type: Optional[str] = None  # image | pdf | video
+    media_type: Optional[str] = None  # image | pdf | video | doc
+    cbt_exam_id: Optional[str] = None
 
 
 @router.get("/posts")
@@ -473,24 +527,57 @@ async def list_posts(
     """
     GET /api/v1/community/posts?channel_id=xxx
     Returns paginated posts for a channel, newest first.
+    Filtered by visibility based on viewer's role.
+    Anonymous posts hide author identity from other students.
     """
-    result = await db.execute(
-        select(CommunityPost)
-        .where(
-            CommunityPost.channel_id == channel_id,
-            CommunityPost.is_deleted == False,  # noqa: E712
+    role = current_user.get("role")
+
+    # Build visibility filter based on viewer role
+    if role in ("teacher", "admin"):
+        # Teachers and admins see everything
+        visibility_filter = True
+    else:
+        # Students see "everyone" and "class_only" — not "teachers_only"
+        from sqlalchemy import or_
+        visibility_filter = CommunityPost.visibility.in_([
+            PostVisibility.everyone,
+            PostVisibility.class_only,
+        ])
+
+    query = select(CommunityPost).where(
+        CommunityPost.channel_id == channel_id,
+        CommunityPost.is_deleted == False,  # noqa: E712
+        visibility_filter if visibility_filter is not True else True,
+    ).order_by(CommunityPost.created_at.desc()).limit(limit).offset(offset)
+
+    # Rebuild cleanly to avoid passing literal True
+    if role in ("teacher", "admin"):
+        query = (
+            select(CommunityPost)
+            .where(CommunityPost.channel_id == channel_id, CommunityPost.is_deleted == False)  # noqa: E712
+            .order_by(CommunityPost.created_at.desc())
+            .limit(limit).offset(offset)
         )
-        .order_by(CommunityPost.created_at.desc())
-        .limit(limit)
-        .offset(offset)
-    )
+    else:
+        from sqlalchemy import or_
+        query = (
+            select(CommunityPost)
+            .where(
+                CommunityPost.channel_id == channel_id,
+                CommunityPost.is_deleted == False,  # noqa: E712
+                CommunityPost.visibility.in_([PostVisibility.everyone, PostVisibility.class_only]),
+            )
+            .order_by(CommunityPost.created_at.desc())
+            .limit(limit).offset(offset)
+        )
+
+    result = await db.execute(query)
     posts = result.scalars().all()
 
     author_ids = list({str(p.author_id) for p in posts})
     users_result = await db.execute(select(User).where(User.id.in_(author_ids)))
     users_map = {str(u.id): u.full_name for u in users_result.scalars().all()}
 
-    # Check which posts the current user has liked
     post_ids = [str(p.id) for p in posts]
     likes_result = await db.execute(
         select(PostLike).where(
@@ -500,15 +587,25 @@ async def list_posts(
     )
     liked_ids = {str(l.post_id) for l in likes_result.scalars().all()}
 
+    viewer_id = current_user["sub"]
+
     return [
         {
             "id": str(p.id),
             "channel_id": str(p.channel_id),
-            "author_id": str(p.author_id),
-            "author_name": users_map.get(str(p.author_id), "Unknown"),
+            # Hide author identity for anonymous posts unless the viewer is the author, teacher, or admin
+            "author_id": str(p.author_id) if (not p.is_anonymous or str(p.author_id) == viewer_id or role in ("teacher", "admin")) else None,
+            "author_name": (
+                users_map.get(str(p.author_id), "Unknown")
+                if (not p.is_anonymous or str(p.author_id) == viewer_id or role in ("teacher", "admin"))
+                else "Anonymous"
+            ),
             "content": p.content,
             "media_url": p.media_url,
             "media_type": p.media_type,
+            "is_anonymous": p.is_anonymous,
+            "visibility": p.visibility,
+            "cbt_exam_id": str(p.cbt_exam_id) if p.cbt_exam_id else None,
             "is_pinned": p.is_pinned,
             "like_count": p.like_count,
             "liked_by_me": str(p.id) in liked_ids,
@@ -526,7 +623,7 @@ async def create_post(
 ):
     """
     POST /api/v1/community/posts
-    Any logged-in user can create a post. Students blocked in readonly channels.
+    Supports is_anonymous, visibility, media_url/media_type, and cbt_exam_id.
     """
     channel_res = await db.execute(
         select(CommunityChannel).where(CommunityChannel.id == payload.channel_id)
@@ -539,6 +636,10 @@ async def create_post(
     if channel.is_readonly_for_students and role == "student":
         raise HTTPException(status_code=403, detail="Only teachers and admins can post in this channel")
 
+    # teachers_only posts can only be created by teachers/admins
+    if payload.visibility == PostVisibility.teachers_only and role == "student":
+        raise HTTPException(status_code=403, detail="Students cannot create teachers_only posts")
+
     flagged, reason = await check_message_content(payload.content)
     if flagged:
         raise HTTPException(status_code=400, detail=f"Post blocked: {reason}")
@@ -547,8 +648,11 @@ async def create_post(
         channel_id=payload.channel_id,
         author_id=current_user["sub"],
         content=payload.content,
+        is_anonymous=payload.is_anonymous,
+        visibility=payload.visibility,
         media_url=payload.media_url,
         media_type=payload.media_type,
+        cbt_exam_id=payload.cbt_exam_id,
     )
     db.add(post)
     await db.flush()
@@ -556,7 +660,14 @@ async def create_post(
     return {
         "id": str(post.id),
         "channel_id": str(post.channel_id),
+        "author_id": None if payload.is_anonymous else str(post.author_id),
+        "author_name": "Anonymous" if payload.is_anonymous else None,
         "content": post.content,
+        "is_anonymous": post.is_anonymous,
+        "visibility": post.visibility,
+        "media_url": post.media_url,
+        "media_type": post.media_type,
+        "cbt_exam_id": str(post.cbt_exam_id) if post.cbt_exam_id else None,
         "created_at": post.created_at,
     }
 

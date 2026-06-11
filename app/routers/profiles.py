@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 from app.core.database import get_db
-from app.core.deps import require_teacher, get_current_user
+from app.core.deps import require_teacher, require_student, get_current_user
 from app.models.user import User, StudentProfile, TeacherProfile, UserRole
 
 router = APIRouter(tags=["Profiles"])
@@ -49,6 +49,38 @@ class MyTeacherProfile(BaseModel):
     profile_picture: Optional[str]
     is_approved: bool
     joined: str
+
+
+# ── Student: own profile (token-based, no user_id needed) ────────────────────
+
+@router.get("/profiles/me", response_model=PublicStudentProfile)
+async def get_my_student_profile(
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get the authenticated student's own profile. Returns 404 if no profile yet."""
+    result = await db.execute(
+        select(User, StudentProfile)
+        .outerjoin(StudentProfile, StudentProfile.user_id == User.id)
+        .where(User.id == current_user["sub"])
+    )
+    row = result.first()
+    if not row or not row[0]:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user, profile = row
+    if not profile:
+        raise HTTPException(status_code=404, detail="Student profile not found. Complete setup at /students/setup-exam")
+
+    return PublicStudentProfile(
+        user_id=str(user.id),
+        full_name=user.full_name,
+        education_level=profile.education_level,
+        exam_type=str(profile.exam_type) if profile.exam_type else None,
+        selected_subjects=profile.selected_subjects or [],
+        profile_picture=user.profile_picture,
+        joined=user.created_at.strftime("%B %Y"),
+    )
 
 
 # ── Student public profile ────────────────────────────────────────────────────

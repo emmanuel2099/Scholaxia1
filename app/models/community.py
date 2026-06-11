@@ -7,6 +7,12 @@ from app.core.database import Base
 import enum
 
 
+class PostVisibility(str, enum.Enum):
+    everyone = "everyone"
+    class_only = "class_only"
+    teachers_only = "teachers_only"
+
+
 class ChannelType(str, enum.Enum):
     general = "general"               # Art + Science + Commercial merged into one
     teacher_announcement = "teacher_announcement"  # teachers/admins only
@@ -113,7 +119,12 @@ class CommunityPost(Base):
     author_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     content: Mapped[str] = mapped_column(Text, nullable=False)
     media_url: Mapped[str] = mapped_column(String(500), nullable=True)
-    media_type: Mapped[str] = mapped_column(String(50), nullable=True)  # image | pdf | video
+    media_type: Mapped[str] = mapped_column(String(50), nullable=True)  # image | pdf | video | doc
+    is_anonymous: Mapped[bool] = mapped_column(Boolean, default=False)
+    visibility: Mapped[PostVisibility] = mapped_column(
+        Enum(PostVisibility), default=PostVisibility.everyone, nullable=False
+    )
+    cbt_exam_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True)
     is_pinned: Mapped[bool] = mapped_column(Boolean, default=False)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
     like_count: Mapped[int] = mapped_column(Integer, default=0)
