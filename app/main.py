@@ -20,10 +20,20 @@ from app.websockets.live_class_ws import live_class_endpoint
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # Fix: ensure created_by is nullable (schema drift correction)
         from sqlalchemy import text
+        # Fix: ensure created_by is nullable (schema drift correction)
         await conn.execute(text(
             "ALTER TABLE cbt_exams ALTER COLUMN created_by DROP NOT NULL"
+        ))
+        # Add new community_posts columns if they don't exist yet
+        await conn.execute(text(
+            "ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS is_anonymous BOOLEAN NOT NULL DEFAULT FALSE"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) NOT NULL DEFAULT 'everyone'"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS cbt_exam_id UUID NULL"
         ))
     await init_redis()
     async with AsyncSessionLocal() as db:
