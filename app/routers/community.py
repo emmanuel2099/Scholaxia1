@@ -545,7 +545,7 @@ async def list_posts(
             .where(
                 CommunityPost.channel_id == channel_id,
                 CommunityPost.is_deleted == False,  # noqa: E712
-                CommunityPost.visibility.in_([PostVisibility.everyone, PostVisibility.class_only]),
+                CommunityPost.visibility.in_(["everyone", "class_only"]),
             )
             .order_by(CommunityPost.created_at.desc())
             .limit(limit).offset(offset)
