@@ -343,3 +343,16 @@ async def delete_cbt_exam(
     for q in q_res.scalars().all():
         await db.delete(q)
     await db.delete(exam)
+
+
+@router.post("/seed-cbt")
+async def seed_cbt(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Seed WAEC, NECO, and JAMB CBT exams (skips exams that already exist)."""
+    from app.core.seed import seed_cbt_exams
+
+    created = await seed_cbt_exams(db)
+    await db.commit()
+    return {"created": created, "count": len(created)}

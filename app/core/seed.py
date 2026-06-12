@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models.community import CommunityChannel, ChannelType
 from app.models.cbt import CBTExam, CBTQuestion
+from app.core.cbt_seed_data import JAMB_EXAMS
 
 
 async def seed_database(db: AsyncSession):
@@ -140,23 +141,25 @@ _EXAMS = [
     },
 ]
 
+_ALL_CBT_EXAMS = _EXAMS + JAMB_EXAMS
 
-async def _seed_cbt_exams(db: AsyncSession):
-    """Seed WAEC and NECO exam data if not already present."""
-    for exam_data in _EXAMS:
-        # Check by title to avoid duplicates
+
+async def seed_cbt_exams(db: AsyncSession) -> list[str]:
+    """Seed WAEC, NECO, and JAMB exam data if not already present."""
+    created = []
+    for exam_data in _ALL_CBT_EXAMS:
         existing = await db.execute(
             select(CBTExam).where(CBTExam.title == exam_data["title"])
         )
         if existing.scalar_one_or_none():
             continue
 
-        questions = exam_data.pop("questions")
+        questions = exam_data["questions"]
+        exam_fields = {k: v for k, v in exam_data.items() if k != "questions"}
         exam = CBTExam(
-            **exam_data,
+            **exam_fields,
             total_questions=len(questions),
             is_published=True,
-            created_by=None,  # system-seeded
         )
         db.add(exam)
         await db.flush()
@@ -164,4 +167,10 @@ async def _seed_cbt_exams(db: AsyncSession):
         for q in questions:
             db.add(CBTQuestion(exam_id=exam.id, **q))
 
+        created.append(exam.title)
         print(f"[seed] CBT Exam: {exam.title} ({len(questions)}Q)")
+    return created
+
+
+async def _seed_cbt_exams(db: AsyncSession):
+    await seed_cbt_exams(db)

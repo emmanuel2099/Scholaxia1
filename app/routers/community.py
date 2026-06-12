@@ -124,9 +124,6 @@ async def join_channel(
         db.add(profile)
         await db.flush()
 
-    if not profile.has_active_subscription:
-        raise HTTPException(status_code=403, detail="Active subscription required to join community")
-
     channel_result = await db.execute(select(CommunityChannel).where(CommunityChannel.id == payload.channel_id))
     channel = channel_result.scalar_one_or_none()
     if not channel:
