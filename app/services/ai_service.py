@@ -11,10 +11,32 @@ from app.ai.prompt_builder import (
     build_lesson_prompt, build_anti_cheat_prompt, build_debate_prompt,
     build_study_companion_prompt, build_pdf_prompt, build_language_immersion_prompt,
     build_study_plan_prompt, build_cambridge_prompt, build_parent_report_prompt,
+    build_sia_system_prompt, build_chat_user_prompt,
+)
+from app.ai.sia_intelligence import (
+    analyze_question, build_intelligence_context, extract_recent_topics,
 )
 from app.ai.model_backend import run_inference
 from app.ai.safety_filter import is_educational, sanitize_output
 from app.ai.weakness_analyzer import record_interaction, get_weak_topics, get_student_history
+
+SIA_MAX_TOKENS = 8192
+
+
+async def _run_sia_inference(
+    prompt: str,
+    system_prompt: str = None,
+    conversation_history: list = None,
+    temperature: float = 0.50,
+) -> str:
+    """Run inference with Sia-optimized settings."""
+    return await run_inference(
+        prompt,
+        conversation_history=conversation_history,
+        system_prompt=system_prompt,
+        max_tokens=SIA_MAX_TOKENS,
+        temperature=temperature,
+    )
 
 
 async def _get_memory(student_id: str, subject: str) -> dict:
@@ -23,7 +45,6 @@ async def _get_memory(student_id: str, subject: str) -> dict:
         weak = await get_weak_topics(student_id)
         history = await get_student_history(student_id)
         weak_list = weak.get(subject, []) if isinstance(weak, dict) else []
-        # Derive strong topics from history (subjects with many interactions)
         subjects_seen = {}
         for h in history:
             s = h.get("subject", "")
@@ -32,11 +53,29 @@ async def _get_memory(student_id: str, subject: str) -> dict:
         return {
             "weak_topics": weak_list,
             "strong_topics": strong[:3],
+            "recent_topics": extract_recent_topics(history, subject),
             "learning_style": "adaptive",
             "confidence_score": "building",
         }
     except Exception:
         return {}
+
+
+async def _prepare_sia_context(
+    question: str, subject: str, education_level: str, language: str,
+    student_name: str, student_id: str, conversation_history: list = None,
+) -> tuple:
+    """Build system prompt + analysis for any Sia call."""
+    memory = await _get_memory(student_id, subject)
+    analysis = analyze_question(question, subject, education_level, conversation_history)
+    intel = build_intelligence_context(analysis, memory.get("recent_topics"))
+    system = build_sia_system_prompt(
+        student_name=student_name, subject=subject,
+        education_level=education_level, language=language,
+        student_memory=memory, raw_input=question,
+        intelligence_context=intel,
+    )
+    return system, analysis, memory
 
 
 async def get_ai_response(question: str, subject: str, education_level: str,
@@ -46,11 +85,20 @@ async def get_ai_response(question: str, subject: str, education_level: str,
     if not safe:
         return reason
 
-    memory = await _get_memory(student_id, subject)
-    prompt = build_prompt(question=question, subject=subject, education_level=education_level,
-                          language=language, student_name=student_name, student_memory=memory)
+    system, analysis, _ = await _prepare_sia_context(
+        question, subject, education_level, language,
+        student_name, student_id, conversation_history,
+    )
+    prompt = build_chat_user_prompt(
+        question=question, student_name=student_name,
+        conversation_history=conversation_history,
+    )
     try:
-        raw = await run_inference(prompt, conversation_history=conversation_history)
+        raw = await _run_sia_inference(
+            prompt, system_prompt=system,
+            conversation_history=conversation_history,
+            temperature=analysis["temperature"],
+        )
     except Exception as e:
         if "429" in str(e) or "rate limit" in str(e).lower():
             return f"I'm getting too many requests right now, {student_name}. Please wait a moment and try again."
@@ -66,9 +114,14 @@ async def sia_explain(topic: str, subject: str, education_level: str,
     if not safe:
         return reason
     memory = await _get_memory(student_id, subject)
+    system, analysis, _ = await _prepare_sia_context(
+        topic, subject, education_level, language, student_name, student_id,
+    )
     prompt = build_explain_prompt(topic=topic, subject=subject, education_level=education_level,
                                   language=language, student_name=student_name, student_memory=memory)
-    return sanitize_output(await run_inference(prompt))
+    return sanitize_output(await _run_sia_inference(
+        prompt, system_prompt=system, temperature=analysis["temperature"],
+    ))
 
 
 async def sia_solve(question: str, subject: str, education_level: str,
@@ -77,10 +130,15 @@ async def sia_solve(question: str, subject: str, education_level: str,
     if not safe:
         return reason
     memory = await _get_memory(student_id, subject)
+    system, analysis, _ = await _prepare_sia_context(
+        question, subject, education_level, language, student_name, student_id,
+    )
     prompt = build_solve_prompt(question=question, subject=subject, education_level=education_level,
                                 language=language, student_name=student_name, student_memory=memory)
     try:
-        raw = await run_inference(prompt)
+        raw = await _run_sia_inference(
+            prompt, system_prompt=system, temperature=analysis["temperature"],
+        )
     except Exception as e:
         if "429" in str(e) or "rate limit" in str(e).lower():
             return f"Too many requests right now, {student_name}. Please wait a moment and try again."
@@ -96,7 +154,7 @@ async def sia_evaluate(question: str, student_answer: str, subject: str,
     prompt = build_evaluate_prompt(question=question, student_answer=student_answer, subject=subject,
                                    education_level=education_level, language=language,
                                    student_name=student_name, student_memory=memory)
-    return sanitize_output(await run_inference(prompt))
+    return sanitize_output(await _run_sia_inference(prompt))
 
 
 async def sia_generate_questions(topic: str, number: int, subject: str, education_level: str,
@@ -107,7 +165,7 @@ async def sia_generate_questions(topic: str, number: int, subject: str, educatio
                                              education_level=education_level, language=language,
                                              student_name=student_name, curriculum=curriculum,
                                              student_memory=memory)
-    return sanitize_output(await run_inference(prompt))
+    return sanitize_output(await _run_sia_inference(prompt))
 
 
 async def sia_performance_feedback(weak_topics: list, subject: str, education_level: str,
@@ -118,7 +176,7 @@ async def sia_performance_feedback(weak_topics: list, subject: str, education_le
                                                education_level=education_level, language=language,
                                                student_name=student_name, score=score,
                                                student_memory=memory)
-    return sanitize_output(await run_inference(prompt))
+    return sanitize_output(await _run_sia_inference(prompt))
 
 
 async def sia_explain_wrong_answer(question: str, wrong_answer: str, correct_answer: str,
@@ -129,7 +187,7 @@ async def sia_explain_wrong_answer(question: str, wrong_answer: str, correct_ans
                                        correct_answer=correct_answer, subject=subject,
                                        education_level=education_level, language=language,
                                        student_name=student_name, student_memory=memory)
-    return sanitize_output(await run_inference(prompt))
+    return sanitize_output(await _run_sia_inference(prompt))
 
 
 async def sia_lesson(topic: str, subject: str, education_level: str, language: str,
@@ -141,7 +199,7 @@ async def sia_lesson(topic: str, subject: str, education_level: str, language: s
         language=language, student_name=student_name, curriculum=curriculum,
         step=step, previous_response=previous_response, student_memory=memory,
     )
-    return sanitize_output(await run_inference(prompt))
+    return sanitize_output(await _run_sia_inference(prompt))
 
 
 async def sia_anti_cheat(question: str, submitted_answer: str,
@@ -150,7 +208,7 @@ async def sia_anti_cheat(question: str, submitted_answer: str,
         question=question, submitted_answer=submitted_answer,
         subject=subject, student_name=student_name,
     )
-    return sanitize_output(await run_inference(prompt))
+    return sanitize_output(await _run_sia_inference(prompt))
 
 
 async def sia_debate(topic: str, student_position: str,
@@ -159,7 +217,7 @@ async def sia_debate(topic: str, student_position: str,
         topic=topic, student_position=student_position,
         subject=subject, student_name=student_name,
     )
-    return sanitize_output(await run_inference(prompt))
+    return sanitize_output(await _run_sia_inference(prompt))
 
 
 async def sia_study_companion(student_name: str, last_subject: str,
@@ -168,7 +226,7 @@ async def sia_study_companion(student_name: str, last_subject: str,
         student_name=student_name, last_subject=last_subject,
         last_topic=last_topic, days_inactive=days_inactive,
     )
-    return sanitize_output(await run_inference(prompt))
+    return sanitize_output(await _run_sia_inference(prompt))
 
 
 async def sia_process_pdf(pdf_content: str, output_type: str, subject: str,
@@ -179,7 +237,7 @@ async def sia_process_pdf(pdf_content: str, output_type: str, subject: str,
         education_level=education_level, curriculum=curriculum,
         exam_standard=exam_standard, student_name=student_name, language=language,
     )
-    return sanitize_output(await run_inference(prompt))
+    return sanitize_output(await _run_sia_inference(prompt))
 
 
 async def sia_language_immersion(target_language: str, student_message: str,
@@ -189,7 +247,7 @@ async def sia_language_immersion(target_language: str, student_message: str,
         target_language=target_language, student_message=student_message,
         student_name=student_name, student_level=student_level, approach=approach,
     )
-    return sanitize_output(await run_inference(prompt))
+    return sanitize_output(await _run_sia_inference(prompt))
 
 
 async def sia_generate_study_plan(student_name: str, level: str, exam_target: str,
@@ -204,7 +262,7 @@ async def sia_generate_study_plan(student_name: str, level: str, exam_target: st
         strong_subjects=strong, learning_speed=memory.get("learning_style", "medium"),
         hours_per_day=hours_per_day, days_until_exam=days_until_exam,
     )
-    return sanitize_output(await run_inference(prompt))
+    return sanitize_output(await _run_sia_inference(prompt))
 
 
 async def sia_cambridge_teach(topic: str, subject: str, education_level: str,
@@ -213,7 +271,7 @@ async def sia_cambridge_teach(topic: str, subject: str, education_level: str,
         topic=topic, subject=subject,
         education_level=education_level, student_name=student_name,
     )
-    return sanitize_output(await run_inference(prompt))
+    return sanitize_output(await _run_sia_inference(prompt))
 
 
 async def sia_parent_report(student_name: str, level: str, profile_data: dict) -> str:
@@ -231,4 +289,4 @@ async def sia_parent_report(student_name: str, level: str, profile_data: dict) -
         attention_pattern=profile_data.get("attention_pattern", "normal"),
         last_active=profile_data.get("last_active", "Unknown"),
     )
-    return sanitize_output(await run_inference(prompt))
+    return sanitize_output(await _run_sia_inference(prompt))

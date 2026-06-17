@@ -1,24 +1,27 @@
 """
 Sia Local Intelligence Test
 ────────────────────────────
-Calls the AI directly — no server, no auth, no DB needed.
+Tests the enhanced Sia AI directly — no server, no auth, no DB needed.
 Just needs: venv activated + GEMINI_API_KEY in .env
 
 Run:
     cd scholaxia
     venv\\Scripts\\activate
-    python test_sia_local.py
+    python test_sia_local.py          # full suite
+    python test_sia_local.py --quick    # 2 fast tests
 """
 
 import asyncio
 import sys
 import os
 
-# Make sure app imports work from the scholaxia folder
+# Fix Windows console encoding for math symbols (→, ², etc.)
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 sys.path.insert(0, os.path.dirname(__file__))
 
-# Load .env manually into os.environ before importing app modules
-# Use last-value-wins (same as real dotenv parsers) to handle duplicate keys
 env_path = os.path.join(os.path.dirname(__file__), ".env")
 if os.path.exists(env_path):
     with open(env_path) as f:
@@ -26,136 +29,112 @@ if os.path.exists(env_path):
             line = line.strip()
             if line and not line.startswith("#") and "=" in line:
                 key, _, val = line.partition("=")
-                os.environ[key.strip()] = val.strip()  # overwrite — last value wins
+                os.environ[key.strip()] = val.strip()
 
+from app.core.config import settings
 from app.ai.model_backend import run_inference
-from app.ai.prompt_builder import build_prompt, build_explain_prompt, build_solve_prompt
+from app.ai.sia_intelligence import analyze_question, build_intelligence_context
+from app.ai.prompt_builder import (
+    build_sia_system_prompt, build_chat_user_prompt,
+    build_explain_prompt, build_solve_prompt,
+)
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def divider(title):
-    print(f"\n{'═'*65}")
+    print(f"\n{'=' * 65}")
     print(f"  {title}")
-    print(f"{'═'*65}")
+    print(f"{'=' * 65}")
+
 
 def show(label, text):
-    print(f"\n{label}:\n{'-'*50}")
+    print(f"\n{label}:\n{'-' * 50}")
     print(text.strip())
     print()
 
-async def ask(prompt_text, label):
+
+async def ask_sia(question, subject, level, name, history=None, label="Sia"):
+    analysis = analyze_question(question, subject, level, history)
+    intel = build_intelligence_context(analysis)
+    system = build_sia_system_prompt(
+        student_name=name, subject=subject, education_level=level,
+        language="english", raw_input=question, intelligence_context=intel,
+    )
+    prompt = build_chat_user_prompt(question, name, history)
+    print(f"  [intel] type={analysis['question_type']}  temp={analysis['temperature']}  complexity={analysis['complexity']}")
     try:
-        result = await run_inference(prompt_text)
+        result = await run_inference(
+            prompt,
+            conversation_history=history,
+            system_prompt=system,
+            max_tokens=4096,
+            temperature=analysis["temperature"],
+        )
         show(label, result)
         return result
     except Exception as e:
         print(f"  ERROR: {e}")
         return ""
 
-async def ask_with_delay(prompt_text, label, delay=3):
-    await asyncio.sleep(delay)
-    return await ask(prompt_text, label)
 
-# ── Tests ─────────────────────────────────────────────────────────────────────
-
-async def main():
+async def main(quick: bool = False):
     print("=" * 65)
-    print("  SIA LOCAL INTELLIGENCE TEST")
-    print("  Backend: Gemini  |  No server needed")
+    print("  SIA LOCAL INTELLIGENCE TEST (Enhanced Engine)")
+    print(f"  Backend: {settings.AI_BACKEND}  |  Model: {settings.GEMINI_MODEL}")
     print("=" * 65)
 
-    # ── TEST 1: Unknown level — should ask for class ──────────────────────────
-    divider("TEST 1: Unknown level — Sia should ask for class first")
-    p = build_prompt(
-        question="What is a noun?",
-        subject="English",
-        education_level="UNKNOWN",
-        language="english",
-        student_name="Chidi",
-    )
-    await ask(p, "Sia response (should ask for class)")
+    if not settings.GEMINI_API_KEY and settings.AI_BACKEND == "gemini":
+        print("\n  ERROR: GEMINI_API_KEY missing in .env")
+        sys.exit(1)
 
-    # ── TEST 2: Known level — should give dual definitions ────────────────────
-    divider("TEST 2: SS2 level — dual Nigerian + Cambridge definition")
-    p = build_prompt(
-        question="What is a noun?",
-        subject="English",
-        education_level="SS2",
-        language="english",
-        student_name="Chidi",
+    divider("TEST 1: Maths solve — step-by-step (SS3)")
+    await ask_sia(
+        "Solve: x² + 5x + 6 = 0",
+        "Mathematics", "SS3", "Emeka",
+        label="Sia (should show every step + practice problem)",
     )
-    await ask(p, "Sia response (Nigerian + Cambridge definition)")
 
-    # ── TEST 3: JSS1 level — simpler explanation ──────────────────────────────
-    divider("TEST 3: JSS1 level — define photosynthesis")
-    p = build_prompt(
-        question="What is photosynthesis?",
-        subject="Biology",
-        education_level="JSS1",
-        language="english",
-        student_name="Amaka",
+    divider("TEST 2: Dual definition — Nigerian + Cambridge (SS2)")
+    await ask_sia(
+        "What is a noun?",
+        "English", "SS2", "Chidi",
+        label="Sia (Nigerian + Cambridge definitions)",
     )
-    await ask(p, "Sia response (JSS1 level)")
 
-    # ── TEST 4: Maths problem solving ─────────────────────────────────────────
-    divider("TEST 4: SS3 — Solve a quadratic equation")
-    p = build_solve_prompt(
-        question="Solve: x² + 5x + 6 = 0",
-        subject="Mathematics",
-        education_level="SS3",
-        language="english",
-        student_name="Emeka",
-    )
-    await ask(p, "Sia response (step-by-step solve)")
+    if quick:
+        print("=" * 65)
+        print("  QUICK TESTS COMPLETE")
+        print("=" * 65)
+        return
 
-    # ── TEST 5: Explain a concept ─────────────────────────────────────────────
-    divider("TEST 5: SS2 — Explain Newton's Third Law")
-    p = build_explain_prompt(
-        topic="Newton's Third Law of Motion",
-        subject="Physics",
-        education_level="SS2",
-        language="english",
-        student_name="Fatima",
-    )
-    await ask(p, "Sia response (concept explanation)")
+    divider("TEST 3: Biology explain (JSS1)")
+    analysis = analyze_question("What is photosynthesis?", "Biology", "JSS1")
+    system = build_sia_system_prompt("Amaka", "Biology", "JSS1", "english",
+                                     intelligence_context=build_intelligence_context(analysis))
+    prompt = build_explain_prompt("photosynthesis", "Biology", "JSS1", "english", "Amaka")
+    print(f"  [intel] type={analysis['question_type']}  temp={analysis['temperature']}")
+    try:
+        show("Sia", await run_inference(prompt, system_prompt=system, temperature=analysis["temperature"]))
+    except Exception as e:
+        print(f"  ERROR: {e}")
 
-    # ── TEST 6: Pidgin language ───────────────────────────────────────────────
-    divider("TEST 6: SS1 — Explain osmosis in Pidgin English")
-    p = build_explain_prompt(
-        topic="Osmosis",
-        subject="Biology",
-        education_level="SS1",
-        language="pidgin",
-        student_name="Tunde",
-    )
-    await ask(p, "Sia response (Pidgin)")
-
-    # ── TEST 7: Conversation history — Sia should not restart ─────────────────
-    divider("TEST 7: Conversation context — student follows up")
+    divider("TEST 4: Conversation follow-up — should NOT restart")
     history = [
-        {"role": "user",      "content": "What is a verb?"},
-        {"role": "assistant", "content": "A verb is a word that describes an action, state, or occurrence. Examples: run, is, happen."},
+        {"role": "user", "content": "What is a verb?"},
+        {"role": "assistant", "content": "A verb is a word that describes an action. Examples: run, eat, think."},
     ]
-    p = build_prompt(
-        question="Can you give me more examples?",
-        subject="English",
-        education_level="SS1",
-        language="english",
-        student_name="Ngozi",
-        conversation_history=history,
+    await ask_sia(
+        "Can you give me more examples?",
+        "English", "SS1", "Ngozi",
+        history=history,
+        label="Sia (should continue the lesson)",
     )
-    await ask(p, "Sia response (should continue, not restart)")
 
-    # ── TEST 8: JAMB exam level ───────────────────────────────────────────────
-    divider("TEST 8: JAMB level — define electrochemistry")
-    p = build_prompt(
-        question="What is electrochemistry?",
-        subject="Chemistry",
-        education_level="JAMB",
-        language="english",
-        student_name="Bello",
+    divider("TEST 5: JAMB chemistry depth")
+    await ask_sia(
+        "What is electrochemistry?",
+        "Chemistry", "JAMB", "Bello",
+        label="Sia (exam-level depth)",
     )
-    await ask(p, "Sia response (JAMB depth)")
 
     print("=" * 65)
     print("  ALL TESTS COMPLETE")
@@ -163,4 +142,5 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    quick = "--quick" in sys.argv
+    asyncio.run(main(quick=quick))

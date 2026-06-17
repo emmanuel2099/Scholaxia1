@@ -5,8 +5,10 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 from app.core.database import get_db
-from app.core.deps import require_student, require_admin, get_current_user
+from app.core.deps import require_student, require_admin, get_current_user, require_teacher
 from app.models.cbt import CBTExam, CBTQuestion, CBTSession, ExamProctorLog
+from app.models.user import StudentProfile
+from app.core.subjects import subject_matches
 
 router = APIRouter(prefix="/cbt", tags=["CBT"])
 
@@ -47,6 +49,52 @@ class ExamSummary(BaseModel):
     duration_minutes: int
     total_questions: int
     is_published: bool
+    is_school_exam: bool = False
+    camera_required: bool = False
+    scheduled_start: Optional[datetime] = None
+    scheduled_end: Optional[datetime] = None
+
+
+def _exam_summary(e: CBTExam) -> ExamSummary:
+    return ExamSummary(
+        id=str(e.id), title=e.title, subject=e.subject,
+        exam_type=e.exam_type, duration_minutes=e.duration_minutes,
+        total_questions=e.total_questions, is_published=e.is_published,
+        is_school_exam=e.is_school_exam,
+        camera_required=e.camera_required,
+        scheduled_start=e.scheduled_start,
+        scheduled_end=e.scheduled_end,
+    )
+
+
+def _school_exam_is_open(exam: CBTExam, now: datetime) -> bool:
+    if not exam.is_school_exam:
+        return True
+    if exam.scheduled_start and now < exam.scheduled_start:
+        return False
+    if exam.scheduled_end and now > exam.scheduled_end:
+        return False
+    return True
+
+
+class SchoolExamQuestionCreate(BaseModel):
+    question_text: str
+    option_a: str
+    option_b: str
+    option_c: str
+    option_d: str
+    correct_option: str
+    explanation: Optional[str] = None
+    topic: Optional[str] = None
+
+
+class CreateSchoolExamRequest(BaseModel):
+    title: str
+    subject: str
+    duration_minutes: int
+    scheduled_start: datetime
+    scheduled_end: datetime
+    questions: List[SchoolExamQuestionCreate]
 
 
 class QuestionOut(BaseModel):
@@ -86,14 +134,54 @@ async def list_exams(
         q = q.where(CBTExam.subject.ilike(f"%{subject}%"))
     result = await db.execute(q.order_by(CBTExam.exam_type, CBTExam.subject))
     exams = result.scalars().all()
-    return [
-        ExamSummary(
-            id=str(e.id), title=e.title, subject=e.subject,
-            exam_type=e.exam_type, duration_minutes=e.duration_minutes,
-            total_questions=e.total_questions, is_published=e.is_published,
+    return [_exam_summary(e) for e in exams]
+
+
+@router.get("/exams/for-me")
+async def exams_for_student(
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Practice + school exams filtered by the student's exam type and selected subjects.
+    Practice exams can be downloaded for offline use; school exams cannot.
+    """
+    profile_res = await db.execute(
+        select(StudentProfile).where(StudentProfile.user_id == current_user["sub"])
+    )
+    profile = profile_res.scalar_one_or_none()
+    if not profile or not profile.exam_type or not profile.selected_subjects:
+        raise HTTPException(
+            status_code=400,
+            detail="Complete exam setup first at /students/setup-exam",
         )
-        for e in exams
-    ]
+
+    exam_type = str(profile.exam_type)
+    subjects = profile.selected_subjects
+    now = datetime.utcnow()
+
+    result = await db.execute(
+        select(CBTExam).where(CBTExam.is_published == True)  # noqa: E712
+    )
+    all_exams = result.scalars().all()
+
+    practice = []
+    school = []
+    for e in all_exams:
+        if not subject_matches(e.subject, subjects):
+            continue
+        if e.is_school_exam:
+            if _school_exam_is_open(e, now) or (e.scheduled_start and e.scheduled_start > now):
+                school.append(_exam_summary(e))
+        elif e.exam_type.upper() == exam_type.upper():
+            practice.append(_exam_summary(e))
+
+    return {
+        "exam_type": exam_type,
+        "selected_subjects": subjects,
+        "practice_exams": practice,
+        "school_exams": school,
+    }
 
 
 # ── Get Single Exam Info (public) ─────────────────────────────────────────────
@@ -107,16 +195,12 @@ async def get_exam(exam_id: str, db: AsyncSession = Depends(get_db)):
     exam = result.scalar_one_or_none()
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
-    return ExamSummary(
-        id=str(exam.id), title=exam.title, subject=exam.subject,
-        exam_type=exam.exam_type, duration_minutes=exam.duration_minutes,
-        total_questions=exam.total_questions, is_published=exam.is_published,
-    )
+    return _exam_summary(exam)
 
 
 # ── Download Exam for Offline Use (auth required) ─────────────────────────────
 
-@router.get("/exams/{exam_id}/download", response_model=ExamDownload)
+@router.get("/exams/{exam_id}/download")
 async def download_exam(
     exam_id: str,
     current_user: dict = Depends(get_current_user),
@@ -133,33 +217,45 @@ async def download_exam(
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
 
+    if exam.is_school_exam:
+        raise HTTPException(
+            status_code=403,
+            detail="School exams cannot be downloaded. They must be taken online during the scheduled window.",
+        )
+
     q_result = await db.execute(
         select(CBTQuestion).where(CBTQuestion.exam_id == exam.id)
     )
     questions = q_result.scalars().all()
 
-    return ExamDownload(
-        id=str(exam.id),
-        title=exam.title,
-        subject=exam.subject,
-        exam_type=exam.exam_type,
-        duration_minutes=exam.duration_minutes,
-        total_questions=exam.total_questions,
-        questions=[
-            QuestionOut(
-                id=str(q.id),
-                question_text=q.question_text,
-                option_a=q.option_a,
-                option_b=q.option_b,
-                option_c=q.option_c,
-                option_d=q.option_d,
-                topic=q.topic,
-                image_url=q.image_url,
-                # NOTE: correct_option intentionally NOT included here
-            )
-            for q in questions
-        ],
-    )
+    question_list = []
+    for q in questions:
+        item = {
+            "id": str(q.id),
+            "question_text": q.question_text,
+            "option_a": q.option_a,
+            "option_b": q.option_b,
+            "option_c": q.option_c,
+            "option_d": q.option_d,
+            "topic": q.topic,
+            "image_url": q.image_url,
+        }
+        # Practice exams include answers in offline pack for local scoring
+        if not exam.is_school_exam:
+            item["correct_option"] = q.correct_option
+            item["explanation"] = q.explanation
+        question_list.append(item)
+
+    return {
+        "id": str(exam.id),
+        "title": exam.title,
+        "subject": exam.subject,
+        "exam_type": exam.exam_type,
+        "duration_minutes": exam.duration_minutes,
+        "total_questions": exam.total_questions,
+        "is_school_exam": exam.is_school_exam,
+        "questions": question_list,
+    }
 
 
 # ── Start Session ─────────────────────────────────────────────────────────────
@@ -176,6 +272,18 @@ async def start_session(
     exam = result.scalar_one_or_none()
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
+
+    now = datetime.utcnow()
+    if exam.is_school_exam:
+        if not _school_exam_is_open(exam, now):
+            raise HTTPException(status_code=403, detail="This school exam is not open right now")
+        # School exams always require online session — enforce security flags
+        if not exam.camera_required:
+            exam.camera_required = True
+        if not exam.ai_locked:
+            exam.ai_locked = True
+        if not exam.block_minimize:
+            exam.block_minimize = True
 
     session = CBTSession(student_id=current_user["sub"], exam_id=exam.id)
     db.add(session)
@@ -459,3 +567,52 @@ async def get_active_students(
     )
     sessions = result.scalars().all()
     return [{"session_id": str(s.id), "student_id": str(s.student_id), "started_at": s.started_at} for s in sessions]
+
+
+# ── Teacher: Schedule School Exam ─────────────────────────────────────────────
+
+@router.post("/school-exams", status_code=201)
+async def teacher_create_school_exam(
+    payload: CreateSchoolExamRequest,
+    current_user: dict = Depends(require_teacher),
+    db: AsyncSession = Depends(get_db),
+):
+    """Teacher schedules a proctored school exam with camera monitoring."""
+    if not payload.questions:
+        raise HTTPException(status_code=400, detail="At least one question required")
+    if payload.scheduled_end <= payload.scheduled_start:
+        raise HTTPException(status_code=400, detail="scheduled_end must be after scheduled_start")
+
+    exam = CBTExam(
+        title=payload.title,
+        subject=payload.subject,
+        exam_type="SCHOOL",
+        duration_minutes=payload.duration_minutes,
+        total_questions=len(payload.questions),
+        created_by=current_user["sub"],
+        is_published=True,
+        is_school_exam=True,
+        ai_locked=True,
+        camera_required=True,
+        block_minimize=True,
+        scheduled_start=payload.scheduled_start,
+        scheduled_end=payload.scheduled_end,
+    )
+    db.add(exam)
+    await db.flush()
+
+    for q in payload.questions:
+        if q.correct_option.upper() not in ("A", "B", "C", "D"):
+            raise HTTPException(status_code=400, detail="correct_option must be A/B/C/D")
+        db.add(CBTQuestion(
+            exam_id=exam.id,
+            question_text=q.question_text,
+            option_a=q.option_a, option_b=q.option_b,
+            option_c=q.option_c, option_d=q.option_d,
+            correct_option=q.correct_option.upper(),
+            explanation=q.explanation,
+            topic=q.topic,
+        ))
+
+    await db.flush()
+    return _exam_summary(exam)

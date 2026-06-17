@@ -26,6 +26,10 @@ class CBTExam(Base):
     camera_required: Mapped[bool] = mapped_column(Boolean, default=False)
     block_minimize: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # School exam schedule (teacher sets window when students can take the exam)
+    scheduled_start: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    scheduled_end: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+
     questions: Mapped[list["CBTQuestion"]] = relationship("CBTQuestion", back_populates="exam")
     sessions: Mapped[list["CBTSession"]] = relationship("CBTSession", back_populates="exam")
 

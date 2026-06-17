@@ -137,23 +137,7 @@ async function login() {
     if (!res.ok) { err.textContent = data.detail || "Login failed."; return; }
     localStorage.setItem("sia_token", data.access_token);
     localStorage.setItem("sia_role", data.role);
-    // Try to get display name
-    try {
-      const p = await fetch(`${API}/api/v1/students/me`, {
-        headers: { Authorization: `Bearer ${data.access_token}` }
-      });
-      if (p.ok) {
-        const pd = await p.json();
-        localStorage.setItem("sia_name", pd.full_name || email);
-      } else {
-        localStorage.setItem("sia_name", email);
-      }
-    } catch { localStorage.setItem("sia_name", email); }
-    // Route by role
-    const role = data.role;
-    if (role === "admin" || role === "developer") window.location.href = "dashboard.html";
-    else if (role === "teacher") window.location.href = "classroom.html";
-    else window.location.href = "chat.html";
+    await routeAfterAuth(data.access_token, data.role, email);
   } catch (e) {
     err.textContent = e.name === "TimeoutError"
       ? "Server is waking up — try again in 30 seconds."
@@ -182,12 +166,38 @@ async function signup() {
     localStorage.setItem("sia_token", data.access_token);
     localStorage.setItem("sia_name", name);
     localStorage.setItem("sia_role", data.role || "student");
-    window.location.href = "chat.html";
+    await routeAfterAuth(data.access_token, data.role || "student", email, name);
   } catch (e) {
     err.textContent = e.name === "TimeoutError"
       ? "Server is waking up — try again in 30 seconds."
       : "Network error. Try again.";
   } finally { btn.disabled = false; btn.textContent = "Create account"; }
+}
+
+async function routeAfterAuth(accessToken, role, email, nameOverride) {
+  try {
+    const p = await fetch(`${API}/api/v1/students/me`, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (p.ok) {
+      const pd = await p.json();
+      localStorage.setItem("sia_name", pd.full_name || nameOverride || email);
+      if (!pd.setup_complete) {
+        window.location.href = "setup.html";
+        return;
+      }
+      localStorage.setItem("sia_exam_type", pd.exam_type || "");
+      localStorage.setItem("sia_subjects", JSON.stringify(pd.selected_subjects || []));
+    } else {
+      localStorage.setItem("sia_name", nameOverride || email);
+    }
+  } catch {
+    localStorage.setItem("sia_name", nameOverride || email);
+  }
+
+  if (role === "admin" || role === "developer") window.location.href = "dashboard.html";
+  else if (role === "teacher") window.location.href = "classroom.html";
+  else window.location.href = "home.html";
 }
 </script>
 </body>

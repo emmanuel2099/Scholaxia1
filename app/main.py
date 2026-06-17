@@ -12,6 +12,8 @@ from app.routers import auth, students, admin, live_class, cbt, community, ai_tu
 from app.routers import developer_auth, developer_keys, public_ai_api, reviews_reports, teacher_ai, library, wallet
 from app.routers import recommendations
 from app.routers import performance
+from app.routers import home
+from app.routers import kind
 from app.routers import profiles
 from app.websockets.live_class_ws import live_class_endpoint
 
@@ -42,6 +44,30 @@ async def lifespan(app: FastAPI):
         await conn.execute(text(
             "UPDATE community_posts SET is_anonymous = FALSE WHERE is_anonymous IS NULL"
         ))
+        await conn.execute(text(
+            "ALTER TABLE cbt_exams ADD COLUMN IF NOT EXISTS scheduled_start TIMESTAMP NULL"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE cbt_exams ADD COLUMN IF NOT EXISTS scheduled_end TIMESTAMP NULL"
+        ))
+        await conn.execute(text(
+            """
+            CREATE TABLE IF NOT EXISTS kind_profiles (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID UNIQUE NOT NULL REFERENCES users(id),
+                age_group VARCHAR(20) NOT NULL DEFAULT '6-8',
+                grade_level VARCHAR(50),
+                parent_email VARCHAR(255),
+                favorite_subjects TEXT[] DEFAULT '{}',
+                learning_goals VARCHAR(500),
+                preferred_language VARCHAR(30) DEFAULT 'english'
+            )
+            """
+        ))
+        try:
+            await conn.execute(text("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'kind'"))
+        except Exception:
+            pass
     await init_redis()
     async with AsyncSessionLocal() as db:
         await seed_database(db)
@@ -79,6 +105,8 @@ app.include_router(teacher_ai.router, prefix="/api/v1")
 app.include_router(library.router, prefix="/api/v1")
 app.include_router(wallet.router, prefix="/api/v1")
 app.include_router(recommendations.router, prefix="/api/v1")
+app.include_router(home.router, prefix="/api/v1")
+app.include_router(kind.router, prefix="/api/v1")
 app.include_router(performance.router, prefix="/api/v1")
 app.include_router(developer_auth.router, prefix="/api/v1")
 app.include_router(developer_keys.router, prefix="/api/v1")

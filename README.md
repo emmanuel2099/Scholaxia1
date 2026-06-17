@@ -1,44 +1,16 @@
-# Scholaxia Backend
+# scholaxia
 
-FastAPI + PostgreSQL + Redis
+A new Flutter project.
 
-## Stack
-- **FastAPI** — async REST API + WebSockets
-- **PostgreSQL** — primary database (via SQLAlchemy async)
-- **Redis** — caching, sessions, Celery broker
-- **Celery** — background tasks (notifications, analytics)
-- **AWS S3** — media storage (books, videos, notes)
-- **Stripe** — payments & subscriptions
-- **Firebase FCM** — push notifications
-- **OpenAI GPT-4o** — AI tutor
+## Getting Started
 
-## Setup
+This project is a starting point for a Flutter application.
 
-```bash
-cd scholaxia
-python -m venv venv
-source venv/bin/activate   # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env       # fill in your values
-```
+A few resources to get you started if this is your first Flutter project:
 
-## Run
+- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
+- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
 
-```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-## API Docs
-- Swagger: http://localhost:8000/docs
-- Redoc:   http://localhost:8000/redoc
-
-## Project Structure
-
-```
-app/
-├── core/           # config, database, redis, security, deps
-├── models/         # SQLAlchemy ORM models
-├── routers/        # FastAPI route handlers
-├── services/       # business logic (AI, notifications, moderation, media)
-└── websockets/     # WebSocket handlers (live class)
-```
+For help getting started with Flutter development, view the
+[online documentation](https://docs.flutter.dev/), which offers tutorials,
+samples, guidance on mobile development, and a full API reference.

@@ -25,26 +25,14 @@
 
   <div class="list-body">
     <div class="list-top">
-      <h1>Practice Exams</h1>
-      <p>WAEC and NECO past-style questions. Works offline once downloaded.</p>
+      <h1>CBT Exams</h1>
+      <p id="profile-banner" class="profile-banner">Loading your subjects…</p>
 
-      <div class="filters">
-        <select id="filter-type" onchange="filterExams()">
-          <option value="">All Types</option>
-          <option value="WAEC">WAEC</option>
-          <option value="NECO">NECO</option>
-          <option value="JAMB">JAMB</option>
-          <option value="SCHOOL">School</option>
-        </select>
-        <select id="filter-subject" onchange="filterExams()">
-          <option value="">All Subjects</option>
-          <option value="Mathematics">Mathematics</option>
-          <option value="English Language">English Language</option>
-          <option value="Biology">Biology</option>
-          <option value="Chemistry">Chemistry</option>
-          <option value="Physics">Physics</option>
-        </select>
+      <div class="tab-bar">
+        <button class="tab active" id="tab-practice" onclick="switchTab('practice')">Practice CBT</button>
+        <button class="tab" id="tab-school" onclick="switchTab('school')">School Exams</button>
       </div>
+      <p id="tab-desc" class="tab-desc">Download practice exams for offline use. Works without internet once saved.</p>
     </div>
 
     <div id="offline-banner" class="offline-banner" style="display:none">
@@ -78,7 +66,13 @@
     <main class="exam-main">
       <div class="exam-topbar">
         <div id="exam-title-top" class="exam-title-top"></div>
-        <div id="q-counter" class="q-counter">Q 1 / 10</div>
+        <div class="exam-topbar-right">
+          <div id="school-camera-wrap" class="school-camera-wrap" style="display:none">
+            <video id="proctor-video" autoplay muted playsinline></video>
+            <span class="cam-label">Camera on</span>
+          </div>
+          <div id="q-counter" class="q-counter">Q 1 / 10</div>
+        </div>
       </div>
 
       <div id="question-card" class="question-card">
@@ -152,6 +146,18 @@
     <div class="modal-actions">
       <button class="btn-danger" onclick="submitExam()">Yes, submit</button>
       <button class="btn-ghost" onclick="closeModal()">Continue exam</button>
+    </div>
+  </div>
+</div>
+
+<!-- Camera permission modal (school exams) -->
+<div id="modal-camera" class="modal-overlay" style="display:none">
+  <div class="modal" onclick="event.stopPropagation()">
+    <h3>📷 Camera required</h3>
+    <p>This is a school exam. Your camera must stay on during the test for proctoring.</p>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="cancelSchoolExam()">Cancel</button>
+      <button class="btn-primary" onclick="enableCameraAndStart()">Allow camera & start</button>
     </div>
   </div>
 </div>

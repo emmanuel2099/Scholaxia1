@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>For You — Scholaxia</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="home.css" />
+</head>
+<body>
+
+<header class="home-header">
+  <a href="chat.html" class="brand">
+    <div class="brand-mark">S</div>
+    <span>Scholaxia</span>
+  </a>
+  <div class="header-actions">
+    <span id="header-user"></span>
+    <button class="btn-ghost" onclick="logout()">Logout</button>
+  </div>
+</header>
+
+<main class="home-body">
+  <section class="hero">
+    <h1>Recommended <span class="accent">For You</span></h1>
+    <p>Books, live classes, and sessions picked for your subjects.</p>
+  </section>
+
+  <!-- Live now -->
+  <section class="section">
+    <div class="section-head">
+      <h2>🔴 Live Now</h2>
+      <span class="section-badge" id="live-count">0</span>
+    </div>
+    <div id="live-grid" class="card-row">
+      <div class="loading-state">Loading live sessions…</div>
+    </div>
+  </section>
+
+  <!-- Upcoming -->
+  <section class="section">
+    <div class="section-head">
+      <h2>📅 Upcoming Sessions</h2>
+    </div>
+    <div id="upcoming-grid" class="card-row">
+      <div class="loading-state">Loading…</div>
+    </div>
+  </section>
+
+  <!-- Recommendations -->
+  <section class="section">
+    <div class="section-head">
+      <h2>📚 Recommended For You</h2>
+    </div>
+    <div id="weak-topics" class="weak-topics" style="display:none"></div>
+    <div id="rec-grid" class="rec-grid">
+      <div class="loading-state">Loading recommendations…</div>
+    </div>
+  </section>
+
+  <!-- Request live session -->
+  <section class="section request-section">
+    <div class="section-head">
+      <h2>🎓 Request a Live Session</h2>
+    </div>
+    <p class="section-sub">Can't find a class? Ask a teacher to host one on your subject.</p>
+
+    <form id="request-form" class="request-form" onsubmit="submitRequest(event)">
+      <div class="form-row">
+        <label>
+          Subject
+          <select id="req-subject" required>
+            <option value="">Select subject</option>
+            <option>Mathematics</option>
+            <option>English Language</option>
+            <option>Biology</option>
+            <option>Chemistry</option>
+            <option>Physics</option>
+            <option>Economics</option>
+            <option>Government</option>
+            <option>Geography</option>
+            <option>Literature</option>
+          </select>
+        </label>
+        <label>
+          Topic (optional)
+          <input type="text" id="req-topic" placeholder="e.g. Quadratic equations" />
+        </label>
+      </div>
+      <label>
+        Preferred date & time (optional)
+        <input type="datetime-local" id="req-time" />
+      </label>
+      <label>
+        Message
+        <textarea id="req-message" rows="3" placeholder="What would you like covered in the session?"></textarea>
+      </label>
+      <button type="submit" class="btn-primary" id="req-btn">Submit Request</button>
+      <p id="req-status" class="form-status"></p>
+    </form>
+
+    <div class="my-requests">
+      <h3>Your Requests</h3>
+      <div id="requests-list">
+        <div class="empty-state-sm">No requests yet.</div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- Join modal -->
+<div id="join-modal" class="modal" style="display:none">
+  <div class="modal-box">
+    <h3 id="join-title">Join Live Class</h3>
+    <p id="join-detail"></p>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="closeJoinModal()">Cancel</button>
+      <button class="btn-primary" id="join-btn" onclick="confirmJoin()">Join Now</button>
+    </div>
+    <p id="join-status" class="form-status"></p>
+  </div>
+</div>
+
+<script src="home.js"></script>
+</body>
+</html>

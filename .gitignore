@@ -17,6 +17,7 @@ firebase-credentials.json
 # IDE
 .vscode/
 .idea/
+*.iml
 
 # OS
 .DS_Store
@@ -24,3 +25,15 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Flutter/Dart (if present locally)
+.dart_tool/
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+/build/
+/coverage/
+**/ios/Flutter/.last_build_id
+/android/app/debug
+/android/app/profile
+/android/app/release

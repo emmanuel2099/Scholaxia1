@@ -10,6 +10,7 @@ import enum
 class UserRole(str, enum.Enum):
     student = "student"
     teacher = "teacher"
+    kind = "kind"           # young learners (kids / primary)
     admin = "admin"
     developer = "developer"   # external API developers
 
@@ -40,6 +41,7 @@ class User(Base):
     # Relationships
     student_profile: Mapped["StudentProfile"] = relationship("StudentProfile", back_populates="user", uselist=False)
     teacher_profile: Mapped["TeacherProfile"] = relationship("TeacherProfile", back_populates="user", uselist=False)
+    kind_profile: Mapped["KindProfile"] = relationship("KindProfile", back_populates="user", uselist=False)
 
 
 class StudentProfile(Base):
@@ -66,3 +68,19 @@ class TeacherProfile(Base):
     is_approved: Mapped[bool] = mapped_column(Boolean, default=True)  # admin-created, always approved
 
     user: Mapped["User"] = relationship("User", back_populates="teacher_profile")
+
+
+class KindProfile(Base):
+    """Young learner profile (Kind / kids mode)."""
+    __tablename__ = "kind_profiles"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), unique=True)
+    age_group: Mapped[str] = mapped_column(String(20), nullable=False, default="6-8")  # 3-5 | 6-8 | 9-12
+    grade_level: Mapped[str] = mapped_column(String(50), nullable=True)  # Nursery, Primary 1, JSS1
+    parent_email: Mapped[str] = mapped_column(String(255), nullable=True)
+    favorite_subjects: Mapped[list] = mapped_column(ARRAY(String), default=[])
+    learning_goals: Mapped[str] = mapped_column(String(500), nullable=True)
+    preferred_language: Mapped[str] = mapped_column(String(30), default="english")
+
+    user: Mapped["User"] = relationship("User", back_populates="kind_profile")

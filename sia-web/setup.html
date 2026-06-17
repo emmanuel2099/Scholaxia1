@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Exam Setup — Scholaxia</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="setup.css" />
+</head>
+<body>
+<div class="setup-page">
+  <div class="setup-card">
+    <div class="setup-brand">
+      <div class="brand-mark">S</div>
+      <span>Scholaxia</span>
+    </div>
+
+    <h1>Set up your exams</h1>
+    <p class="subtitle">Choose your exam board and subjects. Your home feed and CBT practice will match these choices.</p>
+
+    <!-- Step 1: Exam type -->
+    <div id="step-type" class="step active">
+      <h2>Which exam are you preparing for?</h2>
+      <div class="exam-type-grid">
+        <button type="button" class="type-card" data-type="JAMB" onclick="selectExamType('JAMB')">
+          <span class="type-name">JAMB</span>
+          <span class="type-detail">4 subjects</span>
+        </button>
+        <button type="button" class="type-card" data-type="WAEC" onclick="selectExamType('WAEC')">
+          <span class="type-name">WAEC</span>
+          <span class="type-detail">Up to 9 subjects</span>
+        </button>
+        <button type="button" class="type-card" data-type="NECO" onclick="selectExamType('NECO')">
+          <span class="type-name">NECO</span>
+          <span class="type-detail">Up to 9 subjects</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Step 2: Subjects -->
+    <div id="step-subjects" class="step">
+      <div class="step-head">
+        <button type="button" class="back-link" onclick="goToType()">← Back</button>
+        <h2>Select your subjects</h2>
+        <p id="subject-hint" class="hint">Pick exactly 4 subjects for JAMB.</p>
+        <p id="subject-count" class="count">0 / 4 selected</p>
+      </div>
+      <div id="subject-grid" class="subject-grid"></div>
+      <label class="level-label">
+        Education level
+        <select id="education-level">
+          <option value="SS1">SS1</option>
+          <option value="SS2">SS2</option>
+          <option value="SS3" selected>SS3</option>
+          <option value="JAMB">JAMB</option>
+        </select>
+      </label>
+      <p id="setup-error" class="error"></p>
+      <button type="button" class="btn-primary" id="btn-save" onclick="saveSetup()">Continue to Scholaxia</button>
+    </div>
+  </div>
+</div>
+<script src="setup.js"></script>
+</body>
+</html>

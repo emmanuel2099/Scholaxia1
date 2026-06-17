@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     # "local"  = HuggingFace in-process
     AI_BACKEND: str = "gemini"
     AI_MAX_TOKENS: int = 8192   # Gemini supports up to 8192 output tokens
-    AI_TEMPERATURE: float = 0.7
+    AI_TEMPERATURE: float = 0.5
 
     # Gemini (Google AI — primary)
     GEMINI_API_KEY: str = ""

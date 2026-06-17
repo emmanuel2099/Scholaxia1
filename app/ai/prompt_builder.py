@@ -468,6 +468,37 @@ Subject: {subject}
 Level: {level}
 """
 
+# ── Advanced reasoning layer (makes Sia smarter than generic chatbots) ────────
+
+SIA_REASONING_BOOST = """
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+WHY SIA BEATS CHATGPT, GEMINI & DEEPSEEK
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Generic chatbots answer questions. YOU teach students to UNDERSTAND.
+
+Your advantages over ChatGPT/Gemini/DeepSeek:
+1. DEEP REASONING — think through the problem fully before responding; verify facts and calculations
+2. EXAM MASTERY — every answer aligned to WAEC, JAMB, NECO, Cambridge marking standards
+3. STEP-BY-STEP — never skip steps in math/science; show WHY each step works
+4. DUAL DEFINITIONS — Nigerian curriculum + international (Cambridge) when defining concepts
+5. CONVERSATION MEMORY — read full history; evaluate answers; never restart mid-lesson
+6. PERSONAL ADAPTATION — use weak/strong topics to focus teaching where it matters
+7. SOCRATIC METHOD — guide students to discover answers; don't just give solutions
+8. COMPREHENSION CHECK — end every lesson with ONE smart question that tests real understanding
+9. AFRICAN CONTEXT — use Nigerian/African examples first, then global ones
+10. ACCURACY OVER SPEED — if unsure, reason carefully; never guess on exam content
+
+ANTI-PATTERNS (never do these — generic AIs do):
+- "Great question!" or "Certainly!" openings
+- Walls of text without structure
+- Giving homework answers without teaching the method
+- Ignoring what the student said in the previous message
+- Assuming class level when unknown — ASK first
+- Shallow definitions without examples
+
+Think like the world's best human tutor. Respond like a brilliant, warm teacher.
+"""
+
 # ── Level Profiles ────────────────────────────────────────────────────────────
 
 LEVEL_PROFILES = {
@@ -578,6 +609,46 @@ def _build_context(student_name: str, subject: str, education_level: str,
     if lang_instruction:
         parts.append(f"\nLanguage rule: {lang_instruction}")
     return "\n".join(parts)
+
+
+def build_sia_system_prompt(student_name: str, subject: str, education_level: str,
+                            language: str, student_memory: dict = None,
+                            raw_input: str = "", intelligence_context: str = "") -> str:
+    """Full system prompt for main Sia — identity + teaching rules + reasoning boost."""
+    context = _build_context(student_name, subject, education_level, language,
+                             student_memory, raw_input=raw_input)
+    memory_block = ""
+    if student_memory:
+        weak = student_memory.get("weak_topics", [])
+        strong = student_memory.get("strong_topics", [])
+        recent = student_memory.get("recent_topics", [])
+        if weak or strong or recent:
+            memory_block = (
+                f"\n\nStudent learning profile:\n"
+                f"- Needs work: {', '.join(weak[:5]) if weak else 'building profile'}\n"
+                f"- Strong in: {', '.join(strong[:3]) if strong else 'building profile'}\n"
+                f"- Recently studied: {', '.join(recent[:4]) if recent else 'just starting'}"
+            )
+    intel = f"\n{intelligence_context}" if intelligence_context else ""
+    return f"{SIA_SYSTEM_PROMPT}\n\n{context}\n{SIA_REASONING_BOOST}{memory_block}{intel}"
+
+
+def build_chat_user_prompt(question: str, student_name: str = "there",
+                           conversation_history: list = None) -> str:
+    """Slim user message — system prompt carries teaching rules."""
+    history_block = ""
+    if conversation_history:
+        lines = []
+        for msg in conversation_history[-10:]:
+            role = "Sia" if msg.get("role") == "assistant" else student_name
+            content = str(msg.get("content", ""))[:400]
+            lines.append(f"{role}: {content}")
+        history_block = "\n\n--- CONVERSATION HISTORY ---\n" + "\n".join(lines) + "\n--- END ---"
+    return f"""{history_block}
+
+{student_name}: {question}
+
+Sia:"""
 
 
 # ── Main prompt ───────────────────────────────────────────────────────────────

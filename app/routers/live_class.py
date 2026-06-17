@@ -10,8 +10,8 @@ from typing import Optional
 from app.core.database import get_db
 from app.core.deps import require_teacher, require_student, get_current_user
 from app.core.config import settings
-from app.models.live_class import LiveClass, ClassAttendance
-from app.models.user import StudentProfile
+from app.models.live_class import LiveClass, ClassAttendance, LiveSessionRequest, LiveSessionRequestStatus
+from app.models.user import StudentProfile, User
 from app.services.notification_service import send_subject_notification
 
 router = APIRouter(prefix="/live-classes", tags=["Live Classes"])
@@ -291,6 +291,127 @@ async def list_live_classes(
         }
         for c in classes
     ]
+
+
+# ── Live Session Requests ─────────────────────────────────────────────────────
+
+class CreateSessionRequest(BaseModel):
+    subject: str
+    topic: Optional[str] = None
+    message: Optional[str] = None
+    preferred_time: Optional[datetime] = None
+
+
+class UpdateSessionRequest(BaseModel):
+    status: LiveSessionRequestStatus
+    linked_class_id: Optional[str] = None
+
+
+def _request_dict(req: LiveSessionRequest, student_name: str = None) -> dict:
+    return {
+        "id": str(req.id),
+        "student_id": str(req.student_id),
+        "student_name": student_name,
+        "subject": req.subject,
+        "topic": req.topic,
+        "message": req.message,
+        "preferred_time": req.preferred_time,
+        "status": req.status.value if hasattr(req.status, "value") else req.status,
+        "linked_class_id": str(req.linked_class_id) if req.linked_class_id else None,
+        "created_at": req.created_at,
+        "reviewed_at": req.reviewed_at,
+    }
+
+
+@router.post("/requests", status_code=201)
+async def create_session_request(
+    payload: CreateSessionRequest,
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """Student requests a live session on a subject."""
+    req = LiveSessionRequest(
+        student_id=current_user["sub"],
+        subject=payload.subject.strip(),
+        topic=payload.topic,
+        message=payload.message,
+        preferred_time=payload.preferred_time,
+    )
+    db.add(req)
+    await db.flush()
+    return _request_dict(req)
+
+
+@router.get("/requests/mine")
+async def my_session_requests(
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """Student's own live session requests."""
+    result = await db.execute(
+        select(LiveSessionRequest)
+        .where(LiveSessionRequest.student_id == current_user["sub"])
+        .order_by(LiveSessionRequest.created_at.desc())
+    )
+    return [_request_dict(r) for r in result.scalars().all()]
+
+
+@router.get("/requests")
+async def list_session_requests(
+    status: Optional[str] = None,
+    subject: Optional[str] = None,
+    limit: int = 30,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Teachers and admins view pending live session requests."""
+    role = current_user.get("role")
+    if role not in ("teacher", "admin"):
+        raise HTTPException(status_code=403, detail="Teachers and admins only")
+
+    query = select(LiveSessionRequest).order_by(LiveSessionRequest.created_at.desc()).limit(limit)
+    if status:
+        query = query.where(LiveSessionRequest.status == status)
+    if subject:
+        query = query.where(LiveSessionRequest.subject.ilike(f"%{subject}%"))
+
+    result = await db.execute(query)
+    requests = result.scalars().all()
+
+    student_ids = list({str(r.student_id) for r in requests})
+    users_res = await db.execute(select(User).where(User.id.in_(student_ids)))
+    names_map = {str(u.id): u.full_name for u in users_res.scalars().all()}
+
+    return [_request_dict(r, names_map.get(str(r.student_id))) for r in requests]
+
+
+@router.patch("/requests/{request_id}")
+async def update_session_request(
+    request_id: str,
+    payload: UpdateSessionRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Teacher or admin updates request status (approve, schedule, dismiss)."""
+    role = current_user.get("role")
+    if role not in ("teacher", "admin"):
+        raise HTTPException(status_code=403, detail="Teachers and admins only")
+
+    result = await db.execute(select(LiveSessionRequest).where(LiveSessionRequest.id == request_id))
+    req = result.scalar_one_or_none()
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    req.status = payload.status
+    req.reviewed_by = current_user["sub"]
+    req.reviewed_at = datetime.utcnow()
+    if payload.linked_class_id:
+        req.linked_class_id = payload.linked_class_id
+    await db.flush()
+
+    student_res = await db.execute(select(User).where(User.id == req.student_id))
+    student = student_res.scalar_one_or_none()
+    return _request_dict(req, student.full_name if student else None)
 
 
 @router.get("/{class_id}")
