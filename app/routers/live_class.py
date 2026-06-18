@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from app.core.database import get_db
-from app.core.deps import require_teacher, require_student, get_current_user
+from app.core.deps import require_teacher, require_teacher_or_admin, require_student, get_current_user
 from app.core.config import settings
 from app.models.live_class import LiveClass, ClassAttendance, LiveSessionRequest, LiveSessionRequestStatus
 from app.models.user import StudentProfile, User
@@ -46,6 +46,13 @@ def _user_uid(user_id: str) -> int:
     return int(hashlib.md5(user_id.encode()).hexdigest()[:8], 16) % (2**31)
 
 
+def _can_manage_class(current_user: dict, live_class: LiveClass) -> bool:
+    role = current_user.get("role")
+    if role == "admin":
+        return True
+    return str(live_class.teacher_id) == current_user["sub"]
+
+
 class CreateClassRequest(BaseModel):
     subject: str
     title: str
@@ -66,7 +73,7 @@ class ClassResponse(BaseModel):
 @router.post("/", response_model=ClassResponse)
 async def create_class(
     payload: CreateClassRequest,
-    current_user: dict = Depends(require_teacher),
+    current_user: dict = Depends(require_teacher_or_admin),
     db: AsyncSession = Depends(get_db),
 ):
     room_id = f"room-{uuid.uuid4().hex[:12]}"
@@ -94,7 +101,7 @@ async def create_class(
 @router.post("/{class_id}/start")
 async def start_class(
     class_id: str,
-    current_user: dict = Depends(require_teacher),
+    current_user: dict = Depends(require_teacher_or_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """Start a class and notify ONLY students subscribed to that subject."""
@@ -102,7 +109,7 @@ async def start_class(
     live_class = result.scalar_one_or_none()
     if not live_class:
         raise HTTPException(status_code=404, detail="Class not found")
-    if str(live_class.teacher_id) != current_user["sub"]:
+    if not _can_manage_class(current_user, live_class):
         raise HTTPException(status_code=403, detail="Not your class")
 
     live_class.is_live = True
@@ -463,7 +470,7 @@ async def get_class_detail(
 async def end_class(
     class_id: str,
     recording_url: Optional[str] = None,
-    current_user: dict = Depends(require_teacher),
+    current_user: dict = Depends(require_teacher_or_admin),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -475,7 +482,7 @@ async def end_class(
     live_class = result.scalar_one_or_none()
     if not live_class:
         raise HTTPException(status_code=404, detail="Class not found")
-    if str(live_class.teacher_id) != current_user["sub"]:
+    if not _can_manage_class(current_user, live_class):
         raise HTTPException(status_code=403, detail="Not your class")
 
     live_class.is_live = False

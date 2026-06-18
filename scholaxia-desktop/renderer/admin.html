@@ -115,8 +115,24 @@
             <option value="past">Past</option>
           </select>
           <button class="btn-sm" onclick="loadLiveClasses()">Refresh</button>
+          <button class="btn-sm secondary" onclick="adminRemoveAllLiveClasses()">Remove all</button>
         </div>
       </div>
+
+      <div class="host-class-card">
+        <h3>Host a live class</h3>
+        <p class="host-hint">Classes only appear for students after you create and start them here (or a teacher hosts one).</p>
+        <div class="host-form">
+          <input type="text" id="host-title" placeholder="Class title (e.g. Algebra revision)" />
+          <input type="text" id="host-subject" placeholder="Subject (e.g. Mathematics)" />
+          <div class="host-actions">
+            <button type="button" class="btn-sm" onclick="adminHostClass(false)">Schedule</button>
+            <button type="button" class="btn-sm primary" onclick="adminHostClass(true)">Go live now</button>
+          </div>
+        </div>
+        <p id="host-error" class="error-msg"></p>
+      </div>
+
       <div id="live-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
     </section>
 

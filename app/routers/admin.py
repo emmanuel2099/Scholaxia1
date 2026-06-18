@@ -573,6 +573,181 @@ async def admin_delete_community_post(
     await db.flush()
 
 
+# ── Live class management ───────────────────────────────────────────────────────
+
+import uuid as uuid_lib
+from sqlalchemy import delete, update, func
+from app.models.live_class import LiveClass, ClassAttendance, LiveSessionRequest
+from app.models.wallet import WalletTransaction
+from app.models.review_report import TeacherReview
+from app.services.notification_service import send_subject_notification
+
+
+class AdminHostLiveClassRequest(BaseModel):
+    title: str
+    subject: str
+    description: Optional[str] = None
+    start_now: bool = False
+
+
+@router.post("/live-classes", status_code=status.HTTP_201_CREATED)
+async def admin_host_live_class(
+    payload: AdminHostLiveClassRequest,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin hosts a live class (create, optionally go live immediately)."""
+    title = payload.title.strip()
+    subject = payload.subject.strip()
+    if not title or not subject:
+        raise HTTPException(status_code=400, detail="Title and subject are required")
+
+    room_id = f"room-{uuid_lib.uuid4().hex[:12]}"
+    live_class = LiveClass(
+        teacher_id=current_user["sub"],
+        subject=subject,
+        title=title,
+        description=payload.description,
+        start_time=datetime.utcnow(),
+        room_id=room_id,
+        is_live=payload.start_now,
+    )
+    db.add(live_class)
+    await db.flush()
+
+    if payload.start_now:
+        await send_subject_notification(
+            db=db,
+            subject=live_class.subject,
+            title="Live class starting now",
+            body=f"A {live_class.subject} live class is starting now.",
+            notification_type="live_class",
+            data={"class_id": str(live_class.id), "room_id": live_class.room_id},
+        )
+
+    return {
+        "id": str(live_class.id),
+        "title": live_class.title,
+        "subject": live_class.subject,
+        "is_live": live_class.is_live,
+        "room_id": live_class.room_id,
+        "start_time": live_class.start_time,
+    }
+
+
+@router.post("/live-classes/{class_id}/start")
+async def admin_start_live_class(
+    class_id: str,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(LiveClass).where(LiveClass.id == class_id))
+    live_class = result.scalar_one_or_none()
+    if not live_class:
+        raise HTTPException(status_code=404, detail="Class not found")
+
+    live_class.is_live = True
+    await send_subject_notification(
+        db=db,
+        subject=live_class.subject,
+        title="Live class starting now",
+        body=f"A {live_class.subject} live class is starting now.",
+        notification_type="live_class",
+        data={"class_id": str(live_class.id), "room_id": live_class.room_id},
+    )
+    return {"message": "Class started", "room_id": live_class.room_id}
+
+
+@router.post("/live-classes/{class_id}/end")
+async def admin_end_live_class(
+    class_id: str,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(LiveClass).where(LiveClass.id == class_id))
+    live_class = result.scalar_one_or_none()
+    if not live_class:
+        raise HTTPException(status_code=404, detail="Class not found")
+
+    live_class.is_live = False
+    live_class.end_time = datetime.utcnow()
+    att_res = await db.execute(
+        select(ClassAttendance).where(
+            ClassAttendance.live_class_id == class_id,
+            ClassAttendance.left_at.is_(None),
+        )
+    )
+    for att in att_res.scalars().all():
+        att.left_at = datetime.utcnow()
+    return {"message": "Class ended", "class_id": class_id}
+
+
+async def _clear_live_class_references(db: AsyncSession, class_id: Optional[str] = None) -> None:
+    if class_id:
+        await db.execute(
+            update(LiveSessionRequest)
+            .where(LiveSessionRequest.linked_class_id == class_id)
+            .values(linked_class_id=None)
+        )
+        await db.execute(
+            update(WalletTransaction)
+            .where(WalletTransaction.live_class_id == class_id)
+            .values(live_class_id=None)
+        )
+        await db.execute(
+            update(TeacherReview)
+            .where(TeacherReview.live_class_id == class_id)
+            .values(live_class_id=None)
+        )
+        await db.execute(delete(ClassAttendance).where(ClassAttendance.live_class_id == class_id))
+        await db.execute(delete(LiveClass).where(LiveClass.id == class_id))
+        return
+
+    await db.execute(
+        update(LiveSessionRequest)
+        .where(LiveSessionRequest.linked_class_id.isnot(None))
+        .values(linked_class_id=None)
+    )
+    await db.execute(
+        update(WalletTransaction)
+        .where(WalletTransaction.live_class_id.isnot(None))
+        .values(live_class_id=None)
+    )
+    await db.execute(
+        update(TeacherReview)
+        .where(TeacherReview.live_class_id.isnot(None))
+        .values(live_class_id=None)
+    )
+    await db.execute(delete(ClassAttendance))
+    await db.execute(delete(LiveClass))
+
+
+@router.delete("/live-classes/remove-all")
+async def remove_all_live_classes(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove every live class record (clears test/dummy data)."""
+    count_res = await db.execute(select(func.count()).select_from(LiveClass))
+    total = count_res.scalar() or 0
+    await _clear_live_class_references(db)
+    await db.flush()
+    return {"removed": total}
+
+
+@router.delete("/live-classes/{class_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_live_class(
+    class_id: str,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(LiveClass).where(LiveClass.id == class_id))
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Class not found")
+    await _clear_live_class_references(db, class_id)
+    await db.flush()
+
+
 # ── Kind (Kids) Learners ──────────────────────────────────────────────────────
 
 class KindAdminResponse(BaseModel):

@@ -167,6 +167,25 @@ body {
 
 .actions { display: flex; gap: 6px; flex-wrap: wrap; }
 
+.host-class-card {
+  background: #0d1f14; border: 1px solid #2d5a3d; border-radius: 12px;
+  padding: 18px; margin-bottom: 18px;
+}
+.host-class-card h3 { color: #7dd3a0; margin-bottom: 6px; font-size: 1rem; }
+.host-hint { color: #8aa896; font-size: .82rem; margin-bottom: 14px; }
+.host-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: center; }
+.host-form input {
+  padding: 10px 12px; border-radius: 8px; border: 1px solid #2d5a3d;
+  background: #12261a; color: #fff; font-size: .9rem;
+}
+.host-actions { display: flex; gap: 8px; }
+.btn-sm.primary { background: #1e4d32; border-color: #3d8f5a; color: #fff; }
+.error-msg { color: #fca5a5; font-size: .82rem; margin-top: 8px; min-height: 1em; }
+
+@media (max-width: 900px) {
+  .host-form { grid-template-columns: 1fr; }
+}
+
 /* CBT builder */
 .cbt-type-tabs {
   display: flex; gap: 10px; margin-bottom: 16px;

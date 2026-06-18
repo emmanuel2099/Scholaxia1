@@ -54,7 +54,7 @@ async function adminLogin(e) {
     var data = await res.json();
     if (!res.ok) { err.textContent = formatApiError(data.detail) || "Login failed."; return; }
     if (data.role !== "admin") {
-      err.textContent = "This portal is for admins only.";
+      err.textContent = "This email is a " + data.role + " account, not an admin. Open the Register tab to create an admin account (use a different email if this one is already taken).";
       return;
     }
     saveAdminSession(data, email, data.user && data.user.full_name);
@@ -270,6 +270,65 @@ async function loadKind() {
 }
 
 /* ── Live classes ── */
+async function adminHostClass(startNow) {
+  var title = document.getElementById("host-title").value.trim();
+  var subject = document.getElementById("host-subject").value.trim();
+  var err = document.getElementById("host-error");
+  err.textContent = "";
+  if (!title || !subject) {
+    err.textContent = "Enter a title and subject.";
+    return;
+  }
+  try {
+    var created = await adminApi("/api/v1/admin/live-classes", {
+      method: "POST",
+      body: JSON.stringify({
+        title: title,
+        subject: subject,
+        start_now: startNow,
+      }),
+    });
+    if (!created || !created.id) throw new Error("Could not create class.");
+    document.getElementById("host-title").value = "";
+    document.getElementById("host-subject").value = "";
+    loadLiveClasses();
+    alert(startNow ? "Class is live! Students can join from Live Class." : "Class scheduled.");
+  } catch (e) {
+    err.textContent = e.message;
+  }
+}
+
+async function adminStartClass(id) {
+  try {
+    await adminApi("/api/v1/admin/live-classes/" + id + "/start", { method: "POST" });
+    loadLiveClasses();
+  } catch (e) { alert(e.message); }
+}
+
+async function adminEndClass(id) {
+  try {
+    await adminApi("/api/v1/admin/live-classes/" + id + "/end", { method: "POST" });
+    loadLiveClasses();
+  } catch (e) { alert(e.message); }
+}
+
+async function adminDeleteLiveClass(id) {
+  if (!confirm("Delete this class permanently?")) return;
+  try {
+    await adminApi("/api/v1/admin/live-classes/" + id, { method: "DELETE" });
+    loadLiveClasses();
+  } catch (e) { alert(e.message); }
+}
+
+async function adminRemoveAllLiveClasses() {
+  if (!confirm("Remove ALL live classes from the platform? Students will see an empty list until someone hosts a new class.")) return;
+  try {
+    var res = await adminApi("/api/v1/admin/live-classes/remove-all", { method: "DELETE" });
+    loadLiveClasses();
+    alert("Removed " + (res && res.removed != null ? res.removed : 0) + " class(es).");
+  } catch (e) { alert(e.message); }
+}
+
 async function loadLiveClasses() {
   var el = document.getElementById("live-table");
   var status = document.getElementById("live-filter").value;
@@ -279,12 +338,20 @@ async function loadLiveClasses() {
     if (status) url += "&status=" + status;
     var rows = await adminApi(url);
     if (!rows) return;
-    if (!rows.length) { el.innerHTML = '<div class="empty-state">No live classes found.</div>'; return; }
-    el.innerHTML = '<table class="data-table"><thead><tr><th>Title</th><th>Subject</th><th>Teacher</th><th>Start</th><th>Status</th></tr></thead><tbody>' +
+    if (!rows.length) { el.innerHTML = '<div class="empty-state">No live classes. Use "Host a live class" above to create one.</div>'; return; }
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Title</th><th>Subject</th><th>Teacher</th><th>Start</th><th>Status</th><th>Actions</th></tr></thead><tbody>' +
       rows.map(function (c) {
         var badge = c.is_live ? '<span class="badge live">LIVE</span>' : '<span class="badge muted">Scheduled</span>';
+        var actions = '<div class="actions">';
+        if (!c.is_live) {
+          actions += '<button class="btn-sm" onclick="adminStartClass(\'' + c.id + '\')">Start</button>';
+        } else {
+          actions += '<button class="btn-sm secondary" onclick="adminEndClass(\'' + c.id + '\')">End</button>';
+        }
+        actions += '<button class="btn-sm secondary" onclick="adminDeleteLiveClass(\'' + c.id + '\')">Delete</button></div>';
         return '<tr><td>' + escHtml(c.title) + '</td><td>' + escHtml(c.subject) + '</td>' +
-          '<td>' + escHtml(c.teacher_name) + '</td><td>' + fmtDate(c.start_time) + '</td><td>' + badge + '</td></tr>';
+          '<td>' + escHtml(c.teacher_name) + '</td><td>' + fmtDate(c.start_time) + '</td><td>' + badge + '</td>' +
+          '<td>' + actions + '</td></tr>';
       }).join("") + '</tbody></table>';
   } catch (e) {
     el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + '</div>';
