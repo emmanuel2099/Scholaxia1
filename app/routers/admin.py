@@ -5,6 +5,7 @@ from pydantic import BaseModel, EmailStr
 from datetime import datetime
 from typing import Optional
 from app.core.database import get_db
+from app.core.datetime_utils import naive_utc_now
 from app.core.deps import require_admin
 from app.core.security import hash_password, create_access_token, create_refresh_token
 from app.models.user import User, UserRole, TeacherProfile, StudentProfile, KindProfile
@@ -608,7 +609,7 @@ async def admin_host_live_class(
         subject=subject,
         title=title,
         description=payload.description,
-        start_time=datetime.utcnow(),
+        start_time=naive_utc_now(),
         room_id=room_id,
         is_live=payload.start_now,
     )
@@ -676,7 +677,7 @@ async def admin_end_live_class(
         raise HTTPException(status_code=404, detail="Class not found")
 
     live_class.is_live = False
-    live_class.end_time = datetime.utcnow()
+    live_class.end_time = naive_utc_now()
     att_res = await db.execute(
         select(ClassAttendance).where(
             ClassAttendance.live_class_id == class_id,
@@ -684,7 +685,7 @@ async def admin_end_live_class(
         )
     )
     for att in att_res.scalars().all():
-        att.left_at = datetime.utcnow()
+        att.left_at = naive_utc_now()
     return {"message": "Class ended", "class_id": class_id}
 
 

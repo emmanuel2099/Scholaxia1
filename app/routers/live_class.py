@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from app.core.database import get_db
+from app.core.datetime_utils import naive_utc_now, to_naive_utc
 from app.core.deps import require_teacher, require_teacher_or_admin, require_student, get_current_user
 from app.core.config import settings
 from app.models.live_class import LiveClass, ClassAttendance, LiveSessionRequest, LiveSessionRequestStatus
@@ -82,7 +83,7 @@ async def create_class(
         subject=payload.subject,
         title=payload.title,
         description=payload.description,
-        start_time=payload.start_time,
+        start_time=to_naive_utc(payload.start_time),
         room_id=room_id,
     )
     db.add(live_class)
@@ -245,7 +246,7 @@ async def list_live_classes(
     - status=past      → already ended (is_live=False and end_time is set)
     - omit status      → all classes
     """
-    now = datetime.utcnow()
+    now = naive_utc_now()
     query = select(LiveClass)
 
     if subject:
@@ -411,7 +412,7 @@ async def update_session_request(
 
     req.status = payload.status
     req.reviewed_by = current_user["sub"]
-    req.reviewed_at = datetime.utcnow()
+    req.reviewed_at = naive_utc_now()
     if payload.linked_class_id:
         req.linked_class_id = payload.linked_class_id
     await db.flush()
@@ -486,7 +487,7 @@ async def end_class(
         raise HTTPException(status_code=403, detail="Not your class")
 
     live_class.is_live = False
-    live_class.end_time = datetime.utcnow()
+    live_class.end_time = naive_utc_now()
     if recording_url:
         live_class.recording_url = recording_url
 
@@ -498,7 +499,7 @@ async def end_class(
         )
     )
     for att in att_res.scalars().all():
-        att.left_at = datetime.utcnow()
+        att.left_at = naive_utc_now()
 
     return {"message": "Class ended", "class_id": class_id, "end_time": live_class.end_time}
 
@@ -521,7 +522,7 @@ async def leave_class(
     if not att:
         raise HTTPException(status_code=404, detail="Attendance record not found")
 
-    att.left_at = datetime.utcnow()
+    att.left_at = naive_utc_now()
     return {"message": "Left class", "left_at": att.left_at}
 
 
