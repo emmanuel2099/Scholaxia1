@@ -39,15 +39,23 @@ function fetchTimeout(ms) {
 
 async function api(path, options) {
   options = options || {};
-  var res = await fetch(API_BASE + path, {
-    method: options.method || "GET",
-    headers: Object.assign(
-      { "Content-Type": "application/json", Authorization: "Bearer " + getToken() },
-      options.headers || {}
-    ),
-    body: options.body,
-    signal: options.signal || fetchTimeout(45000),
-  });
+  var res;
+  try {
+    res = await fetch(API_BASE + path, {
+      method: options.method || "GET",
+      headers: Object.assign(
+        { "Content-Type": "application/json", Authorization: "Bearer " + getToken() },
+        options.headers || {}
+      ),
+      body: options.body,
+      signal: options.signal || fetchTimeout(45000),
+    });
+  } catch (ex) {
+    if (ex.name === "AbortError" || ex.name === "TimeoutError") {
+      throw new Error("Request timed out. The server may be waking up — try again.");
+    }
+    throw new Error(ex.message || "Network error. Check your connection.");
+  }
   var data = await res.json().catch(function () { return {}; });
   if (res.status === 401) {
     clearSession();

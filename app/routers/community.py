@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, or_, cast, String
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
@@ -434,8 +434,10 @@ async def get_messages(
 
     # Fetch sender names in one query
     sender_ids = list({str(m.sender_id) for m in msgs})
-    users_result = await db.execute(select(User).where(User.id.in_(sender_ids)))
-    users_map = {str(u.id): u.full_name for u in users_result.scalars().all()}
+    users_map = {}
+    if sender_ids:
+        users_result = await db.execute(select(User).where(User.id.in_(sender_ids)))
+        users_map = {str(u.id): u.full_name for u in users_result.scalars().all()}
 
     return [
         {
@@ -513,6 +515,98 @@ class CreatePostRequest(BaseModel):
     cbt_exam_id: Optional[str] = None
 
 
+def _visibility_str(value) -> str:
+    if value is None:
+        return "everyone"
+    return value.value if hasattr(value, "value") else str(value)
+
+
+def _serialize_post(p, users_map: dict, liked_ids: set, viewer_id: str, role: str) -> dict:
+    show_author = not p.is_anonymous or str(p.author_id) == viewer_id or role in ("teacher", "admin")
+    return {
+        "id": str(p.id),
+        "channel_id": str(p.channel_id),
+        "author_id": str(p.author_id) if show_author else None,
+        "author_name": users_map.get(str(p.author_id), "Unknown") if show_author else "Anonymous",
+        "content": p.content,
+        "media_url": p.media_url,
+        "media_type": p.media_type,
+        "is_anonymous": p.is_anonymous,
+        "visibility": _visibility_str(p.visibility),
+        "cbt_exam_id": str(p.cbt_exam_id) if p.cbt_exam_id else None,
+        "is_pinned": p.is_pinned,
+        "like_count": p.like_count or 0,
+        "liked_by_me": str(p.id) in liked_ids,
+        "created_at": p.created_at.isoformat() if p.created_at else None,
+    }
+
+
+async def _fetch_channel_posts(
+    channel_id: str,
+    limit: int,
+    offset: int,
+    current_user: dict,
+    db: AsyncSession,
+) -> list[dict]:
+    role = current_user.get("role")
+    query = (
+        select(CommunityPost)
+        .where(CommunityPost.channel_id == channel_id, CommunityPost.is_deleted == False)  # noqa: E712
+        .order_by(CommunityPost.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    if role not in ("teacher", "admin"):
+        query = query.where(
+            or_(
+                cast(CommunityPost.visibility, String) == PostVisibility.everyone.value,
+                cast(CommunityPost.visibility, String) == PostVisibility.class_only.value,
+                CommunityPost.visibility == PostVisibility.everyone,
+                CommunityPost.visibility == PostVisibility.class_only,
+            )
+        )
+
+    result = await db.execute(query)
+    posts = result.scalars().all()
+
+    author_ids = list({str(p.author_id) for p in posts})
+    users_map = {}
+    if author_ids:
+        users_result = await db.execute(select(User).where(User.id.in_(author_ids)))
+        users_map = {str(u.id): u.full_name for u in users_result.scalars().all()}
+
+    post_ids = [str(p.id) for p in posts]
+    liked_ids: set[str] = set()
+    if post_ids:
+        likes_result = await db.execute(
+            select(PostLike).where(
+                PostLike.post_id.in_(post_ids),
+                PostLike.user_id == current_user["sub"],
+            )
+        )
+        liked_ids = {str(l.post_id) for l in likes_result.scalars().all()}
+
+    viewer_id = current_user["sub"]
+    return [_serialize_post(p, users_map, liked_ids, viewer_id, role) for p in posts]
+
+
+@router.get("/feed")
+async def community_feed(
+    limit: int = 40,
+    offset: int = 0,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Student feed — all posts from the General channel."""
+    ch_res = await db.execute(
+        select(CommunityChannel).where(CommunityChannel.channel_type == ChannelType.general)
+    )
+    channel = ch_res.scalar_one_or_none()
+    if not channel:
+        return []
+    return await _fetch_channel_posts(str(channel.id), limit, offset, current_user, db)
+
+
 @router.get("/posts")
 async def list_posts(
     channel_id: str,
@@ -524,75 +618,8 @@ async def list_posts(
     """
     GET /api/v1/community/posts?channel_id=xxx
     Returns paginated posts for a channel, newest first.
-    Filtered by visibility based on viewer's role.
-    Anonymous posts hide author identity from other students.
     """
-    role = current_user.get("role")
-
-    if role in ("teacher", "admin"):
-        query = (
-            select(CommunityPost)
-            .where(CommunityPost.channel_id == channel_id, CommunityPost.is_deleted == False)  # noqa: E712
-            .order_by(CommunityPost.created_at.desc())
-            .limit(limit).offset(offset)
-        )
-    else:
-        query = (
-            select(CommunityPost)
-            .where(
-                CommunityPost.channel_id == channel_id,
-                CommunityPost.is_deleted == False,  # noqa: E712
-                CommunityPost.visibility.in_(["everyone", "class_only"]),
-            )
-            .order_by(CommunityPost.created_at.desc())
-            .limit(limit).offset(offset)
-        )
-
-    result = await db.execute(query)
-    posts = result.scalars().all()
-
-    author_ids = list({str(p.author_id) for p in posts})
-    users_result = await db.execute(select(User).where(User.id.in_(author_ids)))
-    users_map = {str(u.id): u.full_name for u in users_result.scalars().all()}
-
-    post_ids = [str(p.id) for p in posts]
-    likes_result = await db.execute(
-        select(PostLike).where(
-            PostLike.post_id.in_(post_ids),
-            PostLike.user_id == current_user["sub"],
-        )
-    )
-    liked_ids = {str(l.post_id) for l in likes_result.scalars().all()}
-
-    viewer_id = current_user["sub"]
-
-    try:
-        return [
-            {
-                "id": str(p.id),
-                "channel_id": str(p.channel_id),
-                "author_id": str(p.author_id) if (not p.is_anonymous or str(p.author_id) == viewer_id or role in ("teacher", "admin")) else None,
-                "author_name": (
-                    users_map.get(str(p.author_id), "Unknown")
-                    if (not p.is_anonymous or str(p.author_id) == viewer_id or role in ("teacher", "admin"))
-                    else "Anonymous"
-                ),
-                "content": p.content,
-                "media_url": p.media_url,
-                "media_type": p.media_type,
-                "is_anonymous": p.is_anonymous,
-                "visibility": p.visibility,
-                "cbt_exam_id": str(p.cbt_exam_id) if p.cbt_exam_id else None,
-                "is_pinned": p.is_pinned,
-                "like_count": p.like_count,
-                "liked_by_me": str(p.id) in liked_ids,
-                "created_at": p.created_at,
-            }
-            for p in posts
-        ]
-    except Exception as e:
-        import traceback
-        raise HTTPException(status_code=500, detail=f"Serialization error: {str(e)}\n{traceback.format_exc()}")
+    return await _fetch_channel_posts(channel_id, limit, offset, current_user, db)
 
 
 @router.post("/posts", status_code=201)
@@ -644,11 +671,11 @@ async def create_post(
         "author_name": "Anonymous" if payload.is_anonymous else None,
         "content": post.content,
         "is_anonymous": post.is_anonymous,
-        "visibility": post.visibility,
+        "visibility": _visibility_str(post.visibility),
         "media_url": post.media_url,
         "media_type": post.media_type,
         "cbt_exam_id": str(post.cbt_exam_id) if post.cbt_exam_id else None,
-        "created_at": post.created_at,
+        "created_at": post.created_at.isoformat() if post.created_at else None,
     }
 
 
