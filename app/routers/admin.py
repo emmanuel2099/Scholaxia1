@@ -1,4 +1,3 @@
-import os
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -22,7 +21,6 @@ class AdminRegisterRequest(BaseModel):
     email: EmailStr
     password: str
     full_name: str
-    invite_code: str
 
 
 class TokenResponse(BaseModel):
@@ -34,10 +32,7 @@ class TokenResponse(BaseModel):
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def admin_register(payload: AdminRegisterRequest, db: AsyncSession = Depends(get_db)):
-    """Admin creates their own account using a secret invite code."""
-    invite_code = os.getenv("ADMIN_INVITE_CODE", "SCHOLAXIA_ADMIN_2026")
-    if payload.invite_code != invite_code:
-        raise HTTPException(status_code=403, detail="Invalid invite code")
+    """Admin creates their own account."""
     if len(payload.password) > 72:
         raise HTTPException(status_code=400, detail="Password must be 72 characters or less")
     existing = await db.execute(select(User).where(User.email == payload.email))
