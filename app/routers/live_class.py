@@ -151,6 +151,9 @@ async def join_class(
     expires_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
 
     return {
+        "class_id": str(live_class.id),
+        "title": live_class.title,
+        "subject": live_class.subject,
         "room_id": live_class.room_id,
         "agora_token": token,
         "uid": uid,

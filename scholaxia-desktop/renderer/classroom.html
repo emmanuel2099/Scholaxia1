@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://download.agora.io; script-src-attr 'unsafe-inline'; connect-src 'self' https://scholaxia1.onrender.com wss://scholaxia1.onrender.com http://127.0.0.1:*; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self' blob: https:" />
+  <title>Live Classroom — Scholaxia</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/classroom.css" />
+</head>
+<body>
+
+<div class="classroom-shell">
+  <header class="classroom-top">
+    <button type="button" class="btn-back" onclick="leaveClassroom()">&#8592; Leave</button>
+    <div class="classroom-title-wrap">
+      <span class="live-pill">LIVE</span>
+      <div>
+        <h1 id="cr-title">Live Class</h1>
+        <p id="cr-meta">—</p>
+      </div>
+    </div>
+    <span id="cr-status" class="cr-status">Connecting…</span>
+  </header>
+
+  <main class="classroom-main">
+    <section class="video-panel">
+      <div id="video-stage" class="video-stage">
+        <div id="video-local" class="video-tile local hidden"></div>
+        <div id="video-remote" class="video-remote"></div>
+        <div id="video-placeholder" class="video-placeholder">
+          <div class="ph-icon">&#127909;</div>
+          <p id="video-placeholder-text">Connecting to the live room…</p>
+        </div>
+      </div>
+      <div class="video-controls">
+        <button type="button" id="btn-mic" class="vc-btn" onclick="toggleMic()" title="Microphone">&#127908; Mic</button>
+        <button type="button" id="btn-cam" class="vc-btn" onclick="toggleCam()" title="Camera">&#128247; Cam</button>
+        <button type="button" class="vc-btn" onclick="raiseHand()">&#9995; Raise hand</button>
+      </div>
+    </section>
+
+    <aside class="chat-panel">
+      <h2>Class chat</h2>
+      <div id="chat-log" class="chat-log"></div>
+      <form class="chat-form" onsubmit="sendChatMessage(event)">
+        <input type="text" id="chat-input" placeholder="Say something to the class…" autocomplete="off" />
+        <button type="submit">Send</button>
+      </form>
+    </aside>
+  </main>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/classroom.js"></script>
+</body>
+</html>

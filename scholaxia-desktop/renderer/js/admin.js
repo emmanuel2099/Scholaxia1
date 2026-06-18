@@ -304,7 +304,13 @@ async function adminHostClass(startNow) {
     document.getElementById("host-subject").value = "";
     err.textContent = "";
     loadLiveClasses();
-    alert(startNow ? "Class is live! Students can join from Live Class." : "Class scheduled.");
+    if (startNow && created && created.id) {
+      if (confirm("Class is live! Open the classroom now?")) {
+        adminEnterClassroom(created.id, title, subject);
+      }
+    } else {
+      alert("Class scheduled.");
+    }
   } catch (e) {
     err.textContent = e.message;
   } finally {
@@ -325,6 +331,29 @@ async function adminEndClass(id) {
     await adminApi("/api/v1/admin/live-classes/" + id + "/end", { method: "POST" });
     loadLiveClasses();
   } catch (e) { alert(e.message); }
+}
+
+async function adminEnterClassroom(classId, title, subject) {
+  try {
+    var token = await adminApi("/api/v1/live-classes/" + classId + "/token");
+    if (!token) return;
+    localStorage.setItem("live_session", JSON.stringify({
+      class_id: classId,
+      classId: classId,
+      room_id: token.channel_id,
+      channel_id: token.channel_id,
+      agora_token: token.token,
+      uid: token.uid,
+      app_id: token.app_id,
+      title: title || "Live Class",
+      subject: subject || "",
+      teacher_name: getAdminUser().name,
+      role: "teacher",
+    }));
+    window.location.href = "classroom.html";
+  } catch (e) {
+    alert(e.message);
+  }
 }
 
 async function adminDeleteLiveClass(id) {
@@ -362,6 +391,7 @@ async function loadLiveClasses() {
           actions += '<button class="btn-sm" onclick="adminStartClass(\'' + c.id + '\')">Start</button>';
         } else {
           actions += '<button class="btn-sm secondary" onclick="adminEndClass(\'' + c.id + '\')">End</button>';
+          actions += '<button class="btn-sm" onclick="adminEnterClassroom(\'' + c.id + '\', \'' + escHtml(c.title).replace(/'/g, "\\'") + '\', \'' + escHtml(c.subject).replace(/'/g, "\\'") + '\')">Enter</button>';
         }
         actions += '<button class="btn-sm secondary" onclick="adminDeleteLiveClass(\'' + c.id + '\')">Delete</button></div>';
         return '<tr><td>' + escHtml(c.title) + '</td><td>' + escHtml(c.subject) + '</td>' +

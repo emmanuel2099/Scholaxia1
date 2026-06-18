@@ -4,6 +4,7 @@ const PAGE_TITLES = {
   cbt: "CBT Practice",
   sia: "Ask Sia",
   community: "Community",
+  "community-create": "New Post",
   profile: "Profile",
 };
 
@@ -52,8 +53,12 @@ function showPage(page) {
   document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
   document.querySelectorAll(".nav-item").forEach((n) => n.classList.remove("active"));
   document.getElementById(`page-${page}`).classList.add("active");
-  document.querySelector(`[data-page="${page}"]`).classList.add("active");
-  document.getElementById("page-title").textContent = PAGE_TITLES[page];
+  const navPage = page === "community-create" ? "community" : page;
+  const navEl = document.querySelector(`[data-page="${navPage}"]`);
+  if (navEl) navEl.classList.add("active");
+  document.getElementById("page-title").textContent = PAGE_TITLES[page] || page;
+  const fab = document.getElementById("community-fab");
+  if (fab) fab.style.display = page === "community" ? "flex" : "none";
   refreshPage();
 }
 
@@ -62,7 +67,12 @@ function refreshPage() {
   else if (currentPage === "school") loadSchoolExams();
   else if (currentPage === "cbt") loadCbtExams();
   else if (currentPage === "sia") loadSia();
-  else if (currentPage === "community") loadCommunity();
+  else if (currentPage === "community") {
+    var pending = communityPendingPost;
+    communityPendingPost = null;
+    loadCommunity(pending);
+  }
+  else if (currentPage === "community-create") initCommunityCreate();
   else if (currentPage === "profile") loadProfile();
 }
 
@@ -100,7 +110,7 @@ function renderLive(sessions) {
       <div class="live-pill">LIVE</div>
       <h3>${escHtml(s.title)}</h3>
       <p class="meta">${escHtml(s.subject)} · ${escHtml(s.teacher_name)}</p>
-      <button class="btn-join" onclick="joinClass('${s.id}')">Join Class</button>
+      <button class="btn-join" data-id="${s.id}" data-title="${escHtml(s.title)}" data-subject="${escHtml(s.subject)}" data-teacher="${escHtml(s.teacher_name)}" onclick="joinClass(this)">Join Class</button>
     </div>
   `).join("");
 }
@@ -120,10 +130,25 @@ function renderUpcoming(sessions) {
   `).join("");
 }
 
-async function joinClass(classId) {
+async function joinClass(btn) {
+  const classId = typeof btn === "string" ? btn : btn.dataset.id;
+  const card = typeof btn === "string" ? null : btn;
   try {
     const data = await api(`/api/v1/live-classes/${classId}/join`, { method: "POST" });
-    alert(`Joined "${data.title || "class"}"!\n\nRoom: ${data.room_id || classId}\n\nLive video opens in the web classroom when available.`);
+    localStorage.setItem("live_session", JSON.stringify({
+      class_id: classId,
+      classId: classId,
+      room_id: data.room_id,
+      channel_id: data.channel_id,
+      agora_token: data.agora_token,
+      uid: data.uid,
+      app_id: data.app_id,
+      title: data.title || (card && card.dataset.title) || "Live Class",
+      subject: data.subject || (card && card.dataset.subject) || "",
+      teacher_name: (card && card.dataset.teacher) || "",
+      role: "student",
+    }));
+    window.location.href = "classroom.html";
   } catch (e) {
     alert(e.message);
   }
