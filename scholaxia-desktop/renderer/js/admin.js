@@ -279,9 +279,20 @@ async function adminHostClass(startNow) {
     err.textContent = "Enter a title and subject.";
     return;
   }
+  if (!getAdminToken()) {
+    err.textContent = "Session expired. Please sign in again.";
+    return;
+  }
+  var scheduleBtn = document.querySelector(".host-actions .btn-sm:not(.primary)");
+  var liveBtn = document.querySelector(".host-actions .btn-sm.primary");
+  if (scheduleBtn) scheduleBtn.disabled = true;
+  if (liveBtn) liveBtn.disabled = true;
+  err.textContent = "Connecting to server…";
   try {
+    await wakeAdminServer();
     var created = await adminApi("/api/v1/admin/live-classes", {
       method: "POST",
+      timeout: 120000,
       body: JSON.stringify({
         title: title,
         subject: subject,
@@ -291,10 +302,14 @@ async function adminHostClass(startNow) {
     if (!created || !created.id) throw new Error("Could not create class.");
     document.getElementById("host-title").value = "";
     document.getElementById("host-subject").value = "";
+    err.textContent = "";
     loadLiveClasses();
     alert(startNow ? "Class is live! Students can join from Live Class." : "Class scheduled.");
   } catch (e) {
     err.textContent = e.message;
+  } finally {
+    if (scheduleBtn) scheduleBtn.disabled = false;
+    if (liveBtn) liveBtn.disabled = false;
   }
 }
 

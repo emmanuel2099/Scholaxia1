@@ -39,25 +39,36 @@ function formatApiError(detail) {
 }
 
 function fetchTimeout(ms) {
-  if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) {
-    return AbortSignal.timeout(ms);
-  }
   var ctrl = new AbortController();
   setTimeout(function () { ctrl.abort(); }, ms);
   return ctrl.signal;
 }
 
+async function wakeAdminServer() {
+  try {
+    await fetch(API_BASE + "/health", { signal: fetchTimeout(120000) });
+  } catch (e) { /* server may still be waking */ }
+}
+
 async function adminApi(path, options) {
   options = options || {};
-  var res = await fetch(API_BASE + path, {
-    method: options.method || "GET",
-    headers: Object.assign(
-      { "Content-Type": "application/json", Authorization: "Bearer " + getAdminToken() },
-      options.headers || {}
-    ),
-    body: options.body,
-    signal: options.signal || fetchTimeout(45000),
-  });
+  var res;
+  try {
+    res = await fetch(API_BASE + path, {
+      method: options.method || "GET",
+      headers: Object.assign(
+        { "Content-Type": "application/json", Authorization: "Bearer " + getAdminToken() },
+        options.headers || {}
+      ),
+      body: options.body,
+      signal: options.signal || fetchTimeout(options.timeout || 90000),
+    });
+  } catch (ex) {
+    if (ex.name === "AbortError") {
+      throw new Error("Request timed out. The server may be waking up — try again.");
+    }
+    throw new Error("Could not reach the server. Check your internet and try again.");
+  }
   if (res.status === 204) return null;
   var data = await res.json().catch(function () { return {}; });
   if (res.status === 401) {

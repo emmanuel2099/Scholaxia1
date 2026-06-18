@@ -616,14 +616,17 @@ async def admin_host_live_class(
     await db.flush()
 
     if payload.start_now:
-        await send_subject_notification(
-            db=db,
-            subject=live_class.subject,
-            title="Live class starting now",
-            body=f"A {live_class.subject} live class is starting now.",
-            notification_type="live_class",
-            data={"class_id": str(live_class.id), "room_id": live_class.room_id},
-        )
+        try:
+            await send_subject_notification(
+                db=db,
+                subject=live_class.subject,
+                title="Live class starting now",
+                body=f"A {live_class.subject} live class is starting now.",
+                notification_type="live_class",
+                data={"class_id": str(live_class.id), "room_id": live_class.room_id},
+            )
+        except Exception:
+            pass  # class is still live even if notifications fail
 
     return {
         "id": str(live_class.id),
@@ -647,14 +650,17 @@ async def admin_start_live_class(
         raise HTTPException(status_code=404, detail="Class not found")
 
     live_class.is_live = True
-    await send_subject_notification(
-        db=db,
-        subject=live_class.subject,
-        title="Live class starting now",
-        body=f"A {live_class.subject} live class is starting now.",
-        notification_type="live_class",
-        data={"class_id": str(live_class.id), "room_id": live_class.room_id},
-    )
+    try:
+        await send_subject_notification(
+            db=db,
+            subject=live_class.subject,
+            title="Live class starting now",
+            body=f"A {live_class.subject} live class is starting now.",
+            notification_type="live_class",
+            data={"class_id": str(live_class.id), "room_id": live_class.room_id},
+        )
+    except Exception:
+        pass
     return {"message": "Class started", "room_id": live_class.room_id}
 
 
