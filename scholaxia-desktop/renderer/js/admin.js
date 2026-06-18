@@ -146,8 +146,9 @@ async function loadStudents() {
   var el = document.getElementById("students-table");
   el.innerHTML = '<div class="loading">Loading…</div>';
   try {
-    var rows = await adminApi("/api/v1/admin/students");
+    var rows = await adminApi("/api/v1/admin/students?active_only=true");
     if (!rows) return;
+    rows = rows.filter(function (s) { return s.is_active; });
     if (!rows.length) { el.innerHTML = '<div class="empty-state">No students yet.</div>'; return; }
     el.innerHTML = '<table class="data-table"><thead><tr><th>Name</th><th>Email</th><th>Exam</th><th>Level</th><th>Subjects</th><th>Status</th><th></th></tr></thead><tbody>' +
       rows.map(function (s) {
@@ -166,20 +167,28 @@ async function loadStudents() {
   }
 }
 
+async function refreshDashboardStats() {
+  if (currentAdminPage === "dashboard") {
+    await loadDashboard();
+  }
+}
+
 async function deleteStudent(id) {
-  if (!confirm("Remove this student? They will not be able to log in.")) return;
+  if (!confirm("Delete this student permanently? They will be removed from the list.")) return;
   try {
     await adminApi("/api/v1/admin/students/" + id, { method: "DELETE" });
     loadStudents();
+    refreshDashboardStats();
   } catch (e) { alert(e.message); }
 }
 
 async function removeAllStudents() {
-  if (!confirm("Remove ALL students? This disables every student account.")) return;
+  if (!confirm("DELETE ALL students permanently? This cannot be undone. Every student will be removed from the list.")) return;
   try {
     var r = await adminApi("/api/v1/admin/students/remove-all", { method: "POST" });
-    alert("Removed " + (r.removed || 0) + " student(s).");
+    alert("Deleted " + (r.removed || 0) + " student(s).");
     loadStudents();
+    refreshDashboardStats();
   } catch (e) { alert(e.message); }
 }
 

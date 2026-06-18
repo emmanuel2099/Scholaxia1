@@ -2,25 +2,30 @@
 WebSocket handler for live class real-time features:
 - Chat
 - Whiteboard sync (teacher always has access; students need teacher grant)
-- Raise hand
+- Raise hand + teacher grants mic
 - Polls
-- Teacher grants/revokes student whiteboard access
 """
 from fastapi import WebSocket, WebSocketDisconnect
-from typing import Dict, List, Set
+from typing import Dict, List
 import json
+
+from app.services.live_class_room import (
+    grant_whiteboard,
+    revoke_whiteboard,
+    has_whiteboard_access,
+    grant_mic,
+    revoke_mic,
+    cleanup_room,
+)
 
 # room_id -> list of connected websockets with metadata
 rooms: Dict[str, List[dict]] = {}
-# room_id -> set of student user_ids who have whiteboard access
-whiteboard_access: Dict[str, Set[str]] = {}
 
 
 async def connect(room_id: str, websocket: WebSocket, user_id: str, role: str):
     await websocket.accept()
     if room_id not in rooms:
         rooms[room_id] = []
-        whiteboard_access[room_id] = set()
     rooms[room_id].append({"ws": websocket, "user_id": user_id, "role": role})
 
 
@@ -29,7 +34,7 @@ def disconnect(room_id: str, websocket: WebSocket):
         rooms[room_id] = [c for c in rooms[room_id] if c["ws"] != websocket]
         if not rooms[room_id]:
             del rooms[room_id]
-            whiteboard_access.pop(room_id, None)
+            cleanup_room(room_id)
 
 
 async def broadcast(room_id: str, message: dict, exclude: WebSocket = None):
@@ -59,6 +64,10 @@ async def send_to_user(room_id: str, target_user_id: str, message: dict):
                 pass
 
 
+def _is_teacher_role(role: str) -> bool:
+    return role in ("teacher", "admin")
+
+
 async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, role: str):
     await connect(room_id, websocket, user_id, role)
     await broadcast(room_id, {"event": "user_joined", "user_id": user_id, "role": role}, exclude=websocket)
@@ -69,7 +78,6 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
             message = json.loads(data)
             event = message.get("event")
 
-            # ── Chat ──────────────────────────────────────────────────────────
             if event == "chat":
                 await broadcast(room_id, {
                     "event": "chat",
@@ -78,14 +86,8 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
                     "text": message.get("text", ""),
                 })
 
-            # ── Whiteboard ────────────────────────────────────────────────────
             elif event == "whiteboard":
-                # Teachers always have whiteboard access
-                # Students need explicit grant from teacher
-                has_access = (
-                    role == "teacher"
-                    or user_id in whiteboard_access.get(room_id, set())
-                )
+                has_access = _is_teacher_role(role) or has_whiteboard_access(room_id, user_id)
                 if not has_access:
                     await websocket.send_text(json.dumps({
                         "event": "error",
@@ -95,13 +97,12 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
                     await broadcast(room_id, {
                         "event": "whiteboard",
                         "user_id": user_id,
-                        "action": message.get("action"),  # draw, erase, shape, formula
+                        "action": message.get("action"),
                         "data": message.get("data"),
                     }, exclude=websocket)
 
-            # ── Teacher: Grant whiteboard access to a student ─────────────────
             elif event == "grant_whiteboard":
-                if role != "teacher":
+                if not _is_teacher_role(role):
                     await websocket.send_text(json.dumps({
                         "event": "error",
                         "message": "Only teachers can grant whiteboard access.",
@@ -109,8 +110,7 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
                 else:
                     target_id = message.get("target_user_id")
                     if target_id:
-                        whiteboard_access.setdefault(room_id, set()).add(target_id)
-                        # Notify the student they now have access
+                        grant_whiteboard(room_id, target_id)
                         await send_to_user(room_id, target_id, {
                             "event": "whiteboard_access_granted",
                             "message": "Your teacher gave you whiteboard access.",
@@ -121,9 +121,8 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
                             "has_access": True,
                         })
 
-            # ── Teacher: Revoke whiteboard access from a student ──────────────
             elif event == "revoke_whiteboard":
-                if role != "teacher":
+                if not _is_teacher_role(role):
                     await websocket.send_text(json.dumps({
                         "event": "error",
                         "message": "Only teachers can revoke whiteboard access.",
@@ -131,7 +130,7 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
                 else:
                     target_id = message.get("target_user_id")
                     if target_id:
-                        whiteboard_access.get(room_id, set()).discard(target_id)
+                        revoke_whiteboard(room_id, target_id)
                         await send_to_user(room_id, target_id, {
                             "event": "whiteboard_access_revoked",
                             "message": "Your whiteboard access has been removed.",
@@ -142,11 +141,59 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
                             "has_access": False,
                         })
 
-            # ── Raise Hand ────────────────────────────────────────────────────
-            elif event == "raise_hand":
-                await broadcast(room_id, {"event": "raise_hand", "user_id": user_id})
+            elif event == "grant_mic":
+                if not _is_teacher_role(role):
+                    await websocket.send_text(json.dumps({
+                        "event": "error",
+                        "message": "Only the teacher can allow students to speak.",
+                    }))
+                else:
+                    target_id = message.get("target_user_id")
+                    if target_id:
+                        grant_mic(room_id, target_id)
+                        await send_to_user(room_id, target_id, {
+                            "event": "mic_access_granted",
+                            "message": "Your teacher let you speak. Your mic is turning on.",
+                        })
+                        await broadcast(room_id, {
+                            "event": "mic_access_update",
+                            "user_id": target_id,
+                            "has_mic": True,
+                        })
 
-            # ── Poll Answer ───────────────────────────────────────────────────
+            elif event == "revoke_mic":
+                if not _is_teacher_role(role):
+                    await websocket.send_text(json.dumps({
+                        "event": "error",
+                        "message": "Only the teacher can mute students.",
+                    }))
+                else:
+                    target_id = message.get("target_user_id")
+                    if target_id:
+                        revoke_mic(room_id, target_id)
+                        await send_to_user(room_id, target_id, {
+                            "event": "mic_access_revoked",
+                            "message": "Your teacher muted you.",
+                        })
+                        await broadcast(room_id, {
+                            "event": "mic_access_update",
+                            "user_id": target_id,
+                            "has_mic": False,
+                        })
+
+            elif event == "raise_hand":
+                await broadcast(room_id, {
+                    "event": "raise_hand",
+                    "user_id": user_id,
+                    "name": message.get("name") or "Student",
+                })
+
+            elif event == "lower_hand":
+                await broadcast(room_id, {
+                    "event": "lower_hand",
+                    "user_id": user_id,
+                })
+
             elif event == "poll_answer":
                 await broadcast(room_id, {
                     "event": "poll_answer",

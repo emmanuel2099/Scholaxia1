@@ -13,6 +13,7 @@ from app.core.deps import require_teacher, require_teacher_or_admin, require_stu
 from app.core.config import settings
 from app.models.live_class import LiveClass, ClassAttendance, LiveSessionRequest, LiveSessionRequestStatus
 from app.models.user import StudentProfile, User
+from app.services.live_class_room import has_mic_access
 from app.services.notification_service import send_subject_notification
 
 router = APIRouter(prefix="/live-classes", tags=["Live Classes"])
@@ -176,9 +177,13 @@ async def get_agora_token(
     if not live_class:
         raise HTTPException(status_code=404, detail="Class not found")
 
-    is_teacher = str(live_class.teacher_id) == current_user["sub"]
+    is_teacher = (
+        str(live_class.teacher_id) == current_user["sub"]
+        or current_user.get("role") == "admin"
+    )
     uid = _user_uid(current_user["sub"])
-    token = _generate_agora_token(live_class.room_id, uid, is_teacher=is_teacher)
+    can_publish = is_teacher or has_mic_access(live_class.room_id, current_user["sub"])
+    token = _generate_agora_token(live_class.room_id, uid, is_teacher=can_publish)
     expires_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
 
     return {
@@ -194,7 +199,7 @@ async def get_agora_token(
 async def unmute_student(
     class_id: str,
     student_id: str,
-    current_user: dict = Depends(require_teacher),
+    current_user: dict = Depends(require_teacher_or_admin),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(

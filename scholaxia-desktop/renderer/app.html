@@ -270,24 +270,6 @@
 
         <div class="sia-compose">
 
-          <select id="sia-subject">
-
-            <option>Mathematics</option>
-
-            <option>English Language</option>
-
-            <option>Physics</option>
-
-            <option>Chemistry</option>
-
-            <option>Biology</option>
-
-            <option>Economics</option>
-
-            <option>Government</option>
-
-          </select>
-
           <input type="text" id="sia-input" placeholder="Ask Sia anything…" onkeydown="if(event.key==='Enter')sendSiaMessage()" />
 
           <button class="btn-action" onclick="sendSiaMessage()">Send</button>
@@ -308,17 +290,61 @@
 
       <div class="info-banner">&#128172; Scholaxia student community — share ideas and help each other.</div>
 
-      <div class="community-compose">
+      <div id="community-feed" class="community-feed"><div class="loading">Loading posts…</div></div>
 
-        <textarea id="community-input" placeholder="Write a post…" rows="3"></textarea>
+      <button type="button" id="community-fab" class="community-fab" onclick="openCommunityCreate()" title="New post" aria-label="New post">
 
-        <button class="btn-action" onclick="submitCommunityPost()">Post</button>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>
 
-        <p id="community-error" class="error-msg"></p>
+      </button>
+
+    </section>
+
+
+
+    <!-- Community — create post -->
+
+    <section id="page-community-create" class="page">
+
+      <div class="community-create-card">
+
+        <div class="compose-row">
+
+          <div class="compose-avatar" id="community-create-avatar">S</div>
+
+          <div class="compose-body">
+
+            <textarea id="community-create-input" placeholder="What would you like to share?" rows="6"></textarea>
+
+            <div class="create-image-row">
+
+              <label class="btn-image-pick" for="community-image-input">&#128247; Add image</label>
+
+              <input type="file" id="community-image-input" accept="image/jpeg,image/png,image/webp" hidden onchange="onCommunityImagePick(this)" />
+
+              <button type="button" id="community-image-clear" class="btn-image-clear hidden" onclick="clearCommunityImage()">Remove image</button>
+
+            </div>
+
+            <div id="community-image-preview" class="create-image-preview hidden"></div>
+
+          </div>
+
+        </div>
+
+        <p class="compose-hint">Your post will be visible to all Scholaxia students.</p>
+
+        <p id="community-create-error" class="error-msg"></p>
+
+        <div class="create-actions">
+
+          <button type="button" class="btn-secondary" onclick="showPage('community')">Cancel</button>
+
+          <button type="button" id="community-post-btn" class="btn-action btn-post" onclick="submitCommunityPost()">Post</button>
+
+        </div>
 
       </div>
-
-      <div id="community-feed" class="community-feed"><div class="loading">Loading posts…</div></div>
 
     </section>
 

@@ -28,19 +28,60 @@
       <div id="video-stage" class="video-stage">
         <div id="video-local" class="video-tile local hidden"></div>
         <div id="video-remote" class="video-remote"></div>
+        <div id="board-overlay" class="board-overlay hidden">
+          <canvas id="whiteboard" class="whiteboard-canvas"></canvas>
+          <div id="board-cursor" class="board-cursor hidden"></div>
+          <div id="board-toolbar" class="board-toolbar host-only hidden">
+            <div class="board-toolbar-row">
+              <label class="board-label" for="subject-keyboard">Subject keyboard</label>
+              <select id="subject-keyboard" onchange="renderSymbolPalette()">
+                <option value="mathematics">Mathematics</option>
+                <option value="physics">Physics</option>
+                <option value="chemistry">Chemistry</option>
+                <option value="english">English</option>
+                <option value="igbo">Igbo</option>
+              </select>
+              <button type="button" id="btn-board-type" class="vc-btn sm active" onclick="setBoardTool('type')">Type</button>
+              <button type="button" id="btn-board-draw" class="vc-btn sm" onclick="setBoardTool('draw')">Draw</button>
+              <button type="button" class="vc-btn sm" onclick="pickBoardImage()">Add image</button>
+              <button type="button" class="vc-btn sm" onclick="clearBoard()">Clear</button>
+              <button type="button" class="vc-btn sm" onclick="toggleBoard()">Close board</button>
+              <input type="file" id="board-image-input" class="hidden" accept="image/jpeg,image/png,image/webp" />
+            </div>
+            <div class="board-type-row">
+              <input type="text" id="board-type-input" class="board-type-input"
+                placeholder="Type here — students see it live on the board. Press Enter for new line."
+                autocomplete="off" />
+            </div>
+            <div id="symbol-palette" class="symbol-palette"></div>
+            <p id="board-hint" class="board-hint">Type in the box, tap symbols, or use Add image to show a picture on the board for everyone.</p>
+          </div>
+        </div>
         <div id="video-placeholder" class="video-placeholder">
           <div class="ph-icon">&#127909;</div>
-          <p id="video-placeholder-text">Connecting to the live room…</p>
+          <p id="video-placeholder-text">Class is live — connecting…</p>
         </div>
       </div>
       <div class="video-controls">
-        <button type="button" id="btn-mic" class="vc-btn" onclick="toggleMic()" title="Microphone">&#127908; Mic</button>
+        <div class="mic-wrap">
+          <button type="button" id="btn-mic" class="vc-btn" onclick="toggleMic()" title="Microphone">&#127908; Mic</button>
+          <div id="mic-meter" class="mic-meter hidden" title="Mic level"><div id="mic-meter-fill" class="mic-meter-fill"></div></div>
+        </div>
+        <span id="mic-live-badge" class="mic-live-badge hidden">Students hear you</span>
         <button type="button" id="btn-cam" class="vc-btn" onclick="toggleCam()" title="Camera">&#128247; Cam</button>
+        <button type="button" id="btn-share" class="vc-btn host-only hidden" onclick="toggleScreenShare()" title="Share screen">&#128187; Share screen</button>
+        <button type="button" id="btn-board" class="vc-btn host-only hidden" onclick="toggleBoard()" title="Teaching board">&#128221; Board</button>
         <button type="button" class="vc-btn" onclick="raiseHand()">&#9995; Raise hand</button>
       </div>
     </section>
 
     <aside class="chat-panel">
+      <div id="raise-hand-panel" class="raise-hand-panel host-only hidden">
+        <h3>Raised hands</h3>
+        <div id="raise-hand-list" class="raise-hand-list">
+          <p class="raise-hand-empty">No students waiting.</p>
+        </div>
+      </div>
       <h2>Class chat</h2>
       <div id="chat-log" class="chat-log"></div>
       <form class="chat-form" onsubmit="sendChatMessage(event)">

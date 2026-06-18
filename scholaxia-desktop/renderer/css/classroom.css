@@ -65,8 +65,28 @@ body {
   padding: 8px 14px; border-radius: 8px; border: 1px solid #2d5a3d;
   background: #0d1f14; color: #c8e6d0; cursor: pointer; font-size: 0.85rem;
 }
-.vc-btn:hover { background: #1a3524; }
+.vc-btn:hover:not(:disabled) { background: #1a3524; }
+.vc-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 .vc-btn.off { opacity: 0.5; border-color: #7f1d1d; color: #fca5a5; }
+.vc-btn.on { border-color: #3d8f5a; background: #1a3524; color: #7dd3a0; }
+.mic-wrap { display: flex; align-items: center; gap: 6px; }
+.mic-meter {
+  width: 48px; height: 8px; border-radius: 4px; background: #1a2420;
+  border: 1px solid #2d5a3d; overflow: hidden;
+}
+.mic-meter-fill {
+  height: 100%; width: 0%; background: linear-gradient(90deg, #3d8f5a, #7dd3a0);
+  transition: width 0.05s linear;
+}
+.mic-live-badge {
+  font-size: 0.72rem; color: #7dd3a0; background: #1a3524;
+  border: 1px solid #3d8f5a; padding: 4px 8px; border-radius: 6px;
+  animation: mic-pulse 1.5s ease-in-out infinite;
+}
+@keyframes mic-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
+}
 
 .chat-panel {
   display: flex; flex-direction: column; background: #0d1f14;
@@ -97,6 +117,70 @@ body {
   padding: 10px 16px; border: none; border-radius: 8px;
   background: #1e4d32; color: #fff; font-weight: 600; cursor: pointer;
 }
+
+.raise-hand-panel {
+  padding: 12px 16px; border-bottom: 1px solid #1e3d2a; background: #0a1812;
+}
+.raise-hand-panel h3 { font-size: 0.82rem; color: #fbbf24; margin-bottom: 8px; }
+.raise-hand-list { display: flex; flex-direction: column; gap: 8px; }
+.raise-hand-empty { font-size: 0.78rem; color: #6b8f75; font-style: italic; }
+.raise-hand-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  background: #12261a; border: 1px solid #2d5a3d; border-radius: 8px; padding: 8px 10px;
+}
+.raise-hand-item span { font-size: 0.85rem; color: #e8f5ec; }
+.raise-hand-item button {
+  padding: 5px 10px; border-radius: 6px; border: none;
+  background: #1e4d32; color: #fff; font-size: 0.78rem; cursor: pointer; white-space: nowrap;
+}
+.raise-hand-item button:hover { background: #2d6b45; }
+.video-remote.screen-share .remote-user { background: #000; }
+
+.board-overlay {
+  position: absolute; inset: 0; z-index: 5;
+  display: flex; flex-direction: column; background: #0d1110;
+}
+.board-overlay.view-only .whiteboard-canvas { cursor: default; pointer-events: none; }
+.whiteboard-canvas {
+  flex: 1; width: 100%; background: #1a2420; cursor: crosshair; touch-action: none;
+}
+.board-toolbar {
+  background: #12261a; border-top: 1px solid #1e3d2a; padding: 10px 12px;
+  max-height: 42%; overflow-y: auto;
+}
+.board-toolbar-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px;
+}
+.board-label { font-size: 0.78rem; color: #8aa896; }
+.board-toolbar select {
+  padding: 6px 10px; border-radius: 6px; border: 1px solid #2d5a3d;
+  background: #050a08; color: #e8f5ec; font-size: 0.82rem;
+}
+.vc-btn.sm { padding: 5px 10px; font-size: 0.78rem; }
+.symbol-palette {
+  display: flex; flex-wrap: wrap; gap: 5px;
+}
+.sym-btn {
+  min-width: 34px; padding: 5px 8px; border-radius: 6px;
+  border: 1px solid #2d5a3d; background: #0d1f14; color: #e8f5ec;
+  font-size: 0.9rem; cursor: pointer; line-height: 1.2;
+}
+.sym-btn:hover { background: #1a3524; border-color: #3d8f5a; }
+.sym-btn.active { background: #1e4d32; border-color: #7dd3a0; }
+.board-type-row { margin-bottom: 8px; }
+.board-type-input {
+  width: 100%; padding: 10px 12px; border-radius: 8px;
+  border: 1px solid #3d8f5a; background: #050a08; color: #fff;
+  font-size: 1rem; font-family: inherit;
+}
+.board-type-input:focus { outline: none; border-color: #7dd3a0; box-shadow: 0 0 0 2px rgba(125, 211, 160, 0.2); }
+.board-toolbar .vc-btn.sm.active { background: #1e4d32; border-color: #7dd3a0; color: #fff; }
+.board-cursor {
+  position: absolute; width: 2px; height: 28px; background: #7dd3a0;
+  pointer-events: none; z-index: 6; animation: cursor-blink 1s step-end infinite;
+}
+@keyframes cursor-blink { 50% { opacity: 0; } }
+.video-controls .host-only.hidden { display: none !important; }
 
 @media (max-width: 900px) {
   .classroom-main { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }

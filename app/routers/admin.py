@@ -13,6 +13,7 @@ from app.models.content import Book, LibraryTarget
 from app.models.cbt import CBTExam, CBTQuestion
 from app.models.community import CommunityPost, CommunityChannel
 from app.services.media_service import generate_upload_signature, upload_file
+from app.services.student_cleanup import delete_student_user
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -415,9 +416,24 @@ async def admin_overview(
     from sqlalchemy import func
     from app.models.live_class import LiveClass, LiveSessionRequest, LiveSessionRequestStatus
 
-    students = await db.execute(select(func.count()).select_from(User).where(User.role == UserRole.student))
-    teachers = await db.execute(select(func.count()).select_from(User).where(User.role == UserRole.teacher))
-    kind = await db.execute(select(func.count()).select_from(User).where(User.role == UserRole.kind))
+    students = await db.execute(
+        select(func.count()).select_from(User).where(
+            User.role == UserRole.student,
+            User.is_active == True,  # noqa: E712
+        )
+    )
+    teachers = await db.execute(
+        select(func.count()).select_from(User).where(
+            User.role == UserRole.teacher,
+            User.is_active == True,  # noqa: E712
+        )
+    )
+    kind = await db.execute(
+        select(func.count()).select_from(User).where(
+            User.role == UserRole.kind,
+            User.is_active == True,  # noqa: E712
+        )
+    )
     exams = await db.execute(select(func.count()).select_from(CBTExam))
     live_now = await db.execute(
         select(func.count()).select_from(LiveClass).where(LiveClass.is_live == True)  # noqa: E712
@@ -428,7 +444,12 @@ async def admin_overview(
         )
     )
     setup_done = await db.execute(
-        select(func.count()).select_from(StudentProfile).where(
+        select(func.count())
+        .select_from(StudentProfile)
+        .join(User, User.id == StudentProfile.user_id)
+        .where(
+            User.role == UserRole.student,
+            User.is_active == True,  # noqa: E712
             StudentProfile.exam_type.isnot(None),
             func.cardinality(StudentProfile.selected_subjects) > 0,
         )
@@ -460,15 +481,19 @@ class StudentAdminResponse(BaseModel):
 
 @router.get("/students", response_model=list[StudentAdminResponse])
 async def list_students(
+    active_only: bool = True,
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
+    query = (
         select(User, StudentProfile)
         .outerjoin(StudentProfile, StudentProfile.user_id == User.id)
         .where(User.role == UserRole.student)
-        .order_by(User.created_at.desc())
     )
+    if active_only:
+        query = query.where(User.is_active == True)  # noqa: E712
+    query = query.order_by(User.created_at.desc())
+    result = await db.execute(query)
     rows = result.all()
     out = []
     for user, profile in rows:
@@ -487,17 +512,19 @@ async def list_students(
 
 
 @router.delete("/students/{student_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def disable_student(
+async def delete_student(
     student_id: str,
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(User).where(User.id == student_id, User.role == UserRole.student))
-    user = result.scalar_one_or_none()
-    if not user:
+    import uuid as _uuid
+    try:
+        uid = _uuid.UUID(student_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid student id")
+    deleted = await delete_student_user(db, uid)
+    if not deleted:
         raise HTTPException(status_code=404, detail="Student not found")
-    user.is_active = False
-    await db.flush()
 
 
 @router.post("/students/remove-all")
@@ -505,15 +532,15 @@ async def remove_all_students(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Disable all active student accounts."""
-    result = await db.execute(
-        select(User).where(User.role == UserRole.student, User.is_active == True)  # noqa: E712
-    )
+    """Permanently delete every student account."""
+    result = await db.execute(select(User).where(User.role == UserRole.student))
     students = result.scalars().all()
+    removed = 0
     for user in students:
-        user.is_active = False
+        if await delete_student_user(db, user.id):
+            removed += 1
     await db.flush()
-    return {"removed": len(students)}
+    return {"removed": removed}
 
 
 # ── Community moderation ──────────────────────────────────────────────────────

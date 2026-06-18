@@ -1,78 +1,307 @@
 var communityChannelId = null;
+var communityDraftImage = null;
+var communityPendingPost = null;
+var POST_COMMENT_RE = /^@post:([^\s]+)\s*([\s\S]*)$/;
+
+function isPostComment(content) {
+  return POST_COMMENT_RE.test(content || "");
+}
+
+function isRealPostId(id) {
+  return id && String(id).indexOf("orphan") !== 0;
+}
+
+function parsePostComment(content) {
+  var match = POST_COMMENT_RE.exec(content || "");
+  if (!match) return null;
+  return { parentId: match[1], text: (match[2] || "").trim() };
+}
+
+function displayPostContent(content) {
+  var parsed = parsePostComment(content);
+  return parsed ? parsed.text : (content || "");
+}
+
+function mapMessagesToPosts(messages) {
+  return (messages || [])
+    .filter(function (m) { return !isPostComment(m.content); })
+    .map(function (m) {
+      return {
+        id: m.id,
+        author_name: m.sender_name || "Student",
+        content: m.content,
+        media_url: m.media_url,
+        created_at: m.created_at,
+        like_count: 0,
+        liked_by_me: false,
+        comments: [],
+      };
+    });
+}
+
+async function fetchPostComments() {
+  var commentsByPost = {};
+  if (!communityChannelId) return commentsByPost;
+  try {
+    var messages = await api("/api/v1/community/messages?channel_id=" + communityChannelId + "&limit=100");
+    (messages || []).forEach(function (m) {
+      var parsed = parsePostComment(m.content || "");
+      if (!parsed || !parsed.text) return;
+      if (!commentsByPost[parsed.parentId]) commentsByPost[parsed.parentId] = [];
+      commentsByPost[parsed.parentId].push({
+        author_name: m.sender_name || "Student",
+        content: parsed.text,
+        created_at: m.created_at,
+      });
+    });
+  } catch (e) { /* comments are optional */ }
+  return commentsByPost;
+}
+
+function attachComments(posts, commentsByPost) {
+  var result = (posts || []).map(function (p) {
+    return Object.assign({}, p, { comments: commentsByPost[p.id] || [] });
+  });
+  var known = {};
+  result.forEach(function (p) { known[p.id] = true; });
+
+  Object.keys(commentsByPost).forEach(function (parentId) {
+    if (known[parentId]) return;
+    commentsByPost[parentId].forEach(function (c) {
+      result.push({
+        id: parentId,
+        card_key: parentId + "-" + String(c.created_at || ""),
+        author_name: c.author_name,
+        content: c.content,
+        created_at: c.created_at,
+        like_count: 0,
+        liked_by_me: false,
+        comments: [],
+        is_flat_comment: true,
+      });
+    });
+  });
+
+  result.sort(function (a, b) {
+    return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+  });
+  return result;
+}
+
+function postCardDomId(p) {
+  return String(p.card_key || p.id || "");
+}
+
+function postInteractId(p) {
+  return String(p.id || "");
+}
+
+function renderPostActions(p) {
+  var interactId = postInteractId(p);
+  var domId = postCardDomId(p);
+  if (!interactId || interactId.indexOf("orphan") === 0) return "";
+  var liked = p.liked_by_me ? " liked" : "";
+  var safeInteract = interactId.replace(/'/g, "\\'");
+  var safeDom = domId.replace(/'/g, "\\'");
+  return '<div class="post-actions">' +
+    '<button type="button" class="post-action-btn post-like-btn' + liked + '" data-like-id="' + escHtml(interactId) + '" onclick="toggleCommunityLike(\'' + safeInteract + '\')" title="Like">' +
+    '<span class="action-icon" aria-hidden="true">&#10084;</span>' +
+    '<span class="like-count">' + (p.like_count || 0) + '</span></button>' +
+    '<button type="button" class="post-action-btn post-comment-btn" onclick="toggleCommentBox(\'' + safeDom + '\', \'' + safeInteract + '\')" title="Comment">' +
+    '<span class="action-icon" aria-hidden="true">&#128172;</span>' +
+    '<span class="comment-count">' + ((p.comments || []).length || "") + '</span></button>' +
+    '</div>' +
+    '<div class="comment-compose" id="comment-box-' + escHtml(domId) + '">' +
+    '<input type="text" id="comment-input-' + escHtml(domId) + '" placeholder="Write a comment…" ' +
+    'onkeydown="if(event.key===\'Enter\')submitCommunityComment(\'' + safeInteract + '\', \'' + safeDom + '\')" />' +
+    '<button type="button" class="btn-action btn-comment" onclick="submitCommunityComment(\'' + safeInteract + '\', \'' + safeDom + '\')">Reply</button>' +
+    '</div>';
+}
 
 function renderCommunityPosts(posts) {
   var feed = document.getElementById("community-feed");
   if (!posts || !posts.length) {
-    feed.innerHTML = '<div class="empty">No posts yet. Be the first to share something!</div>';
+    feed.innerHTML = '<div class="empty">No posts yet. Tap the send button below to share something!</div>';
     return;
   }
   feed.innerHTML = posts.map(function (p) {
+    var body = displayPostContent(p.content);
     var media = p.media_url
       ? '<div class="post-media"><img src="' + escHtml(p.media_url) + '" alt="" /></div>'
       : "";
+    var initial = (p.author_name || "S").charAt(0).toUpperCase();
+    var commentsHtml = (p.comments || []).map(function (c) {
+      return '<div class="post-comment">' +
+        '<div class="comment-avatar">' + escHtml((c.author_name || "S").charAt(0).toUpperCase()) + '</div>' +
+        '<div class="comment-body">' +
+        '<strong>' + escHtml(c.author_name || "Student") + '</strong>' +
+        '<p>' + escHtml(c.content) + '</p>' +
+        '</div></div>';
+    }).join("");
+    var commentsBlock = commentsHtml
+      ? '<div class="post-comments">' + commentsHtml + '</div>'
+      : "";
+    var bodyHtml = body
+      ? '<p class="post-body">' + escHtml(body) + '</p>'
+      : "";
     return '<article class="community-post">' +
+      '<div class="post-top">' +
+      '<div class="post-avatar">' + escHtml(initial) + '</div>' +
+      '<div class="post-main">' +
       '<div class="post-head"><strong>' + escHtml(p.author_name || "Student") + '</strong>' +
       '<span>' + formatDate(p.created_at) + '</span></div>' +
-      '<p class="post-body">' + escHtml(p.content) + '</p>' + media +
-      '<div class="post-meta">&#10084; ' + (p.like_count || 0) + '</div></article>';
+      bodyHtml + media +
+      renderPostActions(p) + commentsBlock +
+      '</div></div></article>';
   }).join("");
 }
 
-function mapMessagesToPosts(messages) {
-  return (messages || []).map(function (m) {
-    return {
-      author_name: m.sender_name || "Student",
-      content: m.content,
-      media_url: m.media_url,
-      created_at: m.created_at,
-      like_count: 0,
-    };
-  });
+async function ensureCommunityChannel() {
+  if (communityChannelId) return communityChannelId;
+  var channels = await api("/api/v1/community/channels");
+  var general = (channels || []).find(function (c) { return c.type === "general"; }) || (channels || [])[0];
+  if (!general) return null;
+  communityChannelId = general.id;
+  try {
+    await api("/api/v1/community/join", {
+      method: "POST",
+      body: JSON.stringify({ channel_id: communityChannelId }),
+    });
+  } catch (joinErr) { /* already joined */ }
+  return communityChannelId;
+}
+
+function normalizeCreatedPost(created, content, mediaUrl, mediaType) {
+  return {
+    id: created.id,
+    author_name: created.author_name || getUser().name || "Student",
+    content: created.content != null ? created.content : content,
+    media_url: created.media_url || mediaUrl || null,
+    media_type: created.media_type || mediaType || null,
+    created_at: created.created_at || new Date().toISOString(),
+    like_count: created.like_count || 0,
+    liked_by_me: false,
+    comments: [],
+  };
+}
+
+function prependNewPost(posts, newPost) {
+  if (!newPost || !newPost.id) return posts;
+  var list = posts || [];
+  if (list.some(function (p) { return p.id === newPost.id; })) return list;
+  return [newPost].concat(list);
 }
 
 async function fetchCommunityPosts() {
+  await ensureCommunityChannel();
+  var posts = [];
   try {
-    return await api("/api/v1/community/feed?limit=50");
+    posts = await api("/api/v1/community/feed?limit=50") || [];
   } catch (e1) {
-    if (!communityChannelId) {
-      var channels = await api("/api/v1/community/channels");
-      var general = (channels || []).find(function (c) { return c.type === "general"; }) || (channels || [])[0];
-      if (!general) return [];
-      communityChannelId = general.id;
-    }
+    if (!communityChannelId) return [];
     try {
-      return await api("/api/v1/community/posts?channel_id=" + communityChannelId + "&limit=50");
+      posts = await api("/api/v1/community/posts?channel_id=" + communityChannelId + "&limit=50") || [];
     } catch (e2) {
       var messages = await api("/api/v1/community/messages?channel_id=" + communityChannelId + "&limit=50");
-      return mapMessagesToPosts(messages);
+      posts = mapMessagesToPosts(messages);
     }
   }
+
+  if (communityChannelId) {
+    try {
+      var allPosts = await api("/api/v1/community/posts?channel_id=" + communityChannelId + "&limit=100") || [];
+      var seen = {};
+      posts.forEach(function (p) { seen[p.id] = true; });
+      allPosts.forEach(function (p) {
+        if (!seen[p.id] && !isPostComment(p.content)) {
+          posts.push(p);
+          seen[p.id] = true;
+        }
+      });
+    } catch (e) { /* optional merge */ }
+  }
+
+  posts = posts.filter(function (p) { return !isPostComment(p.content); });
+  var commentsByPost = await fetchPostComments();
+  return attachComments(posts, commentsByPost);
 }
 
-async function loadCommunity() {
+function openCommunityCreate() {
+  showPage("community-create");
+}
+
+function clearCommunityImage() {
+  if (communityDraftImage && communityDraftImage.previewUrl) {
+    URL.revokeObjectURL(communityDraftImage.previewUrl);
+  }
+  communityDraftImage = null;
+  var preview = document.getElementById("community-image-preview");
+  var clearBtn = document.getElementById("community-image-clear");
+  var fileInput = document.getElementById("community-image-input");
+  if (preview) {
+    preview.innerHTML = "";
+    preview.classList.add("hidden");
+  }
+  if (clearBtn) clearBtn.classList.add("hidden");
+  if (fileInput) fileInput.value = "";
+}
+
+function onCommunityImagePick(input) {
+  var err = document.getElementById("community-create-error");
+  var file = input && input.files && input.files[0];
+  if (!file) return;
+  if (!/^image\/(jpeg|png|webp)$/i.test(file.type)) {
+    if (err) err.textContent = "Please choose a JPG, PNG, or WebP image.";
+    input.value = "";
+    return;
+  }
+  if (file.size > 20 * 1024 * 1024) {
+    if (err) err.textContent = "Image must be under 20 MB.";
+    input.value = "";
+    return;
+  }
+  if (err) err.textContent = "";
+  clearCommunityImage();
+  communityDraftImage = { file: file, previewUrl: URL.createObjectURL(file) };
+  var preview = document.getElementById("community-image-preview");
+  var clearBtn = document.getElementById("community-image-clear");
+  if (preview) {
+    preview.innerHTML = '<img src="' + communityDraftImage.previewUrl + '" alt="Selected image" />';
+    preview.classList.remove("hidden");
+  }
+  if (clearBtn) clearBtn.classList.remove("hidden");
+}
+
+function initCommunityCreate() {
+  var av = document.getElementById("community-create-avatar");
+  if (av) av.textContent = (getUser().name || "S").charAt(0).toUpperCase();
+  var input = document.getElementById("community-create-input");
+  var err = document.getElementById("community-create-error");
+  var postBtn = document.getElementById("community-post-btn");
+  if (input) input.value = "";
+  if (err) err.textContent = "";
+  if (postBtn) { postBtn.disabled = false; postBtn.textContent = "Post"; }
+  clearCommunityImage();
+  if (input) input.focus();
+}
+
+async function loadCommunity(newPost) {
   var feed = document.getElementById("community-feed");
   feed.innerHTML = '<div class="loading">Loading posts…</div>';
-  var err = document.getElementById("community-error");
-  err.textContent = "";
   try {
-    if (!communityChannelId) {
-      var channels = await api("/api/v1/community/channels");
-      var general = (channels || []).find(function (c) { return c.type === "general"; }) || (channels || [])[0];
-      if (!general) {
-        feed.innerHTML = '<div class="empty">Community is not set up yet.</div>';
-        return;
-      }
-      communityChannelId = general.id;
-      try {
-        await api("/api/v1/community/join", {
-          method: "POST",
-          body: JSON.stringify({ channel_id: communityChannelId }),
-        });
-      } catch (joinErr) { /* already joined */ }
+    var channelId = await ensureCommunityChannel();
+    if (!channelId) {
+      feed.innerHTML = '<div class="empty">Community is not set up yet.</div>';
+      return;
     }
     var posts = await fetchCommunityPosts();
+    if (newPost) posts = prependNewPost(posts, newPost);
     renderCommunityPosts(posts);
   } catch (e) {
+    if (newPost) {
+      renderCommunityPosts([newPost]);
+      return;
+    }
     var msg = e.message === "Failed to fetch"
       ? "Could not reach the server. Check your internet and try Refresh."
       : e.message;
@@ -81,21 +310,104 @@ async function loadCommunity() {
 }
 
 async function submitCommunityPost() {
-  var input = document.getElementById("community-input");
-  var err = document.getElementById("community-error");
+  var input = document.getElementById("community-create-input");
+  var err = document.getElementById("community-create-error");
+  var postBtn = document.getElementById("community-post-btn");
   var content = input.value.trim();
-  if (!content) { err.textContent = "Write something first."; return; }
-  if (!communityChannelId) { await loadCommunity(); }
-  if (!communityChannelId) return;
+  if (!content && !communityDraftImage) {
+    err.textContent = "Write something or add an image.";
+    return;
+  }
   err.textContent = "";
   try {
-    await api("/api/v1/community/posts", {
+    await ensureCommunityChannel();
+  } catch (e) {
+    err.textContent = e.message;
+    return;
+  }
+  if (!communityChannelId) {
+    err.textContent = "Community is not available right now.";
+    return;
+  }
+
+  var mediaUrl = null;
+  var mediaType = null;
+  if (postBtn) { postBtn.disabled = true; postBtn.textContent = "Posting…"; }
+  try {
+    if (communityDraftImage) {
+      var uploaded = await apiUpload("/api/v1/community/upload", communityDraftImage.file);
+      mediaUrl = uploaded.file_url;
+      mediaType = uploaded.file_type || "image";
+    }
+    var created = await api("/api/v1/community/posts", {
       method: "POST",
-      body: JSON.stringify({ channel_id: communityChannelId, content: content }),
+      body: JSON.stringify({
+        channel_id: communityChannelId,
+        content: content,
+        media_url: mediaUrl,
+        media_type: mediaType,
+      }),
+    });
+    var newPost = normalizeCreatedPost(created, content, mediaUrl, mediaType);
+    clearCommunityImage();
+    if (input) input.value = "";
+    communityPendingPost = newPost;
+    showPage("community");
+  } catch (e) {
+    err.textContent = e.message;
+    if (postBtn) { postBtn.disabled = false; postBtn.textContent = "Post"; }
+  }
+}
+
+function toggleCommentBox(domId, interactId) {
+  var box = document.getElementById("comment-box-" + domId);
+  if (!box) return;
+  var wasOpen = box.classList.contains("open");
+  document.querySelectorAll(".comment-compose.open").forEach(function (el) {
+    el.classList.remove("open");
+  });
+  if (!wasOpen) {
+    box.classList.add("open");
+    var input = document.getElementById("comment-input-" + domId);
+    if (input) input.focus();
+  }
+}
+
+async function submitCommunityComment(postId, domId) {
+  if (!postId || String(postId).indexOf("orphan") === 0) return;
+  var inputId = domId ? "comment-input-" + domId : "comment-input-" + postId;
+  var input = document.getElementById(inputId);
+  if (!input) return;
+  var text = input.value.trim();
+  if (!text) return;
+  if (!communityChannelId) await loadCommunity();
+  if (!communityChannelId) return;
+  try {
+    await api("/api/v1/community/messages", {
+      method: "POST",
+      body: JSON.stringify({
+        channel_id: communityChannelId,
+        content: "@post:" + postId + " " + text,
+      }),
     });
     input.value = "";
     loadCommunity();
   } catch (e) {
-    err.textContent = e.message;
+    alert(e.message || "Could not post comment.");
+  }
+}
+
+async function toggleCommunityLike(postId) {
+  if (!postId || String(postId).indexOf("orphan") === 0) return;
+  try {
+    var data = await api("/api/v1/community/posts/" + postId + "/like", { method: "POST" });
+    var btn = document.querySelector('[data-like-id="' + postId + '"]');
+    if (btn) {
+      btn.classList.toggle("liked", !!data.liked);
+      var countEl = btn.querySelector(".like-count");
+      if (countEl) countEl.textContent = data.like_count;
+    }
+  } catch (e) {
+    alert(e.message || "Could not update like.");
   }
 }

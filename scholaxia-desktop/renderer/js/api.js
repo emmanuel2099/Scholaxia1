@@ -1,7 +1,7 @@
 const API_BASE = "https://scholaxia1.onrender.com";
 
 function getToken() {
-  return localStorage.getItem("sia_token") || "";
+  return localStorage.getItem("sia_token") || localStorage.getItem("sia_admin_token") || "";
 }
 
 function getUser() {
@@ -63,6 +63,33 @@ async function api(path, options) {
     return null;
   }
   if (!res.ok) throw new Error(formatApiError(data.detail) || "Request failed (" + res.status + ")");
+  return data;
+}
+
+async function apiUpload(path, file) {
+  var form = new FormData();
+  form.append("file", file);
+  var res;
+  try {
+    res = await fetch(API_BASE + path, {
+      method: "POST",
+      headers: { Authorization: "Bearer " + getToken() },
+      body: form,
+      signal: fetchTimeout(60000),
+    });
+  } catch (ex) {
+    if (ex.name === "AbortError" || ex.name === "TimeoutError") {
+      throw new Error("Upload timed out. Try again.");
+    }
+    throw new Error(ex.message || "Network error. Check your connection.");
+  }
+  var data = await res.json().catch(function () { return {}; });
+  if (res.status === 401) {
+    clearSession();
+    window.location.href = "index.html";
+    return null;
+  }
+  if (!res.ok) throw new Error(formatApiError(data.detail) || "Upload failed (" + res.status + ")");
   return data;
 }
 

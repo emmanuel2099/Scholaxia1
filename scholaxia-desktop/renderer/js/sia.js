@@ -3,7 +3,7 @@ var siaHistory = [];
 function loadSia() {
   if (!siaHistory.length) {
     document.getElementById("sia-messages").innerHTML =
-      '<div class="sia-welcome"><div class="sia-orb">S</div><p>Hi! I\'m <strong>Sia</strong>, your AI tutor. Pick a subject and ask me anything.</p></div>';
+      '<div class="sia-welcome"><div class="sia-orb">S</div><p>Hi! I\'m <strong>Sia</strong>, your AI tutor. Ask me anything.</p></div>';
   }
 }
 
@@ -18,6 +18,11 @@ function appendSiaMessage(role, text) {
     : '<div class="sia-bubble user">' + escHtml(text) + '</div>';
   el.appendChild(div);
   el.scrollTop = el.scrollHeight;
+}
+
+function siaSubject() {
+  var subjects = getUser().subjects || [];
+  return subjects.length ? subjects[0] : "General";
 }
 
 async function sendSiaMessage() {
@@ -38,7 +43,7 @@ async function sendSiaMessage() {
       method: "POST",
       body: JSON.stringify({
         question: question,
-        subject: document.getElementById("sia-subject").value,
+        subject: siaSubject(),
         language: "english",
         conversation_history: siaHistory.slice(-6).map(function (m) {
           return { role: m.role === "user" ? "user" : "assistant", content: m.content };
