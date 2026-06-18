@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; connect-src https://scholaxia1.onrender.com http://127.0.0.1:*; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:" />
+  <title>Scholaxia — Student Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/auth.css" />
+</head>
+<body>
+
+<div class="auth-screen">
+  <aside class="auth-statue-panel">
+    <img src="assets/statue.png" alt="" class="statue-img" />
+    <div class="statue-caption">
+      <h2>Illuminate<br/>your mind.</h2>
+      <p>Scholaxia — intelligent education for Africa and beyond.</p>
+    </div>
+  </aside>
+
+  <main class="auth-main">
+    <div class="auth-building-bg"></div>
+    <div class="auth-overlay"></div>
+
+    <header class="auth-topbar">
+      <div class="school-brand">
+        <div class="brand-seal">S</div>
+        <div>
+          <strong>SCHOLAXIA</strong>
+          <span>Student Learning Portal</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="auth-card-wrap">
+      <div class="auth-card">
+        <div class="card-seal">S</div>
+        <h1 id="portal-title">STUDENT PORTAL</h1>
+        <p class="card-sub" id="portal-sub">Sign in to access live classes, exams &amp; CBT</p>
+
+        <div class="auth-tabs">
+          <button type="button" id="tab-login" class="auth-tab active">Log in</button>
+          <button type="button" id="tab-signup" class="auth-tab">Register</button>
+        </div>
+
+        <form id="form-login" class="auth-form">
+          <label class="field">
+            <span class="field-icon">&#127891;</span>
+            <input type="email" id="login-email" placeholder="Email address" autocomplete="email" required />
+          </label>
+          <label class="field">
+            <span class="field-icon">&#128274;</span>
+            <input type="password" id="login-password" placeholder="Password" autocomplete="current-password" required />
+            <button type="button" class="toggle-pw" data-target="login-password">&#128065;</button>
+          </label>
+          <div class="form-row">
+            <label class="remember"><input type="checkbox" id="remember-me" /> Remember me</label>
+          </div>
+          <p id="login-error" class="error-msg"></p>
+          <button type="submit" class="btn-primary" id="btn-login">LOG IN</button>
+          <p class="switch-text">Don't have an account? <button type="button" class="link-btn" id="go-signup">Register</button></p>
+        </form>
+
+        <form id="form-signup" class="auth-form hidden">
+          <label class="field">
+            <span class="field-icon">&#128100;</span>
+            <input type="text" id="signup-name" placeholder="Full name" autocomplete="name" required />
+          </label>
+          <label class="field">
+            <span class="field-icon">&#127891;</span>
+            <input type="email" id="signup-email" placeholder="Email address" autocomplete="email" required />
+          </label>
+          <label class="field">
+            <span class="field-icon">&#128274;</span>
+            <input type="password" id="signup-password" placeholder="Password (min 8 characters)" autocomplete="new-password" required minlength="8" />
+            <button type="button" class="toggle-pw" data-target="signup-password">&#128065;</button>
+          </label>
+          <p id="signup-error" class="error-msg"></p>
+          <button type="submit" class="btn-primary" id="btn-signup">CREATE ACCOUNT</button>
+          <p class="switch-text">Already have an account? <button type="button" class="link-btn" id="go-login">Log in</button></p>
+        </form>
+        <p class="auth-admin-link"><a href="admin.html">Admin portal →</a></p>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/auth.js"></script>
+</body>
+</html>

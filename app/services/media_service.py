@@ -41,6 +41,7 @@ FOLDER_RESOURCE_TYPE = {
     "images": "image",
     "covers": "image",
     "snapshots": "image",
+    "cbt": "image",
 }
 
 

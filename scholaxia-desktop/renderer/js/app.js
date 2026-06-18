@@ -1,0 +1,490 @@
+const PAGE_TITLES = {
+  live: "Live Class",
+  school: "School Exam",
+  cbt: "CBT Practice",
+  sia: "Ask Sia",
+  community: "Community",
+  profile: "Profile",
+};
+
+let currentPage = "live";
+let practiceExams = [];
+let schoolExams = [];
+let allSubjects = [];
+let selectedSubjects = [];
+let currentExam = null;
+let currentSession = null;
+let answers = {};
+let currentQ = 0;
+let timerInterval = null;
+let secondsLeft = 0;
+let pendingSchoolExamId = null;
+let cameraStream = null;
+
+window.onload = () => {
+  if (!getToken()) {
+    window.location.href = "index.html";
+    return;
+  }
+  initUserUI();
+  loadSubjects();
+  refreshPage();
+};
+
+function initUserUI() {
+  const user = getUser();
+  const initial = firstName(user.name)[0].toUpperCase();
+  document.getElementById("sidebar-name").textContent = firstName(user.name);
+  document.getElementById("sidebar-exam").textContent = user.examType || "Student";
+  document.getElementById("user-avatar").textContent = initial;
+  document.getElementById("profile-avatar").textContent = initial;
+  document.getElementById("profile-name").textContent = user.name;
+  document.getElementById("profile-email").textContent = user.email;
+}
+
+function logout() {
+  clearSession();
+  window.location.href = "index.html";
+}
+
+function showPage(page) {
+  currentPage = page;
+  document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
+  document.querySelectorAll(".nav-item").forEach((n) => n.classList.remove("active"));
+  document.getElementById(`page-${page}`).classList.add("active");
+  document.querySelector(`[data-page="${page}"]`).classList.add("active");
+  document.getElementById("page-title").textContent = PAGE_TITLES[page];
+  refreshPage();
+}
+
+function refreshPage() {
+  if (currentPage === "live") loadLive();
+  else if (currentPage === "school") loadSchoolExams();
+  else if (currentPage === "cbt") loadCbtExams();
+  else if (currentPage === "sia") loadSia();
+  else if (currentPage === "community") loadCommunity();
+  else if (currentPage === "profile") loadProfile();
+}
+
+/* ── Live Class ── */
+
+async function loadLive() {
+  document.getElementById("live-grid").innerHTML = `<div class="loading">Loading…</div>`;
+  document.getElementById("upcoming-grid").innerHTML = `<div class="loading">Loading…</div>`;
+  try {
+    const [live, upcoming, feed] = await Promise.all([
+      api("/api/v1/live-classes/?status=live"),
+      api("/api/v1/live-classes/?status=upcoming"),
+      api("/api/v1/home/feed").catch(() => null),
+    ]);
+
+    renderLive(live || []);
+    renderUpcoming(upcoming || []);
+
+    if (feed?.my_session_requests) renderRequests(feed.my_session_requests);
+    else loadMyRequests();
+  } catch (e) {
+    document.getElementById("live-grid").innerHTML = `<div class="empty">${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderLive(sessions) {
+  document.getElementById("live-count").textContent = sessions.length;
+  const el = document.getElementById("live-grid");
+  if (!sessions.length) {
+    el.innerHTML = `<div class="empty">No live classes right now. Check upcoming sessions below.</div>`;
+    return;
+  }
+  el.innerHTML = sessions.map((s) => `
+    <div class="card">
+      <div class="live-pill">LIVE</div>
+      <h3>${escHtml(s.title)}</h3>
+      <p class="meta">${escHtml(s.subject)} · ${escHtml(s.teacher_name)}</p>
+      <button class="btn-join" onclick="joinClass('${s.id}')">Join Class</button>
+    </div>
+  `).join("");
+}
+
+function renderUpcoming(sessions) {
+  const el = document.getElementById("upcoming-grid");
+  if (!sessions.length) {
+    el.innerHTML = `<div class="empty">No upcoming sessions scheduled.</div>`;
+    return;
+  }
+  el.innerHTML = sessions.map((s) => `
+    <div class="card">
+      <div class="time-badge">${formatDate(s.start_time)}</div>
+      <h3>${escHtml(s.title)}</h3>
+      <p class="meta">${escHtml(s.subject)} · ${escHtml(s.teacher_name)}</p>
+    </div>
+  `).join("");
+}
+
+async function joinClass(classId) {
+  try {
+    const data = await api(`/api/v1/live-classes/${classId}/join`, { method: "POST" });
+    alert(`Joined "${data.title || "class"}"!\n\nRoom: ${data.room_id || classId}\n\nLive video opens in the web classroom when available.`);
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+async function loadMyRequests() {
+  try {
+    const reqs = await api("/api/v1/live-classes/requests/mine");
+    renderRequests(reqs || []);
+  } catch { /* ignore */ }
+}
+
+function renderRequests(reqs) {
+  const el = document.getElementById("my-requests");
+  if (!reqs.length) { el.innerHTML = ""; return; }
+  el.innerHTML = reqs.slice(0, 5).map((r) => `
+    <div class="req-item">
+      <span>${escHtml(r.subject)} — ${escHtml(r.topic || r.description || "")}</span>
+      <span>${escHtml(r.status)}</span>
+    </div>
+  `).join("");
+}
+
+async function submitSessionRequest() {
+  const subject = document.getElementById("req-subject").value.trim();
+  const topic = document.getElementById("req-topic").value.trim();
+  if (!subject || !topic) { alert("Fill in subject and topic."); return; }
+  try {
+    await api("/api/v1/live-classes/requests", {
+      method: "POST",
+      body: JSON.stringify({ subject, topic, description: topic }),
+    });
+    document.getElementById("req-topic").value = "";
+    alert("Request sent! A teacher will review it.");
+    loadMyRequests();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+/* ── School Exam ── */
+
+async function loadSchoolExams() {
+  document.getElementById("school-grid").innerHTML = `<div class="loading">Loading…</div>`;
+  try {
+    const data = await api("/api/v1/cbt/exams/for-me");
+    if (!data) return;
+    schoolExams = data.school_exams || [];
+    renderSchoolGrid();
+  } catch (e) {
+    const msg = e.message.includes("setup") ? `${e.message} Go to Profile to complete setup.` : e.message;
+    document.getElementById("school-grid").innerHTML = `<div class="empty">${escHtml(msg)}</div>`;
+  }
+}
+
+function renderSchoolGrid() {
+  const el = document.getElementById("school-grid");
+  if (!schoolExams.length) {
+    el.innerHTML = `<div class="empty">No school exams scheduled for your subjects.</div>`;
+    return;
+  }
+  el.innerHTML = schoolExams.map((e) => `
+    <div class="card">
+      <div class="time-badge">&#128248; School Exam</div>
+      <h3>${escHtml(e.title)}</h3>
+      <p class="meta">${escHtml(e.subject)} · ${e.total_questions} questions · ${e.duration_minutes} min</p>
+      ${e.scheduled_start ? `<p class="meta">${formatDate(e.scheduled_start)} – ${formatDate(e.scheduled_end)}</p>` : ""}
+      <button class="btn-join" onclick="openSchoolExam('${e.id}')">Enter Exam</button>
+    </div>
+  `).join("");
+}
+
+function openSchoolExam(examId) {
+  pendingSchoolExamId = examId;
+  document.getElementById("camera-modal").classList.remove("hidden");
+  navigator.mediaDevices.getUserMedia({ video: true })
+    .then((stream) => {
+      cameraStream = stream;
+      document.getElementById("camera-preview").srcObject = stream;
+    })
+    .catch(() => alert("Camera access is required for school exams."));
+}
+
+function closeCameraModal() {
+  document.getElementById("camera-modal").classList.add("hidden");
+  pendingSchoolExamId = null;
+  stopCamera();
+}
+
+function stopCamera() {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach((t) => t.stop());
+    cameraStream = null;
+  }
+}
+
+async function startSchoolExam() {
+  const examId = pendingSchoolExamId;
+  closeCameraModal();
+  await beginExam(examId, true);
+}
+
+/* ── CBT Practice ── */
+
+async function loadCbtExams() {
+  document.getElementById("cbt-grid").classList.remove("hidden");
+  document.getElementById("exam-screen").classList.add("hidden");
+  document.getElementById("result-screen").classList.add("hidden");
+  document.getElementById("cbt-grid").innerHTML = `<div class="loading">Loading…</div>`;
+  try {
+    const data = await api("/api/v1/cbt/exams/for-me");
+    if (!data) return;
+    practiceExams = data.practice_exams || [];
+    schoolExams = data.school_exams || [];
+    renderCbtGrid();
+  } catch (e) {
+    const msg = e.message.includes("setup") ? `${e.message} Go to Profile to complete setup.` : e.message;
+    document.getElementById("cbt-grid").innerHTML = `<div class="empty">${escHtml(msg)}</div>`;
+  }
+}
+
+function renderCbtGrid() {
+  const el = document.getElementById("cbt-grid");
+  if (!practiceExams.length) {
+    el.innerHTML = `<div class="empty">No practice exams for your subjects yet. Complete exam setup in Profile.</div>`;
+    return;
+  }
+  el.innerHTML = practiceExams.map((e) => `
+    <div class="card">
+      <div class="time-badge">${escHtml(e.exam_type)} Practice</div>
+      <h3>${escHtml(e.title)}</h3>
+      <p class="meta">${escHtml(e.subject)} · ${e.total_questions} questions · ${e.duration_minutes} min</p>
+      <button class="btn-join" onclick="beginExam('${e.id}', false)">Start Exam</button>
+    </div>
+  `).join("");
+}
+
+async function beginExam(examId, isSchool) {
+  try {
+    const session = await api(`/api/v1/cbt/sessions/${examId}/start`, { method: "POST" });
+    const exam = await api(`/api/v1/cbt/exams/${examId}/download`);
+    currentSession = { ...session, is_school_exam: isSchool };
+    currentExam = exam;
+    answers = {};
+    currentQ = 0;
+    secondsLeft = (exam.duration_minutes || 30) * 60;
+
+    document.getElementById("cbt-grid").classList.add("hidden");
+    document.getElementById("result-screen").classList.add("hidden");
+    document.getElementById("exam-screen").classList.remove("hidden");
+    document.getElementById("exam-title").textContent = exam.title;
+    document.getElementById("exam-meta").textContent =
+      `${exam.subject} · ${exam.questions.length} questions · ${isSchool ? "School (proctored)" : "Practice"}`;
+
+    buildQNav();
+    renderQuestion();
+    startTimer();
+  } catch (e) {
+    alert(e.message);
+    stopCamera();
+  }
+}
+
+function startTimer() {
+  clearInterval(timerInterval);
+  updateTimerDisplay();
+  timerInterval = setInterval(() => {
+    secondsLeft--;
+    updateTimerDisplay();
+    if (secondsLeft <= 0) submitExam();
+  }, 1000);
+}
+
+function updateTimerDisplay() {
+  const m = Math.floor(secondsLeft / 60);
+  const s = secondsLeft % 60;
+  document.getElementById("exam-timer").textContent =
+    `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function buildQNav() {
+  const nav = document.getElementById("q-nav");
+  nav.innerHTML = currentExam.questions.map((_, i) => `
+    <button class="q-btn ${i === currentQ ? "current" : ""} ${answers[i] ? "answered" : ""}"
+      onclick="goToQuestion(${i})">${i + 1}</button>
+  `).join("");
+}
+
+function renderQuestion() {
+  const q = currentExam.questions[currentQ];
+  if (!q) return;
+  document.getElementById("q-num").textContent = `Question ${currentQ + 1} of ${currentExam.questions.length}`;
+  document.getElementById("q-text").textContent = q.question_text;
+  const imgEl = document.getElementById("q-image");
+  if (q.image_url) {
+    imgEl.classList.remove("hidden");
+    imgEl.innerHTML = `<img src="${escHtml(q.image_url)}" alt="Question diagram" />`;
+  } else {
+    imgEl.classList.add("hidden");
+    imgEl.innerHTML = "";
+  }
+  const opts = ["A", "B", "C", "D"];
+  document.getElementById("q-options").innerHTML = opts.map((k) => {
+    const text = q[`option_${k.toLowerCase()}`] || q.options?.[k] || "";
+    if (!text) return "";
+    return `
+      <div class="opt ${answers[currentQ] === k ? "selected" : ""}" onclick="selectAnswer('${k}')">
+        <span class="opt-key">${k}</span>
+        <span>${escHtml(text)}</span>
+      </div>
+    `;
+  }).join("");
+  buildQNav();
+}
+
+function selectAnswer(key) {
+  answers[currentQ] = key;
+  renderQuestion();
+}
+
+function goToQuestion(i) {
+  currentQ = i;
+  renderQuestion();
+}
+
+function prevQuestion() {
+  if (currentQ > 0) { currentQ--; renderQuestion(); }
+}
+
+function nextQuestion() {
+  if (currentQ < currentExam.questions.length - 1) { currentQ++; renderQuestion(); }
+}
+
+async function submitExam() {
+  clearInterval(timerInterval);
+  const answerMap = {};
+  currentExam.questions.forEach((q, i) => {
+    if (answers[i]) answerMap[q.id] = answers[i];
+  });
+
+  try {
+    const result = await api("/api/v1/cbt/sessions/submit", {
+      method: "POST",
+      body: JSON.stringify({
+        session_id: currentSession.session_id,
+        answers: answerMap,
+        is_auto_submit: secondsLeft <= 0,
+      }),
+    });
+    showResult(result);
+  } catch (e) {
+    alert(e.message);
+    closeExam();
+  }
+}
+
+function showResult(result) {
+  document.getElementById("exam-screen").classList.add("hidden");
+  document.getElementById("result-screen").classList.remove("hidden");
+  const pct = result.score_percent != null ? Math.round(result.score_percent) : "—";
+  document.getElementById("score-display").textContent = `${pct}%`;
+  document.getElementById("result-detail").textContent =
+    `${result.correct || 0} correct · ${result.wrong || 0} wrong · ${result.total || 0} total`;
+  stopCamera();
+}
+
+function closeExam() {
+  clearInterval(timerInterval);
+  stopCamera();
+  currentExam = null;
+  currentSession = null;
+  loadCbtExams();
+}
+
+/* ── Profile ── */
+
+async function loadProfile() {
+  try {
+    const p = await api("/api/v1/students/me");
+    document.getElementById("profile-name").textContent = p.full_name || "—";
+    document.getElementById("profile-email").textContent = p.email || getUser().email;
+    document.getElementById("pf-exam").textContent = p.exam_type || "Not set";
+    document.getElementById("pf-level").textContent = p.education_level || "—";
+    document.getElementById("pf-subjects").textContent = (p.selected_subjects || []).join(", ") || "—";
+    document.getElementById("pf-sub").textContent = p.has_active_subscription ? "Active" : "Free";
+    localStorage.setItem("sia_exam_type", p.exam_type || "");
+    localStorage.setItem("sia_subjects", JSON.stringify(p.selected_subjects || []));
+    document.getElementById("sidebar-exam").textContent = p.exam_type || "Student";
+
+    if (p.setup_complete) {
+      document.getElementById("setup-card").style.display = "none";
+    } else {
+      document.getElementById("setup-card").style.display = "block";
+      renderSubjectPicker();
+    }
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+async function loadSubjects() {
+  try {
+    const data = await api("/api/v1/students/subjects");
+    allSubjects = data.subjects || [];
+  } catch { /* ignore */ }
+}
+
+function renderSubjectPicker() {
+  const examType = document.getElementById("setup-exam-type").value;
+  const max = examType === "JAMB" ? 4 : 9;
+  const el = document.getElementById("subject-picker");
+  el.innerHTML = allSubjects.map((s, i) => `
+    <span class="subj-chip ${selectedSubjects.includes(s) ? "selected" : ""}"
+      data-idx="${i}" onclick="toggleSubjectByIdx(${i}, ${max})">${escHtml(s)}</span>
+  `).join("");
+}
+
+function toggleSubjectByIdx(idx, max) {
+  const subject = allSubjects[idx];
+  if (!subject) return;
+  toggleSubject(subject, max);
+}
+
+function toggleSubject(subject, max) {
+  const idx = selectedSubjects.indexOf(subject);
+  if (idx >= 0) selectedSubjects.splice(idx, 1);
+  else if (selectedSubjects.length < max) selectedSubjects.push(subject);
+  else alert(`Select exactly ${max} subjects for ${document.getElementById("setup-exam-type").value}.`);
+  renderSubjectPicker();
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const sel = document.getElementById("setup-exam-type");
+  if (sel) sel.addEventListener("change", () => { selectedSubjects = []; renderSubjectPicker(); });
+});
+
+async function saveSetup() {
+  const examType = document.getElementById("setup-exam-type").value;
+  const level = document.getElementById("setup-level").value;
+  const needed = examType === "JAMB" ? 4 : 9;
+  const err = document.getElementById("setup-error");
+  if (selectedSubjects.length !== needed) {
+    err.textContent = `Select exactly ${needed} subjects.`;
+    return;
+  }
+  try {
+    await api("/api/v1/students/setup-exam", {
+      method: "POST",
+      body: JSON.stringify({
+        exam_type: examType,
+        subjects: selectedSubjects,
+        education_level: level,
+      }),
+    });
+    localStorage.setItem("sia_exam_type", examType);
+    localStorage.setItem("sia_subjects", JSON.stringify(selectedSubjects));
+    err.textContent = "";
+    alert("Exam setup saved!");
+    loadProfile();
+    refreshPage();
+  } catch (e) {
+    err.textContent = e.message;
+  }
+}

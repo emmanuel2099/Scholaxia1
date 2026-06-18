@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, EmailStr
@@ -10,7 +10,8 @@ from app.core.security import hash_password, create_access_token, create_refresh
 from app.models.user import User, UserRole, TeacherProfile, StudentProfile, KindProfile
 from app.models.content import Book, LibraryTarget
 from app.models.cbt import CBTExam, CBTQuestion
-from app.services.media_service import generate_upload_signature
+from app.models.community import CommunityPost, CommunityChannel
+from app.services.media_service import generate_upload_signature, upload_file
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -105,7 +106,7 @@ async def list_teachers(
     result = await db.execute(
         select(User, TeacherProfile)
         .join(TeacherProfile, TeacherProfile.user_id == User.id)
-        .where(User.role == UserRole.teacher)
+        .where(User.role == UserRole.teacher, User.is_active == True)  # noqa: E712
     )
     rows = result.all()
     return [TeacherResponse(id=str(u.id), email=u.email, full_name=u.full_name, subjects=p.subjects) for u, p in rows]
@@ -122,9 +123,23 @@ async def delete_teacher(
     if not user:
         raise HTTPException(status_code=404, detail="Teacher not found")
     user.is_active = False
+    await db.flush()
 
 
-# ── Library Management ────────────────────────────────────────────────────────
+@router.post("/teachers/remove-all")
+async def remove_all_teachers(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Disable all active teacher accounts."""
+    result = await db.execute(
+        select(User).where(User.role == UserRole.teacher, User.is_active == True)  # noqa: E712
+    )
+    teachers = result.scalars().all()
+    for user in teachers:
+        user.is_active = False
+    await db.flush()
+    return {"removed": len(teachers)}
 
 class AddBookRequest(BaseModel):
     title: str
@@ -365,6 +380,30 @@ async def seed_cbt(
     return {"created": created, "count": len(created)}
 
 
+CBT_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+
+
+@router.post("/cbt/upload-image")
+async def upload_cbt_question_image(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(require_admin),
+):
+    """Upload a diagram or figure for a CBT question."""
+    if file.content_type not in CBT_IMAGE_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail="Unsupported image type. Use JPEG, PNG, WebP, or GIF.",
+        )
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Image too large. Maximum size is 5MB.")
+    try:
+        result = upload_file(content, "cbt")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+    return {"image_url": result["secure_url"]}
+
+
 # ── Platform Overview ─────────────────────────────────────────────────────────
 
 @router.get("/overview")
@@ -437,13 +476,101 @@ async def list_students(
             email=user.email,
             full_name=user.full_name,
             is_active=user.is_active,
-            exam_type=str(profile.exam_type) if profile and profile.exam_type else None,
+            exam_type=profile.exam_type.value if profile and profile.exam_type else None,
             education_level=profile.education_level if profile else None,
             selected_subjects=profile.selected_subjects if profile and profile.selected_subjects else [],
             has_active_subscription=bool(profile and profile.has_active_subscription),
             created_at=user.created_at,
         ))
     return out
+
+
+@router.delete("/students/{student_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def disable_student(
+    student_id: str,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(User).where(User.id == student_id, User.role == UserRole.student))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Student not found")
+    user.is_active = False
+    await db.flush()
+
+
+@router.post("/students/remove-all")
+async def remove_all_students(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Disable all active student accounts."""
+    result = await db.execute(
+        select(User).where(User.role == UserRole.student, User.is_active == True)  # noqa: E712
+    )
+    students = result.scalars().all()
+    for user in students:
+        user.is_active = False
+    await db.flush()
+    return {"removed": len(students)}
+
+
+# ── Community moderation ──────────────────────────────────────────────────────
+
+@router.get("/community/posts")
+async def admin_list_community_posts(
+    channel_id: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """All student community posts for admin review."""
+    query = (
+        select(CommunityPost, User, CommunityChannel)
+        .join(User, User.id == CommunityPost.author_id)
+        .join(CommunityChannel, CommunityChannel.id == CommunityPost.channel_id)
+        .where(CommunityPost.is_deleted == False)  # noqa: E712
+        .order_by(CommunityPost.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
+    if channel_id:
+        query = query.where(CommunityPost.channel_id == channel_id)
+
+    result = await db.execute(query)
+    rows = result.all()
+    return [
+        {
+            "id": str(post.id),
+            "channel_id": str(post.channel_id),
+            "channel_name": channel.name,
+            "author_id": str(post.author_id),
+            "author_name": user.full_name,
+            "author_email": user.email,
+            "content": post.content,
+            "media_url": post.media_url,
+            "media_type": post.media_type,
+            "is_anonymous": post.is_anonymous,
+            "like_count": post.like_count,
+            "created_at": post.created_at,
+        }
+        for post, user, channel in rows
+    ]
+
+
+@router.delete("/community/posts/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def admin_delete_community_post(
+    post_id: str,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(CommunityPost).where(CommunityPost.id == post_id))
+    post = result.scalar_one_or_none()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+    post.is_deleted = True
+    await db.flush()
 
 
 # ── Kind (Kids) Learners ──────────────────────────────────────────────────────

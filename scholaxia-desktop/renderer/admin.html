@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; script-src-attr 'unsafe-inline'; connect-src https://scholaxia1.onrender.com http://127.0.0.1:*; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:" />
+  <title>Scholaxia Admin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/admin.css" />
+</head>
+<body>
+
+<!-- Auth -->
+<div id="auth-screen" class="admin-auth">
+  <div class="auth-box">
+    <h1>Scholaxia Admin</h1>
+    <p class="sub">Manage students, teachers, CBT, live classes &amp; more</p>
+    <div class="auth-tabs">
+      <button type="button" id="tab-login" class="auth-tab active">Log in</button>
+      <button type="button" id="tab-register" class="auth-tab">Register</button>
+    </div>
+    <form id="form-login" class="auth-form">
+      <label><span>Email</span><input type="email" id="login-email" required autocomplete="email" /></label>
+      <label><span>Password</span><input type="password" id="login-password" required autocomplete="current-password" /></label>
+      <p id="login-error" class="error-msg"></p>
+      <button type="submit" class="btn-primary" id="btn-login">LOG IN</button>
+    </form>
+    <form id="form-register" class="auth-form hidden">
+      <label><span>Full name</span><input type="text" id="reg-name" required /></label>
+      <label><span>Email</span><input type="email" id="reg-email" required /></label>
+      <label><span>Password</span><input type="password" id="reg-password" required minlength="8" /></label>
+      <p id="register-error" class="error-msg"></p>
+      <button type="submit" class="btn-primary" id="btn-register">CREATE ADMIN</button>
+    </form>
+    <p class="auth-footer"><a href="index.html">← Student portal</a></p>
+  </div>
+</div>
+
+<!-- App -->
+<div id="app-screen" class="admin-shell hidden">
+  <aside class="admin-sidebar">
+    <div class="sidebar-head">
+      <strong>SCHOLAXIA</strong>
+      <span>Admin Console</span>
+    </div>
+    <nav class="admin-nav">
+      <button class="nav-btn active" data-page="dashboard" onclick="showAdminPage('dashboard')">&#128202; Dashboard</button>
+      <button class="nav-btn" data-page="students" onclick="showAdminPage('students')">&#127891; Students</button>
+      <button class="nav-btn" data-page="teachers" onclick="showAdminPage('teachers')">&#128104;&#8205;&#127979; Teachers</button>
+      <button class="nav-btn" data-page="kind" onclick="showAdminPage('kind')">&#128118; Kind (Kids)</button>
+      <button class="nav-btn" data-page="live" onclick="showAdminPage('live')">&#127909; Live Classes</button>
+      <button class="nav-btn" data-page="requests" onclick="showAdminPage('requests')">&#128172; Session Requests</button>
+      <button class="nav-btn" data-page="cbt" onclick="showAdminPage('cbt')">&#128221; CBT Exams</button>
+      <button class="nav-btn" data-page="recommendations" onclick="showAdminPage('recommendations')">&#128218; Recommendations</button>
+      <button class="nav-btn" data-page="community" onclick="showAdminPage('community')">&#128172; Community</button>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="admin-user" id="admin-user-label">Admin</div>
+      <button class="btn-logout" onclick="adminLogout()">Sign out</button>
+    </div>
+  </aside>
+
+  <main class="admin-main">
+    <section id="page-dashboard" class="admin-page active">
+      <div class="page-head"><h2>Dashboard</h2><button class="btn-sm" onclick="loadDashboard()">Refresh</button></div>
+      <div id="stats-grid" class="stats-grid"><div class="loading">Loading…</div></div>
+    </section>
+
+    <section id="page-students" class="admin-page">
+      <div class="page-head">
+        <h2>Students &amp; Subjects</h2>
+        <div class="form-row">
+          <button class="btn-sm danger" onclick="removeAllStudents()">Remove all</button>
+          <button class="btn-sm" onclick="loadStudents()">Refresh</button>
+        </div>
+      </div>
+      <div id="students-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+    </section>
+
+    <section id="page-teachers" class="admin-page">
+      <div class="page-head">
+        <h2>Teachers</h2>
+        <div class="form-row">
+          <button class="btn-sm danger" onclick="removeAllTeachers()">Remove all</button>
+          <button class="btn-sm" onclick="loadTeachers()">Refresh</button>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Add Teacher</h3>
+        <div class="form-grid">
+          <label><span>Full name</span><input id="t-name" /></label>
+          <label><span>Email</span><input id="t-email" type="email" /></label>
+          <label><span>Password</span><input id="t-password" type="password" /></label>
+          <label><span>Subjects (comma-separated)</span><input id="t-subjects" placeholder="Mathematics, Physics" /></label>
+        </div>
+        <button class="btn-sm" onclick="createTeacher()">Create Teacher</button>
+        <p id="teacher-form-error" class="error-msg"></p>
+      </div>
+      <div id="teachers-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+    </section>
+
+    <section id="page-kind" class="admin-page">
+      <div class="page-head"><h2>Kind Learners (Kids)</h2><button class="btn-sm" onclick="loadKind()">Refresh</button></div>
+      <div id="kind-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+    </section>
+
+    <section id="page-live" class="admin-page">
+      <div class="page-head">
+        <h2>Live Classes</h2>
+        <div class="form-row">
+          <select id="live-filter" onchange="loadLiveClasses()">
+            <option value="">All</option>
+            <option value="live">Live now</option>
+            <option value="upcoming">Upcoming</option>
+            <option value="past">Past</option>
+          </select>
+          <button class="btn-sm" onclick="loadLiveClasses()">Refresh</button>
+        </div>
+      </div>
+      <div id="live-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+    </section>
+
+    <section id="page-requests" class="admin-page">
+      <div class="page-head"><h2>Student → Teacher Requests</h2><button class="btn-sm" onclick="loadRequests()">Refresh</button></div>
+      <div id="requests-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+    </section>
+
+    <section id="page-cbt" class="admin-page">
+      <div class="page-head">
+        <h2>CBT Exams</h2>
+        <div class="form-row">
+          <button class="btn-sm" onclick="seedCbt()">Seed sample exams</button>
+          <button class="btn-sm" onclick="loadCbt()">Refresh list</button>
+        </div>
+      </div>
+
+      <div class="cbt-type-tabs">
+        <button type="button" id="cbt-tab-practice" class="cbt-type-tab active" onclick="switchCbtMode('practice')">
+          &#128218; Practice CBT
+        </button>
+        <button type="button" id="cbt-tab-school" class="cbt-type-tab" onclick="switchCbtMode('school')">
+          &#127979; School Exam
+        </button>
+      </div>
+
+      <div class="panel cbt-builder">
+        <div id="cbt-mode-hint" class="cbt-hint practice-hint">
+          Practice exams for JAMB / WAEC / NECO — students can take these anytime to prepare.
+        </div>
+
+        <h3 id="cbt-form-title">New Practice CBT</h3>
+
+        <div class="form-grid">
+          <label><span>Exam title</span><input id="cbt-title" placeholder="e.g. JAMB Mathematics Mock 1" /></label>
+          <label><span>Subject</span><input id="cbt-subject" placeholder="Mathematics" /></label>
+          <label><span>Exam board</span>
+            <select id="cbt-type"><option>JAMB</option><option>WAEC</option><option>NECO</option></select>
+          </label>
+          <label><span>Duration (minutes)</span><input id="cbt-duration" type="number" value="30" min="5" max="180" /></label>
+        </div>
+
+        <div id="school-fields" class="school-fields hidden">
+          <div class="form-grid">
+            <label><span>Opens (date &amp; time)</span><input id="cbt-start" type="datetime-local" /></label>
+            <label><span>Closes (date &amp; time)</span><input id="cbt-end" type="datetime-local" /></label>
+          </div>
+          <div class="form-row" style="margin-bottom:8px">
+            <label class="chk-label"><input type="checkbox" id="cbt-camera" checked /> Require camera (proctoring)</label>
+            <label class="chk-label"><input type="checkbox" id="cbt-block-min" checked /> Block minimize during exam</label>
+          </div>
+        </div>
+
+        <div class="form-row" style="margin-bottom:16px">
+          <label class="chk-label"><input type="checkbox" id="cbt-publish" checked /> Publish so students can see it</label>
+        </div>
+
+        <div class="questions-header">
+          <h3>Questions</h3>
+          <button type="button" class="btn-sm" onclick="addCbtQuestion()">+ Add question</button>
+        </div>
+        <p class="cbt-hint small">Add as many questions as you need. Use a diagram for graphs, figures, or passages.</p>
+        <div id="cbt-questions-list"></div>
+
+        <div class="cbt-actions">
+          <button type="button" class="btn-primary" id="btn-create-cbt" onclick="createCbt()">Create exam</button>
+          <p id="cbt-form-error" class="error-msg"></p>
+        </div>
+      </div>
+
+      <div id="cbt-table" class="data-table-wrap" style="margin-top:20px"><div class="loading">Loading…</div></div>
+    </section>
+
+    <section id="page-recommendations" class="admin-page">
+      <div class="page-head">
+        <h2>Recommendations</h2>
+        <div class="form-row">
+          <button class="btn-sm danger" onclick="removeAllRecommendations()">Remove all</button>
+          <button class="btn-sm" onclick="loadRecommendations()">Refresh</button>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Recommend a book or study resource</h3>
+        <p class="cbt-hint small">Students see these on their home feed. Add a clear title and short description.</p>
+        <div class="form-grid">
+          <label><span>Title *</span><input id="rec-title" placeholder="e.g. JAMB Maths past questions" /></label>
+          <label><span>Author / source</span><input id="rec-author" placeholder="Optional" /></label>
+          <label><span>Subject</span><input id="rec-subject" placeholder="Mathematics" /></label>
+          <label><span>Exam type</span>
+            <select id="rec-exam"><option value="">All students</option><option>JAMB</option><option>WAEC</option><option>NECO</option></select>
+          </label>
+          <label><span>Show to</span>
+            <select id="rec-target"><option value="all">Everyone</option><option value="student">Students only</option><option value="teacher">Teachers only</option></select>
+          </label>
+          <label><span>Link (optional)</span><input id="rec-url" placeholder="https://..." /></label>
+        </div>
+        <label><span>Description *</span><textarea id="rec-desc" placeholder="Why should students read this?"></textarea></label>
+        <button class="btn-sm" onclick="createRecommendation()" style="margin-top:8px">Publish recommendation</button>
+        <p id="rec-form-error" class="error-msg"></p>
+      </div>
+      <div id="rec-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+    </section>
+
+    <section id="page-community" class="admin-page">
+      <div class="page-head">
+        <h2>Community Posts</h2>
+        <div class="form-row">
+          <select id="community-channel-filter" onchange="loadCommunityPosts()">
+            <option value="">All channels</option>
+          </select>
+          <button class="btn-sm" onclick="loadCommunityPosts()">Refresh</button>
+        </div>
+      </div>
+      <p class="cbt-hint small">Review what students post. Delete posts that break rules or are inappropriate.</p>
+      <div id="community-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+    </section>
+  </main>
+</div>
+
+<script src="js/admin-api.js"></script>
+<script src="js/admin.js"></script>
+</body>
+</html>
