@@ -3,11 +3,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, EmailStr
+from datetime import datetime
 from typing import Optional
 from app.core.database import get_db
 from app.core.deps import require_admin
 from app.core.security import hash_password, create_access_token, create_refresh_token
-from app.models.user import User, UserRole, TeacherProfile
+from app.models.user import User, UserRole, TeacherProfile, StudentProfile, KindProfile
 from app.models.content import Book, LibraryTarget
 from app.models.cbt import CBTExam, CBTQuestion
 from app.services.media_service import generate_upload_signature
@@ -234,6 +235,8 @@ class CBTExamCreate(BaseModel):
     ai_locked: bool = False
     camera_required: bool = False
     block_minimize: bool = False
+    scheduled_start: Optional[datetime] = None
+    scheduled_end: Optional[datetime] = None
 
 
 class CBTExamResponse(BaseModel):
@@ -244,6 +247,9 @@ class CBTExamResponse(BaseModel):
     duration_minutes: int
     total_questions: int
     is_published: bool
+    is_school_exam: bool = False
+    scheduled_start: Optional[datetime] = None
+    scheduled_end: Optional[datetime] = None
 
 
 @router.post("/cbt/exams", response_model=CBTExamResponse, status_code=201)
@@ -268,6 +274,8 @@ async def create_cbt_exam(
         ai_locked=payload.ai_locked,
         camera_required=payload.camera_required,
         block_minimize=payload.block_minimize,
+        scheduled_start=payload.scheduled_start,
+        scheduled_end=payload.scheduled_end,
     )
     db.add(exam)
     await db.flush()
@@ -291,6 +299,8 @@ async def create_cbt_exam(
         id=str(exam.id), title=exam.title, subject=exam.subject,
         exam_type=exam.exam_type, duration_minutes=exam.duration_minutes,
         total_questions=exam.total_questions, is_published=exam.is_published,
+        is_school_exam=exam.is_school_exam,
+        scheduled_start=exam.scheduled_start, scheduled_end=exam.scheduled_end,
     )
 
 
@@ -307,6 +317,8 @@ async def admin_list_cbt_exams(
             id=str(e.id), title=e.title, subject=e.subject,
             exam_type=e.exam_type, duration_minutes=e.duration_minutes,
             total_questions=e.total_questions, is_published=e.is_published,
+            is_school_exam=e.is_school_exam,
+            scheduled_start=e.scheduled_start, scheduled_end=e.scheduled_end,
         )
         for e in exams
     ]
@@ -356,3 +368,126 @@ async def seed_cbt(
     created = await seed_cbt_exams(db)
     await db.commit()
     return {"created": created, "count": len(created)}
+
+
+# ── Platform Overview ─────────────────────────────────────────────────────────
+
+@router.get("/overview")
+async def admin_overview(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    from sqlalchemy import func
+    from app.models.live_class import LiveClass, LiveSessionRequest, LiveSessionRequestStatus
+
+    students = await db.execute(select(func.count()).select_from(User).where(User.role == UserRole.student))
+    teachers = await db.execute(select(func.count()).select_from(User).where(User.role == UserRole.teacher))
+    kind = await db.execute(select(func.count()).select_from(User).where(User.role == UserRole.kind))
+    exams = await db.execute(select(func.count()).select_from(CBTExam))
+    live_now = await db.execute(
+        select(func.count()).select_from(LiveClass).where(LiveClass.is_live == True)  # noqa: E712
+    )
+    pending_reqs = await db.execute(
+        select(func.count()).select_from(LiveSessionRequest).where(
+            LiveSessionRequest.status == LiveSessionRequestStatus.pending
+        )
+    )
+    setup_done = await db.execute(
+        select(func.count()).select_from(StudentProfile).where(
+            StudentProfile.exam_type.isnot(None),
+            func.cardinality(StudentProfile.selected_subjects) > 0,
+        )
+    )
+    return {
+        "students": students.scalar() or 0,
+        "teachers": teachers.scalar() or 0,
+        "kind_learners": kind.scalar() or 0,
+        "cbt_exams": exams.scalar() or 0,
+        "live_classes_now": live_now.scalar() or 0,
+        "pending_session_requests": pending_reqs.scalar() or 0,
+        "students_with_subjects": setup_done.scalar() or 0,
+    }
+
+
+# ── Student Management ────────────────────────────────────────────────────────
+
+class StudentAdminResponse(BaseModel):
+    id: str
+    email: str
+    full_name: str
+    is_active: bool
+    exam_type: Optional[str] = None
+    education_level: Optional[str] = None
+    selected_subjects: list[str] = []
+    has_active_subscription: bool = False
+    created_at: Optional[datetime] = None
+
+
+@router.get("/students", response_model=list[StudentAdminResponse])
+async def list_students(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(User, StudentProfile)
+        .outerjoin(StudentProfile, StudentProfile.user_id == User.id)
+        .where(User.role == UserRole.student)
+        .order_by(User.created_at.desc())
+    )
+    rows = result.all()
+    out = []
+    for user, profile in rows:
+        out.append(StudentAdminResponse(
+            id=str(user.id),
+            email=user.email,
+            full_name=user.full_name,
+            is_active=user.is_active,
+            exam_type=str(profile.exam_type) if profile and profile.exam_type else None,
+            education_level=profile.education_level if profile else None,
+            selected_subjects=profile.selected_subjects if profile and profile.selected_subjects else [],
+            has_active_subscription=bool(profile and profile.has_active_subscription),
+            created_at=user.created_at,
+        ))
+    return out
+
+
+# ── Kind (Kids) Learners ──────────────────────────────────────────────────────
+
+class KindAdminResponse(BaseModel):
+    id: str
+    email: str
+    full_name: str
+    is_active: bool
+    age_group: Optional[str] = None
+    grade_level: Optional[str] = None
+    parent_email: Optional[str] = None
+    favorite_subjects: list[str] = []
+    created_at: Optional[datetime] = None
+
+
+@router.get("/kind-learners", response_model=list[KindAdminResponse])
+async def list_kind_learners(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(User, KindProfile)
+        .outerjoin(KindProfile, KindProfile.user_id == User.id)
+        .where(User.role == UserRole.kind)
+        .order_by(User.created_at.desc())
+    )
+    rows = result.all()
+    return [
+        KindAdminResponse(
+            id=str(user.id),
+            email=user.email,
+            full_name=user.full_name,
+            is_active=user.is_active,
+            age_group=profile.age_group if profile else None,
+            grade_level=profile.grade_level if profile else None,
+            parent_email=profile.parent_email if profile else None,
+            favorite_subjects=profile.favorite_subjects if profile and profile.favorite_subjects else [],
+            created_at=user.created_at,
+        )
+        for user, profile in rows
+    ]
