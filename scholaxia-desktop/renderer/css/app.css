@@ -397,7 +397,7 @@ body:has(.app-shell-topnav) { overflow: auto; height: auto; }
   background: radial-gradient(circle, rgba(45, 155, 131, 0.2), transparent 65%);
   pointer-events: none;
 }
-.page-hero .hero-content { position: relative; z-index: 1; }
+.page-hero .hero-content .btn-action { margin-top: 14px; }
 .hero-eyebrow {
   display: inline-block;
   font-size: 0.72rem;

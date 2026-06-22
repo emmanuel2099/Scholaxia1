@@ -29,6 +29,10 @@ body {
 }
 .classroom-title-wrap p { font-size: 0.82rem; color: #8aa896; margin-top: 2px; }
 .cr-status { font-size: 0.8rem; color: #7dd3a0; white-space: nowrap; }
+.audience-badge {
+  font-size: 0.72rem; color: #fbbf24; background: #2a2210;
+  border: 1px solid #854d0e; padding: 4px 10px; border-radius: 6px; white-space: nowrap;
+}
 
 .classroom-main {
   flex: 1; display: grid; grid-template-columns: 1fr 320px; gap: 0; min-height: 0;
@@ -41,6 +45,7 @@ body {
 }
 .video-placeholder {
   text-align: center; padding: 24px; max-width: 420px;
+  position: relative; z-index: 1;
 }
 .video-placeholder .ph-icon { font-size: 3rem; margin-bottom: 12px; opacity: 0.7; }
 .video-placeholder p { color: #9bb5a6; line-height: 1.5; font-size: 0.95rem; }

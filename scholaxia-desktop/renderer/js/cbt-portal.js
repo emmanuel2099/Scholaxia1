@@ -264,8 +264,10 @@
     if (!subjects.length) return [];
 
     var category = resolveCategory(examType);
+    var bankLabel = (cfg && cfg.blogBankLabel) || "Scholaxia CBT Bank";
+    var preferBlog = !cfg || cfg.useBlogCbtBank !== false;
 
-    if (profileReadyForCombined(category, subjects)) {
+    if (profileReadyForCombined(category, subjects) && !preferBlog) {
       var alocCard = await loadAlocExamPreview();
       if (alocCard && alocCard.id) return [alocCard];
     }
@@ -275,6 +277,10 @@
       pool = await fetchPracticePool(category);
     } catch (e) {
       console.warn("Portal CBT load failed", e);
+      if (preferBlog && profileReadyForCombined(category, subjects)) {
+        var alocFallback = await loadAlocExamPreview();
+        if (alocFallback && alocFallback.id) return [alocFallback];
+      }
       return [];
     }
 
@@ -287,21 +293,28 @@
         if (entry && Array.isArray(entry.questions) && entry.questions.length) matched.push(subject);
         else missing.push(subject);
       });
-      if (!matched.length) return [];
-      var label = formatExamLabel(category);
-      return [{
-        id: category === "JAMB" ? JAMB_COMBINED_ID : portalExamId(category, "combined"),
-        title: label + " CBT Practice Exam",
-        subject: matched.join(" · "),
-        exam_type: category,
-        total_questions: combinedQuestionTotal(category, matched),
-        duration_minutes: durationMinutes(category, true),
-        is_portal: true,
-        is_combined: true,
-        subjects: matched,
-        missing_subjects: missing,
-        source: "CBT Bank",
-      }];
+      if (matched.length) {
+        var label = formatExamLabel(category);
+        return [{
+          id: portalExamId(category, "combined"),
+          title: label + " CBT Practice Exam",
+          subject: matched.join(" · "),
+          exam_type: category,
+          total_questions: combinedQuestionTotal(category, matched),
+          duration_minutes: durationMinutes(category, true),
+          is_portal: true,
+          is_combined: true,
+          is_aloc: false,
+          subjects: matched,
+          missing_subjects: missing,
+          source: bankLabel,
+        }];
+      }
+      if (!preferBlog) {
+        var alocCard2 = await loadAlocExamPreview();
+        if (alocCard2 && alocCard2.id) return [alocCard2];
+      }
+      return [];
     }
 
     return subjects.map(function (subject) {
@@ -316,9 +329,16 @@
         total_questions: count,
         duration_minutes: durationMinutes(category),
         is_portal: true,
-        source: "CBT Bank",
+        source: bankLabel,
       };
     }).filter(Boolean);
+
+    if (preferBlog && category === "POST_UTME" && profileReadyForCombined(category, subjects)) {
+      var alocPost = await loadAlocExamPreview();
+      if (alocPost && alocPost.id) return [alocPost];
+    }
+
+    return [];
   }
 
   function rebuildAlocSections(exam) {
@@ -515,4 +535,4 @@
     return pool.map(function (e) { return e.subject; });
   };
 })();
-
+

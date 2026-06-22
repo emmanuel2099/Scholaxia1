@@ -181,6 +181,12 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
                             "has_mic": False,
                         })
 
+            elif event == "request_board_sync":
+                await broadcast(room_id, {
+                    "event": "request_board_sync",
+                    "user_id": user_id,
+                }, exclude=websocket)
+
             elif event == "raise_hand":
                 await broadcast(room_id, {
                     "event": "raise_hand",
@@ -203,4 +209,4 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
 
     except WebSocketDisconnect:
         disconnect(room_id, websocket)
-        await broadcast(room_id, {"event": "user_left", "user_id": user_id})
+        await broadcast(room_id, {"event": "user_left", "user_id": user_id, "role": role})

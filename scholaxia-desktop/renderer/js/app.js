@@ -87,31 +87,7 @@ function hasOfflineCbtPack(examId, year) {
 
 function updateCbtCardReadyState(card) {
   if (!card) return;
-  const btn = card.querySelector("[data-exam-id]");
-  const examId = btn?.dataset?.examId;
-  const year = card.querySelector(".cbt-year-value")?.value || "";
-  let badge = card.querySelector(".cbt-ready-badge");
-  if (!badge) {
-    badge = document.createElement("p");
-    badge.className = "cbt-ready-badge hidden";
-    const note = card.querySelector(".cbt-offline-note");
-    if (note) note.before(badge);
-    else if (btn) btn.before(badge);
-  }
-  const ready = hasOfflineCbtPack(examId, year);
-  const prefetching = card.dataset.prefetching === ((year || "") || "any");
-  if (ready) {
-    badge.textContent = "✓ Exam ready — opens instantly";
-    badge.classList.remove("hidden");
-    badge.classList.remove("cbt-ready-badge-loading");
-  } else if (prefetching) {
-    badge.textContent = "Downloading exam in background…";
-    badge.classList.remove("hidden");
-    badge.classList.add("cbt-ready-badge-loading");
-  } else {
-    badge.classList.add("hidden");
-    badge.classList.remove("cbt-ready-badge-loading");
-  }
+  card.querySelector(".cbt-ready-badge")?.remove();
 }
 
 function requestCbtPortalPack(examId, year) {
@@ -383,8 +359,8 @@ function bindCbtGridClicks() {
 }
 
 function showCbtExamView() {
-  const hero = document.getElementById("cbt-page-hero");
-  if (hero) hero.classList.add("hidden");
+  const embed = document.getElementById("cbt-embed-wrap");
+  if (embed) embed.classList.add("hidden");
   document.getElementById("cbt-grid").classList.add("hidden");
   document.getElementById("result-screen").classList.add("hidden");
   const screen = document.getElementById("exam-screen");
@@ -395,11 +371,11 @@ function showCbtExamView() {
 }
 
 function showCbtListView() {
-  const hero = document.getElementById("cbt-page-hero");
-  if (hero) hero.classList.remove("hidden");
+  const embed = document.getElementById("cbt-embed-wrap");
+  if (embed) embed.classList.remove("hidden");
   document.getElementById("exam-screen").classList.add("hidden");
   document.getElementById("result-screen").classList.add("hidden");
-  document.getElementById("cbt-grid").classList.remove("hidden");
+  document.getElementById("cbt-grid").classList.add("hidden");
 }
 
 function setCbtStartLoading(loading) {
@@ -485,9 +461,7 @@ function refreshPage() {
   else if (currentPage === "school") loadSchoolExams();
   else if (currentPage === "school-portal") { /* static */ }
   else if (currentPage === "plans") loadPlans();
-  else if (currentPage === "cbt") {
-    if (!isCbtExamActive()) loadCbtExams();
-  }
+  else if (currentPage === "cbt") { /* embedded scholaxiacbtexam.blog */ }
   else if (currentPage === "sia") loadSia();
   else if (currentPage === "community") {
     var pending = communityPendingPost;
@@ -848,7 +822,6 @@ function renderCbtGrid(opts) {
       <p class="meta">${subjectMeta} · ${e.total_questions} questions · ${durationLabel}</p>
       ${missingNote}
       ${renderCbtYearPicker(e)}
-      <p class="cbt-offline-note">&#128241; After first download, exam works offline — no data needed during practice.</p>
       <button type="button" class="btn-join" data-exam-id="${escHtml(e.id)}">${startLabel}</button>
     </div>`;
   }).join("");
@@ -1111,7 +1084,7 @@ function closeExam() {
   hideCbtLoadingOverlay();
   currentExam = null;
   currentSession = null;
-  loadCbtExams();
+  showCbtListView();
 }
 
 /* ── Profile ── */
@@ -1191,6 +1164,9 @@ function toggleSubject(subject, max) {
 
 document.addEventListener("DOMContentLoaded", () => {
   if (typeof warmScholaxiaApi === "function") warmScholaxiaApi();
+  const cbtFrame = document.getElementById("cbt-portal-frame");
+  const embedUrl = window.CBT_PORTAL_CONFIG && window.CBT_PORTAL_CONFIG.embedUrl;
+  if (cbtFrame && embedUrl) cbtFrame.src = embedUrl;
   const sel = document.getElementById("setup-exam-type");
   if (sel) sel.addEventListener("change", () => { selectedSubjects = []; renderSubjectPicker(); });
 });

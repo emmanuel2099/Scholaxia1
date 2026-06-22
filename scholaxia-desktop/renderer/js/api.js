@@ -1,4 +1,13 @@
-const API_BASE = "https://scholaxia1.onrender.com";
+function scholaxiaApiBase() {
+  var host = window.location.hostname;
+  if (host === "127.0.0.1" || host === "localhost") {
+    return window.location.origin + "/api-proxy";
+  }
+  return "https://scholaxia1.onrender.com";
+}
+
+var API_BASE = scholaxiaApiBase();
+if (typeof window !== "undefined") window.API_BASE = API_BASE;
 
 function getToken() {
   return localStorage.getItem("sia_token") || localStorage.getItem("sia_teacher_token") || localStorage.getItem("sia_admin_token") || "";

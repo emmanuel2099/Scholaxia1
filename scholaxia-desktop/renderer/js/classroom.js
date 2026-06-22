@@ -17,8 +17,9 @@ var classAutoEndTimer = null;
 var agoraRetryTimer = null;
 var agoraConnecting = false;
 var raisedHands = {};
+var wsStudentCount = 0;
 var API_WS = "wss://scholaxia1.onrender.com";
-var JOIN_TIMEOUT_MS = 18000;
+var JOIN_TIMEOUT_MS = 45000;
 
 var SUBJECT_SYMBOLS = {
   mathematics: {
@@ -152,9 +153,55 @@ function showMicMeter(show) {
   if (meter) meter.classList.toggle("hidden", !show);
 }
 
-function showMicLiveBadge(show) {
+function showMicLiveBadge(show, text) {
   var badge = document.getElementById("mic-live-badge");
-  if (badge) badge.classList.toggle("hidden", !show);
+  if (!badge) return;
+  if (typeof text === "string") badge.textContent = text;
+  badge.classList.toggle("hidden", !show);
+}
+
+function countVideoAudience() {
+  if (!agoraClient || !agoraJoined) return 0;
+  return (agoraClient.remoteUsers || []).length;
+}
+
+function updateAudienceStats() {
+  var badge = document.getElementById("audience-badge");
+  if (!badge || !isTeacherRole()) return;
+  var inChat = wsStudentCount;
+  var inVideo = countVideoAudience();
+  var parts = [];
+  if (inChat > 0) parts.push(inChat + " in chat");
+  if (inVideo > 0) parts.push(inVideo + " on video");
+  if (!parts.length) {
+    badge.textContent = "No students yet";
+    badge.classList.remove("hidden");
+    return;
+  }
+  badge.textContent = parts.join(" · ");
+  badge.classList.remove("hidden");
+}
+
+function updateMicAudienceBadge(level) {
+  if (!isTeacherRole()) return;
+  var audience = countVideoAudience();
+  var inChat = wsStudentCount;
+  if (mediaMode === "local") {
+    showMicLiveBadge(
+      micOn && level > 8,
+      inChat > 0
+        ? "Mic on — students can't hear yet (" + inChat + " waiting)"
+        : "Mic on — preview only (video not connected)"
+    );
+    return;
+  }
+  if (micOn && level > 8 && audience > 0) {
+    showMicLiveBadge(true, audience + " student(s) can hear you");
+  } else if (micOn && agoraJoined && audience === 0) {
+    showMicLiveBadge(true, "Mic live — waiting for students to join video");
+  } else {
+    showMicLiveBadge(micOn && level > 8, "Students hear you");
+  }
 }
 
 function stopMicMonitor() {
@@ -197,7 +244,7 @@ function startMicMonitor(streamOrTrack) {
       var level = Math.min(100, Math.round((sum / data.length) * 1.4));
       var fill = document.getElementById("mic-meter-fill");
       if (fill) fill.style.width = level + "%";
-      showMicLiveBadge(micOn && level > 8);
+      updateMicAudienceBadge(level);
     }, 80);
   } catch (e) { /* ignore */ }
 }
@@ -292,9 +339,12 @@ function playRemoteVideo(user) {
   var box = document.createElement("div");
   box.className = "remote-user";
   var vid = document.createElement("div");
+  vid.style.width = "100%";
+  vid.style.height = "100%";
   user.videoTrack.play(vid);
   box.appendChild(vid);
   wrap.appendChild(box);
+  if (!isTeacherRole()) showBoardForStudent(false);
 }
 
 async function subscribeToExistingUsers() {
@@ -368,6 +418,35 @@ function addChatMessage(name, text, isSystem) {
 function sendBoardEvent(action, data) {
   if (!liveSocket || liveSocket.readyState !== WebSocket.OPEN) return;
   liveSocket.send(JSON.stringify({ event: "whiteboard", action: action, data: data }));
+}
+
+function showBoardForStudent(forceOpen) {
+  if (isTeacherRole()) return;
+  var overlay = document.getElementById("board-overlay");
+  if (!overlay) return;
+  if (forceOpen !== false) {
+    board.open = true;
+    overlay.classList.remove("hidden");
+    hideVideoPlaceholder();
+    resizeBoardCanvas();
+  }
+}
+
+function syncBoardToRoom() {
+  if (!isTeacherRole() || !liveSocket || liveSocket.readyState !== WebSocket.OPEN) return;
+  sendBoardEvent("board_open", { open: board.open });
+  for (var i = 0; i < board.history.length; i++) {
+    var item = board.history[i];
+    sendBoardEvent(item.type, item.data);
+  }
+  if (board.liveText) {
+    sendBoardEvent("text_stream", {
+      x: board.textX,
+      y: board.textY,
+      text: board.liveText,
+      size: board.fontSize,
+    });
+  }
 }
 
 function initWhiteboard() {
@@ -783,9 +862,13 @@ function handleBoardMessage(msg) {
     board.open = !!msg.data.open;
     var overlay = document.getElementById("board-overlay");
     if (overlay) overlay.classList.toggle("hidden", !board.open);
-    if (board.open) resizeBoardCanvas();
+    if (board.open) {
+      hideVideoPlaceholder();
+      resizeBoardCanvas();
+    }
     return;
   }
+  if (!isTeacherRole()) showBoardForStudent();
   if (msg.action === "draw") {
     applyDrawStroke(msg.data, true);
     redrawBoard();
@@ -825,6 +908,10 @@ function connectChat() {
   liveSocket.onopen = function () {
     setStatus("Connected — chat ready");
     addChatMessage("", "You joined the class. Use the chat to talk with everyone.", true);
+    if (!isTeacherRole()) {
+      liveSocket.send(JSON.stringify({ event: "request_board_sync" }));
+    }
+    updateAudienceStats();
   };
   liveSocket.onmessage = function (ev) {
     try {
@@ -833,9 +920,18 @@ function connectChat() {
         var who = msg.role === "teacher" ? "Teacher" : "Student";
         addChatMessage(who, msg.text || "");
       } else if (msg.event === "user_joined") {
+        if (msg.role === "student") wsStudentCount++;
+        updateAudienceStats();
         addChatMessage("", "Someone joined the class.", true);
+        if (isTeacherRole() && msg.role === "student") {
+          setTimeout(syncBoardToRoom, 300);
+        }
       } else if (msg.event === "user_left") {
+        if (msg.role === "student" && wsStudentCount > 0) wsStudentCount--;
+        updateAudienceStats();
         addChatMessage("", "Someone left the class.", true);
+      } else if (msg.event === "request_board_sync") {
+        if (isTeacherRole()) syncBoardToRoom();
       } else if (msg.event === "raise_hand") {
         if (isTeacherRole()) {
           addRaisedHand(msg.user_id, msg.name);
@@ -899,10 +995,18 @@ function hideVideoPlaceholder() {
 }
 
 function hasValidAgoraToken(token) {
-  if (!token || !liveSession.app_id) return false;
+  if (!liveSession.app_id) return false;
+  if (!token) return false;
   if (token.indexOf("AGORA_CERT_NOT_SET") >= 0) return false;
   if (token.indexOf("TOKEN_ERROR") >= 0) return false;
   return true;
+}
+
+function agoraCertMissingMessage() {
+  return (
+    "Live video is not configured on the server (Agora certificate missing on Render). " +
+    "Chat and board still work. Ask admin to set AGORA_APP_CERTIFICATE in Render environment variables."
+  );
 }
 
 async function refreshAgoraToken() {
@@ -1005,7 +1109,7 @@ function stopAgoraRetry() {
 }
 
 function scheduleAgoraRetry() {
-  if (!isTeacherRole() || agoraJoined || agoraRetryTimer) return;
+  if (agoraJoined || agoraRetryTimer) return;
   agoraRetryTimer = setInterval(function () {
     if (agoraJoined || agoraConnecting) return;
     tryStartAgora(true);
@@ -1066,6 +1170,7 @@ function enterChatOnlyMode(message) {
     scheduleAgoraRetry();
   } else {
     setVideoControlsEnabled(false);
+    scheduleAgoraRetry();
   }
 }
 
@@ -1088,10 +1193,10 @@ async function tryStartAgora(isRetry) {
   if (!hasValidAgoraToken(token)) {
     agoraConnecting = false;
     if (!isRetry) {
-      enterChatOnlyMode(
-        "Class is live — chat and board work. Could not get live video token. " +
-        "Leave and re-enter the classroom, or check Agora settings on Render."
-      );
+      var certMsg = token.indexOf("AGORA_CERT_NOT_SET") >= 0
+        ? agoraCertMissingMessage()
+        : "Class is live — chat and board work. Could not get live video token.";
+      enterChatOnlyMode(certMsg);
     }
     return;
   }
@@ -1111,9 +1216,16 @@ async function tryStartAgora(isRetry) {
           if (mediaType === "audio") {
             user.audioTrack.play();
           }
+          updateAudienceStats();
         } catch (e) {
           addChatMessage("", "Could not receive video/audio: " + e.message, true);
         }
+      });
+      agoraClient.on("user-joined", function () {
+        updateAudienceStats();
+      });
+      agoraClient.on("user-left", function () {
+        updateAudienceStats();
       });
       agoraClient.on("user-unpublished", function (user, mediaType) {
         if (mediaType === "video") {
@@ -1145,6 +1257,7 @@ async function tryStartAgora(isRetry) {
     mediaMode = "agora";
     stopAgoraRetry();
     await subscribeToExistingUsers();
+    updateAudienceStats();
     setVideoControlsEnabled(isTeacherRole() || studentMicAllowed);
     setStatus("Connected — video + chat");
 
@@ -1167,6 +1280,7 @@ async function tryStartAgora(isRetry) {
         "Video could not connect (" + (err.message || "error") + "). Chat and board still work."
       );
     }
+    scheduleAgoraRetry();
   } finally {
     agoraConnecting = false;
   }
@@ -1354,7 +1468,7 @@ async function toggleScreenShare() {
         localEl.classList.remove("hidden");
         screenOn = true;
         updateMediaButton(document.getElementById("btn-share"), true);
-        addChatMessage("", "Screen preview on your device. Students will see it when live video connects.", true);
+        addChatMessage("", "Screen preview on your device only — students cannot see it until live video connects. Open Board for teaching meanwhile.", true);
         localScreenStream.getVideoTracks()[0].onended = function () {
           screenOn = false;
           updateMediaButton(document.getElementById("btn-share"), false);
@@ -1469,6 +1583,8 @@ window.onload = function () {
     showHostTools(true);
     var rhPanel = document.getElementById("raise-hand-panel");
     if (rhPanel) rhPanel.classList.remove("hidden");
+    var audBadge = document.getElementById("audience-badge");
+    if (audBadge) audBadge.classList.remove("hidden");
   }
   connectChat();
   scheduleClassAutoEnd();

@@ -16,11 +16,16 @@
     <img src="assets/logo.png" alt="" class="teacher-auth-logo" />
     <h1>Scholaxia Teacher</h1>
     <p class="sub">Host live classes, share materials &amp; manage your students</p>
-    <form onsubmit="teacherLogin(event)">
-      <label><span>Email</span><input type="email" id="teacher-login-email" required /></label>
-      <label><span>Password</span><input type="password" id="teacher-login-password" required /></label>
+    <form id="teacher-login-form">
+      <label><span>Email</span><input type="email" id="teacher-login-email" value="teacher@scholaxia.com" autocomplete="username" required /></label>
+      <label><span>Password</span>
+        <div class="pw-row">
+          <input type="password" id="teacher-login-password" autocomplete="current-password" required />
+          <button type="button" class="pw-toggle" id="teacher-pw-toggle" aria-label="Show password">Show</button>
+        </div>
+      </label>
       <p id="teacher-login-error" class="error-msg"></p>
-      <button type="submit" class="btn-primary">LOG IN</button>
+      <button type="submit" class="btn-primary" id="teacher-login-btn">LOG IN</button>
     </form>
     <p class="auth-footer"><a href="index.html">← Student portal</a></p>
   </div>
@@ -33,15 +38,15 @@
       <div><strong>Scholaxia</strong><span>Teacher Portal</span></div>
     </div>
     <nav class="topnav" id="teacher-topnav">
-      <button type="button" class="topnav-btn active" data-page="live" onclick="showTeacherPage('live')"><span class="nav-ico">&#127909;</span> Live Classes</button>
-      <button type="button" class="topnav-btn" data-page="materials" onclick="showTeacherPage('materials')"><span class="nav-ico">&#128218;</span> Study Materials</button>
-      <button type="button" class="topnav-btn" data-page="curriculum" onclick="showTeacherPage('curriculum')"><span class="nav-ico">&#128197;</span> Curriculum</button>
-      <button type="button" class="topnav-btn" data-page="notes" onclick="showTeacherPage('notes')"><span class="nav-ico">&#128221;</span> Learn Notes</button>
-      <button type="button" class="topnav-btn" data-page="requests" onclick="showTeacherPage('requests')"><span class="nav-ico">&#128172;</span> Requests</button>
+      <button type="button" class="topnav-btn active" data-page="live"><span class="nav-ico">&#127909;</span> Live Classes</button>
+      <button type="button" class="topnav-btn" data-page="materials"><span class="nav-ico">&#128218;</span> Study Materials</button>
+      <button type="button" class="topnav-btn" data-page="curriculum"><span class="nav-ico">&#128197;</span> Curriculum</button>
+      <button type="button" class="topnav-btn" data-page="notes"><span class="nav-ico">&#128221;</span> Learn Notes</button>
+      <button type="button" class="topnav-btn" data-page="requests"><span class="nav-ico">&#128172;</span> Requests</button>
     </nav>
     <div class="teacher-user">
       <div><strong id="teacher-name-label">Teacher</strong><span id="teacher-email-label"></span></div>
-      <button type="button" class="btn-logout" onclick="teacherLogout()">Sign out</button>
+      <button type="button" class="btn-logout" id="teacher-logout-btn">Sign out</button>
     </div>
   </header>
 
@@ -61,47 +66,124 @@
           <label><span>Duration (min)</span><input type="number" id="host-duration" value="60" min="15" max="180" /></label>
         </div>
         <div class="form-row">
-          <button type="button" class="btn-action" onclick="teacherHostClass(false)">Schedule class</button>
-          <button type="button" class="btn-action primary" onclick="teacherHostClass(true)">Go live now</button>
+          <button type="button" class="btn-action" id="host-schedule-btn">Schedule class</button>
+          <button type="button" class="btn-action primary" id="host-live-btn">Go live now</button>
         </div>
         <p id="host-error" class="error-msg"></p>
       </div>
 
       <div class="page-head">
         <h3>Your classes</h3>
-        <select id="live-filter" onchange="loadTeacherLive()">
+        <select id="live-filter">
           <option value="">All</option>
           <option value="live">Live now</option>
           <option value="upcoming">Upcoming</option>
           <option value="past">Past</option>
         </select>
-        <button class="btn-sm" onclick="loadTeacherLive()">Refresh</button>
+        <button type="button" class="btn-sm" id="live-refresh-btn">Refresh</button>
       </div>
       <div id="live-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
     </section>
 
     <section id="page-materials" class="teacher-page">
-      <h2>Study Materials</h2>
-      <div id="materials-list"></div>
+      <div class="teacher-page-head">
+        <div>
+          <h2>Study Materials</h2>
+          <p class="page-desc">Upload PDFs, worksheets and links — students see materials matched to your subjects.</p>
+        </div>
+        <button type="button" class="btn-action" id="open-material-modal-btn">+ Add material</button>
+      </div>
+      <div class="materials-toolbar">
+        <label class="toolbar-field">
+          <span>Subject</span>
+          <select id="materials-subject-filter">
+            <option value="">All subjects</option>
+          </select>
+        </label>
+        <label class="toolbar-field">
+          <span>Type</span>
+          <select id="materials-type-filter">
+            <option value="">All types</option>
+            <option value="pdf">PDF</option>
+            <option value="doc">Document</option>
+            <option value="image">Image</option>
+            <option value="video">Video link</option>
+            <option value="link">Web link</option>
+          </select>
+        </label>
+        <button type="button" class="btn-sm" id="materials-refresh-btn">Refresh</button>
+      </div>
+      <div id="materials-stats" class="materials-stats"></div>
+      <div id="materials-list" class="materials-grid"><div class="loading">Loading materials…</div></div>
     </section>
 
     <section id="page-curriculum" class="teacher-page">
-      <h2>Curriculum / Work Scheme</h2>
+      <div class="teacher-page-head">
+        <div>
+          <h2>Curriculum / Work Scheme</h2>
+          <p class="page-desc">Plan your term — aligned with WAEC, NECO and JAMB topics.</p>
+        </div>
+        <button type="button" class="btn-action" id="add-curriculum-week-btn">+ Add week</button>
+      </div>
       <div id="curriculum-list"></div>
     </section>
 
     <section id="page-notes" class="teacher-page">
-      <h2>Learn Notes</h2>
+      <div class="teacher-page-head">
+        <div>
+          <h2>Learn Notes</h2>
+          <p class="page-desc">Lesson plans and teaching guides — saved to your account on this device.</p>
+        </div>
+        <button type="button" class="btn-action" id="save-notes-btn">Save notes</button>
+      </div>
       <div id="notes-list"></div>
     </section>
 
     <section id="page-requests" class="teacher-page">
-      <h2>Session Requests</h2>
+      <div class="teacher-page-head">
+        <div>
+          <h2>Session Requests</h2>
+          <p class="page-desc">Students asking for one-on-one help on a subject.</p>
+        </div>
+        <button type="button" class="btn-sm" id="requests-refresh-btn">Refresh</button>
+      </div>
       <div id="requests-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
     </section>
   </main>
 </div>
 
+<div id="material-modal" class="teacher-modal hidden">
+  <div class="teacher-modal-box">
+    <div class="teacher-modal-head">
+      <h3>Add study material</h3>
+      <button type="button" class="modal-close" id="material-modal-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="form-grid material-form-grid">
+      <label class="span-2"><span>Title</span><input type="text" id="mat-title" placeholder="e.g. Algebra — Week 3 worksheet" /></label>
+      <label><span>Subject</span><input type="text" id="mat-subject" list="mat-subject-list" placeholder="Mathematics" /></label>
+      <datalist id="mat-subject-list"></datalist>
+      <label><span>Type</span>
+        <select id="mat-type">
+          <option value="pdf">PDF file</option>
+          <option value="doc">Word document</option>
+          <option value="image">Image</option>
+          <option value="video">Video link (YouTube, etc.)</option>
+          <option value="link">Web link</option>
+        </select>
+      </label>
+      <label class="span-2 mat-file-wrap"><span>Upload file</span><input type="file" id="mat-file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp" /></label>
+      <label class="span-2 mat-link-wrap hidden"><span>URL</span><input type="url" id="mat-url" placeholder="https://..." /></label>
+      <label class="span-2"><span>Description (optional)</span><textarea id="mat-desc" rows="3" placeholder="What students should do with this material…"></textarea></label>
+    </div>
+    <p id="mat-error" class="error-msg"></p>
+    <div class="form-row">
+      <button type="button" class="btn-secondary" id="material-modal-cancel">Cancel</button>
+      <button type="button" class="btn-action" id="mat-save-btn">Save material</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
 <script src="js/teacher-api.js"></script>
 <script src="js/teacher.js"></script>
 </body>
