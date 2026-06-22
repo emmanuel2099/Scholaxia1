@@ -73,6 +73,68 @@ function saveOfflineCbtPack(examId, year, portal) {
   }
 }
 
+const cbtPrefetchInflight = new Map();
+let cbtLoadingTimer = null;
+
+function cbtPrefetchKey(examId, year) {
+  return `${examId}::${year || "any"}`;
+}
+
+function hasOfflineCbtPack(examId, year) {
+  const pack = loadOfflineCbtPack(examId, year);
+  return !!(pack && pack.exam && pack.exam.questions && pack.exam.questions.length);
+}
+
+function updateCbtCardReadyState(card) {
+  if (!card) return;
+  const btn = card.querySelector("[data-exam-id]");
+  const examId = btn?.dataset?.examId;
+  const year = card.querySelector(".cbt-year-value")?.value || "";
+  let badge = card.querySelector(".cbt-ready-badge");
+  if (!badge) {
+    badge = document.createElement("p");
+    badge.className = "cbt-ready-badge hidden";
+    const note = card.querySelector(".cbt-offline-note");
+    if (note) note.before(badge);
+    else if (btn) btn.before(badge);
+  }
+  const ready = hasOfflineCbtPack(examId, year);
+  const prefetching = card.dataset.prefetching === ((year || "") || "any");
+  if (ready) {
+    badge.textContent = "✓ Exam ready — opens instantly";
+    badge.classList.remove("hidden");
+    badge.classList.remove("cbt-ready-badge-loading");
+  } else if (prefetching) {
+    badge.textContent = "Downloading exam in background…";
+    badge.classList.remove("hidden");
+    badge.classList.add("cbt-ready-badge-loading");
+  } else {
+    badge.classList.add("hidden");
+    badge.classList.remove("cbt-ready-badge-loading");
+  }
+}
+
+function requestCbtPortalPack(examId, year) {
+  const key = cbtPrefetchKey(examId, year);
+  if (cbtPrefetchInflight.has(key)) return cbtPrefetchInflight.get(key);
+  const promise = beginPortalExam(examId, { year: year || "" })
+    .then((portal) => {
+      saveOfflineCbtPack(examId, year || "", portal);
+      return portal;
+    })
+    .finally(() => {
+      cbtPrefetchInflight.delete(key);
+      document.querySelectorAll("#cbt-grid .card-combined").forEach(updateCbtCardReadyState);
+    });
+  cbtPrefetchInflight.set(key, promise);
+  return promise;
+}
+
+function refreshCbtPackInBackground(examId, year) {
+  if (!navigator.onLine) return Promise.resolve();
+  return requestCbtPortalPack(examId, year).catch(() => null);
+}
+
 function isCbtPackFresh(pack, maxAgeMs) {
   if (!pack || !pack.exam || !pack.exam.questions || !pack.exam.questions.length) return false;
   const age = Date.now() - (pack.cached_at || 0);
@@ -81,14 +143,30 @@ function isCbtPackFresh(pack, maxAgeMs) {
 
 async function startPortalExamCached(examId, opts) {
   const year = (opts && opts.year) || "";
+  const key = cbtPrefetchKey(examId, year);
   const cached = loadOfflineCbtPack(examId, year);
+
   if (isCbtPackFresh(cached)) {
     return cached;
   }
+
+  if (cached && cached.exam?.questions?.length) {
+    if (navigator.onLine) refreshCbtPackInBackground(examId, year);
+    return cached;
+  }
+
+  if (cbtPrefetchInflight.has(key)) {
+    try {
+      return await cbtPrefetchInflight.get(key);
+    } catch (e) {
+      if (cached && cached.exam?.questions?.length) return cached;
+      throw e;
+    }
+  }
+
   if (navigator.onLine) {
     try {
-      const portal = await beginPortalExam(examId, opts);
-      saveOfflineCbtPack(examId, year, portal);
+      const portal = await requestCbtPortalPack(examId, year);
       return portal;
     } catch (e) {
       if (cached && cached.exam?.questions?.length) return cached;
@@ -105,16 +183,17 @@ function prefetchCbtExam(card, year) {
   const examId = btn?.dataset?.examId;
   if (!examId || typeof isPortalExamId !== "function" || !isPortalExamId(examId)) return;
   const y = year || "";
-  const existing = loadOfflineCbtPack(examId, y);
-  if (isCbtPackFresh(existing, 60 * 60 * 1000)) return;
-  if (card.dataset.prefetching === y) return;
-  card.dataset.prefetching = y;
-  beginPortalExam(examId, { year: y })
-    .then((portal) => {
-      saveOfflineCbtPack(examId, y, portal);
-      delete card.dataset.prefetching;
-    })
-    .catch(() => { delete card.dataset.prefetching; });
+  const prefetchTag = y || "any";
+  if (hasOfflineCbtPack(examId, y)) {
+    updateCbtCardReadyState(card);
+    return;
+  }
+  if (card.dataset.prefetching === prefetchTag) return;
+  card.dataset.prefetching = prefetchTag;
+  updateCbtCardReadyState(card);
+  requestCbtPortalPack(examId, y)
+    .then(() => { delete card.dataset.prefetching; updateCbtCardReadyState(card); })
+    .catch(() => { delete card.dataset.prefetching; updateCbtCardReadyState(card); });
 }
 
 function applyExamYearLabel(utmeYear, portal) {
@@ -210,11 +289,27 @@ function showCbtLoadingOverlay(message) {
     el.className = "cbt-loading-overlay hidden";
     document.getElementById("page-cbt").appendChild(el);
   }
-  el.innerHTML = `<div class="cbt-loading-box"><div class="cbt-spinner"></div><p>${escHtml(message || "Loading exam…")}</p></div>`;
+  const started = Date.now();
+  const baseMessage = message || "Loading exam…";
+  const render = () => {
+    const secs = Math.floor((Date.now() - started) / 1000);
+    let hint = "";
+    if (secs >= 25) hint = "<span class=\"cbt-loading-hint\">Server is waking up — almost there…</span>";
+    else if (secs >= 12) hint = "<span class=\"cbt-loading-hint\">Fetching questions from ALOC…</span>";
+    else if (secs >= 4) hint = "<span class=\"cbt-loading-hint\">Connecting to Scholaxia…</span>";
+    el.innerHTML = `<div class="cbt-loading-box"><div class="cbt-spinner"></div><p>${escHtml(baseMessage)}</p>${hint}</div>`;
+  };
+  render();
   el.classList.remove("hidden");
+  if (cbtLoadingTimer) clearInterval(cbtLoadingTimer);
+  cbtLoadingTimer = setInterval(render, 1000);
 }
 
 function hideCbtLoadingOverlay() {
+  if (cbtLoadingTimer) {
+    clearInterval(cbtLoadingTimer);
+    cbtLoadingTimer = null;
+  }
   const el = document.getElementById("cbt-loading-overlay");
   if (el) el.classList.add("hidden");
 }
@@ -259,7 +354,10 @@ function bindYearDropdowns() {
         label.textContent = opt.textContent.trim();
         closeAllYearDropdowns();
         const card = root.closest(".card");
-        if (card) prefetchCbtExam(card, hidden.value);
+        if (card) {
+          prefetchCbtExam(card, hidden.value);
+          updateCbtCardReadyState(card);
+        }
       });
     });
   });
@@ -610,6 +708,7 @@ async function loadCbtExams() {
   if (isCbtExamActive()) return;
   showCbtListView();
   document.getElementById("cbt-grid").innerHTML = `<div class="loading">Loading…</div>`;
+  if (typeof warmScholaxiaApi === "function") warmScholaxiaApi();
   await syncStudentProfile();
   const user = getUser();
   let profileComplete = false;
@@ -655,53 +754,52 @@ async function loadCbtExams() {
 }
 
 function renderCbtYearPicker(exam) {
-  if (!exam.is_aloc || !exam.available_years || !exam.available_years.length) return "";
+  if (!exam.is_aloc) return "";
   const yearTag = exam.exam_type === "JAMB" ? "UTME"
     : (exam.exam_type === "POST_UTME" ? "POST-UTME" : (exam.exam_type || "Exam"));
   const bySubject = exam.years_by_subject || {};
+  const pickerYears = exam.common_years || exam.available_years || [];
   const subjectRows = Object.keys(bySubject).map((s) => {
     const years = bySubject[s] || [];
-    const recent = years.filter((y) => Number(y) >= 2020).slice(0, 6).map((y) => `<span class="year-mini">${escHtml(y)}</span>`).join("");
-    const older = years.filter((y) => Number(y) < 2020).length
-      ? `<span class="year-mini muted">+${years.filter((y) => Number(y) < 2020).length} older</span>`
+    const recent = years.filter((y) => Number(y) >= 2015).slice(0, 6).map((y) => `<span class="year-mini">${escHtml(y)}</span>`).join("");
+    const older = years.filter((y) => Number(y) < 2015).length
+      ? `<span class="year-mini muted">+${years.filter((y) => Number(y) < 2015).length} older</span>`
       : "";
     return `<div class="year-subject-row"><span class="year-subject-name">${escHtml(s)}</span><div class="year-mini-row">${recent}${older}</div></div>`;
   }).join("");
-  const commonSet = new Set(exam.common_years || []);
   const menuItems = [
     { value: "", label: `Any year — mixed ${yearTag} papers` },
-    ...exam.available_years.map((y) => ({
-      value: y,
-      label: `${yearTag} ${y}${commonSet.has(y) ? " ✓ all subjects" : ""}`,
-    })),
+    ...pickerYears.map((y) => ({ value: y, label: `${yearTag} ${y} ✓ all subjects` })),
   ];
-  const menuHtml = menuItems.map((item, idx) => `
-    <button type="button" class="year-dropdown-option ${idx === 0 ? "active" : ""}"
+  const defaultItem = pickerYears.length
+    ? menuItems.find((item) => item.value === pickerYears[0]) || menuItems[0]
+    : menuItems[0];
+  const menuHtml = menuItems.map((item) => `
+    <button type="button" class="year-dropdown-option ${item.value === defaultItem.value ? "active" : ""}"
       data-value="${escHtml(item.value)}" role="option">${escHtml(item.label)}</button>
   `).join("");
-  const defaultLabel = menuItems[0].label;
-  const allSubjectsNote = (exam.common_years || []).length
-    ? `<p class="year-common-note"><strong>All subjects available:</strong> ${exam.common_years.slice(0, 10).map((y) => escHtml(y)).join(", ")}</p>`
-    : "";
+  const noSharedYears = !pickerYears.length
+    ? `<p class="year-common-note meta-warn">No single ${escHtml(yearTag)} year has papers for <strong>all</strong> your subjects in ALOC. Use <strong>Any year</strong>, or change subjects in Profile.</p>`
+    : `<p class="year-common-note"><strong>Full exam years</strong> (all your subjects): ${pickerYears.slice(0, 12).map((y) => escHtml(y)).join(", ")}</p>`;
   return `
     <div class="cbt-year-picker">
       <div class="year-picker-row">
         <label class="year-picker-label">Exam year</label>
         <div class="year-dropdown" data-open="false">
-          <input type="hidden" class="cbt-year-value" value="" />
+          <input type="hidden" class="cbt-year-value" value="${escHtml(defaultItem.value)}" />
           <button type="button" class="year-dropdown-trigger" aria-expanded="false" aria-haspopup="listbox">
-            <span class="year-dropdown-label">${escHtml(defaultLabel)}</span>
+            <span class="year-dropdown-label">${escHtml(defaultItem.label)}</span>
             <span class="year-dropdown-chevron" aria-hidden="true">▾</span>
           </button>
           <div class="year-dropdown-menu" role="listbox">${menuHtml}</div>
         </div>
       </div>
-      <p class="year-picker-hint">Pick a year — only questions from that ${escHtml(yearTag)} paper will load.</p>
+      <p class="year-picker-hint">Only years where <strong>every</strong> subject has ${escHtml(yearTag)} papers are listed.</p>
       <details class="year-details">
         <summary>View years per subject</summary>
         <div class="year-subject-grid">${subjectRows}</div>
       </details>
-      ${allSubjectsNote}
+      ${noSharedYears}
     </div>`;
 }
 
@@ -757,7 +855,11 @@ function renderCbtGrid(opts) {
   bindYearDropdowns();
   const grid = document.getElementById("cbt-grid");
   const combinedCard = grid?.querySelector(".card-combined");
-  if (combinedCard && navigator.onLine) prefetchCbtExam(combinedCard, "");
+  if (combinedCard && navigator.onLine) {
+    const defaultYear = combinedCard.querySelector(".cbt-year-value")?.value || "";
+    prefetchCbtExam(combinedCard, defaultYear);
+    updateCbtCardReadyState(combinedCard);
+  }
 }
 
 async function beginExam(examId, isSchool, utmeYear) {
@@ -769,14 +871,11 @@ async function beginExam(examId, isSchool, utmeYear) {
   const user = getUser();
   const examLabel = formatExamType(user.examType || "JAMB");
   const yearLabel = utmeYear ? `${examLabel} ${utmeYear}` : `mixed ${examLabel} years`;
-  const cachedPack = typeof isPortalExamId === "function" && isPortalExamId(examId)
-    ? loadOfflineCbtPack(examId, utmeYear || "")
-    : null;
-  const fastOpen = isCbtPackFresh(cachedPack);
+  const fastOpen = hasOfflineCbtPack(examId, utmeYear || "");
   showCbtLoadingOverlay(
     fastOpen
       ? "Opening your saved exam…"
-      : `Loading ${examLabel} CBT (${yearLabel})… Usually 10–20 seconds.`
+      : `Loading ${examLabel} CBT (${yearLabel})… First download may take 20–40 seconds.`
   );
   try {
     if (typeof isPortalExamId === "function" && isPortalExamId(examId)) {
@@ -1091,6 +1190,7 @@ function toggleSubject(subject, max) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  if (typeof warmScholaxiaApi === "function") warmScholaxiaApi();
   const sel = document.getElementById("setup-exam-type");
   if (sel) sel.addEventListener("change", () => { selectedSubjects = []; renderSubjectPicker(); });
 });

@@ -376,16 +376,8 @@
         throw new Error("No exam questions" + yearHint + ". Try another year or check ALOC_ACCESS_TOKEN on the server.");
       }
       if (opts.year) {
-        var wantYear = String(opts.year);
-        aloc.exam.questions = aloc.exam.questions.filter(function (q) {
-          return String(q.exam_year || "") === wantYear;
-        });
-        if (!aloc.exam.questions.length) {
-          var cat = normalizeExamType(aloc.exam.exam_type || getProfileExamType());
-          throw new Error("No " + yearLabelForCategory(cat) + " " + wantYear + " questions for your subjects.");
-        }
-        aloc.exam.selected_year = wantYear;
-        aloc.selected_year = wantYear;
+        aloc.exam.selected_year = String(opts.year);
+        aloc.selected_year = String(opts.year);
         rebuildAlocSections(aloc.exam);
       }
       return {

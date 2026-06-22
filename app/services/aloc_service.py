@@ -56,15 +56,18 @@ EXAM_CONFIG: dict[str, dict] = {
 # UTME years shown in the picker (newest first). ALOC serves 2025+ papers for core subjects.
 UTME_PICKER_YEARS = [str(y) for y in range(2025, 2000, -1)]
 
-# Legacy year hints per subject (ALOC catalogue). Picker still shows full UTME_PICKER_YEARS.
+# Years confirmed via ALOC API (type=utme). Do not list years that are not in the bank.
 ALOC_UTME_YEARS: dict[str, list[str]] = {
-    "english": ["2025", "2024", "2023", "2022", "2021", "2010", "2009", "2008", "2007", "2006", "2005", "2004", "2003"],
-    "mathematics": ["2025", "2024", "2023", "2022", "2021", "2013", "2009", "2008", "2007", "2006"],
-    "biology": ["2025", "2024", "2023", "2022", "2021", "2012", "2011", "2010", "2009", "2008", "2006", "2005", "2004", "2003"],
-    "chemistry": ["2025", "2024", "2023", "2022", "2021", "2010", "2006", "2005", "2004", "2003", "2002", "2001"],
+    "english": [str(y) for y in range(2022, 1999, -1)],
+    "mathematics": [str(y) for y in range(2023, 1999, -1) if y != 2020],
+    "biology": [str(y) for y in range(2012, 2002, -1)],
+    "chemistry": [
+        "2025", "2024", "2023", "2022", "2021", "2020", "2019", "2018", "2017", "2016", "2015",
+        "2010", "2006", "2005", "2004", "2003", "2002", "2001",
+    ],
+    "physics": [str(y) for y in range(2025, 2003, -1)],
     "commerce": ["2016", "2013", "2012", "2011", "2010", "2009", "2008", "2007", "2006", "2005", "2004", "2003", "2002", "2001", "2000"],
     "accounting": ["2016", "2015", "2014", "2013", "2012", "2011", "2010", "2009", "2007", "2006", "2004"],
-    "physics": ["2025", "2024", "2023", "2022", "2021", "2012", "2011", "2010", "2009", "2007", "2006"],
     "englishlit": ["2015", "2013", "2012", "2010", "2009", "2008", "2007", "2006"],
     "government": ["2016", "2013", "2012", "2011", "2010", "2009", "2008", "2007", "2006", "2000", "1999"],
     "crk": ["2015", "2013", "2012", "2011", "2010", "2009", "2008", "2007", "2006", "2005"],
@@ -72,7 +75,7 @@ ALOC_UTME_YEARS: dict[str, list[str]] = {
     "economics": ["2013", "2012", "2011", "2010", "2009", "2008", "2007", "2006", "2005", "2004", "2003", "2001"],
     "irk": ["2012"],
     "civiledu": ["2016", "2015", "2014", "2013", "2012", "2011"],
-    "insurance": ["2015", "2014", "5", "4", "3", "2", "1"],
+    "insurance": ["2015", "2014"],
     "currentaffairs": ["2013"],
     "history": ["2013"],
 }
@@ -174,7 +177,10 @@ def total_questions_for_subjects(exam_type: str, matched_subjects: list[str]) ->
 def _normalize_year(value: Any) -> str:
     if value is None:
         return ""
-    return str(value).strip()
+    text = str(value).strip()
+    if text.endswith(".0"):
+        text = text[:-2]
+    return text
 
 
 def _question_matches_year(item: dict, year: str, exam_type: str = "utme") -> bool:
@@ -188,7 +194,7 @@ def _question_matches_year(item: dict, year: str, exam_type: str = "utme") -> bo
         return True
     want = (exam_type or "utme").strip().lower()
     aliases = EXAM_TYPE_ALIASES.get(want, {want})
-    return qtype in aliases or qtype in {"", want}
+    return qtype in aliases
 
 
 def _filter_questions_by_year(items: list[dict], year: str, exam_type: str = "utme") -> list[dict]:
@@ -216,7 +222,7 @@ def convert_aloc_question(item: dict, index: int, subject_label: str) -> dict:
         "D": options.get("d") or "",
     }
     correct = _normalize_answer(item.get("answer"), opts)
-    year = item.get("examyear")
+    year = _normalize_year(item.get("examyear")) or None
     topic = subject_label
     if year:
         topic = f"{subject_label} ({year})"
@@ -236,7 +242,7 @@ def convert_aloc_question(item: dict, index: int, subject_label: str) -> dict:
 
 
 def jamb_year_catalog(subjects: list[str]) -> dict:
-    """Years for the UI picker — full 2025→2001 list plus per-subject catalogue hints."""
+    """Years available in ALOC per subject; common_years = intersection for all profile subjects."""
     by_subject: dict[str, list[str]] = {}
     slug_year_sets: list[set[str]] = []
 
@@ -244,20 +250,25 @@ def jamb_year_catalog(subjects: list[str]) -> dict:
         slug = profile_subject_to_aloc(subject)
         if not slug:
             continue
-        catalogue = set(ALOC_UTME_YEARS.get(slug, [])) | set(UTME_PICKER_YEARS)
-        ordered = [y for y in UTME_PICKER_YEARS if y in catalogue]
+        catalogue = ALOC_UTME_YEARS.get(slug, [])
+        ordered = [y for y in catalogue]
         by_subject[subject] = ordered
-        slug_year_sets.append(catalogue)
-
-    all_years = list(UTME_PICKER_YEARS)
+        if ordered:
+            slug_year_sets.append(set(ordered))
 
     common_years: list[str] = []
     if slug_year_sets:
-        common_years = [y for y in UTME_PICKER_YEARS if all(y in s for s in slug_year_sets)]
+        shared = set.intersection(*slug_year_sets)
+        all_ordered = []
+        for years in by_subject.values():
+            for y in years:
+                if y in shared and y not in all_ordered:
+                    all_ordered.append(y)
+        common_years = all_ordered
 
     return {
         "by_subject": by_subject,
-        "all_years": all_years,
+        "all_years": common_years,
         "common_years": common_years,
     }
 
@@ -279,6 +290,8 @@ async def _fetch_aloc_batch(
     year_norm = _normalize_year(year)
     if year_norm:
         params["year"] = year_norm
+    if aloc_subject == "english":
+        params["withComprehension"] = "true"
 
     headers = {
         "Accept": "application/json",
@@ -322,7 +335,30 @@ async def _fetch_aloc_batch(
 
 
 _ALOC_RESPONSE_CACHE: dict[str, tuple[float, list[dict]]] = {}
-_ALOC_CACHE_TTL_SEC = 600
+_ALOC_CACHE_TTL_SEC = 1800
+
+_COMBINED_EXAM_CACHE: dict[str, tuple[float, dict]] = {}
+_COMBINED_EXAM_CACHE_TTL_SEC = 1800
+
+
+def _combined_exam_cache_key(exam_type: str, subjects: list[str], year: Optional[str]) -> str:
+    ordered = "|".join(sorted(s.strip().lower() for s in subjects if s))
+    return f"{normalize_exam_type(exam_type)}:{ordered}:{_normalize_year(year) or ''}"
+
+
+def _combined_exam_cache_get(key: str) -> Optional[dict]:
+    entry = _COMBINED_EXAM_CACHE.get(key)
+    if not entry:
+        return None
+    ts, data = entry
+    if time.time() - ts > _COMBINED_EXAM_CACHE_TTL_SEC:
+        _COMBINED_EXAM_CACHE.pop(key, None)
+        return None
+    return data
+
+
+def _combined_exam_cache_set(key: str, data: dict) -> None:
+    _COMBINED_EXAM_CACHE[key] = (time.time(), data)
 
 
 def _aloc_cache_key(aloc_subject: str, exam_type: str, year: Optional[str], limit: int) -> str:
@@ -452,6 +488,14 @@ async def build_combined_exam(
             detail="None of your subjects are supported by ALOC. Update subjects in Profile.",
         )
 
+    year_catalog = jamb_year_catalog(matched)
+
+    if fetch:
+        cache_key = _combined_exam_cache_key(exam, matched, year)
+        cached_exam = _combined_exam_cache_get(cache_key)
+        if cached_exam is not None and cached_exam.get("questions"):
+            return cached_exam
+
     aloc_type = cfg["aloc_type"]
     questions: list[dict] = []
     sections: list[dict] = []
@@ -494,16 +538,22 @@ async def build_combined_exam(
 
         year_label = cfg["year_label"]
         if year and not questions:
+            hint = ""
+            if failed:
+                hint = f" Missing for {year}: {', '.join(failed)}."
+            if year_catalog.get("common_years"):
+                hint += f" Years with all your subjects: {', '.join(year_catalog['common_years'][:10])}."
             raise HTTPException(
                 status_code=400,
-                detail=f"No {year_label} {year} papers found for your subjects. Try another year or Any year.",
+                detail=f"No {year_label} {year} papers found for your subjects.{hint} Try one of those years or Any year.",
             )
 
     total = total_questions_for_subjects(exam, matched) if not fetch else len(questions)
-    year_catalog = jamb_year_catalog(matched)
+    if not fetch:
+        year_catalog = jamb_year_catalog(matched)
     year_note = f" · {cfg['year_label']} {year}" if year else f" · mixed {cfg['year_label']} years"
 
-    return {
+    result = {
         "id": aloc_combined_id(exam),
         "title": cfg["title"],
         "subject": " · ".join(matched),
@@ -527,6 +577,9 @@ async def build_combined_exam(
             + f" · {total} questions · {cfg['duration_minutes']} min · ALOC Past Questions{year_note}"
         ),
     }
+    if fetch and questions:
+        _combined_exam_cache_set(cache_key, result)
+    return result
 
 
 async def build_jamb_combined_exam(

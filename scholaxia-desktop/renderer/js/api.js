@@ -37,6 +37,14 @@ function fetchTimeout(ms) {
   return ctrl.signal;
 }
 
+var _apiWarmPromise = null;
+function warmScholaxiaApi() {
+  if (_apiWarmPromise) return _apiWarmPromise;
+  _apiWarmPromise = fetch(API_BASE + "/health", { signal: fetchTimeout(90000) })
+    .catch(function () { _apiWarmPromise = null; });
+  return _apiWarmPromise;
+}
+
 async function api(path, options) {
   options = options || {};
   var res;

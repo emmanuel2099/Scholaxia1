@@ -1008,6 +1008,26 @@ body:has(.app-shell-topnav) { overflow: auto; height: auto; }
   margin: 0 0 14px;
   line-height: 1.45;
 }
+.cbt-ready-badge {
+  font-size: 0.78rem;
+  color: #1a6b4a;
+  background: rgba(45, 155, 131, 0.14);
+  padding: 8px 12px;
+  border-radius: 10px;
+  margin: 0 0 10px;
+  font-weight: 600;
+}
+.cbt-ready-badge.cbt-ready-badge-loading {
+  color: #5a6b62;
+  font-weight: 500;
+  background: rgba(120, 140, 130, 0.12);
+}
+.cbt-loading-hint {
+  display: block;
+  margin-top: 10px;
+  font-size: 0.82rem;
+  color: #6b8f7a;
+}
 
 .q-nav {
   width: 200px;
