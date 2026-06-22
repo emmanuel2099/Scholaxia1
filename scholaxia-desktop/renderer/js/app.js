@@ -73,22 +73,48 @@ function saveOfflineCbtPack(examId, year, portal) {
   }
 }
 
+function isCbtPackFresh(pack, maxAgeMs) {
+  if (!pack || !pack.exam || !pack.exam.questions || !pack.exam.questions.length) return false;
+  const age = Date.now() - (pack.cached_at || 0);
+  return age >= 0 && age < (maxAgeMs || 7 * 24 * 60 * 60 * 1000);
+}
+
 async function startPortalExamCached(examId, opts) {
   const year = (opts && opts.year) || "";
+  const cached = loadOfflineCbtPack(examId, year);
+  if (isCbtPackFresh(cached)) {
+    return cached;
+  }
   if (navigator.onLine) {
     try {
       const portal = await beginPortalExam(examId, opts);
       saveOfflineCbtPack(examId, year, portal);
       return portal;
     } catch (e) {
-      const cached = loadOfflineCbtPack(examId, year);
-      if (cached) return cached;
+      if (cached && cached.exam?.questions?.length) return cached;
       throw e;
     }
   }
-  const cached = loadOfflineCbtPack(examId, year);
   if (cached) return cached;
   throw new Error("You are offline. Download this exam year once while online, then practice without data.");
+}
+
+function prefetchCbtExam(card, year) {
+  if (!card || !navigator.onLine) return;
+  const btn = card.querySelector("[data-exam-id]");
+  const examId = btn?.dataset?.examId;
+  if (!examId || typeof isPortalExamId !== "function" || !isPortalExamId(examId)) return;
+  const y = year || "";
+  const existing = loadOfflineCbtPack(examId, y);
+  if (isCbtPackFresh(existing, 60 * 60 * 1000)) return;
+  if (card.dataset.prefetching === y) return;
+  card.dataset.prefetching = y;
+  beginPortalExam(examId, { year: y })
+    .then((portal) => {
+      saveOfflineCbtPack(examId, y, portal);
+      delete card.dataset.prefetching;
+    })
+    .catch(() => { delete card.dataset.prefetching; });
 }
 
 function applyExamYearLabel(utmeYear, portal) {
@@ -193,6 +219,57 @@ function hideCbtLoadingOverlay() {
   if (el) el.classList.add("hidden");
 }
 
+function closeAllYearDropdowns() {
+  document.querySelectorAll("#cbt-grid .year-dropdown").forEach((root) => {
+    root.dataset.open = "false";
+    const trigger = root.querySelector(".year-dropdown-trigger");
+    const menu = root.querySelector(".year-dropdown-menu");
+    if (trigger) trigger.setAttribute("aria-expanded", "false");
+    if (menu) menu.classList.remove("open");
+  });
+}
+
+function bindYearDropdowns() {
+  document.querySelectorAll("#cbt-grid .year-dropdown").forEach((root) => {
+    if (root.dataset.bound) return;
+    root.dataset.bound = "1";
+    const trigger = root.querySelector(".year-dropdown-trigger");
+    const menu = root.querySelector(".year-dropdown-menu");
+    const hidden = root.querySelector(".cbt-year-value");
+    const label = root.querySelector(".year-dropdown-label");
+    if (!trigger || !menu || !hidden || !label) return;
+
+    trigger.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const open = root.dataset.open === "true";
+      closeAllYearDropdowns();
+      if (!open) {
+        root.dataset.open = "true";
+        trigger.setAttribute("aria-expanded", "true");
+        menu.classList.add("open");
+      }
+    });
+
+    menu.querySelectorAll(".year-dropdown-option").forEach((opt) => {
+      opt.addEventListener("click", (e) => {
+        e.stopPropagation();
+        menu.querySelectorAll(".year-dropdown-option").forEach((o) => o.classList.remove("active"));
+        opt.classList.add("active");
+        hidden.value = opt.dataset.value || "";
+        label.textContent = opt.textContent.trim();
+        closeAllYearDropdowns();
+        const card = root.closest(".card");
+        if (card) prefetchCbtExam(card, hidden.value);
+      });
+    });
+  });
+
+  if (!window._yearDropdownDocBound) {
+    window._yearDropdownDocBound = true;
+    document.addEventListener("click", closeAllYearDropdowns);
+  }
+}
+
 function bindCbtGridClicks() {
   const grid = document.getElementById("cbt-grid");
   if (!grid || grid.dataset.clickBound) return;
@@ -202,7 +279,7 @@ function bindCbtGridClicks() {
     if (!btn || btn.disabled) return;
     ev.preventDefault();
     const card = btn.closest(".card");
-    const year = card?.querySelector(".cbt-year-select")?.value || "";
+    const year = card?.querySelector(".cbt-year-value")?.value || "";
     beginExam(btn.dataset.examId, false, year);
   });
 }
@@ -590,30 +667,41 @@ function renderCbtYearPicker(exam) {
       : "";
     return `<div class="year-subject-row"><span class="year-subject-name">${escHtml(s)}</span><div class="year-mini-row">${recent}${older}</div></div>`;
   }).join("");
-  const common = (exam.common_years || []).length
-    ? `<p class="year-common-note"><strong>All 4 subjects available:</strong> ${exam.common_years.slice(0, 10).map((y) => escHtml(y)).join(", ")}</p>`
-    : "";
   const commonSet = new Set(exam.common_years || []);
-  const yearOptions = exam.available_years.map((y) => {
-    const tag = commonSet.has(y) ? " ✓ all subjects" : "";
-    return `<option value="${escHtml(y)}">${escHtml(yearTag)} ${escHtml(y)}${tag}</option>`;
-  }).join("");
-  const options = [
-    `<option value="">Any year — mixed past papers</option>`,
-    ...yearOptions,
-  ].join("");
+  const menuItems = [
+    { value: "", label: `Any year — mixed ${yearTag} papers` },
+    ...exam.available_years.map((y) => ({
+      value: y,
+      label: `${yearTag} ${y}${commonSet.has(y) ? " ✓ all subjects" : ""}`,
+    })),
+  ];
+  const menuHtml = menuItems.map((item, idx) => `
+    <button type="button" class="year-dropdown-option ${idx === 0 ? "active" : ""}"
+      data-value="${escHtml(item.value)}" role="option">${escHtml(item.label)}</button>
+  `).join("");
+  const defaultLabel = menuItems[0].label;
+  const allSubjectsNote = (exam.common_years || []).length
+    ? `<p class="year-common-note"><strong>All subjects available:</strong> ${exam.common_years.slice(0, 10).map((y) => escHtml(y)).join(", ")}</p>`
+    : "";
   return `
     <div class="cbt-year-picker">
       <div class="year-picker-row">
-        <label class="year-picker-label" for="cbt-utme-year">Exam year</label>
-        <select class="cbt-year-select" aria-label="Choose UTME year">${options}</select>
+        <label class="year-picker-label">Exam year</label>
+        <div class="year-dropdown" data-open="false">
+          <input type="hidden" class="cbt-year-value" value="" />
+          <button type="button" class="year-dropdown-trigger" aria-expanded="false" aria-haspopup="listbox">
+            <span class="year-dropdown-label">${escHtml(defaultLabel)}</span>
+            <span class="year-dropdown-chevron" aria-hidden="true">▾</span>
+          </button>
+          <div class="year-dropdown-menu" role="listbox">${menuHtml}</div>
+        </div>
       </div>
-      <p class="year-picker-hint">Pick a year — only questions from that UTME paper will load.</p>
+      <p class="year-picker-hint">Pick a year — only questions from that ${escHtml(yearTag)} paper will load.</p>
       <details class="year-details">
         <summary>View years per subject</summary>
         <div class="year-subject-grid">${subjectRows}</div>
       </details>
-      ${common}
+      ${allSubjectsNote}
     </div>`;
 }
 
@@ -666,6 +754,10 @@ function renderCbtGrid(opts) {
       <button type="button" class="btn-join" data-exam-id="${escHtml(e.id)}">${startLabel}</button>
     </div>`;
   }).join("");
+  bindYearDropdowns();
+  const grid = document.getElementById("cbt-grid");
+  const combinedCard = grid?.querySelector(".card-combined");
+  if (combinedCard && navigator.onLine) prefetchCbtExam(combinedCard, "");
 }
 
 async function beginExam(examId, isSchool, utmeYear) {
@@ -677,7 +769,15 @@ async function beginExam(examId, isSchool, utmeYear) {
   const user = getUser();
   const examLabel = formatExamType(user.examType || "JAMB");
   const yearLabel = utmeYear ? `${examLabel} ${utmeYear}` : `mixed ${examLabel} years`;
-  showCbtLoadingOverlay(`Loading ${examLabel} CBT (${yearLabel})… This can take up to a minute.`);
+  const cachedPack = typeof isPortalExamId === "function" && isPortalExamId(examId)
+    ? loadOfflineCbtPack(examId, utmeYear || "")
+    : null;
+  const fastOpen = isCbtPackFresh(cachedPack);
+  showCbtLoadingOverlay(
+    fastOpen
+      ? "Opening your saved exam…"
+      : `Loading ${examLabel} CBT (${yearLabel})… Usually 10–20 seconds.`
+  );
   try {
     if (typeof isPortalExamId === "function" && isPortalExamId(examId)) {
       const portal = await startPortalExamCached(examId, { year: utmeYear || "" });

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Any, Optional
 
 import httpx
@@ -272,7 +273,7 @@ async def _fetch_aloc_batch(
     year: Optional[str],
 ) -> tuple[list[dict], bool]:
     """Fetch one ALOC batch. Returns (questions, used_fallback)."""
-    cap = min(max(int(limit), 1), 40)
+    cap = min(max(int(limit), 1), 120)
     url = f"{base}/api/v2/m/{cap}"
     params: dict[str, str] = {"subject": aloc_subject, "type": exam_type}
     year_norm = _normalize_year(year)
@@ -320,12 +321,36 @@ async def _fetch_aloc_batch(
     return data, False
 
 
+_ALOC_RESPONSE_CACHE: dict[str, tuple[float, list[dict]]] = {}
+_ALOC_CACHE_TTL_SEC = 600
+
+
+def _aloc_cache_key(aloc_subject: str, exam_type: str, year: Optional[str], limit: int) -> str:
+    return f"{aloc_subject}:{exam_type}:{_normalize_year(year)}:{limit}"
+
+
+def _aloc_cache_get(key: str) -> Optional[list[dict]]:
+    entry = _ALOC_RESPONSE_CACHE.get(key)
+    if not entry:
+        return None
+    ts, data = entry
+    if time.time() - ts > _ALOC_CACHE_TTL_SEC:
+        _ALOC_RESPONSE_CACHE.pop(key, None)
+        return None
+    return data
+
+
+def _aloc_cache_set(key: str, data: list[dict]) -> None:
+    _ALOC_RESPONSE_CACHE[key] = (time.time(), data)
+
+
 async def fetch_aloc_questions(
     aloc_subject: str,
     limit: int,
     *,
     exam_type: str = "utme",
     year: Optional[str] = None,
+    client: Optional[httpx.AsyncClient] = None,
 ) -> list[dict]:
     token = (settings.ALOC_ACCESS_TOKEN or "").strip()
     if not token:
@@ -334,40 +359,55 @@ async def fetch_aloc_questions(
     base = (settings.ALOC_BASE_URL or "https://questions.aloc.com.ng").rstrip("/")
     year_norm = _normalize_year(year)
     want = max(int(limit), 1)
+    cache_key = _aloc_cache_key(aloc_subject, exam_type, year_norm or None, want)
+    cached = _aloc_cache_get(cache_key)
+    if cached is not None:
+        return cached[:want]
+
     collected: list[dict] = []
     seen_ids: set[Any] = set()
+    max_attempts = 1 if year_norm else (2 if want > 40 else 1)
+    own_client = client is None
 
     try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            attempts = 0
-            while len(collected) < want and attempts < 6:
-                batch, _ = await _fetch_aloc_batch(
-                    client,
-                    base=base,
-                    token=token,
-                    aloc_subject=aloc_subject,
-                    limit=want - len(collected),
-                    exam_type=exam_type,
-                    year=year_norm or None,
-                )
-                if not batch:
+        if own_client:
+            client = httpx.AsyncClient(timeout=28.0)
+        assert client is not None
+        attempts = 0
+        while len(collected) < want and attempts < max_attempts:
+            batch, _ = await _fetch_aloc_batch(
+                client,
+                base=base,
+                token=token,
+                aloc_subject=aloc_subject,
+                limit=want - len(collected),
+                exam_type=exam_type,
+                year=year_norm or None,
+            )
+            if not batch:
+                break
+            for item in batch:
+                qid = item.get("id")
+                if qid in seen_ids:
+                    continue
+                seen_ids.add(qid)
+                collected.append(item)
+                if len(collected) >= want:
                     break
-                for item in batch:
-                    qid = item.get("id")
-                    if qid in seen_ids:
-                        continue
-                    seen_ids.add(qid)
-                    collected.append(item)
-                    if len(collected) >= want:
-                        break
-                attempts += 1
+            attempts += 1
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"ALOC request failed: {exc}") from exc
+    finally:
+        if own_client and client is not None:
+            await client.aclose()
 
     if year_norm:
         collected = _filter_questions_by_year(collected, year_norm, exam_type)
 
-    return collected[:want]
+    result = collected[:want]
+    if result:
+        _aloc_cache_set(cache_key, result)
+    return result
 
 
 def split_profile_subjects(subjects: list[str]) -> tuple[list[str], list[str]]:
@@ -418,20 +458,24 @@ async def build_combined_exam(
     failed: list[str] = []
 
     if fetch:
-        async def load_subject(subject: str) -> tuple[str, list[dict]]:
-            try:
-                slug = profile_subject_to_aloc(subject)
-                assert slug
-                limit = question_limit_for_exam(exam, slug)
-                raw = await fetch_aloc_questions(slug, limit, exam_type=aloc_type, year=year)
-                return subject, raw[:limit]
-            except Exception:
-                return subject, []
+        async with httpx.AsyncClient(timeout=28.0) as http_client:
 
-        results = await asyncio.gather(
-            *[load_subject(subject) for subject in matched],
-            return_exceptions=True,
-        )
+            async def load_subject(subject: str) -> tuple[str, list[dict]]:
+                try:
+                    slug = profile_subject_to_aloc(subject)
+                    assert slug
+                    limit = question_limit_for_exam(exam, slug)
+                    raw = await fetch_aloc_questions(
+                        slug, limit, exam_type=aloc_type, year=year, client=http_client
+                    )
+                    return subject, raw[:limit]
+                except Exception:
+                    return subject, []
+
+            results = await asyncio.gather(
+                *[load_subject(subject) for subject in matched],
+                return_exceptions=True,
+            )
         for result in results:
             if isinstance(result, Exception):
                 failed.append(str(result))

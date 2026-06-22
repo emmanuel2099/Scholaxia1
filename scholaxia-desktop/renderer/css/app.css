@@ -505,6 +505,87 @@ body:has(.app-shell-topnav) { overflow: auto; height: auto; }
   max-width: 720px;
   margin: 0 auto;
   width: 100%;
+  overflow: visible;
+}
+.year-dropdown {
+  position: relative;
+  width: 100%;
+}
+.year-dropdown-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1.5px solid #c8ddd2;
+  background: #fff;
+  color: #0f3320;
+  font-size: 0.92rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.year-dropdown-trigger:hover {
+  border-color: #2d9b83;
+}
+.year-dropdown-trigger:focus {
+  outline: none;
+  border-color: #2d9b83;
+  box-shadow: 0 0 0 3px rgba(45, 155, 131, 0.18);
+}
+.year-dropdown-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.year-dropdown-chevron {
+  flex-shrink: 0;
+  color: #2d7a4f;
+  font-size: 1rem;
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+.year-dropdown[data-open="true"] .year-dropdown-chevron {
+  transform: rotate(180deg);
+}
+.year-dropdown-menu {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 200;
+  max-height: 280px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1.5px solid #c8ddd2;
+  border-radius: 12px;
+  box-shadow: 0 14px 36px rgba(15, 51, 32, 0.16);
+}
+.year-dropdown-menu.open {
+  display: block;
+}
+.year-dropdown-option {
+  display: block;
+  width: 100%;
+  padding: 11px 14px;
+  border: none;
+  background: transparent;
+  color: #0f3320;
+  font-size: 0.88rem;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.year-dropdown-option:hover,
+.year-dropdown-option.active {
+  background: rgba(45, 155, 131, 0.12);
+  color: #1a5c3a;
 }
 .subject-chips {
   display: flex;
@@ -532,6 +613,8 @@ body:has(.app-shell-topnav) { overflow: auto; height: auto; }
   line-height: 1.45;
 }
 .cbt-year-picker {
+  position: relative;
+  z-index: 5;
   margin: 0 0 16px;
   padding: 16px 18px;
   background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(240,250,245,0.9));
