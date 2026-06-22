@@ -92,6 +92,11 @@ var board = {
   imageCache: {}
 };
 
+var liveSaveRecorder = null;
+var liveSaveChunks = [];
+var liveSaveActive = false;
+var liveSaveStartedAt = null;
+
 function parseJwt(token) {
   try {
     var part = token.split(".")[1];
@@ -129,6 +134,115 @@ function showHostTools(show) {
   document.querySelectorAll(".host-only").forEach(function (el) {
     if (show) el.classList.remove("hidden");
     else el.classList.add("hidden");
+  });
+}
+
+function showStudentTools(show) {
+  document.querySelectorAll(".student-only").forEach(function (el) {
+    if (show) el.classList.remove("hidden");
+    else el.classList.add("hidden");
+  });
+}
+
+function getRemoteClassMediaStream() {
+  if (!agoraClient) return null;
+  var users = agoraClient.remoteUsers || [];
+  for (var i = 0; i < users.length; i++) {
+    var user = users[i];
+    if (!user.videoTrack && !user.audioTrack) continue;
+    var ms = new MediaStream();
+    try {
+      if (user.videoTrack && user.videoTrack.getMediaStreamTrack) {
+        ms.addTrack(user.videoTrack.getMediaStreamTrack());
+      }
+      if (user.audioTrack && user.audioTrack.getMediaStreamTrack) {
+        ms.addTrack(user.audioTrack.getMediaStreamTrack());
+      }
+    } catch (e) { /* ignore */ }
+    if (ms.getTracks().length) return ms;
+  }
+  return null;
+}
+
+function updateSaveLiveUi() {
+  var btn = document.getElementById("btn-save-live");
+  var badge = document.getElementById("save-live-badge");
+  if (btn) btn.classList.toggle("save-active", liveSaveActive);
+  if (badge) badge.classList.toggle("hidden", !liveSaveActive);
+}
+
+function pickRecorderMimeType() {
+  var types = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"];
+  for (var i = 0; i < types.length; i++) {
+    if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(types[i])) return types[i];
+  }
+  return "video/webm";
+}
+
+function toggleSaveLive() {
+  if (isTeacherRole()) return;
+  if (liveSaveActive) {
+    stopLiveSaveAndStore(true);
+    return;
+  }
+  var stream = getRemoteClassMediaStream();
+  if (!stream) {
+    addChatMessage("", "Wait for the teacher video/audio to connect, then tap Save live again.", true);
+    return;
+  }
+  liveSaveChunks = [];
+  liveSaveStartedAt = Date.now();
+  try {
+    liveSaveRecorder = new MediaRecorder(stream, { mimeType: pickRecorderMimeType() });
+  } catch (e) {
+    liveSaveRecorder = new MediaRecorder(stream);
+  }
+  liveSaveRecorder.ondataavailable = function (ev) {
+    if (ev.data && ev.data.size) liveSaveChunks.push(ev.data);
+  };
+  liveSaveRecorder.start(1000);
+  liveSaveActive = true;
+  updateSaveLiveUi();
+  addChatMessage("", "Saving this class on your computer. Tap Save live again to finish.", true);
+}
+
+async function stopLiveSaveAndStore(showNotice) {
+  if (!liveSaveActive && !liveSaveRecorder) return;
+  liveSaveActive = false;
+  updateSaveLiveUi();
+  if (!liveSaveRecorder) return;
+  var recorder = liveSaveRecorder;
+  liveSaveRecorder = null;
+  return new Promise(function (resolve) {
+    recorder.onstop = async function () {
+      try {
+        if (!liveSaveChunks.length) {
+          resolve();
+          return;
+        }
+        var blob = new Blob(liveSaveChunks, { type: recorder.mimeType || "video/webm" });
+        liveSaveChunks = [];
+        var mins = liveSaveStartedAt ? Math.max(1, Math.round((Date.now() - liveSaveStartedAt) / 60000)) : 0;
+        await saveLiveRecording({
+          title: (liveSession && liveSession.title) || "Live class",
+          subject: liveSession && liveSession.subject,
+          teacher: liveSession && liveSession.teacher_name,
+          class_id: liveSession && liveSession.class_id,
+          duration_hint: mins ? (mins + " min") : "",
+        }, blob);
+        if (showNotice) {
+          addChatMessage("", "Live class saved on this device. Open Saved Lives in the app to watch.", true);
+        }
+      } catch (e) {
+        if (showNotice) addChatMessage("", "Could not save recording: " + e.message, true);
+      }
+      resolve();
+    };
+    try {
+      recorder.stop();
+    } catch (e) {
+      resolve();
+    }
   });
 }
 
@@ -529,6 +643,9 @@ function redrawBoard() {
     if (item.type === "draw") {
       applyDrawStroke(item.data, false);
       drawNext();
+    } else if (item.type === "erase") {
+      applyEraseStroke(item.data, false);
+      drawNext();
     } else if (item.type === "text") {
       applyBoardText(item.data, false);
       drawNext();
@@ -740,7 +857,7 @@ function onBoardPointerDown(ev) {
     sendBoardEvent("text_stream", { x: board.textX, y: board.textY, text: board.liveText, size: board.fontSize });
     return;
   }
-  if (board.tool !== "draw") return;
+  if (board.tool !== "draw" && board.tool !== "erase") return;
   board.drawing = true;
   board.lastX = p.x;
   board.lastY = p.y;
@@ -749,6 +866,17 @@ function onBoardPointerDown(ev) {
 function onBoardPointerMove(ev) {
   if (!board.drawing || !board.ctx) return;
   var p = boardCoords(ev);
+  if (board.tool === "erase") {
+    var eraseStroke = {
+      x0: board.lastX, y0: board.lastY, x1: p.x, y1: p.y, width: 28
+    };
+    applyEraseStroke(eraseStroke, false);
+    sendBoardEvent("erase", eraseStroke);
+    board.history.push({ type: "erase", data: eraseStroke });
+    board.lastX = p.x;
+    board.lastY = p.y;
+    return;
+  }
   var stroke = {
     x0: board.lastX, y0: board.lastY, x1: p.x, y1: p.y,
     color: "#e8f5ec", width: 3
@@ -762,6 +890,22 @@ function onBoardPointerMove(ev) {
 
 function onBoardPointerUp() {
   board.drawing = false;
+}
+
+function applyEraseStroke(data, save) {
+  if (!board.ctx || !data) return;
+  board.ctx.save();
+  board.ctx.globalCompositeOperation = "destination-out";
+  board.ctx.lineCap = "round";
+  board.ctx.lineJoin = "round";
+  board.ctx.strokeStyle = "rgba(0,0,0,1)";
+  board.ctx.lineWidth = data.width || 28;
+  board.ctx.beginPath();
+  board.ctx.moveTo(data.x0, data.y0);
+  board.ctx.lineTo(data.x1, data.y1);
+  board.ctx.stroke();
+  board.ctx.restore();
+  if (save !== false) board.history.push({ type: "erase", data: data });
 }
 
 function applyDrawStroke(data, save) {
@@ -811,8 +955,10 @@ function setBoardTool(tool) {
   document.querySelectorAll(".sym-btn.active").forEach(function (b) { b.classList.remove("active"); });
   var typeBtn = document.getElementById("btn-board-type");
   var drawBtn = document.getElementById("btn-board-draw");
+  var eraseBtn = document.getElementById("btn-board-erase");
   if (typeBtn) typeBtn.classList.toggle("active", tool === "type");
   if (drawBtn) drawBtn.classList.toggle("active", tool === "draw");
+  if (eraseBtn) eraseBtn.classList.toggle("active", tool === "erase");
   if (tool === "type") {
     var inp = document.getElementById("board-type-input");
     if (inp && board.canDraw) inp.focus();
@@ -885,6 +1031,11 @@ function handleBoardMessage(msg) {
   if (!isTeacherRole()) showBoardForStudent();
   if (msg.action === "draw") {
     applyDrawStroke(msg.data, true);
+    redrawBoard();
+    return;
+  }
+  if (msg.action === "erase") {
+    applyEraseStroke(msg.data, true);
     redrawBoard();
     return;
   }
@@ -1580,6 +1731,9 @@ async function toggleScreenShare() {
 }
 
 async function leaveClassroom() {
+  if (liveSaveActive) {
+    await stopLiveSaveAndStore(false);
+  }
   try {
     if (liveSession && liveSession.class_id && liveSession.role === "student") {
       await api("/api/v1/live-classes/" + liveSession.class_id + "/leave", { method: "POST" });
@@ -1641,6 +1795,8 @@ window.onload = function () {
     if (rhPanel) rhPanel.classList.remove("hidden");
     var audBadge = document.getElementById("audience-badge");
     if (audBadge) audBadge.classList.remove("hidden");
+  } else {
+    showStudentTools(true);
   }
   connectChat();
   scheduleClassAutoEnd();

@@ -9,7 +9,7 @@ from app.core.redis import init_redis, close_redis
 from app.core.seed import seed_database
 
 from app.routers import auth, students, admin, live_class, cbt, community, ai_tutor, notifications, payments, flutterwave_payments
-from app.routers import developer_auth, developer_keys, public_ai_api, reviews_reports, teacher_ai, library, wallet
+from app.routers import developer_auth, developer_keys, public_ai_api, reviews_reports, teacher_ai, library, wallet, materials
 from app.routers import recommendations
 from app.routers import performance
 from app.routers import home
@@ -58,6 +58,9 @@ async def lifespan(app: FastAPI):
         ))
         await conn.execute(text(
             "ALTER TABLE payments ADD COLUMN IF NOT EXISTS live_class_id UUID NULL"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE payments ADD COLUMN IF NOT EXISTS material_id UUID NULL"
         ))
         await conn.execute(text(
             """
@@ -119,6 +122,7 @@ app.include_router(flutterwave_payments.router, prefix="/api/v1")
 app.include_router(reviews_reports.router, prefix="/api/v1")
 app.include_router(teacher_ai.router, prefix="/api/v1")
 app.include_router(library.router, prefix="/api/v1")
+app.include_router(materials.router, prefix="/api/v1")
 app.include_router(wallet.router, prefix="/api/v1")
 app.include_router(recommendations.router, prefix="/api/v1")
 app.include_router(home.router, prefix="/api/v1")

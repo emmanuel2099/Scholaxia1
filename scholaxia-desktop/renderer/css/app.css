@@ -1519,3 +1519,19 @@ body:has(.app-shell-topnav) { overflow: auto; height: auto; }
 .comment-body strong { color: #1a4d32; font-size: 0.82rem; display: block; margin-bottom: 2px; }
 .comment-body p { margin: 0; font-size: 0.9rem; line-height: 1.45; color: #2a3d32; }
 .post-media img { max-width: 100%; border-radius: 8px; margin-top: 8px; }
+
+.material-price {
+  display: inline-block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #b45309;
+  margin-right: 6px;
+}
+.material-price.free { color: #15803d; }
+.saved-live-video {
+  width: 100%;
+  max-height: 70vh;
+  border-radius: 12px;
+  background: #000;
+}
+.teacher-modal-box.wide { max-width: 900px; }

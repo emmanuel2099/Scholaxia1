@@ -49,5 +49,6 @@ class Payment(Base):
     flutterwave_tx_ref: Mapped[str] = mapped_column(String(255), nullable=True, index=True)
     flutterwave_transaction_id: Mapped[str] = mapped_column(String(255), nullable=True)
     live_class_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
+    material_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
     description: Mapped[str] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

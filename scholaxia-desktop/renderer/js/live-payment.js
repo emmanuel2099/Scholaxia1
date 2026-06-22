@@ -117,3 +117,60 @@ async function joinClassWithPayment(btn) {
 
 window.joinClassWithPayment = joinClassWithPayment;
 window.completeJoinClass = completeJoinClass;
+
+async function payForMaterial(materialId) {
+  await loadFlutterwaveScript();
+
+  var init = await api("/api/v1/payments/flutterwave/material/" + encodeURIComponent(materialId) + "/init", {
+    method: "POST",
+  });
+
+  if (init.already_paid || init.is_free) {
+    return { paid: true, has_access: true };
+  }
+
+  if (!init.public_key || !init.tx_ref) {
+    throw new Error("Payment could not be started. Try again later.");
+  }
+
+  var user = typeof getUser === "function" ? getUser() : { name: "Student", email: "" };
+  var customer = init.customer || {};
+  var email = customer.email || localStorage.getItem("sia_email") || "student@scholaxia.local";
+  var name = customer.name || user.name || "Student";
+
+  return new Promise(function (resolve, reject) {
+    window.FlutterwaveCheckout({
+      public_key: init.public_key,
+      tx_ref: init.tx_ref,
+      amount: init.amount,
+      currency: init.currency || "NGN",
+      payment_options: "card, banktransfer, ussd",
+      customer: { email: email, name: name },
+      customizations: {
+        title: "Scholaxia Library",
+        description: (init.material_title || "Study material") + " — " + (init.material_subject || ""),
+        logo: "assets/logo.png",
+      },
+      meta: { material_id: materialId },
+      callback: function (response) {
+        if (response.status !== "successful") {
+          reject(new Error("Payment was not completed."));
+          return;
+        }
+        api("/api/v1/payments/flutterwave/verify", {
+          method: "POST",
+          body: JSON.stringify({
+            transaction_id: String(response.transaction_id),
+            material_id: materialId,
+            tx_ref: init.tx_ref,
+          }),
+        }).then(resolve).catch(reject);
+      },
+      onclose: function () {
+        reject(new Error("Payment window closed."));
+      },
+    });
+  });
+}
+
+window.payForMaterial = payForMaterial;

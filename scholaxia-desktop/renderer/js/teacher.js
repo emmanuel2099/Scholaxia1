@@ -322,14 +322,25 @@ function populateSubjectFilters() {
   if (matSub && !matSub.value && subjects[0]) matSub.value = subjects[0];
 }
 
+function toggleMaterialPrice() {
+  var access = (document.getElementById("mat-access") || {}).value || "free";
+  var wrap = document.querySelector(".mat-price-wrap");
+  if (wrap) wrap.classList.toggle("hidden", access !== "paid");
+}
+
 function openMaterialModal() {
   document.getElementById("mat-error").textContent = "";
   document.getElementById("mat-title").value = "";
   document.getElementById("mat-desc").value = "";
   document.getElementById("mat-file").value = "";
   document.getElementById("mat-url").value = "";
+  var access = document.getElementById("mat-access");
+  if (access) access.value = "free";
+  var price = document.getElementById("mat-price");
+  if (price) price.value = "500";
   populateSubjectFilters();
   toggleMaterialInputs();
+  toggleMaterialPrice();
   document.getElementById("material-modal").classList.remove("hidden");
 }
 
@@ -352,8 +363,15 @@ async function saveTeacherMaterial() {
   var subject = document.getElementById("mat-subject").value.trim();
   var type = document.getElementById("mat-type").value;
   var desc = document.getElementById("mat-desc").value.trim();
+  var access = (document.getElementById("mat-access") || {}).value || "free";
+  var isFree = access !== "paid";
+  var price = parseFloat((document.getElementById("mat-price") || {}).value) || 0;
   if (!title || !subject) {
     err.textContent = "Title and subject are required.";
+    return;
+  }
+  if (!isFree && price < 100) {
+    err.textContent = "Paid materials need a price of at least ₦100.";
     return;
   }
   var url = "";
@@ -372,17 +390,18 @@ async function saveTeacherMaterial() {
       else if (uploaded.file_type === "doc") type = "doc";
       else if (uploaded.file_type === "image") type = "image";
     }
-    var list = getLocalMaterials();
-    list.unshift({
-      id: "mat-" + Date.now(),
-      title: title,
-      subject: subject,
-      type: type,
-      url: url,
-      description: desc,
-      created_at: new Date().toISOString(),
+    await teacherApi("/api/v1/materials/", {
+      method: "POST",
+      body: JSON.stringify({
+        title: title,
+        subject: subject,
+        material_type: type,
+        file_url: url,
+        description: desc || null,
+        is_free: isFree,
+        price: isFree ? 0 : price,
+      }),
     });
-    setLocalMaterials(list);
     closeMaterialModal();
     loadTeacherMaterials();
   } catch (e) {
@@ -393,10 +412,14 @@ async function saveTeacherMaterial() {
   }
 }
 
-function deleteTeacherMaterial(id) {
-  if (!confirm("Remove this material?")) return;
-  setLocalMaterials(getLocalMaterials().filter(function (m) { return m.id !== id; }));
-  loadTeacherMaterials();
+async function deleteTeacherMaterial(id) {
+  if (!confirm("Remove this material? Students will no longer see it.")) return;
+  try {
+    await teacherApi("/api/v1/materials/" + encodeURIComponent(id), { method: "DELETE" });
+    loadTeacherMaterials();
+  } catch (e) {
+    alert(e.message);
+  }
 }
 
 function openMaterialUrl(url) {
@@ -422,7 +445,12 @@ async function loadTeacherMaterials() {
   if (stats) stats.innerHTML = "";
   var subjectFilter = (document.getElementById("materials-subject-filter") || {}).value || "";
   var typeFilter = (document.getElementById("materials-type-filter") || {}).value || "";
-  var local = getLocalMaterials();
+  var local = [];
+  try {
+    local = await teacherApi("/api/v1/materials/mine") || [];
+  } catch (e) {
+    local = getLocalMaterials();
+  }
   var library = [];
   try {
     library = await teacherApi("/api/v1/library/teacher") || [];
@@ -444,9 +472,21 @@ async function loadTeacherMaterials() {
       cover: b.cover_image_url,
     });
   });
-  local.forEach(function (m) { items.push(m); });
+  local.forEach(function (m) {
+    items.push({
+      id: m.id,
+      title: m.title,
+      subject: m.subject || "General",
+      type: m.material_type || m.type || "pdf",
+      url: m.file_url || m.url || "",
+      description: m.description || "",
+      created_at: m.created_at,
+      is_free: m.is_free !== false,
+      price: m.price || 0,
+    });
+  });
   if (subjectFilter) items = items.filter(function (m) { return (m.subject || "").toLowerCase() === subjectFilter.toLowerCase(); });
-  if (typeFilter) items = items.filter(function (m) { return m.type === typeFilter; });
+  if (typeFilter) items = items.filter(function (m) { return (m.type || m.material_type) === typeFilter; });
   if (stats) {
     stats.innerHTML =
       '<div class="stat-pill"><strong>' + items.length + "</strong> materials</div>" +
@@ -470,8 +510,12 @@ async function loadTeacherMaterials() {
     if (m.is_library) {
       actions = '<button type="button" class="btn-sm primary" data-action="open-library" data-id="' + escHtml(m.book_id) + '">Open</button>';
     } else {
+      var priceTag = m.is_free === false && m.price > 0
+        ? '<span class="material-price">₦' + Number(m.price).toLocaleString("en-NG") + "</span>"
+        : '<span class="material-price free">Free</span>';
       actions =
-        '<button type="button" class="btn-sm primary" data-action="open-url" data-url="' + escHtml(m.url) + '">Open</button> ' +
+        priceTag +
+        ' <button type="button" class="btn-sm primary" data-action="open-url" data-url="' + escHtml(m.url) + '">Open</button> ' +
         '<button type="button" class="btn-sm danger" data-action="delete-material" data-id="' + escHtml(m.id) + '">Delete</button>';
     }
     return (
@@ -834,6 +878,7 @@ window.loadTeacherRequests = loadTeacherRequests;
 window.openMaterialModal = openMaterialModal;
 window.closeMaterialModal = closeMaterialModal;
 window.toggleMaterialInputs = toggleMaterialInputs;
+window.toggleMaterialPrice = toggleMaterialPrice;
 window.saveTeacherMaterial = saveTeacherMaterial;
 window.deleteTeacherMaterial = deleteTeacherMaterial;
 window.openMaterialUrl = openMaterialUrl;

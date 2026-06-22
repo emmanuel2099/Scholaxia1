@@ -189,6 +189,16 @@ body {
 }
 @keyframes cursor-blink { 50% { opacity: 0; } }
 .video-controls .host-only.hidden { display: none !important; }
+.video-controls .student-only.hidden { display: none !important; }
+.save-live-badge {
+  font-size: 12px;
+  color: #fbbf24;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(251, 191, 36, 0.12);
+  align-self: center;
+}
+.vc-btn.save-active { background: rgba(251, 191, 36, 0.25); border-color: #fbbf24; }
 
 @media (max-width: 900px) {
   .classroom-main { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }

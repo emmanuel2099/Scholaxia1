@@ -3,6 +3,8 @@ const PAGE_TITLES = {
   school: "Scholaxia Exams",
   "school-portal": "School Exam",
   cbt: "CBT",
+  library: "Library",
+  "saved-lives": "Saved Lives",
   sia: "Ask Sia",
   community: "Community",
   "community-create": "New Post",
@@ -440,6 +442,8 @@ function refreshPage() {
   else if (currentPage === "school") loadSchoolExams();
   else if (currentPage === "school-portal") { /* static */ }
   else if (currentPage === "cbt") { /* embedded scholaxiacbtexam.blog */ }
+  else if (currentPage === "library") loadLibrary();
+  else if (currentPage === "saved-lives") loadSavedLivesPage();
   else if (currentPage === "sia") loadSia();
   else if (currentPage === "community") {
     var pending = communityPendingPost;

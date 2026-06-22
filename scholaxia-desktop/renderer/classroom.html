@@ -45,6 +45,7 @@
               </select>
               <button type="button" id="btn-board-type" class="vc-btn sm active" onclick="setBoardTool('type')">Type</button>
               <button type="button" id="btn-board-draw" class="vc-btn sm" onclick="setBoardTool('draw')">Draw</button>
+              <button type="button" id="btn-board-erase" class="vc-btn sm" onclick="setBoardTool('erase')">Eraser</button>
               <button type="button" class="vc-btn sm" onclick="pickBoardImage()">Add image</button>
               <button type="button" class="vc-btn sm" onclick="clearBoard()">Clear</button>
               <button type="button" class="vc-btn sm" onclick="toggleBoard()">Close board</button>
@@ -73,6 +74,8 @@
         <button type="button" id="btn-cam" class="vc-btn" onclick="toggleCam()" title="Camera">&#128247; Cam</button>
         <button type="button" id="btn-share" class="vc-btn host-only hidden" onclick="toggleScreenShare()" title="Share screen">&#128187; Share screen</button>
         <button type="button" id="btn-board" class="vc-btn host-only hidden" onclick="toggleBoard()" title="Teaching board">&#128221; Board</button>
+        <button type="button" id="btn-save-live" class="vc-btn student-only hidden" onclick="toggleSaveLive()" title="Save live on this device">&#128190; Save live</button>
+        <span id="save-live-badge" class="save-live-badge student-only hidden">Saving locally…</span>
         <button type="button" class="vc-btn" onclick="raiseHand()">&#9995; Raise hand</button>
       </div>
     </section>
@@ -95,6 +98,7 @@
 </div>
 
 <script src="js/api.js"></script>
+<script src="js/saved-live.js"></script>
 <script src="js/classroom.js"></script>
 </body>
 </html>

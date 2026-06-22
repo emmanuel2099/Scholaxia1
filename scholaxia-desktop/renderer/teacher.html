@@ -227,6 +227,13 @@
       <label class="span-2 mat-file-wrap"><span>Upload file</span><input type="file" id="mat-file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp" /></label>
       <label class="span-2 mat-link-wrap hidden"><span>URL</span><input type="url" id="mat-url" placeholder="https://..." /></label>
       <label class="span-2"><span>Description (optional)</span><textarea id="mat-desc" rows="3" placeholder="What students should do with this material…"></textarea></label>
+      <label><span>Access for students</span>
+        <select id="mat-access" onchange="toggleMaterialPrice()">
+          <option value="free">Free — all students can open it</option>
+          <option value="paid">Paid — students pay to unlock</option>
+        </select>
+      </label>
+      <label class="mat-price-wrap hidden"><span>Price (NGN)</span><input type="number" id="mat-price" min="100" step="50" value="500" /></label>
     </div>
     <p id="mat-error" class="error-msg"></p>
     <div class="form-row">
