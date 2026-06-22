@@ -310,8 +310,30 @@ async function loadCbtExams() {
     if (!data) return;
     practiceExams = data.practice_exams || [];
     schoolExams = data.school_exams || [];
+    if (typeof loadPortalPracticeExams === "function") {
+      const portalExams = await loadPortalPracticeExams();
+      const seen = new Set(practiceExams.map((e) => `${e.exam_type}:${e.subject}`));
+      portalExams.forEach((e) => {
+        const key = `${e.exam_type}:${e.subject}`;
+        if (!seen.has(key)) {
+          practiceExams.push(e);
+          seen.add(key);
+        }
+      });
+    }
     renderCbtGrid();
   } catch (e) {
+    if (typeof loadPortalPracticeExams === "function") {
+      try {
+        practiceExams = await loadPortalPracticeExams();
+        if (practiceExams.length) {
+          renderCbtGrid();
+          return;
+        }
+      } catch (portalErr) {
+        console.warn("Portal CBT fallback failed", portalErr);
+      }
+    }
     const msg = e.message.includes("setup") ? `${e.message} Go to Profile to complete setup.` : e.message;
     document.getElementById("cbt-grid").innerHTML = `<div class="empty">${escHtml(msg)}</div>`;
   }
@@ -325,15 +347,23 @@ function renderCbtGrid() {
   }
   el.innerHTML = practiceExams.map((e) => `
     <div class="card">
-      <div class="time-badge">${escHtml(e.exam_type)} Practice</div>
+      <div class="time-badge">${escHtml(e.source || e.exam_type + " Practice")}</div>
       <h3>${escHtml(e.title)}</h3>
       <p class="meta">${escHtml(e.subject)} · ${e.total_questions} questions · ${e.duration_minutes} min</p>
-      <button class="btn-join" onclick="beginExam('${e.id}', false)">Start Exam</button>
+      <button class="btn-join" onclick="beginExam(${JSON.stringify(e.id)}, false)">Start Exam</button>
     </div>
   `).join("");
 }
 
 async function beginExam(examId, isSchool) {
+  if (typeof isPortalExamId === "function" && isPortalExamId(examId)) {
+    try {
+      await beginPortalExam(examId);
+    } catch (e) {
+      alert(e.message);
+    }
+    return;
+  }
   try {
     const session = await api(`/api/v1/cbt/sessions/${examId}/start`, { method: "POST" });
     const exam = await api(`/api/v1/cbt/exams/${examId}/download`);
@@ -431,6 +461,10 @@ function nextQuestion() {
 
 async function submitExam() {
   clearInterval(timerInterval);
+  if (currentSession && currentSession.is_portal && typeof scorePortalExam === "function") {
+    showResult(scorePortalExam());
+    return;
+  }
   const answerMap = {};
   currentExam.questions.forEach((q, i) => {
     if (answers[i]) answerMap[q.id] = answers[i];
