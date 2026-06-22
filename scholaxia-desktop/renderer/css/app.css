@@ -1424,6 +1424,13 @@ body:has(.app-shell-topnav) { overflow: auto; height: auto; }
 }
 .btn-post { padding: 9px 24px; border-radius: 20px; font-size: 0.9rem; }
 .community-feed { display: flex; flex-direction: column; gap: 16px; }
+.community-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+.community-tab {
+  padding: 8px 16px; border-radius: 8px; border: 1px solid #2d5a3d;
+  background: #12261a; color: #a8d4b8; cursor: pointer; font-size: 0.88rem;
+}
+.community-tab.active { background: #1e4d32; color: #fff; border-color: #3d8f5a; }
+.post-audio { width: 100%; margin-top: 8px; }
 .community-post {
   background: #fff; border: 1px solid #d4e8da; border-radius: 14px;
   padding: 18px; box-shadow: 0 1px 4px rgba(26, 77, 50, 0.04);

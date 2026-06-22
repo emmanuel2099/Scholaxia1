@@ -75,6 +75,8 @@ async def lifespan(app: FastAPI):
     await init_redis()
     async with AsyncSessionLocal() as db:
         await seed_database(db)
+    from app.services.live_class_scheduler import start_live_class_scheduler
+    start_live_class_scheduler()
     yield
     await close_redis()
     await engine.dispose()

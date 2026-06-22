@@ -3,7 +3,7 @@ var liveSocket = null;
 var agoraClient = null;
 var agoraJoined = false;
 var agoraAvailable = false;
-var localTracks = { audio: null, video: null, screen: null };
+var localTracks = { audio: null, video: null, screen: null, screenAudio: null };
 var micOn = false;
 var camOn = false;
 var screenOn = false;
@@ -331,13 +331,14 @@ async function grantStudentMic(userId) {
   }
 }
 
-function playRemoteVideo(user) {
+function playRemoteVideo(user, isScreen) {
   if (!user || !user.videoTrack) return;
   hideVideoPlaceholder();
   var wrap = document.getElementById("video-remote");
   wrap.innerHTML = "";
+  wrap.classList.toggle("screen-active", !!isScreen);
   var box = document.createElement("div");
-  box.className = "remote-user";
+  box.className = "remote-user" + (isScreen ? " screen-share" : "");
   var vid = document.createElement("div");
   vid.style.width = "100%";
   vid.style.height = "100%";
@@ -345,6 +346,18 @@ function playRemoteVideo(user) {
   box.appendChild(vid);
   wrap.appendChild(box);
   if (!isTeacherRole()) showBoardForStudent(false);
+}
+
+function isScreenShareTrack(track) {
+  if (!track) return false;
+  try {
+    var msTrack = track.getMediaStreamTrack ? track.getMediaStreamTrack() : track;
+    if (msTrack && msTrack.label) {
+      var label = msTrack.label.toLowerCase();
+      return label.indexOf("screen") >= 0 || label.indexOf("window") >= 0 || label.indexOf("display") >= 0;
+    }
+  } catch (e) { /* ignore */ }
+  return false;
 }
 
 async function subscribeToExistingUsers() {
@@ -355,10 +368,11 @@ async function subscribeToExistingUsers() {
     try {
       if (user.hasVideo) {
         await agoraClient.subscribe(user, "video");
-        playRemoteVideo(user);
+        playRemoteVideo(user, isScreenShareTrack(user.videoTrack));
       }
       if (user.hasAudio) {
         await agoraClient.subscribe(user, "audio");
+        user.audioTrack.setVolume(100);
         user.audioTrack.play();
       }
     } catch (e) { /* ignore */ }
@@ -932,6 +946,13 @@ function connectChat() {
         addChatMessage("", "Someone left the class.", true);
       } else if (msg.event === "request_board_sync") {
         if (isTeacherRole()) syncBoardToRoom();
+      } else if (msg.event === "class_ended") {
+        handleClassEnded(msg.message || "The teacher ended the class.");
+      } else if (msg.event === "class_started") {
+        if (!isTeacherRole()) {
+          addChatMessage("", "Class is live — video connecting…", true);
+          if (!agoraJoined && !agoraConnecting) tryStartAgora(true);
+        }
       } else if (msg.event === "raise_hand") {
         if (isTeacherRole()) {
           addRaisedHand(msg.user_id, msg.name);
@@ -1018,6 +1039,7 @@ async function refreshAgoraToken() {
     liveSession.uid = data.uid;
     liveSession.app_id = data.app_id;
     liveSession.channel_id = data.channel_id;
+    if (data.end_time) liveSession.end_time = data.end_time;
     localStorage.setItem("live_session", JSON.stringify(liveSession));
     return hasValidAgoraToken(data.token);
   } catch (e) {
@@ -1073,19 +1095,31 @@ async function startLocalPreviewOnly() {
 }
 
 function scheduleClassAutoEnd() {
-  if (!isTeacherRole() || !liveSession || !liveSession.end_time) return;
+  if (!liveSession || !liveSession.end_time) return;
   var endMs = new Date(liveSession.end_time).getTime() - Date.now();
   if (classAutoEndTimer) clearTimeout(classAutoEndTimer);
   if (endMs <= 0) {
-    autoEndClassSession();
+    if (isTeacherRole()) autoEndClassSession();
+    else handleClassEnded("Class time is over.");
     return;
   }
-  classAutoEndTimer = setTimeout(autoEndClassSession, endMs);
-  addChatMessage(
-    "",
-    "Class scheduled to end at " + new Date(liveSession.end_time).toLocaleString() + " (like Zoom/Meet).",
-    true
-  );
+  classAutoEndTimer = setTimeout(function () {
+    if (isTeacherRole()) autoEndClassSession();
+    else handleClassEnded("Class ended at the scheduled time.");
+  }, endMs);
+  if (isTeacherRole()) {
+    addChatMessage(
+      "",
+      "Class scheduled to end at " + new Date(liveSession.end_time).toLocaleString() + " (like Zoom/Meet).",
+      true
+    );
+  }
+}
+
+function handleClassEnded(message) {
+  addChatMessage("", message || "Class has ended.", true);
+  setStatus("Class ended");
+  setTimeout(function () { leaveClassroom(); }, 2500);
 }
 
 async function autoEndClassSession() {
@@ -1211,10 +1245,15 @@ async function tryStartAgora(isRetry) {
         try {
           await agoraClient.subscribe(user, mediaType);
           if (mediaType === "video") {
-            playRemoteVideo(user);
+            playRemoteVideo(user, isScreenShareTrack(user.videoTrack));
           }
           if (mediaType === "audio") {
+            user.audioTrack.setVolume(100);
             user.audioTrack.play();
+            if (!isTeacherRole()) {
+              hideVideoPlaceholder();
+              setStatus("Connected — you can hear the teacher");
+            }
           }
           updateAudienceStats();
         } catch (e) {
@@ -1245,7 +1284,7 @@ async function tryStartAgora(isRetry) {
 
     if (!agoraJoined) {
       await withTimeout(
-        agoraClient.join(liveSession.app_id, channel, token, uid),
+        agoraClient.join(liveSession.app_id, channel, token || null, uid),
         JOIN_TIMEOUT_MS,
         "Video join timed out"
       );
@@ -1270,7 +1309,9 @@ async function tryStartAgora(isRetry) {
       hideVideoPlaceholder();
       addChatMessage("", "You are live — students can see and hear you now.", true);
     } else {
-      showVideoPlaceholder("Waiting for the teacher to start video…");
+      var remotes = agoraClient.remoteUsers || [];
+      if (remotes.length) hideVideoPlaceholder();
+      else showVideoPlaceholder("Waiting for the teacher to start video…");
     }
   } catch (err) {
     agoraJoined = false;
@@ -1431,14 +1472,25 @@ async function toggleCam() {
 async function createScreenTrack() {
   var result = await AgoraRTC.createScreenVideoTrack(
     { encoderConfig: "1080p_1", optimizationMode: "detail" },
-    "disable"
+    "auto"
   );
-  return Array.isArray(result) ? result[0] : result;
+  if (Array.isArray(result)) {
+    return { video: result[0], audio: result[1] || null };
+  }
+  return { video: result, audio: null };
 }
 
 async function stopScreenShare() {
   var btn = document.getElementById("btn-share");
   var localEl = document.getElementById("video-local");
+  if (localTracks.screenAudio && agoraClient) {
+    try {
+      await agoraClient.unpublish([localTracks.screenAudio]);
+      localTracks.screenAudio.stop();
+      localTracks.screenAudio.close();
+    } catch (e) { /* ignore */ }
+    localTracks.screenAudio = null;
+  }
   if (localTracks.screen) {
     await agoraClient.unpublish([localTracks.screen]);
     localTracks.screen.stop();
@@ -1497,8 +1549,12 @@ async function toggleScreenShare() {
   var localEl = document.getElementById("video-local");
   try {
     if (!screenOn) {
-      localTracks.screen = await createScreenTrack();
-      await agoraClient.publish([localTracks.screen]);
+      var tracks = await createScreenTrack();
+      localTracks.screen = tracks.video;
+      localTracks.screenAudio = tracks.audio;
+      var publishList = [tracks.video];
+      if (tracks.audio) publishList.push(tracks.audio);
+      await agoraClient.publish(publishList);
       if (camOn && localTracks.video) {
         await agoraClient.unpublish([localTracks.video]);
       }

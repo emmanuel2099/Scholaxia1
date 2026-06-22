@@ -1,6 +1,8 @@
 var communityChannelId = null;
 var communityDraftImage = null;
+var communityDraftAudio = null;
 var communityPendingPost = null;
+var communityActiveTab = "feed";
 var POST_COMMENT_RE = /^@post:([^\s]+)\s*([\s\S]*)$/;
 
 function isPostComment(content) {
@@ -118,17 +120,21 @@ function renderPostActions(p) {
     '</div>';
 }
 
-function renderCommunityPosts(posts) {
-  var feed = document.getElementById("community-feed");
+function renderCommunityPosts(posts, targetEl) {
+  var feed = targetEl || document.getElementById("community-feed");
+  if (!feed) return;
   if (!posts || !posts.length) {
     feed.innerHTML = '<div class="empty">No posts yet. Tap the send button below to share something!</div>';
     return;
   }
   feed.innerHTML = posts.map(function (p) {
     var body = displayPostContent(p.content);
-    var media = p.media_url
-      ? '<div class="post-media"><img src="' + escHtml(p.media_url) + '" alt="" /></div>'
-      : "";
+    var media = "";
+    if (p.media_url && p.media_type === "audio") {
+      media = '<audio controls class="post-audio" src="' + escHtml(p.media_url) + '"></audio>';
+    } else if (p.media_url) {
+      media = '<div class="post-media"><img src="' + escHtml(p.media_url) + '" alt="" /></div>';
+    }
     var initial = (p.author_name || "S").charAt(0).toUpperCase();
     var commentsHtml = (p.comments || []).map(function (c) {
       return '<div class="post-comment">' +
@@ -286,6 +292,9 @@ function initCommunityCreate() {
 }
 
 async function loadCommunity(newPost) {
+  if (communityActiveTab === "announcements") {
+    return loadCommunityAnnouncements();
+  }
   var feed = document.getElementById("community-feed");
   feed.innerHTML = '<div class="loading">Loading posts…</div>';
   try {
@@ -314,8 +323,8 @@ async function submitCommunityPost() {
   var err = document.getElementById("community-create-error");
   var postBtn = document.getElementById("community-post-btn");
   var content = input.value.trim();
-  if (!content && !communityDraftImage) {
-    err.textContent = "Write something or add an image.";
+  if (!content && !communityDraftImage && !communityDraftAudio) {
+    err.textContent = "Write something, add an image, or attach a voice note.";
     return;
   }
   err.textContent = "";
@@ -338,18 +347,23 @@ async function submitCommunityPost() {
       var uploaded = await apiUpload("/api/v1/community/upload", communityDraftImage.file);
       mediaUrl = uploaded.file_url;
       mediaType = uploaded.file_type || "image";
+    } else if (communityDraftAudio) {
+      var audioUp = await apiUpload("/api/v1/community/upload", communityDraftAudio);
+      mediaUrl = audioUp.file_url;
+      mediaType = audioUp.file_type || "audio";
     }
     var created = await api("/api/v1/community/posts", {
       method: "POST",
       body: JSON.stringify({
         channel_id: communityChannelId,
-        content: content,
+        content: content || (mediaType === "audio" ? "Voice note" : ""),
         media_url: mediaUrl,
         media_type: mediaType,
       }),
     });
     var newPost = normalizeCreatedPost(created, content, mediaUrl, mediaType);
     clearCommunityImage();
+    clearCommunityAudio();
     if (input) input.value = "";
     communityPendingPost = newPost;
     showPage("community");
@@ -411,3 +425,56 @@ async function toggleCommunityLike(postId) {
     alert(e.message || "Could not update like.");
   }
 }
+
+function showCommunityTab(tab) {
+  communityActiveTab = tab;
+  document.getElementById("community-tab-feed").classList.toggle("active", tab === "feed");
+  document.getElementById("community-tab-announcements").classList.toggle("active", tab === "announcements");
+  document.getElementById("community-feed").classList.toggle("hidden", tab !== "feed");
+  document.getElementById("community-announcements").classList.toggle("hidden", tab !== "announcements");
+  var fab = document.getElementById("community-fab");
+  if (fab) fab.style.display = tab === "feed" ? "flex" : "none";
+  if (tab === "announcements") loadCommunityAnnouncements();
+  else loadCommunity();
+}
+
+async function loadCommunityAnnouncements() {
+  var el = document.getElementById("community-announcements");
+  if (!el) return;
+  el.innerHTML = '<div class="loading">Loading announcements…</div>';
+  try {
+    var channels = await api("/api/v1/community/channels");
+    var ann = (channels || []).find(function (c) { return c.type === "teacher_announcement"; });
+    if (!ann) {
+      el.innerHTML = '<div class="empty">No announcement channel yet.</div>';
+      return;
+    }
+    var posts = await api("/api/v1/community/posts?channel_id=" + encodeURIComponent(ann.id) + "&limit=40");
+    if (!posts || !posts.length) {
+      el.innerHTML = '<div class="empty">No announcements from your teachers yet.</div>';
+      return;
+    }
+    renderCommunityPosts(posts, el);
+  } catch (e) {
+    el.innerHTML = '<div class="empty">' + escHtml(e.message) + '</div>';
+  }
+}
+
+function onCommunityAudioPick(input) {
+  var file = input.files && input.files[0];
+  if (!file) return;
+  communityDraftAudio = file;
+  document.getElementById("community-audio-clear").classList.remove("hidden");
+}
+
+function clearCommunityAudio() {
+  communityDraftAudio = null;
+  var input = document.getElementById("community-audio-input");
+  var btn = document.getElementById("community-audio-clear");
+  if (input) input.value = "";
+  if (btn) btn.classList.add("hidden");
+}
+
+window.showCommunityTab = showCommunityTab;
+window.onCommunityAudioPick = onCommunityAudioPick;
+window.clearCommunityAudio = clearCommunityAudio;

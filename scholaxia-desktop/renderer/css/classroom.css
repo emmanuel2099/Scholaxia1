@@ -139,7 +139,10 @@ body {
   background: #1e4d32; color: #fff; font-size: 0.78rem; cursor: pointer; white-space: nowrap;
 }
 .raise-hand-item button:hover { background: #2d6b45; }
-.video-remote.screen-share .remote-user { background: #000; }
+.remote-user.screen-share video,
+.video-remote.screen-active .remote-user video {
+  object-fit: contain !important;
+}
 
 .board-overlay {
   position: absolute; inset: 0; z-index: 5;

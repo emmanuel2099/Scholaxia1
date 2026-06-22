@@ -255,6 +255,7 @@ window.onload = async () => {
   await syncStudentProfile();
   loadSubjects();
   refreshPage();
+  startLivePolling();
 };
 
 function showCbtLoadingOverlay(message) {
@@ -474,23 +475,69 @@ function refreshPage() {
 
 /* ── Live Class ── */
 
-async function loadLive() {
-  document.getElementById("live-grid").innerHTML = `<div class="loading">Loading…</div>`;
-  document.getElementById("upcoming-grid").innerHTML = `<div class="loading">Loading…</div>`;
+var livePollTimer = null;
+var knownLiveClassIds = new Set();
+
+function sessionMatchesSubjects(session, subjects) {
+  if (!subjects || !subjects.length) return true;
+  var s = (session.subject || "").toLowerCase();
+  return subjects.some(function (sub) {
+    var t = (sub || "").toLowerCase();
+    return s.indexOf(t) >= 0 || t.indexOf(s) >= 0;
+  });
+}
+
+function startLivePolling() {
+  if (livePollTimer) return;
+  livePollTimer = setInterval(function () {
+    if (currentPage === "live") loadLive(true);
+  }, 30000);
+}
+
+function showLiveClassToast(session) {
+  if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+    try {
+      var n = new Notification("Class is live!", {
+        body: (session.title || "Live class") + " — " + (session.subject || ""),
+        icon: "assets/logo.png",
+      });
+      n.onclick = function () { window.focus(); showPage("live"); };
+    } catch (e) { /* ignore */ }
+  }
+}
+
+async function loadLive(quiet) {
+  if (!quiet) {
+    document.getElementById("live-grid").innerHTML = `<div class="loading">Loading…</div>`;
+    document.getElementById("upcoming-grid").innerHTML = `<div class="loading">Loading…</div>`;
+  }
   try {
-    const [live, upcoming, feed] = await Promise.all([
+    const userSubjects = getUser().subjects || [];
+    const [liveRaw, upcomingRaw, feed] = await Promise.all([
       api("/api/v1/live-classes/?status=live"),
       api("/api/v1/live-classes/?status=upcoming"),
       api("/api/v1/home/feed").catch(() => null),
     ]);
 
-    renderLive(live || []);
-    renderUpcoming(upcoming || []);
+    const live = (liveRaw || []).filter((s) => sessionMatchesSubjects(s, userSubjects));
+    const upcoming = (upcomingRaw || []).filter((s) => sessionMatchesSubjects(s, userSubjects));
+
+    if (quiet) {
+      live.forEach(function (s) {
+        if (!knownLiveClassIds.has(s.id)) showLiveClassToast(s);
+      });
+    }
+    knownLiveClassIds = new Set(live.map(function (s) { return s.id; }));
+
+    renderLive(live);
+    renderUpcoming(upcoming);
 
     if (feed?.my_session_requests) renderRequests(feed.my_session_requests);
-    else loadMyRequests();
+    else if (!quiet) loadMyRequests();
   } catch (e) {
-    document.getElementById("live-grid").innerHTML = `<div class="empty">${escHtml(e.message)}</div>`;
+    if (!quiet) {
+      document.getElementById("live-grid").innerHTML = `<div class="empty">${escHtml(e.message)}</div>`;
+    }
   }
 }
 
@@ -513,19 +560,25 @@ function renderLive(sessions) {
 
 function renderUpcoming(sessions) {
   const el = document.getElementById("upcoming-grid");
+  const now = Date.now();
   if (!sessions.length) {
     el.innerHTML = `<div class="empty">No upcoming classes scheduled for your subjects yet.</div>`;
     return;
   }
-  el.innerHTML = sessions.map((s) => `
+  el.innerHTML = sessions.map((s) => {
+    const startMs = s.start_time ? new Date(s.start_time).getTime() : 0;
+    const started = startMs && startMs <= now;
+    const badge = s.is_live ? "LIVE NOW" : (started ? "Starting…" : "Upcoming");
+    const badgeClass = s.is_live || started ? "live-pill" : "time-badge";
+    return `
     <div class="card upcoming-card">
-      <div class="time-badge">Upcoming</div>
+      <div class="${badgeClass}">${badge}</div>
       <h3>${escHtml(s.title)}</h3>
       <p class="meta">${escHtml(s.subject)} · ${escHtml(s.teacher_name)}</p>
       <p class="schedule-meta">&#128197; ${formatDate(s.start_time)}${s.end_time ? " → " + formatDate(s.end_time) : ""}</p>
-      ${s.is_live ? `<button class="btn-join" onclick="joinClass(this)" data-id="${s.id}" data-title="${escHtml(s.title)}" data-subject="${escHtml(s.subject)}" data-teacher="${escHtml(s.teacher_name)}">Join</button>` : `<p class="notify-hint">You'll be notified when class starts</p>`}
-    </div>
-  `).join("");
+      ${s.is_live ? `<button class="btn-join" onclick="joinClass(this)" data-id="${s.id}" data-title="${escHtml(s.title)}" data-subject="${escHtml(s.subject)}" data-teacher="${escHtml(s.teacher_name)}" data-end="${escHtml(s.end_time || "")}">Join now</button>` : (started ? `<p class="notify-hint">Class should go live shortly — this page refreshes automatically.</p>` : `<p class="notify-hint">You'll be notified when class starts at the scheduled time.</p>`)}
+    </div>`;
+  }).join("");
 }
 
 function loadPlans() {
@@ -565,6 +618,7 @@ async function joinClass(btn) {
       subject: data.subject || (card && card.dataset.subject) || "",
       teacher_name: (card && card.dataset.teacher) || "",
       role: "student",
+      end_time: data.end_time || (card && card.dataset.end) || null,
     }));
     window.location.href = "classroom.html";
   } catch (e) {

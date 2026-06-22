@@ -13,6 +13,7 @@ from app.core.deps import require_teacher, require_teacher_or_admin, require_stu
 from app.core.config import settings
 from app.models.live_class import LiveClass, ClassAttendance, LiveSessionRequest, LiveSessionRequestStatus
 from app.models.user import StudentProfile, User
+from app.core.subjects import subject_matches
 from app.services.live_class_room import has_mic_access
 from app.services.notification_service import send_subject_notification
 
@@ -208,6 +209,7 @@ async def join_class(
         "app_id": settings.AGORA_APP_ID,
         "is_muted": True,
         "expires_at": expires_at,
+        "end_time": live_class.end_time.isoformat() if live_class.end_time else None,
     }
 
 
@@ -238,6 +240,8 @@ async def get_agora_token(
         "uid": uid,
         "app_id": settings.AGORA_APP_ID,
         "expires_at": expires_at,
+        "end_time": live_class.end_time.isoformat() if live_class.end_time else None,
+        "is_live": live_class.is_live,
     }
 
 
@@ -328,6 +332,16 @@ async def list_live_classes(
     query = query.order_by(LiveClass.start_time.desc()).limit(limit).offset(offset)
     result = await db.execute(query)
     classes = result.scalars().all()
+
+    # Students only see classes matching their selected subjects
+    if role == "student":
+        prof_res = await db.execute(
+            select(StudentProfile).where(StudentProfile.user_id == current_user["sub"])
+        )
+        profile = prof_res.scalar_one_or_none()
+        subjects = list(profile.selected_subjects or []) if profile else []
+        if subjects:
+            classes = [c for c in classes if subject_matches(c.subject, subjects)]
 
     # Fetch teacher names
     teacher_ids = list({str(c.teacher_id) for c in classes})
@@ -555,6 +569,19 @@ async def end_class(
     )
     for att in att_res.scalars().all():
         att.left_at = naive_utc_now()
+
+    try:
+        from app.websockets.live_class_ws import broadcast as ws_broadcast
+        await ws_broadcast(
+            live_class.room_id,
+            {
+                "event": "class_ended",
+                "class_id": class_id,
+                "message": "Class ended by the teacher.",
+            },
+        )
+    except Exception:
+        pass
 
     return {"message": "Class ended", "class_id": class_id, "end_time": live_class.end_time}
 

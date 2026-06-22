@@ -10,14 +10,23 @@ from app.core.deps import require_student, require_teacher, get_current_user
 from app.models.community import (
     CommunityChannel, CommunityMessage, MessageReport,
     AssignmentSubmission, AssignmentStatus, AssignmentFileType, ChannelType,
-    PostVisibility,
+    PostVisibility, CommunityPost,
 )
 from app.models.user import StudentProfile, UserRole, User
 from app.services.moderation_service import check_message_content
-from app.services.notification_service import send_user_notification
+from app.services.notification_service import (
+    send_user_notification,
+    send_all_students_notification,
+    send_all_teachers_notification,
+    send_channel_members_notification,
+)
 from app.services.media_service import upload_file
 
+import re
+
 router = APIRouter(prefix="/community", tags=["Community"])
+
+POST_COMMENT_RE = re.compile(r"^@post:([^\s]+)\s*([\s\S]*)$")
 
 # ── Channels ──────────────────────────────────────────────────────────────────
 
@@ -187,6 +196,62 @@ async def send_message(
 
     if flagged:
         raise HTTPException(status_code=400, detail=f"Message blocked: {reason}")
+
+    sender_res = await db.execute(select(User).where(User.id == current_user["sub"]))
+    sender = sender_res.scalar_one_or_none()
+    sender_name = sender.full_name if sender else "Someone"
+
+    # ── Notifications ─────────────────────────────────────────────────────
+    try:
+        comment_match = POST_COMMENT_RE.match(payload.content or "")
+        if comment_match:
+            post_id = comment_match.group(1)
+            post_res = await db.execute(select(CommunityPost).where(CommunityPost.id == post_id))
+            post = post_res.scalar_one_or_none()
+            if post and str(post.author_id) != current_user["sub"]:
+                await send_user_notification(
+                    db=db,
+                    user_id=str(post.author_id),
+                    title="New comment on your post",
+                    body=f"{sender_name}: {comment_match.group(2)[:120]}",
+                    notification_type="community_mention",
+                    data={"post_id": post_id, "channel_id": str(channel.id)},
+                )
+        elif channel.channel_type == ChannelType.teacher_announcement:
+            preview = (payload.content or "New announcement")[:160]
+            if payload.media_type == "audio":
+                preview = "Voice announcement"
+            await send_all_students_notification(
+                db=db,
+                title=f"Announcement from {sender_name}",
+                body=preview,
+                notification_type="announcement",
+                data={"channel_id": str(channel.id), "message_id": str(message.id)},
+            )
+        elif channel.channel_type == ChannelType.general:
+            preview = (payload.content or "New message")[:120]
+            if payload.media_type == "audio":
+                preview = f"{sender_name} sent a voice note"
+            if role == UserRole.student:
+                await send_all_teachers_notification(
+                    db=db,
+                    title="Community message",
+                    body=f"{sender_name}: {preview}",
+                    notification_type="community_mention",
+                    data={"channel_id": str(channel.id), "message_id": str(message.id)},
+                    exclude_user_id=current_user["sub"],
+                )
+            await send_channel_members_notification(
+                db=db,
+                channel_id=str(channel.id),
+                title="New community message",
+                body=f"{sender_name}: {preview}",
+                notification_type="community_mention",
+                data={"channel_id": str(channel.id), "message_id": str(message.id)},
+                exclude_user_id=current_user["sub"],
+            )
+    except Exception:
+        pass
 
     return {"message_id": str(message.id), "status": "sent"}
 
@@ -463,6 +528,11 @@ COMMUNITY_ALLOWED_MIME = {
     "application/pdf": ("pdf", "assignments"),
     "application/msword": ("doc", "assignments"),
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ("doc", "assignments"),
+    "audio/webm": ("audio", "videos"),
+    "audio/mpeg": ("audio", "videos"),
+    "audio/mp4": ("audio", "videos"),
+    "audio/ogg": ("audio", "videos"),
+    "audio/wav": ("audio", "videos"),
 }
 
 
@@ -475,7 +545,7 @@ async def upload_community_file(
     POST /api/v1/community/upload
     Upload an image or document for use in a community post.
     Returns file_url and file_type to include in the post body.
-    Accepted: JPEG, PNG, WebP, PDF, DOC, DOCX (max 20MB).
+    Accepted: JPEG, PNG, WebP, PDF, DOC, DOCX, audio voice notes (max 20MB).
     """
     if file.content_type not in COMMUNITY_ALLOWED_MIME:
         raise HTTPException(
@@ -663,6 +733,44 @@ async def create_post(
     )
     db.add(post)
     await db.flush()
+
+    author_res = await db.execute(select(User).where(User.id == current_user["sub"]))
+    author = author_res.scalar_one_or_none()
+    author_name = author.full_name if author else "Teacher"
+
+    try:
+        preview = (payload.content or "New post")[:160]
+        if payload.media_type == "audio":
+            preview = "Voice note"
+        if channel.channel_type == ChannelType.teacher_announcement:
+            await send_all_students_notification(
+                db=db,
+                title=f"Announcement: {channel.name}",
+                body=f"{author_name}: {preview}",
+                notification_type="announcement",
+                data={"channel_id": str(channel.id), "post_id": str(post.id)},
+            )
+        elif channel.channel_type == ChannelType.general:
+            if role == UserRole.student:
+                await send_all_teachers_notification(
+                    db=db,
+                    title="New community post",
+                    body=f"{author_name}: {preview}",
+                    notification_type="community_mention",
+                    data={"channel_id": str(channel.id), "post_id": str(post.id)},
+                    exclude_user_id=current_user["sub"],
+                )
+            await send_channel_members_notification(
+                db=db,
+                channel_id=str(channel.id),
+                title="New community post",
+                body=f"{author_name}: {preview}",
+                notification_type="community_mention",
+                data={"channel_id": str(channel.id), "post_id": str(post.id)},
+                exclude_user_id=current_user["sub"],
+            )
+    except Exception:
+        pass
 
     return {
         "id": str(post.id),

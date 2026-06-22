@@ -289,9 +289,15 @@
 
     <section id="page-community" class="page">
 
-      <div class="info-banner">&#128172; Scholaxia student community — share ideas and help each other.</div>
+      <div class="info-banner">&#128172; Scholaxia student community — share ideas, voice notes, and read teacher announcements.</div>
+
+      <div class="community-tabs">
+        <button type="button" class="community-tab active" id="community-tab-feed" onclick="showCommunityTab('feed')">Feed</button>
+        <button type="button" class="community-tab" id="community-tab-announcements" onclick="showCommunityTab('announcements')">Announcements</button>
+      </div>
 
       <div id="community-feed" class="community-feed"><div class="loading">Loading posts…</div></div>
+      <div id="community-announcements" class="community-feed hidden"><div class="loading">Loading announcements…</div></div>
 
       <button type="button" id="community-fab" class="community-fab" onclick="openCommunityCreate()" title="New post" aria-label="New post">
 
@@ -321,9 +327,15 @@
 
               <label class="btn-image-pick" for="community-image-input">&#128247; Add image</label>
 
+              <label class="btn-image-pick" for="community-audio-input">&#127908; Voice note</label>
+
               <input type="file" id="community-image-input" accept="image/jpeg,image/png,image/webp" hidden onchange="onCommunityImagePick(this)" />
 
+              <input type="file" id="community-audio-input" accept="audio/*" hidden onchange="onCommunityAudioPick(this)" />
+
               <button type="button" id="community-image-clear" class="btn-image-clear hidden" onclick="clearCommunityImage()">Remove image</button>
+
+              <button type="button" id="community-audio-clear" class="btn-image-clear hidden" onclick="clearCommunityAudio()">Remove voice</button>
 
             </div>
 

@@ -23,7 +23,11 @@
       var n = new Notification(title, { body: body, icon: "assets/logo.png" });
       n.onclick = function () {
         window.focus();
-        if (typeof showPage === "function") showPage("live");
+        if (typeof showPage !== "function") return;
+        var t = (data.type || data.notification_type || "").toLowerCase();
+        if (t.indexOf("live") >= 0) showPage("live");
+        else if (t.indexOf("community") >= 0 || t.indexOf("announcement") >= 0) showPage("community");
+        else showPage("live");
       };
     } catch (e) {
       console.warn("Notification display failed", e);

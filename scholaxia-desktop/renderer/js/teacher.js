@@ -10,6 +10,7 @@ window.onload = function () {
   document.getElementById("app-screen").classList.remove("hidden");
   initTeacherUI();
   showTeacherPage("live");
+  if (typeof startTeacherNotifications === "function") startTeacherNotifications();
 };
 
 function initTeacherUI() {
@@ -104,6 +105,8 @@ function showTeacherPage(page) {
   else if (page === "materials") loadTeacherMaterials();
   else if (page === "curriculum") loadTeacherCurriculum();
   else if (page === "notes") loadTeacherNotes();
+  else if (page === "community") loadTeacherCommunity();
+  else if (page === "ai") { /* static form */ }
 }
 
 function getSchedulePayload(goLiveNow) {
@@ -585,6 +588,115 @@ function setDefaultScheduleDate() {
   }
 }
 
+async function loadTeacherCommunity() {
+  var listEl = document.getElementById("teacher-announce-list");
+  if (!listEl) return;
+  listEl.innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    var channels = await teacherApi("/api/v1/community/channels");
+    var ann = (channels || []).find(function (c) { return c.type === "teacher_announcement"; });
+    if (!ann) {
+      listEl.innerHTML = '<div class="empty-state">Announcement channel not found.</div>';
+      return;
+    }
+    window._teacherAnnounceChannelId = ann.id;
+    var posts = await teacherApi("/api/v1/community/posts?channel_id=" + encodeURIComponent(ann.id) + "&limit=30");
+    if (!posts || !posts.length) {
+      listEl.innerHTML = '<div class="empty-state">No announcements yet.</div>';
+      return;
+    }
+    listEl.innerHTML = posts.map(function (p) {
+      var media = "";
+      if (p.media_url && p.media_type === "audio") {
+        media = '<audio controls src="' + escHtml(p.media_url) + '" class="post-audio"></audio>';
+      }
+      return '<div class="announce-item"><strong>' + formatDateTime(p.created_at) + '</strong><p>' +
+        escHtml(p.content || "") + '</p>' + media + '</div>';
+    }).join("");
+  } catch (e) {
+    listEl.innerHTML = '<div class="empty-state">' + escHtml(e.message) + '</div>';
+  }
+}
+
+async function sendTeacherAnnouncement() {
+  var err = document.getElementById("teacher-announce-error");
+  var input = document.getElementById("teacher-announce-input");
+  var audioInput = document.getElementById("teacher-announce-audio");
+  if (err) err.textContent = "";
+  var text = input ? input.value.trim() : "";
+  var channelId = window._teacherAnnounceChannelId;
+  if (!channelId) {
+    await loadTeacherCommunity();
+    channelId = window._teacherAnnounceChannelId;
+  }
+  if (!channelId) {
+    if (err) err.textContent = "Announcement channel not ready.";
+    return;
+  }
+  try {
+    var mediaUrl = null;
+    var mediaType = null;
+    if (audioInput && audioInput.files && audioInput.files[0]) {
+      var uploaded = await teacherApiUpload("/api/v1/community/upload", audioInput.files[0]);
+      mediaUrl = uploaded.file_url;
+      mediaType = uploaded.file_type || "audio";
+    }
+    if (!text && !mediaUrl) {
+      if (err) err.textContent = "Write a message or attach a voice note.";
+      return;
+    }
+    await teacherApi("/api/v1/community/posts", {
+      method: "POST",
+      body: JSON.stringify({
+        channel_id: channelId,
+        content: text || "Voice announcement",
+        media_url: mediaUrl,
+        media_type: mediaType,
+        visibility: "everyone",
+      }),
+    });
+    if (input) input.value = "";
+    if (audioInput) audioInput.value = "";
+    loadTeacherCommunity();
+    alert("Announcement sent — all students were notified.");
+  } catch (e) {
+    if (err) err.textContent = e.message;
+  }
+}
+
+async function askTeacherAI() {
+  var err = document.getElementById("teacher-ai-error");
+  var out = document.getElementById("teacher-ai-result");
+  if (err) err.textContent = "";
+  var task = document.getElementById("teacher-ai-task").value;
+  var subject = document.getElementById("teacher-ai-subject").value.trim();
+  var level = document.getElementById("teacher-ai-level").value.trim();
+  var details = document.getElementById("teacher-ai-details").value.trim();
+  if (!subject || !details) {
+    if (err) err.textContent = "Subject and details are required.";
+    return;
+  }
+  if (out) {
+    out.classList.remove("hidden");
+    out.textContent = "Thinking…";
+  }
+  try {
+    var res = await teacherApi("/api/v1/teacher-ai/ask", {
+      method: "POST",
+      body: JSON.stringify({
+        task: task,
+        subject: subject,
+        education_level: level || "SS2",
+        details: details,
+      }),
+    });
+    if (out) out.textContent = res.result || "No response.";
+  } catch (e) {
+    if (err) err.textContent = e.message;
+    if (out) out.classList.add("hidden");
+  }
+}
+
 function bindTeacherUI() {
   var loginForm = document.getElementById("teacher-login-form");
   if (loginForm) loginForm.addEventListener("submit", teacherLogin);
@@ -682,6 +794,11 @@ function bindTeacherUI() {
       else if (btn.dataset.action === "dismiss-request") updateTeacherRequest(btn.dataset.id, "dismissed");
     });
   }
+
+  var announceSend = document.getElementById("teacher-announce-send");
+  if (announceSend) announceSend.addEventListener("click", sendTeacherAnnouncement);
+  var aiAsk = document.getElementById("teacher-ai-ask");
+  if (aiAsk) aiAsk.addEventListener("click", askTeacherAI);
 }
 
 window.teacherLogin = teacherLogin;

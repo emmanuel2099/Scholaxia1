@@ -43,8 +43,11 @@
       <button type="button" class="topnav-btn" data-page="curriculum"><span class="nav-ico">&#128197;</span> Curriculum</button>
       <button type="button" class="topnav-btn" data-page="notes"><span class="nav-ico">&#128221;</span> Learn Notes</button>
       <button type="button" class="topnav-btn" data-page="requests"><span class="nav-ico">&#128172;</span> Requests</button>
+      <button type="button" class="topnav-btn" data-page="community"><span class="nav-ico">&#128227;</span> Community</button>
+      <button type="button" class="topnav-btn" data-page="ai"><span class="nav-ico">&#129302;</span> Teacher AI</button>
     </nav>
     <div class="teacher-user">
+      <span id="teacher-notif-badge" class="teacher-notif-badge hidden"></span>
       <div><strong id="teacher-name-label">Teacher</strong><span id="teacher-email-label"></span></div>
       <button type="button" class="btn-logout" id="teacher-logout-btn">Sign out</button>
     </div>
@@ -149,6 +152,52 @@
       </div>
       <div id="requests-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
     </section>
+
+    <section id="page-community" class="teacher-page">
+      <h2>Community &amp; Announcements</h2>
+      <p class="page-desc">Send announcements to all students. They get a notification even when the app is closed.</p>
+      <div class="host-card">
+        <h3>New announcement</h3>
+        <textarea id="teacher-announce-input" rows="4" placeholder="Write an announcement for your students…"></textarea>
+        <div class="form-row" style="margin-top:10px">
+          <label class="btn-secondary" style="cursor:pointer;display:inline-block;padding:8px 12px">
+            &#127908; Attach voice note
+            <input type="file" id="teacher-announce-audio" accept="audio/*" hidden />
+          </label>
+          <button type="button" class="btn-action primary" id="teacher-announce-send">Send announcement</button>
+        </div>
+        <p id="teacher-announce-error" class="error-msg"></p>
+      </div>
+      <h3 style="margin-top:24px">Recent announcements</h3>
+      <div id="teacher-announce-list" class="data-table-wrap"><div class="loading">Loading…</div></div>
+    </section>
+
+    <section id="page-ai" class="teacher-page">
+      <h2>Teacher AI</h2>
+      <p class="page-desc">Lesson plans, quizzes, grading help, and class analytics — powered by Sia for teachers.</p>
+      <div class="host-card">
+        <div class="form-grid">
+          <label><span>Task</span>
+            <select id="teacher-ai-task">
+              <option value="lesson_plan">Lesson plan</option>
+              <option value="assignment">Assignment ideas</option>
+              <option value="quiz">Quiz / test questions</option>
+              <option value="grading">Grading feedback</option>
+              <option value="analytics">Class analytics</option>
+              <option value="general">General help</option>
+            </select>
+          </label>
+          <label><span>Subject</span><input type="text" id="teacher-ai-subject" placeholder="Mathematics" /></label>
+          <label><span>Level</span><input type="text" id="teacher-ai-level" placeholder="SS2, JAMB, etc." /></label>
+          <label class="span-2"><span>What do you need?</span>
+            <textarea id="teacher-ai-details" rows="5" placeholder="e.g. Create a 45-minute lesson on quadratic equations with 5 practice questions"></textarea>
+          </label>
+        </div>
+        <button type="button" class="btn-action primary" id="teacher-ai-ask">Ask Teacher AI</button>
+        <p id="teacher-ai-error" class="error-msg"></p>
+        <div id="teacher-ai-result" class="teacher-ai-result hidden"></div>
+      </div>
+    </section>
   </main>
 </div>
 
@@ -185,6 +234,7 @@
 
 <script src="js/api.js"></script>
 <script src="js/teacher-api.js"></script>
+<script src="js/teacher-notifications.js"></script>
 <script src="js/teacher.js"></script>
 </body>
 </html>
