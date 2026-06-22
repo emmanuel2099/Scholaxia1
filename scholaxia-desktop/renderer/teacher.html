@@ -159,11 +159,15 @@
       <div class="host-card">
         <h3>New announcement</h3>
         <textarea id="teacher-announce-input" rows="4" placeholder="Write an announcement for your students…"></textarea>
+        <div class="voice-note-compose" style="margin-top:10px">
+          <button type="button" id="teacher-voice-btn" class="btn-voice-record">&#127908; Tap to record voice</button>
+          <p id="teacher-voice-status" class="voice-status hidden"></p>
+          <div id="teacher-voice-preview" class="voice-preview hidden">
+            <audio id="teacher-voice-playback" controls playsinline></audio>
+            <button type="button" id="teacher-voice-delete" class="btn-image-clear">&#128465; Delete voice</button>
+          </div>
+        </div>
         <div class="form-row" style="margin-top:10px">
-          <label class="btn-secondary" style="cursor:pointer;display:inline-block;padding:8px 12px">
-            &#127908; Attach voice note
-            <input type="file" id="teacher-announce-audio" accept="audio/*" hidden />
-          </label>
           <button type="button" class="btn-action primary" id="teacher-announce-send">Send announcement</button>
         </div>
         <p id="teacher-announce-error" class="error-msg"></p>
@@ -234,6 +238,7 @@
 
 <script src="js/api.js"></script>
 <script src="js/teacher-api.js"></script>
+<script src="js/voice-recorder.js"></script>
 <script src="js/teacher-notifications.js"></script>
 <script src="js/teacher.js"></script>
 </body>

@@ -1,4 +1,5 @@
 var currentTeacherPage = "live";
+var teacherVoiceRecorder = null;
 
 window.onload = function () {
   if (!getTeacherToken()) {
@@ -589,6 +590,7 @@ function setDefaultScheduleDate() {
 }
 
 async function loadTeacherCommunity() {
+  initTeacherVoiceRecorder();
   var listEl = document.getElementById("teacher-announce-list");
   if (!listEl) return;
   listEl.innerHTML = '<div class="loading">Loading…</div>';
@@ -621,8 +623,11 @@ async function loadTeacherCommunity() {
 async function sendTeacherAnnouncement() {
   var err = document.getElementById("teacher-announce-error");
   var input = document.getElementById("teacher-announce-input");
-  var audioInput = document.getElementById("teacher-announce-audio");
   if (err) err.textContent = "";
+  if (teacherVoiceRecorder && teacherVoiceRecorder.isRecording()) {
+    if (err) err.textContent = "Stop recording before you send.";
+    return;
+  }
   var text = input ? input.value.trim() : "";
   var channelId = window._teacherAnnounceChannelId;
   if (!channelId) {
@@ -636,13 +641,16 @@ async function sendTeacherAnnouncement() {
   try {
     var mediaUrl = null;
     var mediaType = null;
-    if (audioInput && audioInput.files && audioInput.files[0]) {
-      var uploaded = await teacherApiUpload("/api/v1/community/upload", audioInput.files[0]);
-      mediaUrl = uploaded.file_url;
-      mediaType = uploaded.file_type || "audio";
+    if (teacherVoiceRecorder && teacherVoiceRecorder.hasRecording()) {
+      var voiceFile = teacherVoiceRecorder.getFile();
+      if (voiceFile) {
+        var uploaded = await teacherApiUpload("/api/v1/community/upload", voiceFile);
+        mediaUrl = uploaded.file_url;
+        mediaType = uploaded.file_type || "audio";
+      }
     }
     if (!text && !mediaUrl) {
-      if (err) err.textContent = "Write a message or attach a voice note.";
+      if (err) err.textContent = "Write a message or record a voice note.";
       return;
     }
     await teacherApi("/api/v1/community/posts", {
@@ -656,7 +664,7 @@ async function sendTeacherAnnouncement() {
       }),
     });
     if (input) input.value = "";
-    if (audioInput) audioInput.value = "";
+    if (teacherVoiceRecorder) teacherVoiceRecorder.cancel();
     loadTeacherCommunity();
     alert("Announcement sent — all students were notified.");
   } catch (e) {
@@ -695,6 +703,22 @@ async function askTeacherAI() {
     if (err) err.textContent = e.message;
     if (out) out.classList.add("hidden");
   }
+}
+
+function initTeacherVoiceRecorder() {
+  if (teacherVoiceRecorder) return;
+  teacherVoiceRecorder = createVoiceRecorder({
+    buttonId: "teacher-voice-btn",
+    statusId: "teacher-voice-status",
+    previewId: "teacher-voice-preview",
+    playbackId: "teacher-voice-playback",
+    deleteButtonId: "teacher-voice-delete",
+    idleLabel: "🎤 Tap to record voice",
+    onError: function (e) {
+      var errEl = document.getElementById("teacher-announce-error");
+      if (errEl) errEl.textContent = e.message || "Could not access microphone.";
+    },
+  });
 }
 
 function bindTeacherUI() {

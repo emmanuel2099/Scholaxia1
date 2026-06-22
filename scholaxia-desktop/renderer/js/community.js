@@ -1,6 +1,6 @@
 var communityChannelId = null;
 var communityDraftImage = null;
-var communityDraftAudio = null;
+var communityVoiceRecorder = null;
 var communityPendingPost = null;
 var communityActiveTab = "feed";
 var POST_COMMENT_RE = /^@post:([^\s]+)\s*([\s\S]*)$/;
@@ -149,7 +149,7 @@ function renderCommunityPosts(posts, targetEl) {
       : "";
     var bodyHtml = body
       ? '<p class="post-body">' + escHtml(body) + '</p>'
-      : "";
+      : (p.media_type === "audio" ? '<p class="post-body voice-label">&#127908; Voice message</p>' : "");
     return '<article class="community-post">' +
       '<div class="post-top">' +
       '<div class="post-avatar">' + escHtml(initial) + '</div>' +
@@ -288,6 +288,8 @@ function initCommunityCreate() {
   if (err) err.textContent = "";
   if (postBtn) { postBtn.disabled = false; postBtn.textContent = "Post"; }
   clearCommunityImage();
+  clearCommunityVoice();
+  initCommunityVoiceRecorder();
   if (input) input.focus();
 }
 
@@ -323,8 +325,12 @@ async function submitCommunityPost() {
   var err = document.getElementById("community-create-error");
   var postBtn = document.getElementById("community-post-btn");
   var content = input.value.trim();
-  if (!content && !communityDraftImage && !communityDraftAudio) {
-    err.textContent = "Write something, add an image, or attach a voice note.";
+  if (!content && !communityDraftImage && !(communityVoiceRecorder && communityVoiceRecorder.hasRecording())) {
+    err.textContent = "Write something, add an image, or record a voice note.";
+    return;
+  }
+  if (communityVoiceRecorder && communityVoiceRecorder.isRecording()) {
+    err.textContent = "Stop recording before you post.";
     return;
   }
   err.textContent = "";
@@ -347,10 +353,13 @@ async function submitCommunityPost() {
       var uploaded = await apiUpload("/api/v1/community/upload", communityDraftImage.file);
       mediaUrl = uploaded.file_url;
       mediaType = uploaded.file_type || "image";
-    } else if (communityDraftAudio) {
-      var audioUp = await apiUpload("/api/v1/community/upload", communityDraftAudio);
-      mediaUrl = audioUp.file_url;
-      mediaType = audioUp.file_type || "audio";
+    } else if (communityVoiceRecorder && communityVoiceRecorder.hasRecording()) {
+      var voiceFile = communityVoiceRecorder.getFile();
+      if (voiceFile) {
+        var audioUp = await apiUpload("/api/v1/community/upload", voiceFile);
+        mediaUrl = audioUp.file_url;
+        mediaType = audioUp.file_type || "audio";
+      }
     }
     var created = await api("/api/v1/community/posts", {
       method: "POST",
@@ -363,7 +372,7 @@ async function submitCommunityPost() {
     });
     var newPost = normalizeCreatedPost(created, content, mediaUrl, mediaType);
     clearCommunityImage();
-    clearCommunityAudio();
+    clearCommunityVoice();
     if (input) input.value = "";
     communityPendingPost = newPost;
     showPage("community");
@@ -460,21 +469,28 @@ async function loadCommunityAnnouncements() {
   }
 }
 
-function onCommunityAudioPick(input) {
-  var file = input.files && input.files[0];
-  if (!file) return;
-  communityDraftAudio = file;
-  document.getElementById("community-audio-clear").classList.remove("hidden");
+function initCommunityVoiceRecorder() {
+  if (communityVoiceRecorder) return;
+  communityVoiceRecorder = createVoiceRecorder({
+    buttonId: "community-voice-btn",
+    statusId: "community-voice-status",
+    previewId: "community-voice-preview",
+    playbackId: "community-voice-playback",
+    deleteButtonId: "community-voice-delete",
+    idleLabel: "🎤 Tap to record voice",
+    onError: function (e) {
+      var err = document.getElementById("community-create-error");
+      if (err) err.textContent = e.message || "Could not access microphone.";
+    },
+  });
 }
 
-function clearCommunityAudio() {
-  communityDraftAudio = null;
-  var input = document.getElementById("community-audio-input");
-  var btn = document.getElementById("community-audio-clear");
-  if (input) input.value = "";
-  if (btn) btn.classList.add("hidden");
+function clearCommunityVoice() {
+  if (communityVoiceRecorder) communityVoiceRecorder.cancel();
 }
 
 window.showCommunityTab = showCommunityTab;
-window.onCommunityAudioPick = onCommunityAudioPick;
-window.clearCommunityAudio = clearCommunityAudio;
+window.clearCommunityVoice = clearCommunityVoice;
+window.initCommunityVoiceRecorder = initCommunityVoiceRecorder;
+window.openCommunityCreate = openCommunityCreate;
+window.submitCommunityPost = submitCommunityPost;
