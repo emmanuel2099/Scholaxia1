@@ -1,8 +1,8 @@
 const PAGE_TITLES = {
   live: "Live Class",
   school: "Scholaxia Exams",
-  "school-portal": "Schools Exam Portal",
-  cbt: "CBT Practice",
+  "school-portal": "School Exam",
+  cbt: "CBT",
   plans: "Live Class Plans",
   sia: "Ask Sia",
   community: "Community",
@@ -45,21 +45,41 @@ let secondsLeft = 0;
 let pendingSchoolExamId = null;
 let cameraStream = null;
 
-window.onload = () => {
+window.onload = async () => {
   if (!getToken()) {
     window.location.href = "index.html";
     return;
   }
   initUserUI();
+  await syncStudentProfile();
   loadSubjects();
   refreshPage();
 };
+
+async function syncStudentProfile() {
+  try {
+    const p = await api("/api/v1/students/me");
+    if (!p) return null;
+    if (p.full_name) localStorage.setItem("sia_name", p.full_name);
+    if (p.exam_type) localStorage.setItem("sia_exam_type", formatExamType(p.exam_type));
+    localStorage.setItem("sia_subjects", JSON.stringify(p.selected_subjects || []));
+    if (p.education_level) localStorage.setItem("sia_education_level", p.education_level);
+    document.getElementById("sidebar-exam").textContent = formatExamType(p.exam_type);
+    return p;
+  } catch (e) {
+    return null;
+  }
+}
+
+function formatExamType(value) {
+  return String(value || "").replace(/^ExamType\./i, "") || "Student";
+}
 
 function initUserUI() {
   const user = getUser();
   const initial = firstName(user.name)[0].toUpperCase();
   document.getElementById("sidebar-name").textContent = firstName(user.name);
-  document.getElementById("sidebar-exam").textContent = user.examType || "Student";
+  document.getElementById("sidebar-exam").textContent = formatExamType(user.examType);
   document.getElementById("user-avatar").textContent = initial;
   document.getElementById("profile-avatar").textContent = initial;
   document.getElementById("profile-name").textContent = user.name;
@@ -305,9 +325,12 @@ async function loadCbtExams() {
   document.getElementById("exam-screen").classList.add("hidden");
   document.getElementById("result-screen").classList.add("hidden");
   document.getElementById("cbt-grid").innerHTML = `<div class="loading">Loading…</div>`;
+  await syncStudentProfile();
+  let profileComplete = false;
   try {
     const data = await api("/api/v1/cbt/exams/for-me");
     if (!data) return;
+    profileComplete = true;
     practiceExams = data.practice_exams || [];
     schoolExams = data.school_exams || [];
     if (typeof loadPortalPracticeExams === "function") {
@@ -321,28 +344,53 @@ async function loadCbtExams() {
         }
       });
     }
-    renderCbtGrid();
+    renderCbtGrid({ profileComplete: true });
   } catch (e) {
+    const profile = await syncStudentProfile();
+    profileComplete = !!(profile && profile.setup_complete);
     if (typeof loadPortalPracticeExams === "function") {
       try {
-        practiceExams = await loadPortalPracticeExams();
+        practiceExams = await loadPortalPracticeExams(profile);
         if (practiceExams.length) {
-          renderCbtGrid();
+          renderCbtGrid({ profileComplete: true });
           return;
         }
       } catch (portalErr) {
         console.warn("Portal CBT fallback failed", portalErr);
       }
     }
-    const msg = e.message.includes("setup") ? `${e.message} Go to Profile to complete setup.` : e.message;
-    document.getElementById("cbt-grid").innerHTML = `<div class="empty">${escHtml(msg)}</div>`;
+    if (!profileComplete) {
+      const msg = e.message.includes("setup") ? `${e.message} Go to Profile to complete setup.` : e.message;
+      document.getElementById("cbt-grid").innerHTML = `<div class="empty">${escHtml(msg)}</div>`;
+      return;
+    }
+    renderCbtGrid({ profileComplete: true });
   }
 }
 
-function renderCbtGrid() {
+function renderCbtGrid(opts) {
+  opts = opts || {};
   const el = document.getElementById("cbt-grid");
+  const user = getUser();
+  const hasSetup = opts.profileComplete || (user.examType && user.subjects && user.subjects.length > 0);
   if (!practiceExams.length) {
-    el.innerHTML = `<div class="empty">No practice exams for your subjects yet. Complete exam setup in Profile.</div>`;
+    if (!hasSetup) {
+      el.innerHTML = `
+        <div class="empty-state-premium">
+          <div class="empty-icon">&#127891;</div>
+          <h3>Complete your exam setup</h3>
+          <p>Go to <strong>Profile</strong> and pick JAMB, WAEC or NECO plus your subjects.</p>
+          <button type="button" class="btn-action" onclick="showPage('profile')">Set up subjects</button>
+        </div>`;
+      return;
+    }
+    el.innerHTML = `
+      <div class="empty-state-premium">
+        <div class="empty-icon">&#128218;</div>
+        <h3>No CBT papers loaded</h3>
+        <p>Your profile is set (${escHtml(formatExamType(user.examType))} — ${escHtml((user.subjects || []).join(", "))}). Tap refresh or check your connection.</p>
+        <button type="button" class="btn-action" onclick="refreshPage()">Refresh</button>
+      </div>`;
     return;
   }
   el.innerHTML = practiceExams.map((e) => `
@@ -515,10 +563,10 @@ async function loadProfile() {
     document.getElementById("pf-level").textContent = p.education_level || "—";
     document.getElementById("pf-subjects").textContent = (p.selected_subjects || []).join(", ") || "—";
     document.getElementById("pf-sub").textContent = p.has_active_subscription ? "Active" : "Free";
-    localStorage.setItem("sia_exam_type", p.exam_type || "");
+    localStorage.setItem("sia_exam_type", formatExamType(p.exam_type) || "");
     localStorage.setItem("sia_subjects", JSON.stringify(p.selected_subjects || []));
     if (p.education_level) localStorage.setItem("sia_education_level", p.education_level);
-    document.getElementById("sidebar-exam").textContent = p.exam_type || "Student";
+    document.getElementById("sidebar-exam").textContent = formatExamType(p.exam_type);
 
     if (p.setup_complete) {
       document.getElementById("setup-card").style.display = "none";

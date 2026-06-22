@@ -4,6 +4,7 @@ from sqlalchemy import select
 from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
+import httpx
 from app.core.database import get_db
 from app.core.deps import require_student, require_admin, get_current_user, require_teacher
 from app.models.cbt import CBTExam, CBTQuestion, CBTSession, ExamProctorLog
@@ -11,6 +12,27 @@ from app.models.user import StudentProfile
 from app.core.subjects import subject_matches
 
 router = APIRouter(prefix="/cbt", tags=["CBT"])
+
+PRACTICE_BANK_BASE = "https://www.scholaxiacbtexam.blog/practice-exams"
+
+
+@router.get("/practice-bank/{category}")
+async def practice_bank(
+    category: str,
+    current_user: dict = Depends(require_student),
+):
+    """Proxy Scholaxia CBT question bank (avoids browser CORS blocks)."""
+    cat = category.strip().upper()
+    if cat not in {"JAMB", "WAEC", "NECO"}:
+        raise HTTPException(status_code=400, detail="category must be JAMB, WAEC, or NECO")
+    url = f"{PRACTICE_BANK_BASE}/{cat.lower()}.json"
+    try:
+        async with httpx.AsyncClient(timeout=90.0) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
+            return resp.json()
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Could not load practice bank: {exc}") from exc
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
@@ -156,7 +178,7 @@ async def exams_for_student(
             detail="Complete exam setup first at /students/setup-exam",
         )
 
-    exam_type = str(profile.exam_type)
+    exam_type = profile.exam_type.value
     subjects = profile.selected_subjects
     now = datetime.utcnow()
 

@@ -10,6 +10,9 @@
 
   function resolveCategory(examType) {
     var cat = String(examType || "JAMB").trim().toUpperCase();
+    if (cat.indexOf("JAMB") >= 0) return "JAMB";
+    if (cat.indexOf("WAEC") >= 0) return "WAEC";
+    if (cat.indexOf("NECO") >= 0) return "NECO";
     if (cat === "JAMB" || cat === "WAEC" || cat === "NECO") return cat;
     return "JAMB";
   }
@@ -51,22 +54,46 @@
   async function fetchPracticePool(category) {
     var key = resolveCategory(category);
     if (poolCache[key]) return poolCache[key];
-    var url = cfg.practiceBaseUrl + "/" + key.toLowerCase() + ".json";
-    var res = await fetch(url, { signal: typeof fetchTimeout === "function" ? fetchTimeout(45000) : undefined });
-    if (!res.ok) throw new Error("CBT question bank unavailable (" + key + ")");
-    var data = await res.json();
+    var data = null;
+    if (typeof api === "function") {
+      data = await api("/api/v1/cbt/practice-bank/" + key);
+    } else {
+      var url = cfg.practiceBaseUrl + "/" + key.toLowerCase() + ".json";
+      var res = await fetch(url, { signal: typeof fetchTimeout === "function" ? fetchTimeout(45000) : undefined });
+      if (!res.ok) throw new Error("CBT question bank unavailable (" + key + ")");
+      data = await res.json();
+    }
     var raw = Array.isArray(data)
       ? data
       : (Array.isArray(data.subjects) ? data.subjects : (Array.isArray(data.questions) ? data.questions : []));
+    raw = raw.filter(function (e) {
+      return e && e.subject && Array.isArray(e.questions) && e.questions.length > 0;
+    });
     poolCache[key] = raw;
     return raw;
   }
 
   function findSubjectEntry(pool, subjectName) {
     var target = normalizeSubjectKey(subjectName);
-    return pool.find(function (entry) {
+    if (!target) return null;
+
+    var exact = pool.find(function (entry) {
       return normalizeSubjectKey(entry && entry.subject) === target;
     });
+    if (exact) return exact;
+
+    return pool.find(function (entry) {
+      var key = normalizeSubjectKey(entry && entry.subject);
+      if (!key || !Array.isArray(entry.questions) || !entry.questions.length) return false;
+      if (key.includes(target) || target.includes(key)) return true;
+      if (target.indexOf("english") >= 0 && key.indexOf("english") >= 0) return true;
+      if (target.indexOf("math") >= 0 && key.indexOf("math") >= 0) return true;
+      if (target.indexOf("econ") >= 0 && key.indexOf("econ") >= 0) return true;
+      if (target.indexOf("lit") >= 0 && key.indexOf("literature") >= 0) return true;
+      if (target.indexOf("gov") >= 0 && key.indexOf("government") >= 0) return true;
+      if (target.indexOf("crk") >= 0 && (key.indexOf("christian") >= 0 || key.indexOf("religious") >= 0)) return true;
+      return false;
+    }) || null;
   }
 
   function portalExamId(category, subject) {
@@ -79,11 +106,36 @@
     return { category: parts[1], subject: parts.slice(2).join(":") };
   }
 
-  async function loadPortalPracticeExams() {
-    var user = typeof getUser === "function" ? getUser() : {};
-    var category = resolveCategory(user.examType);
-    var subjects = Array.isArray(user.subjects) ? user.subjects : [];
+  async function loadPortalPracticeExams(profileOverride) {
+    var examType = "";
+    var subjects = [];
+    var profile = profileOverride;
+
+    if (!profile && typeof api === "function") {
+      try {
+        profile = await api("/api/v1/students/me");
+      } catch (e) {
+        profile = null;
+      }
+    }
+
+    if (profile) {
+      examType = profile.exam_type || "";
+      subjects = profile.selected_subjects || [];
+      if (typeof localStorage !== "undefined") {
+        if (examType) localStorage.setItem("sia_exam_type", formatExamType(examType));
+        localStorage.setItem("sia_subjects", JSON.stringify(subjects));
+      }
+    }
+
+    if (!subjects.length && typeof getUser === "function") {
+      var user = getUser();
+      examType = examType || user.examType;
+      subjects = Array.isArray(user.subjects) ? user.subjects : [];
+    }
     if (!subjects.length) return [];
+
+    var category = resolveCategory(examType);
 
     var pool;
     try {
@@ -105,7 +157,7 @@
         total_questions: count,
         duration_minutes: durationMinutes(category),
         is_portal: true,
-        source: "Scholaxia CBT Bank",
+        source: "CBT Bank",
       };
     }).filter(Boolean);
   }
@@ -148,7 +200,7 @@
     document.getElementById("exam-screen").classList.remove("hidden");
     document.getElementById("exam-title").textContent = window.currentExam.title;
     document.getElementById("exam-meta").textContent =
-      parsed.subject + " · " + items.length + " questions · Scholaxia CBT Bank";
+      parsed.subject + " · " + items.length + " questions · CBT Bank";
 
     if (typeof buildQNav === "function") buildQNav();
     if (typeof renderQuestion === "function") renderQuestion();

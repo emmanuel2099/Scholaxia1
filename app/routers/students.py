@@ -66,7 +66,7 @@ async def setup_status(
     )
     return {
         "setup_complete": complete,
-        "exam_type": str(profile.exam_type) if profile and profile.exam_type else None,
+        "exam_type": profile.exam_type.value if profile and profile.exam_type else None,
         "selected_subjects": profile.selected_subjects if profile else [],
         "subject_limit": SUBJECT_LIMITS.get(profile.exam_type, 9) if profile and profile.exam_type else None,
     }
@@ -143,7 +143,7 @@ async def get_my_profile(
         user_id=str(user.id),
         full_name=user.full_name,
         email=user.email,
-        exam_type=str(profile.exam_type) if profile.exam_type else None,
+        exam_type=profile.exam_type.value if profile.exam_type else None,
         selected_subjects=profile.selected_subjects or [],
         education_level=profile.education_level,
         has_active_subscription=profile.has_active_subscription,

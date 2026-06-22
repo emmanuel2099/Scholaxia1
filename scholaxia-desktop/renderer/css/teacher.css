@@ -76,18 +76,18 @@
 }
 .badge.live { background: #e53935; color: #fff; padding: 3px 8px; border-radius: 12px; font-size: 0.72rem; }
 
-/* Shared top nav (student + teacher) */
+/* Shared top nav — teacher keeps dark bar; student uses glass in app.css */
 .topnav {
   display: flex; gap: 6px; flex-wrap: wrap; flex: 1; justify-content: center;
 }
-.topnav-btn {
+.teacher-topbar .topnav-btn {
   display: inline-flex; align-items: center; gap: 6px;
   padding: 10px 14px; border-radius: 24px; border: 1px solid transparent;
   background: rgba(255,255,255,0.06); color: #c8e6d0; font-size: 0.82rem;
   cursor: pointer; transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
 }
-.topnav-btn:hover { transform: translateY(-2px); background: rgba(255,255,255,0.12); }
-.topnav-btn.active {
+.teacher-topbar .topnav-btn:hover { transform: translateY(-2px); background: rgba(255,255,255,0.12); }
+.teacher-topbar .topnav-btn.active {
   background: linear-gradient(135deg, #2d7a4f, #1a4d32);
   color: #fff; box-shadow: 0 4px 14px rgba(26,77,50,0.45);
 }
