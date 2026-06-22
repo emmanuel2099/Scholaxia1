@@ -46,5 +46,8 @@ class Payment(Base):
     currency: Mapped[str] = mapped_column(String(10), default="NGN")
     status: Mapped[PaymentStatus] = mapped_column(Enum(PaymentStatus), default=PaymentStatus.pending)
     stripe_payment_intent_id: Mapped[str] = mapped_column(String(255), nullable=True)
+    flutterwave_tx_ref: Mapped[str] = mapped_column(String(255), nullable=True, index=True)
+    flutterwave_transaction_id: Mapped[str] = mapped_column(String(255), nullable=True)
+    live_class_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
     description: Mapped[str] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

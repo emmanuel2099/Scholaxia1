@@ -186,6 +186,20 @@ async def join_class(
     if not live_class or not live_class.is_live:
         raise HTTPException(status_code=404, detail="Class not live")
 
+    from app.models.payment import Payment, PaymentStatus
+    paid_res = await db.execute(
+        select(Payment).where(
+            Payment.student_id == current_user["sub"],
+            Payment.live_class_id == live_class.id,
+            Payment.status == PaymentStatus.success,
+        )
+    )
+    if not paid_res.scalar_one_or_none():
+        raise HTTPException(
+            status_code=402,
+            detail="Payment required. Pay with Flutterwave before joining this live class.",
+        )
+
     attendance = ClassAttendance(
         live_class_id=live_class.id,
         student_id=current_user["sub"],

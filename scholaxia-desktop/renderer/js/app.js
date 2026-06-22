@@ -3,33 +3,11 @@ const PAGE_TITLES = {
   school: "Scholaxia Exams",
   "school-portal": "School Exam",
   cbt: "CBT",
-  plans: "Live Class Plans",
   sia: "Ask Sia",
   community: "Community",
   "community-create": "New Post",
   profile: "Profile",
 };
-
-const LIVE_PLANS = [
-  { group: "Nursery", plans: [
-    { name: "Nursery Standard", price: "₦45,000/mo", features: ["8 sessions · 45 min", "Up to 2 subjects", "Homework help", "Monthly report"] },
-    { name: "Nursery Premium", price: "₦65,000/mo", features: ["12 sessions · 45 min", "Up to 4 subjects", "Weekly assessments", "Parent feedback"] },
-  ]},
-  { group: "Primary", plans: [
-    { name: "Primary Standard", price: "₦55,000/mo", features: ["8 sessions · 1 hr", "Up to 3 subjects", "Homework support"] },
-    { name: "Primary Premium", price: "₦80,000/mo", features: ["12 sessions · 1 hr", "Up to 5 subjects", "Personalized study plan"] },
-    { name: "Primary Elite", price: "₦70,000/mo", features: ["16 sessions · 1 hr", "All core subjects", "Academic coach"] },
-  ]},
-  { group: "High School (JSS & SSS)", plans: [
-    { name: "High Standard", price: "₦50,000/mo", features: ["8 sessions · 1 hr", "Up to 3 subjects"] },
-    { name: "Secondary Premium", price: "₦60,000/mo", features: ["12 sessions · 1 hr", "Up to 6 subjects", "CBT practice"] },
-    { name: "Secondary Elite", price: "₦80,000/mo", features: ["16 sessions · 1 hr", "All subjects", "Dedicated mentor"] },
-  ]},
-  { group: "Exam Prep (WAEC, NECO, JAMB)", plans: [
-    { name: "Exam Intensive", price: "₦80,000", features: ["18 sessions · 1.5 hr", "JAMB prep · 4 subjects", "Mock tests"] },
-    { name: "Exam Mastery", price: "₦100,000", features: ["25 sessions · 2 hr", "8 subjects", "Weekly mock CBT"] },
-  ]},
-];
 
 let currentPage = "live";
 let practiceExams = [];
@@ -461,7 +439,6 @@ function refreshPage() {
   if (currentPage === "live") loadLive();
   else if (currentPage === "school") loadSchoolExams();
   else if (currentPage === "school-portal") { /* static */ }
-  else if (currentPage === "plans") loadPlans();
   else if (currentPage === "cbt") { /* embedded scholaxiacbtexam.blog */ }
   else if (currentPage === "sia") loadSia();
   else if (currentPage === "community") {
@@ -553,7 +530,7 @@ function renderLive(sessions) {
       <div class="live-pill">LIVE</div>
       <h3>${escHtml(s.title)}</h3>
       <p class="meta">${escHtml(s.subject)} · ${escHtml(s.teacher_name)}</p>
-      <button class="btn-join" data-id="${s.id}" data-title="${escHtml(s.title)}" data-subject="${escHtml(s.subject)}" data-teacher="${escHtml(s.teacher_name)}" onclick="joinClass(this)">Join Class</button>
+      <button class="btn-join" data-id="${s.id}" data-title="${escHtml(s.title)}" data-subject="${escHtml(s.subject)}" data-teacher="${escHtml(s.teacher_name)}" onclick="joinClassWithPayment(this)">Join Class</button>
     </div>
   `).join("");
 }
@@ -576,54 +553,13 @@ function renderUpcoming(sessions) {
       <h3>${escHtml(s.title)}</h3>
       <p class="meta">${escHtml(s.subject)} · ${escHtml(s.teacher_name)}</p>
       <p class="schedule-meta">&#128197; ${formatDate(s.start_time)}${s.end_time ? " → " + formatDate(s.end_time) : ""}</p>
-      ${s.is_live ? `<button class="btn-join" onclick="joinClass(this)" data-id="${s.id}" data-title="${escHtml(s.title)}" data-subject="${escHtml(s.subject)}" data-teacher="${escHtml(s.teacher_name)}" data-end="${escHtml(s.end_time || "")}">Join now</button>` : (started ? `<p class="notify-hint">Class should go live shortly — this page refreshes automatically.</p>` : `<p class="notify-hint">You'll be notified when class starts at the scheduled time.</p>`)}
+      ${s.is_live ? `<button class="btn-join" onclick="joinClassWithPayment(this)" data-id="${s.id}" data-title="${escHtml(s.title)}" data-subject="${escHtml(s.subject)}" data-teacher="${escHtml(s.teacher_name)}" data-end="${escHtml(s.end_time || "")}">Join now</button>` : (started ? `<p class="notify-hint">Class should go live shortly — this page refreshes automatically.</p>` : `<p class="notify-hint">You'll be notified when class starts at the scheduled time.</p>`)}
     </div>`;
   }).join("");
 }
 
-function loadPlans() {
-  const el = document.getElementById("plans-grid");
-  if (!el) return;
-  el.innerHTML = LIVE_PLANS.map((g) => `
-    <div class="plan-group">
-      <h3>${escHtml(g.group)}</h3>
-      <div class="card-grid">
-        ${g.plans.map((p) => `
-          <div class="card plan-card">
-            <h4>${escHtml(p.name)}</h4>
-            <p class="plan-price">${escHtml(p.price)}</p>
-            <ul>${p.features.map((f) => `<li>${escHtml(f)}</li>`).join("")}</ul>
-            <button class="btn-action" onclick="alert('Payment via Flutterwave coming soon. Contact Scholaxia admin to subscribe.')">Subscribe</button>
-          </div>
-        `).join("")}
-      </div>
-    </div>
-  `).join("");
-}
-
 async function joinClass(btn) {
-  const classId = typeof btn === "string" ? btn : btn.dataset.id;
-  const card = typeof btn === "string" ? null : btn;
-  try {
-    const data = await api(`/api/v1/live-classes/${classId}/join`, { method: "POST" });
-    localStorage.setItem("live_session", JSON.stringify({
-      class_id: classId,
-      classId: classId,
-      room_id: data.room_id,
-      channel_id: data.channel_id,
-      agora_token: data.agora_token,
-      uid: data.uid,
-      app_id: data.app_id,
-      title: data.title || (card && card.dataset.title) || "Live Class",
-      subject: data.subject || (card && card.dataset.subject) || "",
-      teacher_name: (card && card.dataset.teacher) || "",
-      role: "student",
-      end_time: data.end_time || (card && card.dataset.end) || null,
-    }));
-    window.location.href = "classroom.html";
-  } catch (e) {
-    alert(e.message);
-  }
+  return joinClassWithPayment(btn);
 }
 
 async function loadMyRequests() {

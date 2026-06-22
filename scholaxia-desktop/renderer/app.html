@@ -8,7 +8,7 @@
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; script-src-attr 'unsafe-inline'; connect-src https://scholaxia1.onrender.com https://www.scholaxiacbtexam.blog https://scholaxiacbtexam.blog http://127.0.0.1:*; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://www.scholaxiacbtexam.blog https://scholaxiacbtexam.blog; font-src https://fonts.gstatic.com https://www.scholaxiacbtexam.blog https://scholaxiacbtexam.blog; img-src 'self' data: https:; media-src 'self' blob: https:; frame-src https://www.scholaxiacbtexam.blog https://scholaxiacbtexam.blog" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://checkout.flutterwave.com; script-src-attr 'unsafe-inline'; connect-src https://scholaxia1.onrender.com https://api.flutterwave.com https://www.scholaxiacbtexam.blog https://scholaxiacbtexam.blog http://127.0.0.1:*; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://www.scholaxiacbtexam.blog https://scholaxiacbtexam.blog; font-src https://fonts.gstatic.com https://www.scholaxiacbtexam.blog https://scholaxiacbtexam.blog; img-src 'self' data: https:; media-src 'self' blob: https:; frame-src https://www.scholaxiacbtexam.blog https://scholaxiacbtexam.blog https://checkout.flutterwave.com" />
 
   <title>Scholaxia Student</title>
 
@@ -36,7 +36,6 @@
       <button type="button" class="topnav-btn" data-page="school" onclick="showPage('school')"><span class="nav-ico">&#128221;</span><span class="nav-label">Exams</span></button>
       <button type="button" class="topnav-btn" data-page="school-portal" onclick="showPage('school-portal')"><span class="nav-ico">&#127979;</span><span class="nav-label">School Exam</span></button>
       <button type="button" class="topnav-btn" data-page="cbt" onclick="showPage('cbt')"><span class="nav-ico">&#128218;</span><span class="nav-label">CBT</span></button>
-      <button type="button" class="topnav-btn" data-page="plans" onclick="showPage('plans')"><span class="nav-ico">&#128142;</span><span class="nav-label">Plans</span></button>
       <button type="button" class="topnav-btn" data-page="sia" onclick="showPage('sia')"><span class="nav-ico">&#10024;</span><span class="nav-label">Sia</span></button>
       <button type="button" class="topnav-btn" data-page="community" onclick="showPage('community')"><span class="nav-ico">&#128172;</span><span class="nav-label">Community</span></button>
       <button type="button" class="topnav-btn" data-page="profile" onclick="showPage('profile')"><span class="nav-ico">&#128100;</span><span class="nav-label">Profile</span></button>
@@ -62,6 +61,8 @@
     <!-- Live Class -->
 
     <section id="page-live" class="page active">
+
+      <div class="info-banner">Pay with Flutterwave (card, bank, USSD) before joining a live class. Price is shown when you tap Join.</div>
 
       <div class="section-header">
 
@@ -140,17 +141,6 @@
           allow="camera; microphone; fullscreen"
         ></iframe>
       </div>
-
-    </section>
-
-
-
-    <!-- Live Class Plans -->
-
-    <section id="page-plans" class="page">
-
-      <div class="info-banner success">Scholaxia One-on-One Live Class Plans — choose what fits your level.</div>
-      <div id="plans-grid" class="plans-grid"></div>
 
     </section>
 
@@ -491,6 +481,7 @@
 <script src="js/voice-recorder.js"></script>
 <script src="js/community.js"></script>
 
+<script src="js/live-payment.js"></script>
 <script src="js/app.js"></script>
 <script src="js/responsive.js"></script>
 

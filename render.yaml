@@ -69,6 +69,16 @@ services:
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
 
+      # Flutterwave (live class payments)
+      - key: FLUTTERWAVE_PUBLIC_KEY
+        sync: false
+      - key: FLUTTERWAVE_SECRET_KEY
+        sync: false
+      - key: FLUTTERWAVE_SECRET_HASH
+        sync: false
+      - key: LIVE_CLASS_JOIN_AMOUNT
+        value: "2000"
+
       # Firebase (Push Notifications) — set FIREBASE_CREDENTIALS_JSON in Render dashboard
       - key: FIREBASE_CREDENTIALS_JSON
         sync: false

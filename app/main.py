@@ -8,7 +8,7 @@ from app.core.database import engine, Base, AsyncSessionLocal, get_db
 from app.core.redis import init_redis, close_redis
 from app.core.seed import seed_database
 
-from app.routers import auth, students, admin, live_class, cbt, community, ai_tutor, notifications, payments
+from app.routers import auth, students, admin, live_class, cbt, community, ai_tutor, notifications, payments, flutterwave_payments
 from app.routers import developer_auth, developer_keys, public_ai_api, reviews_reports, teacher_ai, library, wallet
 from app.routers import recommendations
 from app.routers import performance
@@ -49,6 +49,15 @@ async def lifespan(app: FastAPI):
         ))
         await conn.execute(text(
             "ALTER TABLE cbt_exams ADD COLUMN IF NOT EXISTS scheduled_end TIMESTAMP NULL"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE payments ADD COLUMN IF NOT EXISTS flutterwave_tx_ref VARCHAR(255) NULL"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE payments ADD COLUMN IF NOT EXISTS flutterwave_transaction_id VARCHAR(255) NULL"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE payments ADD COLUMN IF NOT EXISTS live_class_id UUID NULL"
         ))
         await conn.execute(text(
             """
@@ -106,6 +115,7 @@ app.include_router(community.router, prefix="/api/v1")
 app.include_router(ai_tutor.router, prefix="/api/v1")
 app.include_router(notifications.router, prefix="/api/v1")
 app.include_router(payments.router, prefix="/api/v1")
+app.include_router(flutterwave_payments.router, prefix="/api/v1")
 app.include_router(reviews_reports.router, prefix="/api/v1")
 app.include_router(teacher_ai.router, prefix="/api/v1")
 app.include_router(library.router, prefix="/api/v1")
