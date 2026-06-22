@@ -53,8 +53,7 @@ EXAM_CONFIG: dict[str, dict] = {
     },
 }
 
-# UTME years shown in the picker (newest first). ALOC serves 2025+ papers for core subjects.
-UTME_PICKER_YEARS = [str(y) for y in range(2025, 2000, -1)]
+ALOC_BATCH_CAP = 40
 
 # Years confirmed via ALOC API (type=utme). Do not list years that are not in the bank.
 ALOC_UTME_YEARS: dict[str, list[str]] = {
@@ -284,7 +283,7 @@ async def _fetch_aloc_batch(
     year: Optional[str],
 ) -> tuple[list[dict], bool]:
     """Fetch one ALOC batch. Returns (questions, used_fallback)."""
-    cap = min(max(int(limit), 1), 120)
+    cap = min(max(int(limit), 1), ALOC_BATCH_CAP)
     url = f"{base}/api/v2/m/{cap}"
     params: dict[str, str] = {"subject": aloc_subject, "type": exam_type}
     year_norm = _normalize_year(year)
@@ -402,7 +401,8 @@ async def fetch_aloc_questions(
 
     collected: list[dict] = []
     seen_ids: set[Any] = set()
-    max_attempts = 1 if year_norm else (2 if want > 40 else 1)
+    batches_needed = max(1, (want + ALOC_BATCH_CAP - 1) // ALOC_BATCH_CAP)
+    max_attempts = min(max(batches_needed + 1, 3 if year_norm else 2), 8)
     own_client = client is None
 
     try:
@@ -505,16 +505,14 @@ async def build_combined_exam(
         async with httpx.AsyncClient(timeout=28.0) as http_client:
 
             async def load_subject(subject: str) -> tuple[str, list[dict]]:
-                try:
-                    slug = profile_subject_to_aloc(subject)
-                    assert slug
-                    limit = question_limit_for_exam(exam, slug)
-                    raw = await fetch_aloc_questions(
-                        slug, limit, exam_type=aloc_type, year=year, client=http_client
-                    )
-                    return subject, raw[:limit]
-                except Exception:
+                slug = profile_subject_to_aloc(subject)
+                if not slug:
                     return subject, []
+                limit = question_limit_for_exam(exam, slug)
+                raw = await fetch_aloc_questions(
+                    slug, limit, exam_type=aloc_type, year=year, client=http_client
+                )
+                return subject, raw[:limit]
 
             results = await asyncio.gather(
                 *[load_subject(subject) for subject in matched],
@@ -540,12 +538,18 @@ async def build_combined_exam(
         if year and not questions:
             hint = ""
             if failed:
-                hint = f" Missing for {year}: {', '.join(failed)}."
+                hint = f" Could not load: {', '.join(failed)}."
             if year_catalog.get("common_years"):
-                hint += f" Years with all your subjects: {', '.join(year_catalog['common_years'][:10])}."
+                if year in year_catalog["common_years"]:
+                    hint += (
+                        f" ALOC may be unavailable or over quota — try again, use Any year,"
+                        f" or check ALOC_ACCESS_TOKEN on the server."
+                    )
+                else:
+                    hint += f" Years with all your subjects: {', '.join(year_catalog['common_years'][:10])}."
             raise HTTPException(
                 status_code=400,
-                detail=f"No {year_label} {year} papers found for your subjects.{hint} Try one of those years or Any year.",
+                detail=f"No {year_label} {year} papers loaded.{hint}",
             )
 
     total = total_questions_for_subjects(exam, matched) if not fetch else len(questions)
