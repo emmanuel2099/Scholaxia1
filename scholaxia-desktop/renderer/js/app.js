@@ -62,10 +62,22 @@ function bindCbtGridClicks() {
   if (!grid || grid.dataset.clickBound) return;
   grid.dataset.clickBound = "1";
   grid.addEventListener("click", (ev) => {
+    const chip = ev.target.closest(".year-chip");
+    if (chip) {
+      ev.preventDefault();
+      const wrap = chip.closest(".cbt-year-picker");
+      if (wrap) {
+        wrap.querySelectorAll(".year-chip").forEach((c) => c.classList.remove("selected"));
+        chip.classList.add("selected");
+      }
+      return;
+    }
     const btn = ev.target.closest("[data-exam-id]");
     if (!btn || btn.disabled) return;
     ev.preventDefault();
-    beginExam(btn.dataset.examId, false);
+    const card = btn.closest(".card");
+    const year = card?.querySelector(".year-chip.selected")?.dataset.year || "";
+    beginExam(btn.dataset.examId, false, year);
   });
 }
 
@@ -94,7 +106,9 @@ function setCbtStartLoading(loading) {
     btn.disabled = loading;
     if (loading) {
       if (!btn.dataset.label) btn.dataset.label = btn.textContent;
-      btn.textContent = "Starting…";
+      btn.textContent = btn.closest(".card")?.querySelector(".year-chip.selected")?.dataset.year
+        ? "Loading exam…"
+        : "Loading 180 questions…";
     } else if (btn.dataset.label) {
       btn.textContent = btn.dataset.label;
     }
@@ -419,6 +433,29 @@ async function loadCbtExams() {
   }
 }
 
+function renderCbtYearPicker(exam) {
+  if (!exam.is_aloc || !exam.available_years || !exam.available_years.length) return "";
+  const bySubject = exam.years_by_subject || {};
+  const subjectLines = Object.keys(bySubject).map((s) => {
+    const years = bySubject[s] || [];
+    return `<div class="year-subject-line"><strong>${escHtml(s)}</strong><span>${years.map((y) => escHtml(y)).join(", ")}</span></div>`;
+  }).join("");
+  const common = (exam.common_years || []).length
+    ? `<p class="year-common-note">All 4 subjects: ${exam.common_years.map((y) => escHtml(y)).join(", ")}</p>`
+    : "";
+  const chips = [
+    `<button type="button" class="year-chip selected" data-year="">Any year</button>`,
+    ...exam.available_years.map((y) => `<button type="button" class="year-chip" data-year="${escHtml(y)}">${escHtml(y)}</button>`),
+  ].join("");
+  return `
+    <div class="cbt-year-picker">
+      <p class="year-picker-label">Choose UTME year (ALOC past questions)</p>
+      <div class="year-chips">${chips}</div>
+      ${common}
+      <div class="years-by-subject">${subjectLines}</div>
+    </div>`;
+}
+
 function renderCbtGrid(opts) {
   opts = opts || {};
   const el = document.getElementById("cbt-grid");
@@ -459,12 +496,13 @@ function renderCbtGrid(opts) {
       <h3>${escHtml(e.title)}</h3>
       <p class="meta">${subjectMeta} · ${e.total_questions} questions · ${durationLabel}</p>
       ${missingNote}
+      ${renderCbtYearPicker(e)}
       <button type="button" class="btn-join" data-exam-id="${escHtml(e.id)}">${e.is_combined ? "Start Full JAMB CBT" : "Start Exam"}</button>
     </div>`;
   }).join("");
 }
 
-async function beginExam(examId, isSchool) {
+async function beginExam(examId, isSchool, utmeYear) {
   if (!examId) {
     alert("Exam not found. Refresh the page and try again.");
     return;
@@ -472,7 +510,7 @@ async function beginExam(examId, isSchool) {
   setCbtStartLoading(true);
   try {
     if (typeof isPortalExamId === "function" && isPortalExamId(examId)) {
-      const portal = await beginPortalExam(examId);
+      const portal = await beginPortalExam(examId, { year: utmeYear || "" });
       currentSession = portal.session;
       currentExam = portal.exam;
       answers = {};

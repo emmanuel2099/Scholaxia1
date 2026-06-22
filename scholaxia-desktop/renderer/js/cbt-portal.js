@@ -260,10 +260,14 @@
     }).filter(Boolean);
   }
 
-  async function beginPortalExam(examId) {
+  async function beginPortalExam(examId, opts) {
+    opts = opts || {};
     if (String(examId || "").indexOf("aloc:") === 0) {
       if (typeof api !== "function") throw new Error("ALOC exam requires API connection");
-      var aloc = await api("/api/v1/cbt/aloc/jamb-exam");
+      var path = "/api/v1/cbt/aloc/jamb-exam";
+      if (opts.year) path += "?year=" + encodeURIComponent(opts.year);
+      var alocOpts = typeof fetchTimeout === "function" ? { signal: fetchTimeout(120000) } : {};
+      var aloc = await api(path, alocOpts);
       if (!aloc || !aloc.exam || !aloc.exam.questions || !aloc.exam.questions.length) {
         throw new Error("ALOC returned no questions. Check server ALOC_ACCESS_TOKEN.");
       }

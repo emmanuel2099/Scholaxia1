@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Optional
 
 import httpx
@@ -10,6 +11,27 @@ from fastapi import HTTPException
 from app.core.config import settings
 
 ALOC_JAMB_COMBINED_ID = "aloc:JAMB:combined"
+
+# UTME years per subject (ALOC docs + live API). Used for year picker UI.
+ALOC_UTME_YEARS: dict[str, list[str]] = {
+    "english": ["2010", "2009", "2008", "2007", "2006", "2005", "2004", "2003"],
+    "mathematics": ["2013", "2009", "2008", "2007", "2006"],
+    "commerce": ["2016", "2013", "2012", "2011", "2010", "2009", "2008", "2007", "2006", "2005", "2004", "2003", "2002", "2001", "2000"],
+    "accounting": ["2016", "2015", "2014", "2013", "2012", "2011", "2010", "2009", "2007", "2006", "2004"],
+    "biology": ["2012", "2011", "2010", "2009", "2008", "2006", "2005", "2004", "2003"],
+    "physics": ["2012", "2011", "2010", "2009", "2007", "2006"],
+    "chemistry": ["2021", "2010", "2006", "2005", "2004", "2003", "2002", "2001"],
+    "englishlit": ["2015", "2013", "2012", "2010", "2009", "2008", "2007", "2006"],
+    "government": ["2016", "2013", "2012", "2011", "2010", "2009", "2008", "2007", "2006", "2000", "1999"],
+    "crk": ["2015", "2013", "2012", "2011", "2010", "2009", "2008", "2007", "2006", "2005"],
+    "geography": ["2014", "2013", "2012", "2011", "2010", "2009", "2008", "2007", "2006"],
+    "economics": ["2013", "2012", "2011", "2010", "2009", "2008", "2007", "2006", "2005", "2004", "2003", "2001"],
+    "irk": ["2012"],
+    "civiledu": ["2016", "2015", "2014", "2013", "2012", "2011"],
+    "insurance": ["2015", "2014", "5", "4", "3", "2", "1"],
+    "currentaffairs": ["2013"],
+    "history": ["2013"],
+}
 
 SUBJECT_TO_ALOC: dict[str, str] = {
     "english language": "english",
@@ -119,6 +141,38 @@ def convert_aloc_question(item: dict, index: int, subject_label: str) -> dict:
     }
 
 
+def jamb_year_catalog(subjects: list[str]) -> dict:
+    """Years available per profile subject + union/common lists for the UI."""
+    by_subject: dict[str, list[str]] = {}
+    slug_years: list[set[str]] = []
+    for subject in order_jamb_subjects(subjects):
+        slug = profile_subject_to_aloc(subject)
+        if not slug:
+            continue
+        years = list(ALOC_UTME_YEARS.get(slug, []))
+        by_subject[subject] = years
+        if years:
+            slug_years.append(set(years))
+
+    all_years: list[str] = []
+    if slug_years:
+        all_years = sorted(set().union(*slug_years), key=lambda y: int(y) if y.isdigit() else 0, reverse=True)
+
+    common_years: list[str] = []
+    if slug_years:
+        common_years = sorted(
+            set.intersection(*slug_years),
+            key=lambda y: int(y) if y.isdigit() else 0,
+            reverse=True,
+        )
+
+    return {
+        "by_subject": by_subject,
+        "all_years": all_years,
+        "common_years": common_years,
+    }
+
+
 async def fetch_aloc_questions(
     aloc_subject: str,
     limit: int,
@@ -192,28 +246,38 @@ async def build_jamb_combined_exam(
     failed: list[str] = []
 
     if fetch:
-        for subject in matched:
-            slug = profile_subject_to_aloc(subject)
-            assert slug
-            limit = jamb_question_limit(slug)
+        async def load_subject(subject: str) -> tuple[str, list[dict]]:
             try:
+                slug = profile_subject_to_aloc(subject)
+                assert slug
+                limit = jamb_question_limit(slug)
                 raw = await fetch_aloc_questions(slug, limit, exam_type="utme", year=year)
-            except HTTPException:
-                failed.append(subject)
+                return subject, raw[:limit]
+            except Exception:
+                return subject, []
+
+        results = await asyncio.gather(
+            *[load_subject(subject) for subject in matched],
+            return_exceptions=True,
+        )
+        for result in results:
+            if isinstance(result, Exception):
+                failed.append(str(result))
                 continue
-            if not raw:
+            subject, slice_items = result
+            if not slice_items:
                 failed.append(subject)
                 continue
             start = len(questions)
-            slice_items = raw[:limit]
             for i, item in enumerate(slice_items):
                 questions.append(convert_aloc_question(item, start + i, subject))
             sections.append({"subject": subject, "start": start, "count": len(slice_items)})
 
-        missing = missing + failed
-        matched = [s for s in matched if s not in failed]
+        missing = missing + [s for s in matched if s not in [sec["subject"] for sec in sections]]
+        matched = [sec["subject"] for sec in sections]
 
     total = jamb_total_questions(matched) if not fetch else len(questions)
+    year_catalog = jamb_year_catalog(matched)
     year_note = f" · UTME {year}" if year else " · mixed UTME years"
 
     return {
@@ -229,6 +293,10 @@ async def build_jamb_combined_exam(
         "subjects": matched,
         "missing_subjects": missing,
         "source": "ALOC Past Questions",
+        "years_by_subject": year_catalog["by_subject"],
+        "available_years": year_catalog["all_years"],
+        "common_years": year_catalog["common_years"],
+        "selected_year": year or "",
         "questions": questions,
         "sections": sections,
         "meta": (
