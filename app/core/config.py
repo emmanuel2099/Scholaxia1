@@ -85,6 +85,11 @@ class Settings(BaseSettings):
     AGORA_APP_ID: str = "2735ab34da634131bd67bdaa9a200d8b"
     AGORA_APP_CERTIFICATE: str = ""  # set in Render env vars
 
+    # ALOC past questions (questions.aloc.com.ng) — JAMB / WAEC CBT bank
+    ALOC_ACCESS_TOKEN: str = ""
+    ALOC_BASE_URL: str = "https://questions.aloc.com.ng"
+    ALOC_DEFAULT_YEAR: str = ""  # optional, e.g. 2010 — blank = random UTME years
+
     ADMIN_EMAIL: str = "admin@scholaxia.com"
     ADMIN_PASSWORD: str = "changeme"
     ADMIN_INVITE_CODE: str = "SCHOLAXIA_ADMIN_2026"

@@ -24,7 +24,8 @@
     return 10;
   }
 
-  function durationMinutes(category) {
+  function durationMinutes(category, isCombinedJamb) {
+    if (isCombinedJamb) return 120;
     if (category === "JAMB") return 90;
     if (category === "WAEC" || category === "NECO") return 40;
     return 30;
@@ -100,10 +101,79 @@
     return "portal:" + resolveCategory(category) + ":" + subject;
   }
 
+  var JAMB_COMBINED_ID = "portal:JAMB:combined";
+
+  function orderJambSubjects(subjects) {
+    var list = (subjects || []).slice();
+    var englishIdx = list.findIndex(function (s) {
+      return String(s || "").toLowerCase().indexOf("english") >= 0;
+    });
+    if (englishIdx > 0) {
+      var eng = list.splice(englishIdx, 1)[0];
+      list.unshift(eng);
+    }
+    return list;
+  }
+
+  function jambCombinedQuestionTotal(subjects) {
+    return (subjects || []).reduce(function (sum, subject) {
+      return sum + questionCount("JAMB", subject);
+    }, 0);
+  }
+
+  function buildCombinedJambExam(pool, subjects, opts) {
+    opts = opts || {};
+    var allowPartial = !!opts.allowPartial;
+    var ordered = orderJambSubjects(subjects);
+    var items = [];
+    var sections = [];
+    var matched = [];
+    var missing = [];
+    ordered.forEach(function (subject) {
+      var entry = findSubjectEntry(pool, subject);
+      if (!entry || !Array.isArray(entry.questions) || !entry.questions.length) {
+        if (allowPartial) {
+          missing.push(subject);
+          return;
+        }
+        throw new Error("No questions found for " + subject);
+      }
+      matched.push(subject);
+      var count = Math.min(questionCount("JAMB", subject), entry.questions.length);
+      var start = items.length;
+      entry.questions.slice(0, count).forEach(function (q, i) {
+        items.push(convertQuestion(q, start + i, subject));
+      });
+      sections.push({ subject: subject, start: start, count: count });
+    });
+    return { questions: items, sections: sections, subjects: matched, missing: missing };
+  }
+
+  function getProfileSubjects() {
+    if (typeof getUser === "function") {
+      var user = getUser();
+      if (user.subjects && user.subjects.length) return user.subjects;
+    }
+    try {
+      return JSON.parse(localStorage.getItem("sia_subjects") || "[]");
+    } catch (e) {
+      return [];
+    }
+  }
+
   function parsePortalExamId(examId) {
     var parts = String(examId || "").split(":");
     if (parts.length < 3 || parts[0] !== "portal") return null;
     return { category: parts[1], subject: parts.slice(2).join(":") };
+  }
+
+  async function loadAlocJambPreview() {
+    if (typeof api !== "function") return null;
+    try {
+      return await api("/api/v1/cbt/aloc/jamb-preview");
+    } catch (e) {
+      return null;
+    }
   }
 
   async function loadPortalPracticeExams(profileOverride) {
@@ -145,6 +215,34 @@
       return [];
     }
 
+    if (category === "JAMB" && subjects.length === 4) {
+      var alocCard = await loadAlocJambPreview();
+      if (alocCard && alocCard.id) return [alocCard];
+
+      var ordered = orderJambSubjects(subjects);
+      var matched = [];
+      var missing = [];
+      ordered.forEach(function (subject) {
+        var entry = findSubjectEntry(pool, subject);
+        if (entry && Array.isArray(entry.questions) && entry.questions.length) matched.push(subject);
+        else missing.push(subject);
+      });
+      if (!matched.length) return [];
+      return [{
+        id: JAMB_COMBINED_ID,
+        title: "JAMB CBT Practice Exam",
+        subject: matched.join(" · "),
+        exam_type: "JAMB",
+        total_questions: jambCombinedQuestionTotal(matched),
+        duration_minutes: durationMinutes("JAMB", true),
+        is_portal: true,
+        is_combined: true,
+        subjects: matched,
+        missing_subjects: missing,
+        source: "CBT Bank",
+      }];
+    }
+
     return subjects.map(function (subject) {
       var entry = findSubjectEntry(pool, subject);
       if (!entry || !Array.isArray(entry.questions) || !entry.questions.length) return null;
@@ -163,62 +261,108 @@
   }
 
   async function beginPortalExam(examId) {
+    if (String(examId || "").indexOf("aloc:") === 0) {
+      if (typeof api !== "function") throw new Error("ALOC exam requires API connection");
+      var aloc = await api("/api/v1/cbt/aloc/jamb-exam");
+      if (!aloc || !aloc.exam || !aloc.exam.questions || !aloc.exam.questions.length) {
+        throw new Error("ALOC returned no questions. Check server ALOC_ACCESS_TOKEN.");
+      }
+      return {
+        session: aloc.session,
+        exam: aloc.exam,
+        meta: aloc.meta,
+        secondsLeft: aloc.secondsLeft || aloc.exam.duration_minutes * 60,
+      };
+    }
+
     var parsed = parsePortalExamId(examId);
     if (!parsed) throw new Error("Invalid portal exam");
 
     var pool = await fetchPracticePool(parsed.category);
-    var entry = findSubjectEntry(pool, parsed.subject);
-    if (!entry || !Array.isArray(entry.questions) || !entry.questions.length) {
-      throw new Error("No questions found for " + parsed.subject);
+    var items;
+    var title;
+    var meta;
+    var sections = null;
+    var subjects = [];
+
+    if (parsed.category === "JAMB" && parsed.subject === "combined") {
+      subjects = getProfileSubjects();
+      if (subjects.length !== 4) {
+        throw new Error("JAMB requires exactly 4 subjects in Profile before starting the full CBT.");
+      }
+      var combined = buildCombinedJambExam(pool, subjects, { allowPartial: true });
+      if (!combined.questions.length) {
+        throw new Error("Your subjects are not in the CBT bank yet. Change subjects in Profile.");
+      }
+      items = combined.questions;
+      sections = combined.sections;
+      subjects = combined.subjects;
+      title = "JAMB CBT Practice Exam";
+      meta = subjects.join(" · ") + " · " + items.length + " questions · 2 hrs · CBT Bank";
+      if (combined.missing.length) {
+        meta += " · Missing in bank: " + combined.missing.join(", ");
+      }
+    } else {
+      var entry = findSubjectEntry(pool, parsed.subject);
+      if (!entry || !Array.isArray(entry.questions) || !entry.questions.length) {
+        throw new Error("No questions found for " + parsed.subject);
+      }
+      var count = questionCount(parsed.category, parsed.subject);
+      items = entry.questions.slice(0, count).map(function (q, i) {
+        return convertQuestion(q, i, parsed.subject);
+      });
+      title = parsed.category + " " + parsed.subject + " Practice";
+      meta = parsed.subject + " · " + items.length + " questions · CBT Bank";
     }
 
-    var count = questionCount(parsed.category, parsed.subject);
-    var items = entry.questions.slice(0, count).map(function (q, i) {
-      return convertQuestion(q, i, parsed.subject);
-    });
+    var isCombinedJamb = parsed.category === "JAMB" && parsed.subject === "combined";
+    var mins = durationMinutes(parsed.category, isCombinedJamb);
 
-    window.currentSession = {
-      session_id: "portal-" + Date.now(),
-      is_portal: true,
-      is_school_exam: false,
+    return {
+      session: {
+        session_id: "portal-" + Date.now(),
+        is_portal: true,
+        is_school_exam: false,
+      },
+      exam: {
+        id: examId,
+        title: title,
+        subject: subjects.length ? subjects.join(", ") : parsed.subject,
+        exam_type: parsed.category,
+        duration_minutes: mins,
+        total_questions: items.length,
+        questions: items,
+        sections: sections,
+        is_combined: isCombinedJamb,
+      },
+      meta: meta,
+      secondsLeft: mins * 60,
     };
-    window.currentExam = {
-      id: examId,
-      title: parsed.category + " " + parsed.subject + " Practice",
-      subject: parsed.subject,
-      exam_type: parsed.category,
-      duration_minutes: durationMinutes(parsed.category),
-      total_questions: items.length,
-      questions: items,
-    };
-    window.answers = {};
-    window.currentQ = 0;
-    window.secondsLeft = durationMinutes(parsed.category) * 60;
-
-    document.getElementById("cbt-grid").classList.add("hidden");
-    document.getElementById("result-screen").classList.add("hidden");
-    document.getElementById("exam-screen").classList.remove("hidden");
-    document.getElementById("exam-title").textContent = window.currentExam.title;
-    document.getElementById("exam-meta").textContent =
-      parsed.subject + " · " + items.length + " questions · CBT Bank";
-
-    if (typeof buildQNav === "function") buildQNav();
-    if (typeof renderQuestion === "function") renderQuestion();
-    if (typeof startTimer === "function") startTimer();
   }
 
-  function scorePortalExam() {
-    var exam = window.currentExam;
+  function scorePortalExam(exam) {
+    exam = exam || window.currentExam;
+    if (!exam || !exam.questions) {
+      return { correct: 0, wrong: 0, total: 0, score_percent: 0, by_subject: {} };
+    }
     var total = exam.questions.length;
     var correct = 0;
+    var bySubject = {};
     exam.questions.forEach(function (q, i) {
-      if (window.answers[i] === q.correct_option) correct++;
+      var subj = q.topic || "Subject";
+      if (!bySubject[subj]) bySubject[subj] = { correct: 0, total: 0 };
+      bySubject[subj].total++;
+      if (window.answers[i] === q.correct_option) {
+        correct++;
+        bySubject[subj].correct++;
+      }
     });
     return {
       correct: correct,
       wrong: total - correct,
       total: total,
       score_percent: total ? (correct / total) * 100 : 0,
+      by_subject: bySubject,
     };
   }
 
@@ -226,6 +370,12 @@
   window.beginPortalExam = beginPortalExam;
   window.scorePortalExam = scorePortalExam;
   window.isPortalExamId = function (id) {
-    return String(id || "").indexOf("portal:") === 0;
+    var s = String(id || "");
+    return s.indexOf("portal:") === 0 || s.indexOf("aloc:") === 0;
+  };
+  window.JAMB_COMBINED_ID = JAMB_COMBINED_ID;
+  window.listPortalBankSubjects = async function (examType) {
+    var pool = await fetchPracticePool(resolveCategory(examType || "JAMB"));
+    return pool.map(function (e) { return e.subject; });
   };
 })();

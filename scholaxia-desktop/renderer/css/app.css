@@ -499,6 +499,44 @@ body:has(.app-shell-topnav) { overflow: auto; height: auto; }
 
 .card h3 { font-size: 1.02rem; font-weight: 700; margin-bottom: 8px; color: #0f3320; }
 .card .meta { font-size: 0.82rem; color: #6b8f7a; margin-bottom: 18px; line-height: 1.5; }
+.card .btn-join { position: relative; z-index: 2; width: 100%; }
+.card-combined {
+  grid-column: 1 / -1;
+  max-width: 720px;
+  margin: 0 auto;
+  width: 100%;
+}
+.subject-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.subject-chip {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #1a5c3a;
+  background: rgba(45, 155, 131, 0.12);
+  padding: 4px 10px;
+  border-radius: 20px;
+}
+.card-combined .meta { display: flex; flex-direction: column; gap: 8px; }
+.meta-warn {
+  font-size: 0.8rem;
+  color: #9a6b00;
+  background: rgba(201, 162, 39, 0.12);
+  padding: 8px 12px;
+  border-radius: 10px;
+  margin: 0 0 14px;
+  line-height: 1.45;
+}
+.btn-join:disabled, .btn-action:disabled {
+  opacity: 0.72;
+  cursor: wait;
+  transform: none;
+  box-shadow: none;
+}
 
 .live-pill {
   display: inline-block;

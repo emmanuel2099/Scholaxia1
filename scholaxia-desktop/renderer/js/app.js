@@ -51,10 +51,55 @@ window.onload = async () => {
     return;
   }
   initUserUI();
+  bindCbtGridClicks();
   await syncStudentProfile();
   loadSubjects();
   refreshPage();
 };
+
+function bindCbtGridClicks() {
+  const grid = document.getElementById("cbt-grid");
+  if (!grid || grid.dataset.clickBound) return;
+  grid.dataset.clickBound = "1";
+  grid.addEventListener("click", (ev) => {
+    const btn = ev.target.closest("[data-exam-id]");
+    if (!btn || btn.disabled) return;
+    ev.preventDefault();
+    beginExam(btn.dataset.examId, false);
+  });
+}
+
+function showCbtExamView() {
+  const hero = document.getElementById("cbt-page-hero");
+  if (hero) hero.classList.add("hidden");
+  document.getElementById("cbt-grid").classList.add("hidden");
+  document.getElementById("result-screen").classList.add("hidden");
+  const screen = document.getElementById("exam-screen");
+  screen.classList.remove("hidden");
+  const main = document.querySelector(".main-content-topnav");
+  if (main) main.scrollTop = 0;
+  screen.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function showCbtListView() {
+  const hero = document.getElementById("cbt-page-hero");
+  if (hero) hero.classList.remove("hidden");
+  document.getElementById("exam-screen").classList.add("hidden");
+  document.getElementById("result-screen").classList.add("hidden");
+  document.getElementById("cbt-grid").classList.remove("hidden");
+}
+
+function setCbtStartLoading(loading) {
+  document.querySelectorAll("#cbt-grid [data-exam-id]").forEach((btn) => {
+    btn.disabled = loading;
+    if (loading) {
+      if (!btn.dataset.label) btn.dataset.label = btn.textContent;
+      btn.textContent = "Starting…";
+    } else if (btn.dataset.label) {
+      btn.textContent = btn.dataset.label;
+    }
+  });
+}
 
 async function syncStudentProfile() {
   try {
@@ -320,29 +365,35 @@ async function startSchoolExam() {
 
 /* ── CBT Practice ── */
 
+function stripSeedPracticeExams(list, examType) {
+  const type = formatExamType(examType || "").toUpperCase();
+  if (type !== "JAMB" && type !== "WAEC" && type !== "NECO") return list;
+  if (!window.CBT_PORTAL_CONFIG) return list;
+  return (list || []).filter((p) => p.is_school_exam);
+}
+
 async function loadCbtExams() {
-  document.getElementById("cbt-grid").classList.remove("hidden");
-  document.getElementById("exam-screen").classList.add("hidden");
-  document.getElementById("result-screen").classList.add("hidden");
+  showCbtListView();
   document.getElementById("cbt-grid").innerHTML = `<div class="loading">Loading…</div>`;
   await syncStudentProfile();
+  const user = getUser();
   let profileComplete = false;
   try {
     const data = await api("/api/v1/cbt/exams/for-me");
     if (!data) return;
     profileComplete = true;
-    practiceExams = data.practice_exams || [];
+    practiceExams = stripSeedPracticeExams(data.practice_exams || [], data.exam_type || user.examType);
     schoolExams = data.school_exams || [];
     if (typeof loadPortalPracticeExams === "function") {
       const portalExams = await loadPortalPracticeExams();
-      const seen = new Set(practiceExams.map((e) => `${e.exam_type}:${e.subject}`));
-      portalExams.forEach((e) => {
-        const key = `${e.exam_type}:${e.subject}`;
-        if (!seen.has(key)) {
-          practiceExams.push(e);
-          seen.add(key);
-        }
-      });
+      const combined = portalExams.find((e) => e.is_combined);
+      if (combined) {
+        practiceExams = practiceExams.filter((p) => p.is_school_exam);
+        practiceExams.unshift(combined);
+      } else if (portalExams.length) {
+        practiceExams = practiceExams.filter((p) => p.is_school_exam);
+        practiceExams.push(...portalExams);
+      }
     }
     renderCbtGrid({ profileComplete: true });
   } catch (e) {
@@ -393,37 +444,61 @@ function renderCbtGrid(opts) {
       </div>`;
     return;
   }
-  el.innerHTML = practiceExams.map((e) => `
-    <div class="card">
+  el.innerHTML = practiceExams.map((e) => {
+    const combinedClass = e.is_combined ? " card-combined" : "";
+    const subjectMeta = e.is_combined && e.subjects
+      ? `<span class="subject-chips">${e.subjects.map((s) => `<span class="subject-chip">${escHtml(s)}</span>`).join("")}</span>`
+      : escHtml(e.subject);
+    const durationLabel = e.duration_minutes >= 120 ? "2 hrs" : `${e.duration_minutes} min`;
+    const missingNote = e.missing_subjects && e.missing_subjects.length
+      ? `<p class="meta-warn">Not in your CBT bank yet: ${e.missing_subjects.map((s) => escHtml(s)).join(", ")} — pick a bank subject in Profile.</p>`
+      : "";
+    return `
+    <div class="card${combinedClass}">
       <div class="time-badge">${escHtml(e.source || e.exam_type + " Practice")}</div>
       <h3>${escHtml(e.title)}</h3>
-      <p class="meta">${escHtml(e.subject)} · ${e.total_questions} questions · ${e.duration_minutes} min</p>
-      <button class="btn-join" onclick="beginExam(${JSON.stringify(e.id)}, false)">Start Exam</button>
-    </div>
-  `).join("");
+      <p class="meta">${subjectMeta} · ${e.total_questions} questions · ${durationLabel}</p>
+      ${missingNote}
+      <button type="button" class="btn-join" data-exam-id="${escHtml(e.id)}">${e.is_combined ? "Start Full JAMB CBT" : "Start Exam"}</button>
+    </div>`;
+  }).join("");
 }
 
 async function beginExam(examId, isSchool) {
-  if (typeof isPortalExamId === "function" && isPortalExamId(examId)) {
-    try {
-      await beginPortalExam(examId);
-    } catch (e) {
-      alert(e.message);
-    }
+  if (!examId) {
+    alert("Exam not found. Refresh the page and try again.");
     return;
   }
+  setCbtStartLoading(true);
   try {
+    if (typeof isPortalExamId === "function" && isPortalExamId(examId)) {
+      const portal = await beginPortalExam(examId);
+      currentSession = portal.session;
+      currentExam = portal.exam;
+      answers = {};
+      currentQ = 0;
+      secondsLeft = portal.secondsLeft;
+
+      showCbtExamView();
+      document.getElementById("exam-title").textContent = currentExam.title;
+      document.getElementById("exam-meta").textContent = portal.meta;
+      buildQNav();
+      renderQuestion();
+      startTimer();
+      return;
+    }
     const session = await api(`/api/v1/cbt/sessions/${examId}/start`, { method: "POST" });
     const exam = await api(`/api/v1/cbt/exams/${examId}/download`);
+    if (!exam.questions || !exam.questions.length) {
+      throw new Error("This exam has no questions yet. Try another subject or refresh.");
+    }
     currentSession = { ...session, is_school_exam: isSchool };
     currentExam = exam;
     answers = {};
     currentQ = 0;
     secondsLeft = (exam.duration_minutes || 30) * 60;
 
-    document.getElementById("cbt-grid").classList.add("hidden");
-    document.getElementById("result-screen").classList.add("hidden");
-    document.getElementById("exam-screen").classList.remove("hidden");
+    showCbtExamView();
     document.getElementById("exam-title").textContent = exam.title;
     document.getElementById("exam-meta").textContent =
       `${exam.subject} · ${exam.questions.length} questions · ${isSchool ? "School (proctored)" : "Practice"}`;
@@ -432,8 +507,10 @@ async function beginExam(examId, isSchool) {
     renderQuestion();
     startTimer();
   } catch (e) {
-    alert(e.message);
+    alert(e.message || "Could not start exam. Check your connection and try again.");
     stopCamera();
+  } finally {
+    setCbtStartLoading(false);
   }
 }
 
@@ -455,6 +532,7 @@ function updateTimerDisplay() {
 }
 
 function buildQNav() {
+  if (!currentExam || !currentExam.questions) return;
   const nav = document.getElementById("q-nav");
   nav.innerHTML = currentExam.questions.map((_, i) => `
     <button class="q-btn ${i === currentQ ? "current" : ""} ${answers[i] ? "answered" : ""}"
@@ -463,9 +541,11 @@ function buildQNav() {
 }
 
 function renderQuestion() {
+  if (!currentExam || !currentExam.questions) return;
   const q = currentExam.questions[currentQ];
   if (!q) return;
-  document.getElementById("q-num").textContent = `Question ${currentQ + 1} of ${currentExam.questions.length}`;
+  document.getElementById("q-num").textContent =
+    `Question ${currentQ + 1} of ${currentExam.questions.length}${q.topic ? " · " + q.topic : ""}`;
   document.getElementById("q-text").textContent = q.question_text;
   const imgEl = document.getElementById("q-image");
   if (q.image_url) {
@@ -510,7 +590,7 @@ function nextQuestion() {
 async function submitExam() {
   clearInterval(timerInterval);
   if (currentSession && currentSession.is_portal && typeof scorePortalExam === "function") {
-    showResult(scorePortalExam());
+    showResult(scorePortalExam(currentExam));
     return;
   }
   const answerMap = {};
@@ -537,10 +617,21 @@ async function submitExam() {
 function showResult(result) {
   document.getElementById("exam-screen").classList.add("hidden");
   document.getElementById("result-screen").classList.remove("hidden");
-  const pct = result.score_percent != null ? Math.round(result.score_percent) : "—";
+  const raw = result.score_percent != null ? result.score_percent : result.percentage;
+  const pct = raw != null ? Math.round(raw) : "—";
   document.getElementById("score-display").textContent = `${pct}%`;
-  document.getElementById("result-detail").textContent =
-    `${result.correct || 0} correct · ${result.wrong || 0} wrong · ${result.total || 0} total`;
+  const correct = result.correct ?? result.total_correct ?? 0;
+  const wrong = result.wrong ?? result.total_wrong ?? 0;
+  const total = result.total ?? (correct + wrong);
+  const lines = [`${correct} correct · ${wrong} wrong · ${total} total`];
+  if (result.by_subject) {
+    const subs = Object.keys(result.by_subject).map((k) => {
+      const s = result.by_subject[k];
+      return `${escHtml(k)}: ${s.correct}/${s.total}`;
+    });
+    lines.push(subs.join(" · "));
+  }
+  document.getElementById("result-detail").innerHTML = lines.join("<br>");
   stopCamera();
 }
 
@@ -643,3 +734,8 @@ async function saveSetup() {
     err.textContent = e.message;
   }
 }
+
+window.beginExam = beginExam;
+window.closeExam = closeExam;
+window.showCbtExamView = showCbtExamView;
+window.showCbtListView = showCbtListView;

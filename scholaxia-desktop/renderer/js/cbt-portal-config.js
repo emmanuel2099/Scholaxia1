@@ -1,4 +1,5 @@
-// Scholaxia CBT Portal (scholaxiacbtexam.blog) — public practice question bank
+// Scholaxia CBT — Firebase project scholaxia-1-d5330 (scholaxiacbtexam.blog JSON fallback)
+// Primary JAMB bank: ALOC API via Scholaxia server (ALOC_ACCESS_TOKEN on Render)
 window.CBT_PORTAL_CONFIG = {
   apiKey: "AIzaSyAf99rLyRrjxwXt16nE4yFovp_K97YcV2g",
   authDomain: "scholaxia-1-d5330.firebaseapp.com",

@@ -35,6 +35,90 @@ async def practice_bank(
         raise HTTPException(status_code=502, detail=f"Could not load practice bank: {exc}") from exc
 
 
+# ── ALOC Past Questions (questions.aloc.com.ng) ───────────────────────────────
+
+@router.get("/aloc/status")
+async def aloc_status(current_user: dict = Depends(require_student)):
+    from app.services.aloc_service import aloc_configured
+
+    return {"configured": aloc_configured(), "provider": "questions.aloc.com.ng"}
+
+
+@router.get("/aloc/jamb-preview")
+async def aloc_jamb_preview(
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services.aloc_service import aloc_configured, build_jamb_combined_exam
+
+    if not aloc_configured():
+        raise HTTPException(status_code=404, detail="ALOC is not configured on the server")
+
+    profile_res = await db.execute(
+        select(StudentProfile).where(StudentProfile.user_id == current_user["sub"])
+    )
+    profile = profile_res.scalar_one_or_none()
+    if not profile or not profile.exam_type or not profile.selected_subjects:
+        raise HTTPException(status_code=400, detail="Complete exam setup in Profile first")
+
+    exam_type = profile.exam_type.value if hasattr(profile.exam_type, "value") else str(profile.exam_type)
+    if exam_type.upper() != "JAMB" or len(profile.selected_subjects) != 4:
+        raise HTTPException(status_code=400, detail="ALOC full JAMB CBT requires exactly 4 JAMB subjects")
+
+    preview = await build_jamb_combined_exam(profile.selected_subjects, fetch=False)
+    preview.pop("questions", None)
+    preview.pop("sections", None)
+    return preview
+
+
+@router.get("/aloc/jamb-exam")
+async def aloc_jamb_exam(
+    year: Optional[str] = Query(None),
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.core.config import settings
+    from app.services.aloc_service import aloc_configured, build_jamb_combined_exam
+
+    if not aloc_configured():
+        raise HTTPException(status_code=503, detail="ALOC access token is not configured on the server")
+
+    profile_res = await db.execute(
+        select(StudentProfile).where(StudentProfile.user_id == current_user["sub"])
+    )
+    profile = profile_res.scalar_one_or_none()
+    if not profile or not profile.selected_subjects:
+        raise HTTPException(status_code=400, detail="Complete exam setup in Profile first")
+
+    use_year = year or (settings.ALOC_DEFAULT_YEAR or None)
+    exam = await build_jamb_combined_exam(profile.selected_subjects, year=use_year, fetch=True)
+    if not exam["questions"]:
+        raise HTTPException(status_code=502, detail="ALOC returned no questions for your subjects")
+
+    return {
+        "session": {
+            "session_id": f"aloc-{int(datetime.utcnow().timestamp())}",
+            "is_portal": True,
+            "is_aloc": True,
+            "is_school_exam": False,
+        },
+        "exam": {
+            "id": exam["id"],
+            "title": exam["title"],
+            "subject": exam["subject"],
+            "exam_type": exam["exam_type"],
+            "duration_minutes": exam["duration_minutes"],
+            "total_questions": len(exam["questions"]),
+            "questions": exam["questions"],
+            "sections": exam["sections"],
+            "is_combined": True,
+            "is_aloc": True,
+        },
+        "meta": exam["meta"],
+        "secondsLeft": exam["duration_minutes"] * 60,
+    }
+
+
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
 class SubmitAnswersRequest(BaseModel):

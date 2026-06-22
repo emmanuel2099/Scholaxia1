@@ -89,6 +89,14 @@ services:
       - key: AGORA_APP_CERTIFICATE
         sync: false
 
+      # ALOC CBT past questions (questions.aloc.com.ng)
+      - key: ALOC_ACCESS_TOKEN
+        sync: false
+      - key: ALOC_BASE_URL
+        value: https://questions.aloc.com.ng
+      - key: ALOC_DEFAULT_YEAR
+        sync: false
+
       # Admin
       - key: ADMIN_EMAIL
         sync: false
