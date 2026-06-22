@@ -58,10 +58,12 @@ async def register_device_token(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # Upsert device token
     result = await db.execute(select(DeviceToken).where(DeviceToken.token == payload.token))
     existing = result.scalar_one_or_none()
-    if not existing:
+    if existing:
+        existing.user_id = current_user["sub"]
+        existing.platform = payload.platform
+    else:
         token = DeviceToken(user_id=current_user["sub"], token=payload.token, platform=payload.platform)
         db.add(token)
     return {"message": "Device token registered"}

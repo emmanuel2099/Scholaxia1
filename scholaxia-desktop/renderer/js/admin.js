@@ -110,7 +110,6 @@ function showAdminPage(page) {
   else if (page === "students") loadStudents();
   else if (page === "teachers") loadTeachers();
   else if (page === "kind") loadKind();
-  else if (page === "live") loadLiveClasses();
   else if (page === "requests") loadRequests();
   else if (page === "cbt") { initCbtBuilder(); loadCbt(); }
   else if (page === "recommendations") loadRecommendations();
@@ -183,11 +182,28 @@ async function deleteStudent(id) {
 }
 
 async function removeAllStudents() {
-  if (!confirm("DELETE ALL students permanently? This cannot be undone. Every student will be removed from the list.")) return;
+  if (!confirm("DELETE ALL students permanently? This cannot be undone. Every student email will be removed.")) return;
   try {
     var r = await adminApi("/api/v1/admin/students/remove-all", { method: "POST" });
     alert("Deleted " + (r.removed || 0) + " student(s).");
     loadStudents();
+    refreshDashboardStats();
+  } catch (e) { alert(e.message); }
+}
+
+async function purgeAllUsers() {
+  if (!confirm("DELETE ALL student, teacher, and kid accounts?\n\nEvery email will be permanently removed from the database. Admin accounts are kept. This cannot be undone.")) return;
+  try {
+    var r = await adminApi("/api/v1/admin/users/purge-all", { method: "POST" });
+    alert(
+      "Purged:\n" +
+      "Students: " + (r.students || 0) + "\n" +
+      "Teachers: " + (r.teachers || 0) + "\n" +
+      "Kids: " + (r.kind || 0) + "\n" +
+      "Total: " + (r.total || 0)
+    );
+    loadStudents();
+    loadTeachers();
     refreshDashboardStats();
   } catch (e) { alert(e.message); }
 }

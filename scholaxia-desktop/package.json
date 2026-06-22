@@ -5,7 +5,10 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder --win --x64"
+    "start:admin": "electron . --admin",
+    "build": "electron-builder --win --x64",
+    "build:portable": "electron-builder --win portable --x64",
+    "build:all": "electron-builder --win nsis portable --x64"
   },
   "author": "Scholaxia",
   "license": "MIT",
@@ -14,18 +17,57 @@
     "electron-builder": "^24.13.3"
   },
   "build": {
-    "appId": "com.scholaxia.student",
+    "appId": "com.scholaxia.desktop",
     "productName": "Scholaxia Student",
-    "directories": { "output": "dist" },
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
     "win": {
-      "target": "nsis",
-      "icon": "assets/icon.ico"
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Scholaxia Student",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "include": "build/installer.nsh"
+    },
+    "portable": {
+      "artifactName": "Scholaxia-Portable.exe"
     },
     "files": [
       "main.js",
       "preload.js",
       "renderer/**/*",
-      "assets/**/*"
+      "assets/**/*",
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "INSTALL-FOR-FRIEND.txt",
+        "to": "INSTALL-FOR-FRIEND.txt"
+      }
     ]
+  },
+  "dependencies": {
+    "@cuj1559/electron-push-receiver": "^3.1.8"
   }
 }

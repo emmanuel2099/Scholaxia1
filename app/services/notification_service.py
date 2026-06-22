@@ -13,13 +13,18 @@ _firebase_initialized = False
 
 def init_firebase():
     global _firebase_initialized
-    if not _firebase_initialized:
-        try:
+    if _firebase_initialized:
+        return
+    try:
+        if settings.FIREBASE_CREDENTIALS_JSON:
+            cred_dict = json.loads(settings.FIREBASE_CREDENTIALS_JSON)
+            cred = credentials.Certificate(cred_dict)
+        else:
             cred = credentials.Certificate(settings.FIREBASE_CREDENTIALS_PATH)
-            firebase_admin.initialize_app(cred)
-            _firebase_initialized = True
-        except Exception:
-            pass  # Firebase not configured yet
+        firebase_admin.initialize_app(cred)
+        _firebase_initialized = True
+    except Exception:
+        pass  # Firebase not configured yet
 
 
 async def send_subject_notification(

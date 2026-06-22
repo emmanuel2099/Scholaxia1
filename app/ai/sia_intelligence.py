@@ -183,10 +183,18 @@ def analyze_question(
     }
 
 
-def build_intelligence_context(analysis: dict, recent_topics: list = None) -> str:
+def build_intelligence_context(analysis: dict, recent_topics: list = None,
+                               education_level: str = None) -> str:
     """Inject into system prompt — makes Sia adapt per question."""
     recent = ", ".join(recent_topics[:5]) if recent_topics else "none yet"
     complexity_label = ["simple", "medium", "complex"][analysis["complexity"]]
+    level_key = (education_level or "").upper()
+    level_note = ""
+    if level_key and level_key not in ("UNKNOWN", ""):
+        level_note = (
+            f"\nStudent class: {education_level} — simplify vocabulary and examples for this level. "
+            f"Do not teach content meant for higher classes unless the student explicitly asks."
+        )
 
     return f"""
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -196,7 +204,7 @@ Question type: {analysis['question_type']}
 Complexity: {complexity_label}
 Teaching strategy: {analysis['teaching_strategy']}
 {f"Subject expertise: {analysis['subject_expertise']}" if analysis['subject_expertise'] else ""}
-Recent topics studied: {recent}
+Recent topics studied: {recent}{level_note}
 
 INTERNAL CHECKLIST (complete mentally — do NOT show to student):
 1. What does this student actually need right now?

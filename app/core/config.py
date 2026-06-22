@@ -31,8 +31,9 @@ class Settings(BaseSettings):
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
 
-    # Firebase
+    # Firebase — use FIREBASE_CREDENTIALS_JSON on Render (paste full JSON), or file locally
     FIREBASE_CREDENTIALS_PATH: str = "firebase-credentials.json"
+    FIREBASE_CREDENTIALS_JSON: str = ""
 
     # Brevo (OTP Email)
     BREVO_API_KEY: str = ""

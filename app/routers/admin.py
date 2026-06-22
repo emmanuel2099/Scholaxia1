@@ -14,6 +14,7 @@ from app.models.cbt import CBTExam, CBTQuestion
 from app.models.community import CommunityPost, CommunityChannel
 from app.services.media_service import generate_upload_signature, upload_file
 from app.services.student_cleanup import delete_student_user
+from app.services.user_cleanup import purge_all_user_accounts, delete_teacher_user
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -120,12 +121,14 @@ async def delete_teacher(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(User).where(User.id == teacher_id, User.role == UserRole.teacher))
-    user = result.scalar_one_or_none()
-    if not user:
+    import uuid as _uuid
+    try:
+        uid = _uuid.UUID(teacher_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid teacher id")
+    deleted = await delete_teacher_user(db, uid)
+    if not deleted:
         raise HTTPException(status_code=404, detail="Teacher not found")
-    user.is_active = False
-    await db.flush()
 
 
 @router.post("/teachers/remove-all")
@@ -133,15 +136,15 @@ async def remove_all_teachers(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Disable all active teacher accounts."""
-    result = await db.execute(
-        select(User).where(User.role == UserRole.teacher, User.is_active == True)  # noqa: E712
-    )
+    """Permanently delete every teacher account."""
+    result = await db.execute(select(User).where(User.role == UserRole.teacher))
     teachers = result.scalars().all()
+    removed = 0
     for user in teachers:
-        user.is_active = False
+        if await delete_teacher_user(db, user.id):
+            removed += 1
     await db.flush()
-    return {"removed": len(teachers)}
+    return {"removed": removed}
 
 class AddBookRequest(BaseModel):
     title: str
@@ -541,6 +544,20 @@ async def remove_all_students(
             removed += 1
     await db.flush()
     return {"removed": removed}
+
+
+@router.post("/users/purge-all")
+async def purge_all_users(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Permanently delete all student, teacher, and kind accounts (all their emails). Keeps admin accounts."""
+    import uuid as _uuid
+
+    admin_id = _uuid.UUID(current_user["sub"])
+    result = await purge_all_user_accounts(db, keep_admin_id=admin_id)
+    await db.flush()
+    return result
 
 
 # ── Community moderation ──────────────────────────────────────────────────────

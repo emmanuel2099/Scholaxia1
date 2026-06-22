@@ -8,13 +8,15 @@
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; script-src-attr 'unsafe-inline'; connect-src https://scholaxia1.onrender.com http://127.0.0.1:*; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self' blob:" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; script-src-attr 'unsafe-inline'; connect-src https://scholaxia1.onrender.com http://127.0.0.1:*; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self' blob: https:; frame-src https://www.scholaxiacbtexam.blog" />
 
   <title>Scholaxia Student</title>
 
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
 
   <link rel="stylesheet" href="css/app.css" />
+  <link rel="stylesheet" href="css/teacher.css" />
+  <link rel="stylesheet" href="css/responsive.css" />
 
 </head>
 
@@ -22,100 +24,37 @@
 
 
 
-<div class="app-shell">
+<div class="app-shell app-shell-topnav">
 
-  <aside class="sidebar">
-
-    <div class="sidebar-brand">
-
-      <div class="brand-icon">S</div>
-
-      <div>
-
-        <strong>Scholaxia</strong>
-
-        <span>Student Portal</span>
-
-      </div>
-
+  <header class="student-topbar">
+    <div class="student-brand">
+      <img src="assets/logo.png" alt="" class="brand-logo" />
+      <div><strong>Scholaxia</strong><span id="sidebar-exam">Student</span></div>
     </div>
-
-
-
-    <nav class="sidebar-nav">
-
-      <button class="nav-item active" data-page="live" onclick="showPage('live')">
-
-        <span class="nav-icon">&#127909;</span> Live Class
-
-      </button>
-
-      <button class="nav-item" data-page="school" onclick="showPage('school')">
-
-        <span class="nav-icon">&#128221;</span> School Exam
-
-      </button>
-
-      <button class="nav-item" data-page="cbt" onclick="showPage('cbt')">
-
-        <span class="nav-icon">&#128218;</span> CBT Practice
-
-      </button>
-
-      <button class="nav-item" data-page="sia" onclick="showPage('sia')">
-
-        <span class="nav-icon">&#10024;</span> Ask Sia
-
-      </button>
-
-      <button class="nav-item" data-page="community" onclick="showPage('community')">
-
-        <span class="nav-icon">&#128172;</span> Community
-
-      </button>
-
-      <button class="nav-item" data-page="profile" onclick="showPage('profile')">
-
-        <span class="nav-icon">&#128100;</span> Profile
-
-      </button>
-
+    <nav class="topnav" id="student-topnav">
+      <button type="button" class="topnav-btn active" data-page="live" onclick="showPage('live')"><span class="nav-ico">&#127909;</span><span class="nav-label">Live</span></button>
+      <button type="button" class="topnav-btn" data-page="school" onclick="showPage('school')"><span class="nav-ico">&#128221;</span><span class="nav-label">Scholaxia Exams</span></button>
+      <button type="button" class="topnav-btn" data-page="school-portal" onclick="showPage('school-portal')"><span class="nav-ico">&#127979;</span><span class="nav-label">Schools Portal</span></button>
+      <button type="button" class="topnav-btn" data-page="cbt" onclick="showPage('cbt')"><span class="nav-ico">&#128218;</span><span class="nav-label">CBT</span></button>
+      <button type="button" class="topnav-btn" data-page="plans" onclick="showPage('plans')"><span class="nav-ico">&#128142;</span><span class="nav-label">Plans</span></button>
+      <button type="button" class="topnav-btn" data-page="sia" onclick="showPage('sia')"><span class="nav-ico">&#10024;</span><span class="nav-label">Sia</span></button>
+      <button type="button" class="topnav-btn" data-page="community" onclick="showPage('community')"><span class="nav-ico">&#128172;</span><span class="nav-label">Community</span></button>
+      <button type="button" class="topnav-btn" data-page="profile" onclick="showPage('profile')"><span class="nav-ico">&#128100;</span><span class="nav-label">Profile</span></button>
     </nav>
-
-
-
-    <div class="sidebar-footer">
-
-      <div class="user-chip">
-
-        <div class="user-avatar" id="user-avatar">S</div>
-
-        <div>
-
-          <div id="sidebar-name">Student</div>
-
-          <div id="sidebar-exam" class="user-meta">—</div>
-
-        </div>
-
+    <div class="student-user">
+      <div class="user-avatar" id="user-avatar">S</div>
+      <div class="user-meta-wrap">
+        <strong id="sidebar-name">Student</strong>
+        <button type="button" class="btn-logout compact" onclick="logout()">Sign out</button>
       </div>
-
-      <button class="btn-logout" onclick="logout()">Sign out</button>
-
     </div>
+  </header>
 
-  </aside>
+  <main class="main-content main-content-topnav">
 
-
-
-  <main class="main-content">
-
-    <header class="topbar">
-
+    <header class="page-head-bar">
       <h1 id="page-title">Live Class</h1>
-
       <button class="btn-refresh" onclick="refreshPage()">&#8635; Refresh</button>
-
     </header>
 
 
@@ -170,13 +109,40 @@
 
 
 
-    <!-- School Exam -->
+    <!-- Scholaxia Exams (tutor CBT) -->
 
     <section id="page-school" class="page">
 
-      <div class="info-banner">&#128248; School exams require camera proctoring and must be taken online during the scheduled window.</div>
+      <div class="info-banner">&#128221; <strong>Scholaxia Exams</strong> — your tutors set CBT exams here for you to answer.</div>
 
-      <div id="school-grid" class="card-grid"><div class="loading">Loading school exams…</div></div>
+      <div id="school-grid" class="card-grid"><div class="loading">Loading Scholaxia exams…</div></div>
+
+    </section>
+
+
+
+    <!-- Schools Exam Portal (external) -->
+
+    <section id="page-school-portal" class="page">
+
+      <div class="portal-card">
+        <h2>Schools Exam Portal</h2>
+        <p>Official school CBT examinations run on the Scholaxia Premium CBT website.</p>
+        <p>Use your <strong>registration number</strong> and <strong>access code</strong> from your school.</p>
+        <a class="btn-action portal-link" href="https://www.scholaxiacbtexam.blog/exam-login" target="_blank" rel="noopener">Open Schools Exam Portal &#8599;</a>
+        <p class="portal-note">You will be taken to <a href="https://www.scholaxiacbtexam.blog/exam-login" target="_blank" rel="noopener">scholaxiacbtexam.blog</a></p>
+      </div>
+
+    </section>
+
+
+
+    <!-- Live Class Plans -->
+
+    <section id="page-plans" class="page">
+
+      <div class="info-banner success">Scholaxia One-on-One Live Class Plans — choose what fits your level.</div>
+      <div id="plans-grid" class="plans-grid"></div>
 
     </section>
 
@@ -262,7 +228,7 @@
 
     <section id="page-sia" class="page">
 
-      <div class="info-banner success">&#10024; Sia is your AI tutor — ask questions about any subject.</div>
+      <div class="info-banner success">&#10024; Sia asks your level first, remembers your question, and explains at the right depth for your class.</div>
 
       <div class="sia-chat-wrap">
 
@@ -270,9 +236,11 @@
 
         <div class="sia-compose">
 
-          <input type="text" id="sia-input" placeholder="Ask Sia anything…" onkeydown="if(event.key==='Enter')sendSiaMessage()" />
-
-          <button class="btn-action" onclick="sendSiaMessage()">Send</button>
+          <div class="sia-compose-row">
+            <input type="text" id="sia-input" placeholder="Ask Sia anything…" onkeydown="if(event.key==='Enter')sendSiaMessage()" />
+            <button class="btn-action" onclick="sendSiaMessage()">Send</button>
+          </div>
+          <p class="sia-level-bar"><span id="sia-level-label">Level: not set</span> · <button type="button" class="sia-level-change" onclick="changeSiaLevel()">Change</button></p>
 
         </div>
 
@@ -461,12 +429,15 @@
 
 
 <script src="js/api.js"></script>
+<script src="js/firebase-config.js"></script>
+<script src="js/push.js"></script>
 
 <script src="js/sia.js"></script>
 
 <script src="js/community.js"></script>
 
 <script src="js/app.js"></script>
+<script src="js/responsive.js"></script>
 
 </body>
 

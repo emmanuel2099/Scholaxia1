@@ -1,12 +1,35 @@
 const PAGE_TITLES = {
   live: "Live Class",
-  school: "School Exam",
+  school: "Scholaxia Exams",
+  "school-portal": "Schools Exam Portal",
   cbt: "CBT Practice",
+  plans: "Live Class Plans",
   sia: "Ask Sia",
   community: "Community",
   "community-create": "New Post",
   profile: "Profile",
 };
+
+const LIVE_PLANS = [
+  { group: "Nursery", plans: [
+    { name: "Nursery Standard", price: "₦45,000/mo", features: ["8 sessions · 45 min", "Up to 2 subjects", "Homework help", "Monthly report"] },
+    { name: "Nursery Premium", price: "₦65,000/mo", features: ["12 sessions · 45 min", "Up to 4 subjects", "Weekly assessments", "Parent feedback"] },
+  ]},
+  { group: "Primary", plans: [
+    { name: "Primary Standard", price: "₦55,000/mo", features: ["8 sessions · 1 hr", "Up to 3 subjects", "Homework support"] },
+    { name: "Primary Premium", price: "₦80,000/mo", features: ["12 sessions · 1 hr", "Up to 5 subjects", "Personalized study plan"] },
+    { name: "Primary Elite", price: "₦70,000/mo", features: ["16 sessions · 1 hr", "All core subjects", "Academic coach"] },
+  ]},
+  { group: "High School (JSS & SSS)", plans: [
+    { name: "High Standard", price: "₦50,000/mo", features: ["8 sessions · 1 hr", "Up to 3 subjects"] },
+    { name: "Secondary Premium", price: "₦60,000/mo", features: ["12 sessions · 1 hr", "Up to 6 subjects", "CBT practice"] },
+    { name: "Secondary Elite", price: "₦80,000/mo", features: ["16 sessions · 1 hr", "All subjects", "Dedicated mentor"] },
+  ]},
+  { group: "Exam Prep (WAEC, NECO, JAMB)", plans: [
+    { name: "Exam Intensive", price: "₦80,000", features: ["18 sessions · 1.5 hr", "JAMB prep · 4 subjects", "Mock tests"] },
+    { name: "Exam Mastery", price: "₦100,000", features: ["25 sessions · 2 hr", "8 subjects", "Weekly mock CBT"] },
+  ]},
+];
 
 let currentPage = "live";
 let practiceExams = [];
@@ -51,10 +74,10 @@ function logout() {
 function showPage(page) {
   currentPage = page;
   document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
-  document.querySelectorAll(".nav-item").forEach((n) => n.classList.remove("active"));
+  document.querySelectorAll(".topnav-btn").forEach((n) => n.classList.remove("active"));
   document.getElementById(`page-${page}`).classList.add("active");
   const navPage = page === "community-create" ? "community" : page;
-  const navEl = document.querySelector(`[data-page="${navPage}"]`);
+  const navEl = document.querySelector(`.topnav-btn[data-page="${navPage}"]`);
   if (navEl) navEl.classList.add("active");
   document.getElementById("page-title").textContent = PAGE_TITLES[page] || page;
   const fab = document.getElementById("community-fab");
@@ -65,6 +88,8 @@ function showPage(page) {
 function refreshPage() {
   if (currentPage === "live") loadLive();
   else if (currentPage === "school") loadSchoolExams();
+  else if (currentPage === "school-portal") { /* static */ }
+  else if (currentPage === "plans") loadPlans();
   else if (currentPage === "cbt") loadCbtExams();
   else if (currentPage === "sia") loadSia();
   else if (currentPage === "community") {
@@ -118,14 +143,36 @@ function renderLive(sessions) {
 function renderUpcoming(sessions) {
   const el = document.getElementById("upcoming-grid");
   if (!sessions.length) {
-    el.innerHTML = `<div class="empty">No upcoming sessions scheduled.</div>`;
+    el.innerHTML = `<div class="empty">No upcoming classes scheduled for your subjects yet.</div>`;
     return;
   }
   el.innerHTML = sessions.map((s) => `
-    <div class="card">
-      <div class="time-badge">${formatDate(s.start_time)}</div>
+    <div class="card upcoming-card">
+      <div class="time-badge">Upcoming</div>
       <h3>${escHtml(s.title)}</h3>
       <p class="meta">${escHtml(s.subject)} · ${escHtml(s.teacher_name)}</p>
+      <p class="schedule-meta">&#128197; ${formatDate(s.start_time)}${s.end_time ? " → " + formatDate(s.end_time) : ""}</p>
+      ${s.is_live ? `<button class="btn-join" onclick="joinClass(this)" data-id="${s.id}" data-title="${escHtml(s.title)}" data-subject="${escHtml(s.subject)}" data-teacher="${escHtml(s.teacher_name)}">Join</button>` : `<p class="notify-hint">You'll be notified when class starts</p>`}
+    </div>
+  `).join("");
+}
+
+function loadPlans() {
+  const el = document.getElementById("plans-grid");
+  if (!el) return;
+  el.innerHTML = LIVE_PLANS.map((g) => `
+    <div class="plan-group">
+      <h3>${escHtml(g.group)}</h3>
+      <div class="card-grid">
+        ${g.plans.map((p) => `
+          <div class="card plan-card">
+            <h4>${escHtml(p.name)}</h4>
+            <p class="plan-price">${escHtml(p.price)}</p>
+            <ul>${p.features.map((f) => `<li>${escHtml(f)}</li>`).join("")}</ul>
+            <button class="btn-action" onclick="alert('Payment via Flutterwave coming soon. Contact Scholaxia admin to subscribe.')">Subscribe</button>
+          </div>
+        `).join("")}
+      </div>
     </div>
   `).join("");
 }
@@ -436,6 +483,7 @@ async function loadProfile() {
     document.getElementById("pf-sub").textContent = p.has_active_subscription ? "Active" : "Free";
     localStorage.setItem("sia_exam_type", p.exam_type || "");
     localStorage.setItem("sia_subjects", JSON.stringify(p.selected_subjects || []));
+    if (p.education_level) localStorage.setItem("sia_education_level", p.education_level);
     document.getElementById("sidebar-exam").textContent = p.exam_type || "Student";
 
     if (p.setup_complete) {

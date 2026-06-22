@@ -516,6 +516,55 @@ LEVEL_PROFILES = {
     "SKILLS":    {"depth": "practical",         "exam": "Industry standard"},
 }
 
+LEVEL_TEACHING_GUIDE = {
+    "PRIMARY": (
+        "PRIMARY: Very simple words. One idea per sentence. Short answers. "
+        "Use stories and everyday objects. No formulas unless extremely basic."
+    ),
+    "JSS1": (
+        "JSS1: Simple English. Short paragraphs (2–3 sentences). Basic examples only. "
+        "Avoid calculus, advanced algebra, and university terms. Use primary/JSS textbook depth."
+    ),
+    "JSS2": (
+        "JSS2: Clear simple language. Build from basics. One example at a time. "
+        "Do not jump to SS3/JAMB topics. Break hard ideas into small steps."
+    ),
+    "JSS3": (
+        "JSS3: Bridge to senior secondary. Moderate vocabulary. Introduce concepts gently "
+        "before formulas. Prepare for WAEC but keep explanations accessible."
+    ),
+    "SS1": (
+        "SS1: Intermediate depth. WAEC/NECO foundation level. Structured sections with headings. "
+        "Define terms before using them. Include one worked example."
+    ),
+    "SS2": (
+        "SS2: Intermediate-deep. Match Nigerian SS2 curriculum exactly. "
+        "Use subheadings, numbered steps, and exam-style examples. "
+        "Do not overload with JAMB-only tricks unless asked."
+    ),
+    "SS3": (
+        "SS3: Advanced secondary. WAEC/NECO + JAMB preparation depth. "
+        "Precise definitions, full worked examples, common exam traps."
+    ),
+    "JAMB": (
+        "JAMB: Exam-focused. Fast, precise, CBT-style. Highlight key facts and shortcuts. "
+        "Include likely objective options and why wrong answers fail."
+    ),
+    "WAEC": (
+        "WAEC: Marking-scheme style. Theory + objective patterns. "
+        "State points clearly for full marks. Nigerian syllabus only."
+    ),
+    "NECO": (
+        "NECO: NECO syllabus depth. Clear theory answers. Practical examples from Nigerian schools."
+    ),
+    "CAMBRIDGE": (
+        "Cambridge: IGCSE/O-Level standard. International terminology alongside Nigerian context."
+    ),
+    "SKILLS": (
+        "Skills: Practical, hands-on steps. Industry language. Less theory, more how-to."
+    ),
+}
+
 # ── Language Instructions ─────────────────────────────────────────────────────
 
 LANGUAGE_INSTRUCTIONS = {
@@ -606,6 +655,29 @@ def _build_context(student_name: str, subject: str, education_level: str,
     system = system.replace("{level}", level_display)
 
     parts = [system]
+    if profile:
+        guide = LEVEL_TEACHING_GUIDE.get(level_key, "")
+        parts.append(
+            f"\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"STUDENT LEVEL — ADAPT EVERY ANSWER (mandatory)\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"Class/Level: {education_level}\n"
+            f"Depth: {profile['depth']}\n"
+            f"Exam standard: {profile['exam']}\n"
+            f"{guide}\n"
+            f"RULES: Use vocabulary and examples ONLY for {education_level}. "
+            f"If the topic is above this level, simplify it — do not teach university content. "
+            f"Structure answers with clear subheadings and short paragraphs."
+        )
+    elif level_key not in ("", "UNKNOWN"):
+        parts.append(
+            f"\nStudent level: {education_level}. Adapt depth and vocabulary to this class."
+        )
+    else:
+        parts.append(
+            "\nStudent level is UNKNOWN. For academic questions, ask their class/level first "
+            "before teaching. Do not assume SS1 or any default."
+        )
     if lang_instruction:
         parts.append(f"\nLanguage rule: {lang_instruction}")
     return "\n".join(parts)
@@ -634,7 +706,9 @@ def build_sia_system_prompt(student_name: str, subject: str, education_level: st
 
 
 def build_chat_user_prompt(question: str, student_name: str = "there",
-                           conversation_history: list = None) -> str:
+                           conversation_history: list = None,
+                           education_level: str = None,
+                           subject: str = None) -> str:
     """Slim user message — system prompt carries teaching rules."""
     history_block = ""
     if conversation_history:
@@ -644,7 +718,17 @@ def build_chat_user_prompt(question: str, student_name: str = "there",
             content = str(msg.get("content", ""))[:400]
             lines.append(f"{role}: {content}")
         history_block = "\n\n--- CONVERSATION HISTORY ---\n" + "\n".join(lines) + "\n--- END ---"
-    return f"""{history_block}
+
+    level_block = ""
+    if education_level and education_level.upper() not in ("UNKNOWN", ""):
+        subj = subject or "General"
+        level_block = (
+            f"\n[TEACH AT {education_level.upper()} LEVEL ONLY — subject: {subj}. "
+            f"Remember what the student asked. Simplify or deepen based on {education_level}, "
+            f"not higher classes. Use subheadings and spaced paragraphs.]\n"
+        )
+
+    return f"""{history_block}{level_block}
 
 {student_name}: {question}
 

@@ -7,6 +7,7 @@
   <title>Scholaxia Admin</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/admin.css" />
+  <link rel="stylesheet" href="css/responsive.css" />
 </head>
 <body>
 
@@ -14,7 +15,7 @@
 <div id="auth-screen" class="admin-auth">
   <div class="auth-box">
     <h1>Scholaxia Admin</h1>
-    <p class="sub">Manage students, teachers, CBT, live classes &amp; more</p>
+    <p class="sub">Manage students, teachers, CBT &amp; more</p>
     <div class="auth-tabs">
       <button type="button" id="tab-login" class="auth-tab active">Log in</button>
       <button type="button" id="tab-register" class="auth-tab">Register</button>
@@ -48,7 +49,6 @@
       <button class="nav-btn" data-page="students" onclick="showAdminPage('students')">&#127891; Students</button>
       <button class="nav-btn" data-page="teachers" onclick="showAdminPage('teachers')">&#128104;&#8205;&#127979; Teachers</button>
       <button class="nav-btn" data-page="kind" onclick="showAdminPage('kind')">&#128118; Kind (Kids)</button>
-      <button class="nav-btn" data-page="live" onclick="showAdminPage('live')">&#127909; Live Classes</button>
       <button class="nav-btn" data-page="requests" onclick="showAdminPage('requests')">&#128172; Session Requests</button>
       <button class="nav-btn" data-page="cbt" onclick="showAdminPage('cbt')">&#128221; CBT Exams</button>
       <button class="nav-btn" data-page="recommendations" onclick="showAdminPage('recommendations')">&#128218; Recommendations</button>
@@ -60,9 +60,18 @@
     </div>
   </aside>
 
+  <div class="sidebar-backdrop" aria-hidden="true"></div>
+
   <main class="admin-main">
+    <div class="admin-mobile-bar">
+      <button type="button" class="shell-menu-btn" onclick="toggleAdminSidebar()" aria-label="Open menu">&#9776;</button>
+      <span>Scholaxia Admin</span>
+    </div>
     <section id="page-dashboard" class="admin-page active">
       <div class="page-head"><h2>Dashboard</h2><button class="btn-sm" onclick="loadDashboard()">Refresh</button></div>
+      <div class="page-head" style="margin-top:-8px">
+        <button class="btn-sm danger" onclick="purgeAllUsers()">Delete all emails / accounts</button>
+      </div>
       <div id="stats-grid" class="stats-grid"><div class="loading">Loading…</div></div>
     </section>
 
@@ -102,38 +111,6 @@
     <section id="page-kind" class="admin-page">
       <div class="page-head"><h2>Kind Learners (Kids)</h2><button class="btn-sm" onclick="loadKind()">Refresh</button></div>
       <div id="kind-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
-    </section>
-
-    <section id="page-live" class="admin-page">
-      <div class="page-head">
-        <h2>Live Classes</h2>
-        <div class="form-row">
-          <select id="live-filter" onchange="loadLiveClasses()">
-            <option value="">All</option>
-            <option value="live">Live now</option>
-            <option value="upcoming">Upcoming</option>
-            <option value="past">Past</option>
-          </select>
-          <button class="btn-sm" onclick="loadLiveClasses()">Refresh</button>
-          <button class="btn-sm secondary" onclick="adminRemoveAllLiveClasses()">Remove all</button>
-        </div>
-      </div>
-
-      <div class="host-class-card">
-        <h3>Host a live class</h3>
-        <p class="host-hint">Classes only appear for students after you create and start them here (or a teacher hosts one).</p>
-        <div class="host-form">
-          <input type="text" id="host-title" placeholder="Class title (e.g. Algebra revision)" />
-          <input type="text" id="host-subject" placeholder="Subject (e.g. Mathematics)" />
-          <div class="host-actions">
-            <button type="button" class="btn-sm" onclick="adminHostClass(false)">Schedule</button>
-            <button type="button" class="btn-sm primary" onclick="adminHostClass(true)">Go live now</button>
-          </div>
-        </div>
-        <p id="host-error" class="error-msg"></p>
-      </div>
-
-      <div id="live-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
     </section>
 
     <section id="page-requests" class="admin-page">
@@ -254,5 +231,6 @@
 
 <script src="js/admin-api.js"></script>
 <script src="js/admin.js"></script>
+<script src="js/responsive.js"></script>
 </body>
 </html>

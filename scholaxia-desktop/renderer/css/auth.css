@@ -112,6 +112,26 @@ body {
   font-size: 1.8rem;
 }
 
+.brand-seal-img {
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  object-fit: contain;
+  background: #fff;
+  padding: 3px;
+}
+
+.card-seal-img {
+  width: 72px;
+  height: 72px;
+  border-radius: 12px;
+  object-fit: contain;
+  background: #fff;
+  padding: 4px;
+  margin: 0 auto 16px;
+  display: block;
+}
+
 .school-brand strong {
   display: block;
   font-size: 0.95rem;
@@ -292,7 +312,6 @@ body {
   text-decoration: none;
 }
 .auth-admin-link a:hover { color: #2d9b83; }
-}
 
 .link-btn {
   border: none;

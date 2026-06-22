@@ -59,7 +59,10 @@ class CreateClassRequest(BaseModel):
     subject: str
     title: str
     description: Optional[str] = None
-    start_time: datetime
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    duration_minutes: Optional[int] = 60
+    go_live_now: bool = False
 
 
 class ClassResponse(BaseModel):
@@ -79,16 +82,59 @@ async def create_class(
     db: AsyncSession = Depends(get_db),
 ):
     room_id = f"room-{uuid.uuid4().hex[:12]}"
+    now = naive_utc_now()
+    duration = max(15, min(payload.duration_minutes or 60, 180))
+
+    if payload.go_live_now:
+        start = now
+        end = to_naive_utc(payload.end_time) if payload.end_time else start + timedelta(minutes=duration)
+        is_live = True
+    else:
+        start = to_naive_utc(payload.start_time) if payload.start_time else now + timedelta(hours=1)
+        end = to_naive_utc(payload.end_time) if payload.end_time else start + timedelta(minutes=duration)
+        is_live = False
+
     live_class = LiveClass(
         teacher_id=current_user["sub"],
         subject=payload.subject,
         title=payload.title,
         description=payload.description,
-        start_time=to_naive_utc(payload.start_time),
+        start_time=start,
+        end_time=end,
         room_id=room_id,
+        is_live=is_live,
     )
     db.add(live_class)
     await db.flush()
+
+    try:
+        if is_live:
+            await send_subject_notification(
+                db=db,
+                subject=live_class.subject,
+                title="Live class starting now",
+                body=f"Your {live_class.subject} class «{live_class.title}» is live now. Join from Live Class.",
+                notification_type="live_class",
+                data={"class_id": str(live_class.id), "room_id": live_class.room_id},
+            )
+        else:
+            when = start.strftime("%d %b %Y at %I:%M %p")
+            await send_subject_notification(
+                db=db,
+                subject=live_class.subject,
+                title=f"Upcoming {live_class.subject} class",
+                body=f"«{live_class.title}» is scheduled for {when}. Open Live Class to see upcoming sessions.",
+                notification_type="live_class_upcoming",
+                data={
+                    "class_id": str(live_class.id),
+                    "room_id": live_class.room_id,
+                    "start_time": start.isoformat(),
+                    "end_time": end.isoformat() if end else None,
+                },
+            )
+    except Exception:
+        pass
+
     return ClassResponse(
         id=str(live_class.id),
         subject=live_class.subject,
@@ -265,7 +311,8 @@ async def list_live_classes(
     elif status == "upcoming":
         query = query.where(
             LiveClass.is_live == False,  # noqa: E712
-            LiveClass.start_time > now,
+            (LiveClass.end_time > now) | (LiveClass.end_time.is_(None)),
+            LiveClass.start_time > now - timedelta(days=30),
         )
     elif status == "past":
         query = query.where(

@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://download.agora.io; script-src-attr 'unsafe-inline'; connect-src https://scholaxia1.onrender.com wss://scholaxia1.onrender.com http://127.0.0.1:*; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self' blob: https:" />
+  <title>Scholaxia Teacher</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/app.css" />
+  <link rel="stylesheet" href="css/teacher.css" />
+</head>
+<body>
+
+<div id="auth-screen" class="teacher-auth">
+  <div class="auth-box">
+    <img src="assets/logo.png" alt="" class="teacher-auth-logo" />
+    <h1>Scholaxia Teacher</h1>
+    <p class="sub">Host live classes, share materials &amp; manage your students</p>
+    <form onsubmit="teacherLogin(event)">
+      <label><span>Email</span><input type="email" id="teacher-login-email" required /></label>
+      <label><span>Password</span><input type="password" id="teacher-login-password" required /></label>
+      <p id="teacher-login-error" class="error-msg"></p>
+      <button type="submit" class="btn-primary">LOG IN</button>
+    </form>
+    <p class="auth-footer"><a href="index.html">← Student portal</a></p>
+  </div>
+</div>
+
+<div id="app-screen" class="teacher-shell hidden">
+  <header class="teacher-topbar">
+    <div class="teacher-brand">
+      <img src="assets/logo.png" alt="" class="brand-logo" />
+      <div><strong>Scholaxia</strong><span>Teacher Portal</span></div>
+    </div>
+    <nav class="topnav" id="teacher-topnav">
+      <button type="button" class="topnav-btn active" data-page="live" onclick="showTeacherPage('live')"><span class="nav-ico">&#127909;</span> Live Classes</button>
+      <button type="button" class="topnav-btn" data-page="materials" onclick="showTeacherPage('materials')"><span class="nav-ico">&#128218;</span> Study Materials</button>
+      <button type="button" class="topnav-btn" data-page="curriculum" onclick="showTeacherPage('curriculum')"><span class="nav-ico">&#128197;</span> Curriculum</button>
+      <button type="button" class="topnav-btn" data-page="notes" onclick="showTeacherPage('notes')"><span class="nav-ico">&#128221;</span> Learn Notes</button>
+      <button type="button" class="topnav-btn" data-page="requests" onclick="showTeacherPage('requests')"><span class="nav-ico">&#128172;</span> Requests</button>
+    </nav>
+    <div class="teacher-user">
+      <div><strong id="teacher-name-label">Teacher</strong><span id="teacher-email-label"></span></div>
+      <button type="button" class="btn-logout" onclick="teacherLogout()">Sign out</button>
+    </div>
+  </header>
+
+  <main class="teacher-main">
+    <section id="page-live" class="teacher-page active">
+      <h2>Live Classes</h2>
+      <p class="page-desc">Schedule a class (students get notified) or go live now. Class auto-ends at the end time.</p>
+
+      <div class="host-card">
+        <h3>Host a class</h3>
+        <div class="form-grid">
+          <label><span>Title</span><input type="text" id="host-title" placeholder="e.g. Algebra — Quadratic equations" /></label>
+          <label><span>Subject</span><input type="text" id="host-subject" placeholder="e.g. Mathematics" /></label>
+          <label><span>Date</span><input type="date" id="host-date" /></label>
+          <label><span>Start time</span><input type="time" id="host-start" /></label>
+          <label><span>End time</span><input type="time" id="host-end" /></label>
+          <label><span>Duration (min)</span><input type="number" id="host-duration" value="60" min="15" max="180" /></label>
+        </div>
+        <div class="form-row">
+          <button type="button" class="btn-action" onclick="teacherHostClass(false)">Schedule class</button>
+          <button type="button" class="btn-action primary" onclick="teacherHostClass(true)">Go live now</button>
+        </div>
+        <p id="host-error" class="error-msg"></p>
+      </div>
+
+      <div class="page-head">
+        <h3>Your classes</h3>
+        <select id="live-filter" onchange="loadTeacherLive()">
+          <option value="">All</option>
+          <option value="live">Live now</option>
+          <option value="upcoming">Upcoming</option>
+          <option value="past">Past</option>
+        </select>
+        <button class="btn-sm" onclick="loadTeacherLive()">Refresh</button>
+      </div>
+      <div id="live-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+    </section>
+
+    <section id="page-materials" class="teacher-page">
+      <h2>Study Materials</h2>
+      <div id="materials-list"></div>
+    </section>
+
+    <section id="page-curriculum" class="teacher-page">
+      <h2>Curriculum / Work Scheme</h2>
+      <div id="curriculum-list"></div>
+    </section>
+
+    <section id="page-notes" class="teacher-page">
+      <h2>Learn Notes</h2>
+      <div id="notes-list"></div>
+    </section>
+
+    <section id="page-requests" class="teacher-page">
+      <h2>Session Requests</h2>
+      <div id="requests-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+    </section>
+  </main>
+</div>
+
+<script src="js/teacher-api.js"></script>
+<script src="js/teacher.js"></script>
+</body>
+</html>

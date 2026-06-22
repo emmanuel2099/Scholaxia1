@@ -1,7 +1,7 @@
 const API_BASE = "https://scholaxia1.onrender.com";
 
 function getToken() {
-  return localStorage.getItem("sia_token") || localStorage.getItem("sia_admin_token") || "";
+  return localStorage.getItem("sia_token") || localStorage.getItem("sia_teacher_token") || localStorage.getItem("sia_admin_token") || "";
 }
 
 function getUser() {
@@ -23,7 +23,7 @@ function saveSession(data, email, nameOverride) {
 }
 
 function clearSession() {
-  ["sia_token", "sia_role", "sia_name", "sia_email", "sia_exam_type", "sia_subjects"].forEach(function (k) {
+  ["sia_token", "sia_role", "sia_name", "sia_email", "sia_exam_type", "sia_subjects", "sia_fcm_token", "sia_last_notif_id"].forEach(function (k) {
     localStorage.removeItem(k);
   });
 }

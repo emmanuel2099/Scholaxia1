@@ -69,7 +69,9 @@ services:
       - key: STRIPE_WEBHOOK_SECRET
         sync: false
 
-      # Firebase (Push Notifications)
+      # Firebase (Push Notifications) — set FIREBASE_CREDENTIALS_JSON in Render dashboard
+      - key: FIREBASE_CREDENTIALS_JSON
+        sync: false
       - key: FIREBASE_CREDENTIALS_PATH
         value: firebase-credentials.json
 

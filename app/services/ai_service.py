@@ -68,7 +68,7 @@ async def _prepare_sia_context(
     """Build system prompt + analysis for any Sia call."""
     memory = await _get_memory(student_id, subject)
     analysis = analyze_question(question, subject, education_level, conversation_history)
-    intel = build_intelligence_context(analysis, memory.get("recent_topics"))
+    intel = build_intelligence_context(analysis, memory.get("recent_topics"), education_level)
     system = build_sia_system_prompt(
         student_name=student_name, subject=subject,
         education_level=education_level, language=language,
@@ -92,6 +92,8 @@ async def get_ai_response(question: str, subject: str, education_level: str,
     prompt = build_chat_user_prompt(
         question=question, student_name=student_name,
         conversation_history=conversation_history,
+        education_level=education_level,
+        subject=subject,
     )
     try:
         raw = await _run_sia_inference(

@@ -13,6 +13,7 @@ var mediaMode = "none"; // none | agora | local
 var micMonitorTimer = null;
 var micMonitorCtx = null;
 var selfHearAudio = null;
+var classAutoEndTimer = null;
 var agoraRetryTimer = null;
 var agoraConnecting = false;
 var raisedHands = {};
@@ -103,7 +104,7 @@ function parseJwt(token) {
 }
 
 function getAuthToken() {
-  return localStorage.getItem("sia_token") || localStorage.getItem("sia_admin_token") || "";
+  return localStorage.getItem("sia_token") || localStorage.getItem("sia_teacher_token") || localStorage.getItem("sia_admin_token") || "";
 }
 
 function loadLiveSession() {
@@ -928,7 +929,10 @@ async function startLocalPreviewOnly() {
     return;
   }
   try {
-    localPreviewStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    localPreviewStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: { echoCancellation: true, noiseSuppression: true },
+    });
     if (mediaMode === "agora") {
       localPreviewStream.getTracks().forEach(function (t) { t.stop(); });
       localPreviewStream = null;
@@ -960,7 +964,36 @@ async function startLocalPreviewOnly() {
       );
     }
   } catch (e) {
-    addChatMessage("", "Camera/mic: " + e.message, true);
+    addChatMessage("", "Camera/mic: " + e.message + " — allow camera & microphone in Windows Settings → Privacy.", true);
+  }
+}
+
+function scheduleClassAutoEnd() {
+  if (!isTeacherRole() || !liveSession || !liveSession.end_time) return;
+  var endMs = new Date(liveSession.end_time).getTime() - Date.now();
+  if (classAutoEndTimer) clearTimeout(classAutoEndTimer);
+  if (endMs <= 0) {
+    autoEndClassSession();
+    return;
+  }
+  classAutoEndTimer = setTimeout(autoEndClassSession, endMs);
+  addChatMessage(
+    "",
+    "Class scheduled to end at " + new Date(liveSession.end_time).toLocaleString() + " (like Zoom/Meet).",
+    true
+  );
+}
+
+async function autoEndClassSession() {
+  if (!isTeacherRole() || !liveSession) return;
+  var classId = liveSession.class_id || liveSession.classId;
+  try {
+    await api("/api/v1/live-classes/" + classId + "/end", { method: "POST" });
+    setStatus("Class ended");
+    addChatMessage("", "Scheduled end time reached — class closed for all students.", true);
+    setTimeout(function () { leaveClassroom(); }, 2500);
+  } catch (e) {
+    addChatMessage("", "Could not auto-end: " + e.message, true);
   }
 }
 
@@ -1399,7 +1432,11 @@ async function leaveClassroom() {
     try { await agoraClient.leave(); } catch (e) { /* ignore */ }
   }
   localStorage.removeItem("live_session");
-  window.location.href = liveSession && liveSession.role !== "student" ? "admin.html" : "app.html";
+  if (liveSession && (liveSession.role === "teacher" || liveSession.role === "admin")) {
+    window.location.href = localStorage.getItem("sia_teacher_token") ? "teacher.html" : "admin.html";
+  } else {
+    window.location.href = "app.html";
+  }
 }
 
 function loadAgoraScript(cb) {
@@ -1434,5 +1471,11 @@ window.onload = function () {
     if (rhPanel) rhPanel.classList.remove("hidden");
   }
   connectChat();
-  loadAgoraScript(tryStartAgora);
+  scheduleClassAutoEnd();
+  loadAgoraScript(function () {
+    if (isTeacherRole()) {
+      startLocalPreviewOnly().catch(function () {});
+    }
+    tryStartAgora();
+  });
 };

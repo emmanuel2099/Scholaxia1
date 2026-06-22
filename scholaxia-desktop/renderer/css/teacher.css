@@ -1,0 +1,104 @@
+/* Scholaxia Teacher Desktop */
+.teacher-auth {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, #0a1410, #1a3d28);
+  padding: 24px;
+}
+.teacher-auth .auth-box {
+  background: #fff;
+  border-radius: 16px;
+  padding: 36px 32px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.25);
+}
+.teacher-auth-logo {
+  width: 72px;
+  height: 72px;
+  display: block;
+  margin: 0 auto 16px;
+  object-fit: contain;
+}
+.teacher-auth h1 { text-align: center; color: #1a4d32; margin: 0 0 8px; }
+.teacher-auth .sub { text-align: center; color: #6b7c74; font-size: 0.9rem; margin-bottom: 24px; }
+.teacher-auth label { display: block; margin-bottom: 14px; }
+.teacher-auth label span { display: block; font-size: 0.8rem; color: #6b7c74; margin-bottom: 4px; }
+.teacher-auth input {
+  width: 100%; padding: 10px 12px; border: 1px solid #d4e8da; border-radius: 8px;
+}
+.teacher-auth .btn-primary {
+  width: 100%; padding: 12px; border: none; border-radius: 8px;
+  background: #1a4d32; color: #fff; font-weight: 600; cursor: pointer;
+}
+.teacher-auth .auth-footer { text-align: center; margin-top: 16px; font-size: 0.85rem; }
+
+.teacher-shell { min-height: 100vh; background: #f4f9f6; display: flex; flex-direction: column; }
+.teacher-topbar {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 12px 20px; background: #0d1f14; color: #e8f0ea;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  position: sticky; top: 0; z-index: 30;
+}
+.teacher-brand { display: flex; align-items: center; gap: 10px; min-width: 140px; }
+.teacher-brand strong { display: block; font-size: 0.9rem; }
+.teacher-brand span { font-size: 0.72rem; opacity: 0.7; }
+.teacher-user { margin-left: auto; display: flex; align-items: center; gap: 12px; font-size: 0.8rem; }
+.teacher-user strong { display: block; }
+.teacher-user span { opacity: 0.75; }
+.teacher-main { flex: 1; padding: 24px; max-width: 1100px; width: 100%; margin: 0 auto; }
+.teacher-page { display: none; }
+.teacher-page.active { display: block; animation: fadeUp 0.35s ease; }
+.teacher-page h2 { margin: 0 0 8px; color: #1a4d32; }
+.page-desc { color: #6b7c74; margin-bottom: 20px; font-size: 0.92rem; }
+
+.host-card {
+  background: #fff; border: 1px solid #d4e8da; border-radius: 14px;
+  padding: 20px; margin-bottom: 24px;
+}
+.host-card h3 { margin: 0 0 16px; font-size: 1rem; }
+.form-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px; margin-bottom: 16px;
+}
+.form-grid label span { display: block; font-size: 0.78rem; color: #6b7c74; margin-bottom: 4px; }
+.form-grid input, .form-grid select {
+  width: 100%; padding: 9px 10px; border: 1px solid #d4e8da; border-radius: 8px;
+}
+.form-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.btn-action.primary { background: #c9a227; color: #000; border-color: #c9a227; }
+.plain-list { line-height: 1.8; color: #2d4a38; }
+.notes-editor {
+  width: 100%; padding: 14px; border: 1px solid #d4e8da; border-radius: 10px;
+  font-family: inherit; resize: vertical;
+}
+.badge.live { background: #e53935; color: #fff; padding: 3px 8px; border-radius: 12px; font-size: 0.72rem; }
+
+/* Shared top nav (student + teacher) */
+.topnav {
+  display: flex; gap: 6px; flex-wrap: wrap; flex: 1; justify-content: center;
+}
+.topnav-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 10px 14px; border-radius: 24px; border: 1px solid transparent;
+  background: rgba(255,255,255,0.06); color: #c8e6d0; font-size: 0.82rem;
+  cursor: pointer; transition: transform 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+.topnav-btn:hover { transform: translateY(-2px); background: rgba(255,255,255,0.12); }
+.topnav-btn.active {
+  background: linear-gradient(135deg, #2d7a4f, #1a4d32);
+  color: #fff; box-shadow: 0 4px 14px rgba(26,77,50,0.45);
+}
+.nav-ico { font-size: 1rem; }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 900px) {
+  .topnav-btn span.nav-label { display: none; }
+  .topnav-btn { padding: 10px 12px; }
+}
