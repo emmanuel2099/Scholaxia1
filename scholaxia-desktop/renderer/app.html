@@ -163,9 +163,9 @@
       <div id="cbt-page-hero" class="page-hero school-exam-hero">
         <div class="hero-glow"></div>
         <div class="hero-content">
-          <span class="hero-eyebrow">JAMB · WAEC · NECO</span>
+          <span class="hero-eyebrow">JAMB · WAEC · NECO · POST-UTME</span>
           <h2>CBT Practice</h2>
-          <p>Set your 4 JAMB subjects in Profile — then take one full CBT sitting with all subjects together, just like the real exam.</p>
+          <p>Set your exam type and subjects in Profile — then take one full CBT sitting with all your subjects together, just like the real exam.</p>
         </div>
       </div>
 
@@ -191,6 +191,17 @@
 
         </div>
 
+        <div id="subject-tabs" class="subject-tabs hidden"></div>
+
+        <div id="subject-start-picker" class="subject-start-picker hidden">
+          <div class="subject-start-box">
+            <h3>Choose a subject to start with</h3>
+            <p>Tap any subject — you can switch between subjects anytime during the exam.</p>
+            <div id="subject-start-list" class="subject-start-list"></div>
+            <button type="button" class="btn-secondary subject-start-skip" onclick="startWithSubject(0)">Start from question 1</button>
+          </div>
+        </div>
+
         <div class="exam-body">
 
           <div class="q-nav" id="q-nav"></div>
@@ -207,11 +218,11 @@
 
             <div class="q-actions">
 
-              <button class="btn-secondary" onclick="prevQuestion()">Previous</button>
+              <button type="button" class="btn-secondary" onclick="prevQuestion()">Previous</button>
 
-              <button class="btn-action" onclick="nextQuestion()">Next</button>
+              <button type="button" class="btn-action" onclick="nextQuestion()">Next</button>
 
-              <button class="btn-submit-exam" onclick="submitExam()">Submit Exam</button>
+              <button type="button" class="btn-submit-exam" onclick="submitExam()">Submit Exam</button>
 
             </div>
 
@@ -371,19 +382,21 @@
 
       <div class="setup-card" id="setup-card">
 
-        <h3>Exam Setup</h3>
+        <h3 id="setup-card-title">Exam setup &amp; subjects</h3>
 
-        <p>Choose your exam type and subjects (JAMB = 4, WAEC/NECO = 9).</p>
+        <p id="setup-card-desc">Choose your exam type and subjects. JAMB &amp; POST-UTME = 4 subjects · WAEC &amp; NECO = up to 9. You can update anytime.</p>
 
         <div class="setup-form">
 
           <select id="setup-exam-type">
 
-            <option value="JAMB">JAMB</option>
+            <option value="JAMB">JAMB (UTME)</option>
 
             <option value="WAEC">WAEC</option>
 
             <option value="NECO">NECO</option>
+
+            <option value="POST_UTME">POST-UTME</option>
 
           </select>
 
@@ -401,7 +414,9 @@
 
           <div id="subject-picker" class="subject-picker"></div>
 
-          <button class="btn-action" onclick="saveSetup()">Save Setup</button>
+          <p id="setup-subject-hint" class="setup-subject-hint"></p>
+
+          <button type="button" class="btn-action" onclick="saveSetup()">Save exam profile</button>
 
           <p id="setup-error" class="error-msg"></p>
 

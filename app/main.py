@@ -65,6 +65,10 @@ async def lifespan(app: FastAPI):
             """
         ))
         try:
+            await conn.execute(text("ALTER TYPE examtype ADD VALUE IF NOT EXISTS 'POST_UTME'"))
+        except Exception:
+            pass
+        try:
             await conn.execute(text("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'kind'"))
         except Exception:
             pass

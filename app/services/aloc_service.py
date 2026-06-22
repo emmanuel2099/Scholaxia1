@@ -12,15 +12,58 @@ from app.core.config import settings
 
 ALOC_JAMB_COMBINED_ID = "aloc:JAMB:combined"
 
-# UTME years per subject (ALOC docs + live API). Used for year picker UI.
+EXAM_TYPE_ALIASES: dict[str, set[str]] = {
+    "utme": {"utme", "jamb"},
+    "waec": {"waec", "wassce"},
+    "neco": {"neco"},
+    "post-utme": {"post-utme", "postutme", "post_utme"},
+}
+
+EXAM_CONFIG: dict[str, dict] = {
+    "JAMB": {
+        "aloc_type": "utme",
+        "title": "JAMB CBT Practice Exam",
+        "duration_minutes": 120,
+        "exact_subjects": 4,
+        "year_label": "UTME",
+    },
+    "WAEC": {
+        "aloc_type": "waec",
+        "title": "WAEC CBT Practice Exam",
+        "duration_minutes": 240,
+        "exact_subjects": None,
+        "min_subjects": 1,
+        "year_label": "WAEC",
+    },
+    "NECO": {
+        "aloc_type": "neco",
+        "title": "NECO CBT Practice Exam",
+        "duration_minutes": 240,
+        "exact_subjects": None,
+        "min_subjects": 1,
+        "year_label": "NECO",
+    },
+    "POST_UTME": {
+        "aloc_type": "post-utme",
+        "title": "POST-UTME CBT Practice Exam",
+        "duration_minutes": 90,
+        "exact_subjects": 4,
+        "year_label": "POST-UTME",
+    },
+}
+
+# UTME years shown in the picker (newest first). ALOC serves 2025+ papers for core subjects.
+UTME_PICKER_YEARS = [str(y) for y in range(2025, 2000, -1)]
+
+# Legacy year hints per subject (ALOC catalogue). Picker still shows full UTME_PICKER_YEARS.
 ALOC_UTME_YEARS: dict[str, list[str]] = {
-    "english": ["2010", "2009", "2008", "2007", "2006", "2005", "2004", "2003"],
-    "mathematics": ["2013", "2009", "2008", "2007", "2006"],
+    "english": ["2025", "2024", "2023", "2022", "2021", "2010", "2009", "2008", "2007", "2006", "2005", "2004", "2003"],
+    "mathematics": ["2025", "2024", "2023", "2022", "2021", "2013", "2009", "2008", "2007", "2006"],
+    "biology": ["2025", "2024", "2023", "2022", "2021", "2012", "2011", "2010", "2009", "2008", "2006", "2005", "2004", "2003"],
+    "chemistry": ["2025", "2024", "2023", "2022", "2021", "2010", "2006", "2005", "2004", "2003", "2002", "2001"],
     "commerce": ["2016", "2013", "2012", "2011", "2010", "2009", "2008", "2007", "2006", "2005", "2004", "2003", "2002", "2001", "2000"],
     "accounting": ["2016", "2015", "2014", "2013", "2012", "2011", "2010", "2009", "2007", "2006", "2004"],
-    "biology": ["2012", "2011", "2010", "2009", "2008", "2006", "2005", "2004", "2003"],
-    "physics": ["2012", "2011", "2010", "2009", "2007", "2006"],
-    "chemistry": ["2021", "2010", "2006", "2005", "2004", "2003", "2002", "2001"],
+    "physics": ["2025", "2024", "2023", "2022", "2021", "2012", "2011", "2010", "2009", "2007", "2006"],
     "englishlit": ["2015", "2013", "2012", "2010", "2009", "2008", "2007", "2006"],
     "government": ["2016", "2013", "2012", "2011", "2010", "2009", "2008", "2007", "2006", "2000", "1999"],
     "crk": ["2015", "2013", "2012", "2011", "2010", "2009", "2008", "2007", "2006", "2005"],
@@ -90,17 +133,67 @@ def order_jamb_subjects(subjects: list[str]) -> list[str]:
     return ordered
 
 
+def normalize_exam_type(value: Optional[str]) -> str:
+    raw = (value or "JAMB").strip().upper().replace("-", "_")
+    if raw in {"POSTUTME", "POST_UTME"}:
+        return "POST_UTME"
+    if raw in EXAM_CONFIG:
+        return raw
+    return "JAMB"
+
+
+def aloc_combined_id(exam_type: str) -> str:
+    return f"aloc:{normalize_exam_type(exam_type)}:combined"
+
+
+def aloc_type_for_exam(exam_type: str) -> str:
+    cfg = EXAM_CONFIG.get(normalize_exam_type(exam_type), EXAM_CONFIG["JAMB"])
+    return cfg["aloc_type"]
+
+
 def jamb_question_limit(aloc_slug: str) -> int:
     return 60 if aloc_slug == "english" else 40
 
 
-def jamb_total_questions(matched_subjects: list[str]) -> int:
+def question_limit_for_exam(exam_type: str, aloc_slug: str) -> int:
+    if normalize_exam_type(exam_type) == "JAMB":
+        return jamb_question_limit(aloc_slug)
+    return 40
+
+
+def total_questions_for_subjects(exam_type: str, matched_subjects: list[str]) -> int:
     total = 0
     for subject in matched_subjects:
         slug = profile_subject_to_aloc(subject)
         if slug:
-            total += jamb_question_limit(slug)
+            total += question_limit_for_exam(exam_type, slug)
     return total
+
+
+def _normalize_year(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _question_matches_year(item: dict, year: str, exam_type: str = "utme") -> bool:
+    if not year:
+        return True
+    qyear = _normalize_year(item.get("examyear"))
+    if qyear != _normalize_year(year):
+        return False
+    qtype = str(item.get("examtype") or "").strip().lower()
+    if not qtype:
+        return True
+    want = (exam_type or "utme").strip().lower()
+    aliases = EXAM_TYPE_ALIASES.get(want, {want})
+    return qtype in aliases or qtype in {"", want}
+
+
+def _filter_questions_by_year(items: list[dict], year: str, exam_type: str = "utme") -> list[dict]:
+    if not year:
+        return items
+    return [q for q in items if _question_matches_year(q, year, exam_type)]
 
 
 def _normalize_answer(answer: Any, options: dict[str, str]) -> str:
@@ -142,35 +235,89 @@ def convert_aloc_question(item: dict, index: int, subject_label: str) -> dict:
 
 
 def jamb_year_catalog(subjects: list[str]) -> dict:
-    """Years available per profile subject + union/common lists for the UI."""
+    """Years for the UI picker — full 2025→2001 list plus per-subject catalogue hints."""
     by_subject: dict[str, list[str]] = {}
-    slug_years: list[set[str]] = []
+    slug_year_sets: list[set[str]] = []
+
     for subject in order_jamb_subjects(subjects):
         slug = profile_subject_to_aloc(subject)
         if not slug:
             continue
-        years = list(ALOC_UTME_YEARS.get(slug, []))
-        by_subject[subject] = years
-        if years:
-            slug_years.append(set(years))
+        catalogue = set(ALOC_UTME_YEARS.get(slug, [])) | set(UTME_PICKER_YEARS)
+        ordered = [y for y in UTME_PICKER_YEARS if y in catalogue]
+        by_subject[subject] = ordered
+        slug_year_sets.append(catalogue)
 
-    all_years: list[str] = []
-    if slug_years:
-        all_years = sorted(set().union(*slug_years), key=lambda y: int(y) if y.isdigit() else 0, reverse=True)
+    all_years = list(UTME_PICKER_YEARS)
 
     common_years: list[str] = []
-    if slug_years:
-        common_years = sorted(
-            set.intersection(*slug_years),
-            key=lambda y: int(y) if y.isdigit() else 0,
-            reverse=True,
-        )
+    if slug_year_sets:
+        common_years = [y for y in UTME_PICKER_YEARS if all(y in s for s in slug_year_sets)]
 
     return {
         "by_subject": by_subject,
         "all_years": all_years,
         "common_years": common_years,
     }
+
+
+async def _fetch_aloc_batch(
+    client: httpx.AsyncClient,
+    *,
+    base: str,
+    token: str,
+    aloc_subject: str,
+    limit: int,
+    exam_type: str,
+    year: Optional[str],
+) -> tuple[list[dict], bool]:
+    """Fetch one ALOC batch. Returns (questions, used_fallback)."""
+    cap = min(max(int(limit), 1), 40)
+    url = f"{base}/api/v2/m/{cap}"
+    params: dict[str, str] = {"subject": aloc_subject, "type": exam_type}
+    year_norm = _normalize_year(year)
+    if year_norm:
+        params["year"] = year_norm
+
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "AccessToken": token,
+    }
+
+    resp = await client.get(url, params=params, headers=headers)
+    payload = resp.json()
+
+    if resp.status_code != 200:
+        detail = payload.get("error") if isinstance(payload, dict) else str(payload)
+        if isinstance(payload, dict) and payload.get("message"):
+            detail = payload.get("message")
+        raise HTTPException(status_code=502, detail=detail or "ALOC returned an error")
+
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, list):
+        return [], False
+
+    used_fallback = False
+    if year_norm and isinstance(payload, dict):
+        msg = str(payload.get("message") or "").lower()
+        if "could not find" in msg:
+            used_fallback = True
+            data = []
+
+    if year_norm:
+        data = _filter_questions_by_year(data, year_norm, exam_type)
+        if used_fallback:
+            return [], True
+        return data, False
+
+    if exam_type:
+        aliases = EXAM_TYPE_ALIASES.get(exam_type.strip().lower(), {exam_type.lower()})
+        data = [
+            q for q in data
+            if str(q.get("examtype") or "").strip().lower() in aliases | {"", "utme", "jamb", "waec", "wassce", "neco", "post-utme"}
+        ]
+    return data, False
 
 
 async def fetch_aloc_questions(
@@ -185,35 +332,45 @@ async def fetch_aloc_questions(
         raise HTTPException(status_code=503, detail="ALOC access token is not configured on the server")
 
     base = (settings.ALOC_BASE_URL or "https://questions.aloc.com.ng").rstrip("/")
-    url = f"{base}/api/v2/m/{limit}"
-    params: dict[str, str] = {"subject": aloc_subject, "type": exam_type}
-    if year:
-        params["year"] = year
-
-    headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
-        "AccessToken": token,
-    }
+    year_norm = _normalize_year(year)
+    want = max(int(limit), 1)
+    collected: list[dict] = []
+    seen_ids: set[Any] = set()
 
     try:
-        async with httpx.AsyncClient(timeout=90.0) as client:
-            resp = await client.get(url, params=params, headers=headers)
-            payload = resp.json()
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            attempts = 0
+            while len(collected) < want and attempts < 6:
+                batch, _ = await _fetch_aloc_batch(
+                    client,
+                    base=base,
+                    token=token,
+                    aloc_subject=aloc_subject,
+                    limit=want - len(collected),
+                    exam_type=exam_type,
+                    year=year_norm or None,
+                )
+                if not batch:
+                    break
+                for item in batch:
+                    qid = item.get("id")
+                    if qid in seen_ids:
+                        continue
+                    seen_ids.add(qid)
+                    collected.append(item)
+                    if len(collected) >= want:
+                        break
+                attempts += 1
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"ALOC request failed: {exc}") from exc
 
-    if resp.status_code != 200:
-        detail = payload.get("error") if isinstance(payload, dict) else str(payload)
-        raise HTTPException(status_code=502, detail=detail or "ALOC returned an error")
+    if year_norm:
+        collected = _filter_questions_by_year(collected, year_norm, exam_type)
 
-    data = payload.get("data") if isinstance(payload, dict) else None
-    if not isinstance(data, list):
-        return []
-    return data
+    return collected[:want]
 
 
-def split_jamb_profile_subjects(subjects: list[str]) -> tuple[list[str], list[str]]:
+def split_profile_subjects(subjects: list[str]) -> tuple[list[str], list[str]]:
     ordered = order_jamb_subjects(subjects)
     matched: list[str] = []
     missing: list[str] = []
@@ -225,22 +382,37 @@ def split_jamb_profile_subjects(subjects: list[str]) -> tuple[list[str], list[st
     return matched, missing
 
 
-async def build_jamb_combined_exam(
+def _validate_subjects_for_exam(exam_type: str, subjects: list[str]) -> None:
+    exam = normalize_exam_type(exam_type)
+    cfg = EXAM_CONFIG[exam]
+    exact = cfg.get("exact_subjects")
+    if exact is not None and len(subjects) != exact:
+        label = exam.replace("_", "-")
+        raise HTTPException(status_code=400, detail=f"{label} requires exactly {exact} subjects in profile")
+    minimum = cfg.get("min_subjects", 1)
+    if len(subjects) < minimum:
+        raise HTTPException(status_code=400, detail=f"{exam} requires at least {minimum} subject(s) in profile")
+
+
+async def build_combined_exam(
+    exam_type: str,
     subjects: list[str],
     *,
     year: Optional[str] = None,
     fetch: bool = True,
 ) -> dict:
-    if len(subjects) != 4:
-        raise HTTPException(status_code=400, detail="JAMB requires exactly 4 subjects in profile")
+    exam = normalize_exam_type(exam_type)
+    cfg = EXAM_CONFIG[exam]
+    _validate_subjects_for_exam(exam, subjects)
 
-    matched, missing = split_jamb_profile_subjects(subjects)
+    matched, missing = split_profile_subjects(subjects)
     if not matched:
         raise HTTPException(
             status_code=400,
             detail="None of your subjects are supported by ALOC. Update subjects in Profile.",
         )
 
+    aloc_type = cfg["aloc_type"]
     questions: list[dict] = []
     sections: list[dict] = []
     failed: list[str] = []
@@ -250,8 +422,8 @@ async def build_jamb_combined_exam(
             try:
                 slug = profile_subject_to_aloc(subject)
                 assert slug
-                limit = jamb_question_limit(slug)
-                raw = await fetch_aloc_questions(slug, limit, exam_type="utme", year=year)
+                limit = question_limit_for_exam(exam, slug)
+                raw = await fetch_aloc_questions(slug, limit, exam_type=aloc_type, year=year)
                 return subject, raw[:limit]
             except Exception:
                 return subject, []
@@ -276,16 +448,23 @@ async def build_jamb_combined_exam(
         missing = missing + [s for s in matched if s not in [sec["subject"] for sec in sections]]
         matched = [sec["subject"] for sec in sections]
 
-    total = jamb_total_questions(matched) if not fetch else len(questions)
+        year_label = cfg["year_label"]
+        if year and not questions:
+            raise HTTPException(
+                status_code=400,
+                detail=f"No {year_label} {year} papers found for your subjects. Try another year or Any year.",
+            )
+
+    total = total_questions_for_subjects(exam, matched) if not fetch else len(questions)
     year_catalog = jamb_year_catalog(matched)
-    year_note = f" · UTME {year}" if year else " · mixed UTME years"
+    year_note = f" · {cfg['year_label']} {year}" if year else f" · mixed {cfg['year_label']} years"
 
     return {
-        "id": ALOC_JAMB_COMBINED_ID,
-        "title": "JAMB CBT Practice Exam",
+        "id": aloc_combined_id(exam),
+        "title": cfg["title"],
         "subject": " · ".join(matched),
-        "exam_type": "JAMB",
-        "duration_minutes": 120,
+        "exam_type": exam,
+        "duration_minutes": cfg["duration_minutes"],
         "total_questions": total,
         "is_portal": True,
         "is_combined": True,
@@ -301,6 +480,15 @@ async def build_jamb_combined_exam(
         "sections": sections,
         "meta": (
             " · ".join(matched)
-            + f" · {total} questions · 2 hrs · ALOC Past Questions{year_note}"
+            + f" · {total} questions · {cfg['duration_minutes']} min · ALOC Past Questions{year_note}"
         ),
     }
+
+
+async def build_jamb_combined_exam(
+    subjects: list[str],
+    *,
+    year: Optional[str] = None,
+    fetch: bool = True,
+) -> dict:
+    return await build_combined_exam("JAMB", subjects, year=year, fetch=fetch)

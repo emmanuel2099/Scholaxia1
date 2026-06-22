@@ -14,6 +14,7 @@ SUBJECT_LIMITS = {
     ExamType.JAMB: 4,
     ExamType.WAEC: 9,
     ExamType.NECO: 9,
+    ExamType.POST_UTME: 4,
     ExamType.ALL: 9,
 }
 
@@ -21,6 +22,7 @@ SUBJECT_MINIMUMS = {
     ExamType.JAMB: 4,
     ExamType.WAEC: 1,
     ExamType.NECO: 1,
+    ExamType.POST_UTME: 4,
     ExamType.ALL: 1,
 }
 
@@ -96,6 +98,8 @@ async def setup_exam(
 
     if payload.exam_type == ExamType.JAMB and len(subjects) != 4:
         raise HTTPException(status_code=400, detail="JAMB requires exactly 4 subjects")
+    if payload.exam_type == ExamType.POST_UTME and len(subjects) != 4:
+        raise HTTPException(status_code=400, detail="POST-UTME requires exactly 4 subjects")
 
     result = await db.execute(select(StudentProfile).where(StudentProfile.user_id == current_user["sub"]))
     profile = result.scalar_one_or_none()

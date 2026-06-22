@@ -41,9 +41,128 @@ let currentSession = null;
 let answers = {};
 let currentQ = 0;
 let timerInterval = null;
+let timerEndsAt = 0;
 let secondsLeft = 0;
 let pendingSchoolExamId = null;
 let cameraStream = null;
+let activeSubjectTab = "";
+
+function cbtOfflineCacheKey(examId, year) {
+  return `sia_cbt_pack_${examId}_${year || "any"}`;
+}
+
+function loadOfflineCbtPack(examId, year) {
+  try {
+    const raw = localStorage.getItem(cbtOfflineCacheKey(examId, year));
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveOfflineCbtPack(examId, year, portal) {
+  try {
+    localStorage.setItem(cbtOfflineCacheKey(examId, year), JSON.stringify({
+      ...portal,
+      cached_at: Date.now(),
+      examId,
+      year: year || "",
+    }));
+  } catch (e) {
+    console.warn("Could not cache CBT offline", e);
+  }
+}
+
+async function startPortalExamCached(examId, opts) {
+  const year = (opts && opts.year) || "";
+  if (navigator.onLine) {
+    try {
+      const portal = await beginPortalExam(examId, opts);
+      saveOfflineCbtPack(examId, year, portal);
+      return portal;
+    } catch (e) {
+      const cached = loadOfflineCbtPack(examId, year);
+      if (cached) return cached;
+      throw e;
+    }
+  }
+  const cached = loadOfflineCbtPack(examId, year);
+  if (cached) return cached;
+  throw new Error("You are offline. Download this exam year once while online, then practice without data.");
+}
+
+function applyExamYearLabel(utmeYear, portal) {
+  const year = utmeYear || portal?.selected_year || portal?.exam?.selected_year || "";
+  const titleEl = document.getElementById("exam-title");
+  const metaEl = document.getElementById("exam-meta");
+  if (!titleEl || !metaEl || !currentExam) return;
+  const examLabel = formatExamType(currentExam.exam_type || portal?.exam?.exam_type || getUser().examType);
+  const yearPrefix = currentExam.exam_type === "JAMB" ? "UTME" : examLabel;
+  if (year) {
+    titleEl.textContent = `${currentExam.title} — ${yearPrefix} ${year}`;
+    metaEl.textContent = portal.meta && portal.meta.includes(String(year))
+      ? portal.meta
+      : `${yearPrefix} ${year} · ${portal.meta || ""}`.replace(/ · $/, "");
+  } else {
+    titleEl.textContent = currentExam.title;
+    metaEl.textContent = portal.meta || "";
+  }
+}
+
+function subjectLabelFromTopic(topic) {
+  return String(topic || "Subject").replace(/\s*\(\d{4}\)\s*$/, "").trim() || "Subject";
+}
+
+function getActiveSectionIndex() {
+  if (!currentExam || !currentExam.sections) return -1;
+  return currentExam.sections.findIndex(
+    (sec) => currentQ >= sec.start && currentQ < sec.start + sec.count
+  );
+}
+
+function buildSubjectTabs() {
+  const el = document.getElementById("subject-tabs");
+  if (!el || !currentExam || !currentExam.sections || currentExam.sections.length < 2) {
+    if (el) { el.innerHTML = ""; el.classList.add("hidden"); }
+    return;
+  }
+  el.classList.remove("hidden");
+  const activeIdx = getActiveSectionIndex();
+  el.innerHTML = currentExam.sections.map((sec, idx) => {
+    const answered = Array.from({ length: sec.count }, (_, i) => answers[sec.start + i]).filter(Boolean).length;
+    return `<button type="button" class="subject-tab ${idx === activeIdx ? "active" : ""}"
+      onclick="goToSubject(${sec.start})">${escHtml(sec.subject)} <span class="subj-count">${answered}/${sec.count}</span></button>`;
+  }).join("");
+}
+
+function showSubjectStartPicker() {
+  const picker = document.getElementById("subject-start-picker");
+  const list = document.getElementById("subject-start-list");
+  if (!picker || !list || !currentExam?.sections?.length) return;
+  list.innerHTML = currentExam.sections.map((sec) => `
+    <button type="button" class="subject-start-btn" onclick="startWithSubject(${sec.start})">
+      <strong>${escHtml(sec.subject)}</strong>
+      <span>${sec.count} questions</span>
+    </button>
+  `).join("");
+  picker.classList.remove("hidden");
+}
+
+function hideSubjectStartPicker() {
+  const picker = document.getElementById("subject-start-picker");
+  if (picker) picker.classList.add("hidden");
+}
+
+function startWithSubject(index) {
+  currentQ = index;
+  hideSubjectStartPicker();
+  renderQuestion();
+}
+
+function goToSubject(index) {
+  currentQ = index;
+  renderQuestion();
+}
 
 window.onload = async () => {
   if (!getToken()) {
@@ -57,26 +176,33 @@ window.onload = async () => {
   refreshPage();
 };
 
+function showCbtLoadingOverlay(message) {
+  let el = document.getElementById("cbt-loading-overlay");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "cbt-loading-overlay";
+    el.className = "cbt-loading-overlay hidden";
+    document.getElementById("page-cbt").appendChild(el);
+  }
+  el.innerHTML = `<div class="cbt-loading-box"><div class="cbt-spinner"></div><p>${escHtml(message || "Loading exam…")}</p></div>`;
+  el.classList.remove("hidden");
+}
+
+function hideCbtLoadingOverlay() {
+  const el = document.getElementById("cbt-loading-overlay");
+  if (el) el.classList.add("hidden");
+}
+
 function bindCbtGridClicks() {
   const grid = document.getElementById("cbt-grid");
   if (!grid || grid.dataset.clickBound) return;
   grid.dataset.clickBound = "1";
   grid.addEventListener("click", (ev) => {
-    const chip = ev.target.closest(".year-chip");
-    if (chip) {
-      ev.preventDefault();
-      const wrap = chip.closest(".cbt-year-picker");
-      if (wrap) {
-        wrap.querySelectorAll(".year-chip").forEach((c) => c.classList.remove("selected"));
-        chip.classList.add("selected");
-      }
-      return;
-    }
     const btn = ev.target.closest("[data-exam-id]");
     if (!btn || btn.disabled) return;
     ev.preventDefault();
     const card = btn.closest(".card");
-    const year = card?.querySelector(".year-chip.selected")?.dataset.year || "";
+    const year = card?.querySelector(".cbt-year-select")?.value || "";
     beginExam(btn.dataset.examId, false, year);
   });
 }
@@ -106,9 +232,7 @@ function setCbtStartLoading(loading) {
     btn.disabled = loading;
     if (loading) {
       if (!btn.dataset.label) btn.dataset.label = btn.textContent;
-      btn.textContent = btn.closest(".card")?.querySelector(".year-chip.selected")?.dataset.year
-        ? "Loading exam…"
-        : "Loading 180 questions…";
+      btn.textContent = "Please wait…";
     } else if (btn.dataset.label) {
       btn.textContent = btn.dataset.label;
     }
@@ -131,7 +255,21 @@ async function syncStudentProfile() {
 }
 
 function formatExamType(value) {
-  return String(value || "").replace(/^ExamType\./i, "") || "Student";
+  const raw = String(value || "").replace(/^ExamType\./i, "").replace(/-/g, "_").toUpperCase();
+  if (raw === "POST_UTME" || raw === "POSTUTME") return "POST-UTME";
+  return raw || "Student";
+}
+
+function subjectLimitForExamType(examType) {
+  const t = formatExamType(examType).toUpperCase().replace("-", "_");
+  if (t === "JAMB" || t === "POST_UTME") return 4;
+  return 9;
+}
+
+function subjectMinimumForExamType(examType) {
+  const t = formatExamType(examType).toUpperCase().replace("-", "_");
+  if (t === "JAMB" || t === "POST_UTME") return 4;
+  return 1;
 }
 
 function initUserUI() {
@@ -151,6 +289,9 @@ function logout() {
 }
 
 function showPage(page) {
+  if (isCbtExamActive() && page !== "cbt") {
+    if (!confirm("Leave the exam? Your timer will keep running.")) return;
+  }
   currentPage = page;
   document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
   document.querySelectorAll(".topnav-btn").forEach((n) => n.classList.remove("active"));
@@ -169,7 +310,9 @@ function refreshPage() {
   else if (currentPage === "school") loadSchoolExams();
   else if (currentPage === "school-portal") { /* static */ }
   else if (currentPage === "plans") loadPlans();
-  else if (currentPage === "cbt") loadCbtExams();
+  else if (currentPage === "cbt") {
+    if (!isCbtExamActive()) loadCbtExams();
+  }
   else if (currentPage === "sia") loadSia();
   else if (currentPage === "community") {
     var pending = communityPendingPost;
@@ -381,12 +524,13 @@ async function startSchoolExam() {
 
 function stripSeedPracticeExams(list, examType) {
   const type = formatExamType(examType || "").toUpperCase();
-  if (type !== "JAMB" && type !== "WAEC" && type !== "NECO") return list;
+  if (type !== "JAMB" && type !== "WAEC" && type !== "NECO" && type !== "POST_UTME" && type !== "POST-UTME") return list;
   if (!window.CBT_PORTAL_CONFIG) return list;
   return (list || []).filter((p) => p.is_school_exam);
 }
 
 async function loadCbtExams() {
+  if (isCbtExamActive()) return;
   showCbtListView();
   document.getElementById("cbt-grid").innerHTML = `<div class="loading">Loading…</div>`;
   await syncStudentProfile();
@@ -435,24 +579,41 @@ async function loadCbtExams() {
 
 function renderCbtYearPicker(exam) {
   if (!exam.is_aloc || !exam.available_years || !exam.available_years.length) return "";
+  const yearTag = exam.exam_type === "JAMB" ? "UTME"
+    : (exam.exam_type === "POST_UTME" ? "POST-UTME" : (exam.exam_type || "Exam"));
   const bySubject = exam.years_by_subject || {};
-  const subjectLines = Object.keys(bySubject).map((s) => {
+  const subjectRows = Object.keys(bySubject).map((s) => {
     const years = bySubject[s] || [];
-    return `<div class="year-subject-line"><strong>${escHtml(s)}</strong><span>${years.map((y) => escHtml(y)).join(", ")}</span></div>`;
+    const recent = years.filter((y) => Number(y) >= 2020).slice(0, 6).map((y) => `<span class="year-mini">${escHtml(y)}</span>`).join("");
+    const older = years.filter((y) => Number(y) < 2020).length
+      ? `<span class="year-mini muted">+${years.filter((y) => Number(y) < 2020).length} older</span>`
+      : "";
+    return `<div class="year-subject-row"><span class="year-subject-name">${escHtml(s)}</span><div class="year-mini-row">${recent}${older}</div></div>`;
   }).join("");
   const common = (exam.common_years || []).length
-    ? `<p class="year-common-note">All 4 subjects: ${exam.common_years.map((y) => escHtml(y)).join(", ")}</p>`
+    ? `<p class="year-common-note"><strong>All 4 subjects available:</strong> ${exam.common_years.slice(0, 10).map((y) => escHtml(y)).join(", ")}</p>`
     : "";
-  const chips = [
-    `<button type="button" class="year-chip selected" data-year="">Any year</button>`,
-    ...exam.available_years.map((y) => `<button type="button" class="year-chip" data-year="${escHtml(y)}">${escHtml(y)}</button>`),
+  const commonSet = new Set(exam.common_years || []);
+  const yearOptions = exam.available_years.map((y) => {
+    const tag = commonSet.has(y) ? " ✓ all subjects" : "";
+    return `<option value="${escHtml(y)}">${escHtml(yearTag)} ${escHtml(y)}${tag}</option>`;
+  }).join("");
+  const options = [
+    `<option value="">Any year — mixed past papers</option>`,
+    ...yearOptions,
   ].join("");
   return `
     <div class="cbt-year-picker">
-      <p class="year-picker-label">Choose UTME year (ALOC past questions)</p>
-      <div class="year-chips">${chips}</div>
+      <div class="year-picker-row">
+        <label class="year-picker-label" for="cbt-utme-year">Exam year</label>
+        <select class="cbt-year-select" aria-label="Choose UTME year">${options}</select>
+      </div>
+      <p class="year-picker-hint">Pick a year — only questions from that UTME paper will load.</p>
+      <details class="year-details">
+        <summary>View years per subject</summary>
+        <div class="year-subject-grid">${subjectRows}</div>
+      </details>
       ${common}
-      <div class="years-by-subject">${subjectLines}</div>
     </div>`;
 }
 
@@ -467,7 +628,7 @@ function renderCbtGrid(opts) {
         <div class="empty-state-premium">
           <div class="empty-icon">&#127891;</div>
           <h3>Complete your exam setup</h3>
-          <p>Go to <strong>Profile</strong> and pick JAMB, WAEC or NECO plus your subjects.</p>
+          <p>Go to <strong>Profile</strong> and pick JAMB, WAEC, NECO or POST-UTME plus your subjects.</p>
           <button type="button" class="btn-action" onclick="showPage('profile')">Set up subjects</button>
         </div>`;
       return;
@@ -486,7 +647,11 @@ function renderCbtGrid(opts) {
     const subjectMeta = e.is_combined && e.subjects
       ? `<span class="subject-chips">${e.subjects.map((s) => `<span class="subject-chip">${escHtml(s)}</span>`).join("")}</span>`
       : escHtml(e.subject);
-    const durationLabel = e.duration_minutes >= 120 ? "2 hrs" : `${e.duration_minutes} min`;
+    const durationLabel = e.duration_minutes >= 240 ? "4 hrs"
+      : (e.duration_minutes >= 120 ? "2 hrs" : `${e.duration_minutes} min`);
+    const startLabel = e.is_combined
+      ? `Start Full ${escHtml(formatExamType(e.exam_type))} CBT`
+      : "Start Exam";
     const missingNote = e.missing_subjects && e.missing_subjects.length
       ? `<p class="meta-warn">Not in your CBT bank yet: ${e.missing_subjects.map((s) => escHtml(s)).join(", ")} — pick a bank subject in Profile.</p>`
       : "";
@@ -497,7 +662,8 @@ function renderCbtGrid(opts) {
       <p class="meta">${subjectMeta} · ${e.total_questions} questions · ${durationLabel}</p>
       ${missingNote}
       ${renderCbtYearPicker(e)}
-      <button type="button" class="btn-join" data-exam-id="${escHtml(e.id)}">${e.is_combined ? "Start Full JAMB CBT" : "Start Exam"}</button>
+      <p class="cbt-offline-note">&#128241; After first download, exam works offline — no data needed during practice.</p>
+      <button type="button" class="btn-join" data-exam-id="${escHtml(e.id)}">${startLabel}</button>
     </div>`;
   }).join("");
 }
@@ -508,18 +674,25 @@ async function beginExam(examId, isSchool, utmeYear) {
     return;
   }
   setCbtStartLoading(true);
+  const user = getUser();
+  const examLabel = formatExamType(user.examType || "JAMB");
+  const yearLabel = utmeYear ? `${examLabel} ${utmeYear}` : `mixed ${examLabel} years`;
+  showCbtLoadingOverlay(`Loading ${examLabel} CBT (${yearLabel})… This can take up to a minute.`);
   try {
     if (typeof isPortalExamId === "function" && isPortalExamId(examId)) {
-      const portal = await beginPortalExam(examId, { year: utmeYear || "" });
+      const portal = await startPortalExamCached(examId, { year: utmeYear || "" });
       currentSession = portal.session;
       currentExam = portal.exam;
       answers = {};
       currentQ = 0;
-      secondsLeft = portal.secondsLeft;
+      secondsLeft = resolveExamDurationSeconds(portal.exam, portal);
 
       showCbtExamView();
-      document.getElementById("exam-title").textContent = currentExam.title;
-      document.getElementById("exam-meta").textContent = portal.meta;
+      applyExamYearLabel(utmeYear, portal);
+      buildSubjectTabs();
+      if (currentExam.sections && currentExam.sections.length > 1) {
+        showSubjectStartPicker();
+      }
       buildQNav();
       renderQuestion();
       startTimer();
@@ -534,7 +707,9 @@ async function beginExam(examId, isSchool, utmeYear) {
     currentExam = exam;
     answers = {};
     currentQ = 0;
-    secondsLeft = (exam.duration_minutes || 30) * 60;
+    secondsLeft = resolveExamDurationSeconds(exam, {
+      secondsLeft: (session.duration_minutes || exam.duration_minutes || 30) * 60,
+    });
 
     showCbtExamView();
     document.getElementById("exam-title").textContent = exam.title;
@@ -545,37 +720,82 @@ async function beginExam(examId, isSchool, utmeYear) {
     renderQuestion();
     startTimer();
   } catch (e) {
-    alert(e.message || "Could not start exam. Check your connection and try again.");
+    const offline = typeof navigator !== "undefined" && !navigator.onLine;
+    const msg = offline
+      ? "You are offline. Open this exam once while online to download it — then you can practice without mobile data."
+      : (e.message || "Could not start exam. Check your connection and try again.");
+    alert(msg);
     stopCamera();
   } finally {
+    hideCbtLoadingOverlay();
     setCbtStartLoading(false);
   }
 }
 
-function startTimer() {
-  clearInterval(timerInterval);
+function isCbtExamActive() {
+  const screen = document.getElementById("exam-screen");
+  return !!(currentExam && screen && !screen.classList.contains("hidden"));
+}
+
+function resolveExamDurationSeconds(exam, portal) {
+  const mins = Number(exam && exam.duration_minutes) || 120;
+  const fromPortal = portal && portal.secondsLeft;
+  const parsed = Number(fromPortal);
+  if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed);
+  return Math.floor(mins) * 60;
+}
+
+function stopCbtTimer() {
+  if (timerInterval) {
+    clearInterval(timerInterval);
+    timerInterval = null;
+  }
+  timerEndsAt = 0;
+}
+
+function tickCbtTimer() {
+  if (!timerEndsAt) return;
+  secondsLeft = Math.max(0, Math.ceil((timerEndsAt - Date.now()) / 1000));
   updateTimerDisplay();
-  timerInterval = setInterval(() => {
-    secondsLeft--;
-    updateTimerDisplay();
-    if (secondsLeft <= 0) submitExam();
-  }, 1000);
+  if (secondsLeft <= 0) {
+    stopCbtTimer();
+    submitExam(true);
+  }
+}
+
+function startTimer() {
+  stopCbtTimer();
+  if (!Number.isFinite(secondsLeft) || secondsLeft <= 0) {
+    secondsLeft = resolveExamDurationSeconds(currentExam, null);
+  }
+  timerEndsAt = Date.now() + secondsLeft * 1000;
+  updateTimerDisplay();
+  timerInterval = setInterval(tickCbtTimer, 250);
 }
 
 function updateTimerDisplay() {
-  const m = Math.floor(secondsLeft / 60);
-  const s = secondsLeft % 60;
-  document.getElementById("exam-timer").textContent =
-    `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  const el = document.getElementById("exam-timer");
+  if (!el) return;
+  const safe = Number.isFinite(secondsLeft) ? Math.max(0, secondsLeft) : 0;
+  const m = Math.floor(safe / 60);
+  const s = safe % 60;
+  el.textContent = `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  el.className = "exam-timer";
+  if (safe <= 300 && safe > 60) el.classList.add("warning");
+  if (safe <= 60) el.classList.add("danger");
 }
 
 function buildQNav() {
   if (!currentExam || !currentExam.questions) return;
   const nav = document.getElementById("q-nav");
-  nav.innerHTML = currentExam.questions.map((_, i) => `
-    <button class="q-btn ${i === currentQ ? "current" : ""} ${answers[i] ? "answered" : ""}"
-      onclick="goToQuestion(${i})">${i + 1}</button>
-  `).join("");
+  const sections = currentExam.sections || [];
+  nav.innerHTML = currentExam.questions.map((q, i) => {
+    const sec = sections.find((s) => i >= s.start && i < s.start + s.count);
+    const secClass = sec ? ` sec-${sections.indexOf(sec)}` : "";
+    return `<button type="button" class="q-btn ${i === currentQ ? "current" : ""} ${answers[i] ? "answered" : ""}${secClass}"
+      onclick="goToQuestion(${i})">${i + 1}</button>`;
+  }).join("");
+  buildSubjectTabs();
 }
 
 function renderQuestion() {
@@ -583,7 +803,7 @@ function renderQuestion() {
   const q = currentExam.questions[currentQ];
   if (!q) return;
   document.getElementById("q-num").textContent =
-    `Question ${currentQ + 1} of ${currentExam.questions.length}${q.topic ? " · " + q.topic : ""}`;
+    `Question ${currentQ + 1} of ${currentExam.questions.length}${q.topic ? " · " + subjectLabelFromTopic(q.topic) : ""}`;
   document.getElementById("q-text").textContent = q.question_text;
   const imgEl = document.getElementById("q-image");
   if (q.image_url) {
@@ -625,10 +845,18 @@ function nextQuestion() {
   if (currentQ < currentExam.questions.length - 1) { currentQ++; renderQuestion(); }
 }
 
-async function submitExam() {
-  clearInterval(timerInterval);
+async function submitExam(force) {
+  if (!currentExam || !currentExam.questions) {
+    if (!force) alert("No exam loaded.");
+    return;
+  }
+  if (!force && !confirm("Submit your exam now? You cannot change answers after submitting.")) return;
+
+  stopCbtTimer();
+  hideSubjectStartPicker();
+
   if (currentSession && currentSession.is_portal && typeof scorePortalExam === "function") {
-    showResult(scorePortalExam(currentExam));
+    showResult(scorePortalExam(currentExam, answers));
     return;
   }
   const answerMap = {};
@@ -653,8 +881,12 @@ async function submitExam() {
 }
 
 function showResult(result) {
+  hideSubjectStartPicker();
+  hideCbtLoadingOverlay();
   document.getElementById("exam-screen").classList.add("hidden");
-  document.getElementById("result-screen").classList.remove("hidden");
+  const resultEl = document.getElementById("result-screen");
+  resultEl.classList.remove("hidden");
+  resultEl.scrollIntoView({ behavior: "smooth", block: "start" });
   const raw = result.score_percent != null ? result.score_percent : result.percentage;
   const pct = raw != null ? Math.round(raw) : "—";
   document.getElementById("score-display").textContent = `${pct}%`;
@@ -674,8 +906,10 @@ function showResult(result) {
 }
 
 function closeExam() {
-  clearInterval(timerInterval);
+  stopCbtTimer();
   stopCamera();
+  hideSubjectStartPicker();
+  hideCbtLoadingOverlay();
   currentExam = null;
   currentSession = null;
   loadCbtExams();
@@ -697,12 +931,22 @@ async function loadProfile() {
     if (p.education_level) localStorage.setItem("sia_education_level", p.education_level);
     document.getElementById("sidebar-exam").textContent = formatExamType(p.exam_type);
 
-    if (p.setup_complete) {
-      document.getElementById("setup-card").style.display = "none";
-    } else {
-      document.getElementById("setup-card").style.display = "block";
-      renderSubjectPicker();
+    const setupCard = document.getElementById("setup-card");
+    const setupTitle = document.getElementById("setup-card-title");
+    if (setupCard) setupCard.style.display = "block";
+    if (setupTitle) {
+      setupTitle.textContent = p.setup_complete ? "Update exam profile" : "Exam setup & subjects";
     }
+    const examSel = document.getElementById("setup-exam-type");
+    if (examSel && p.exam_type) {
+      const et = String(p.exam_type).replace(/-/g, "_").toUpperCase();
+      examSel.value = et === "POSTUTME" ? "POST_UTME" : et;
+    }
+    const levelSel = document.getElementById("setup-level");
+    if (levelSel && p.education_level) levelSel.value = p.education_level;
+    selectedSubjects = [...(p.selected_subjects || [])];
+    if (allSubjects.length) renderSubjectPicker();
+    else loadSubjects().then(() => renderSubjectPicker());
   } catch (e) {
     alert(e.message);
   }
@@ -717,8 +961,15 @@ async function loadSubjects() {
 
 function renderSubjectPicker() {
   const examType = document.getElementById("setup-exam-type").value;
-  const max = examType === "JAMB" ? 4 : 9;
+  const max = subjectLimitForExamType(examType);
   const el = document.getElementById("subject-picker");
+  const hint = document.getElementById("setup-subject-hint");
+  if (hint) {
+    const min = subjectMinimumForExamType(examType);
+    hint.textContent = min === max
+      ? `Select exactly ${max} subjects.`
+      : `Select ${min} to ${max} subjects.`;
+  }
   el.innerHTML = allSubjects.map((s, i) => `
     <span class="subj-chip ${selectedSubjects.includes(s) ? "selected" : ""}"
       data-idx="${i}" onclick="toggleSubjectByIdx(${i}, ${max})">${escHtml(s)}</span>
@@ -735,7 +986,7 @@ function toggleSubject(subject, max) {
   const idx = selectedSubjects.indexOf(subject);
   if (idx >= 0) selectedSubjects.splice(idx, 1);
   else if (selectedSubjects.length < max) selectedSubjects.push(subject);
-  else alert(`Select exactly ${max} subjects for ${document.getElementById("setup-exam-type").value}.`);
+  else alert(`You can select at most ${max} subjects for ${formatExamType(document.getElementById("setup-exam-type").value)}.`);
   renderSubjectPicker();
 }
 
@@ -744,13 +995,20 @@ document.addEventListener("DOMContentLoaded", () => {
   if (sel) sel.addEventListener("change", () => { selectedSubjects = []; renderSubjectPicker(); });
 });
 
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && timerEndsAt) tickCbtTimer();
+});
+
 async function saveSetup() {
   const examType = document.getElementById("setup-exam-type").value;
   const level = document.getElementById("setup-level").value;
-  const needed = examType === "JAMB" ? 4 : 9;
+  const min = subjectMinimumForExamType(examType);
+  const max = subjectLimitForExamType(examType);
   const err = document.getElementById("setup-error");
-  if (selectedSubjects.length !== needed) {
-    err.textContent = `Select exactly ${needed} subjects.`;
+  if (selectedSubjects.length < min || selectedSubjects.length > max) {
+    err.textContent = min === max
+      ? `Select exactly ${max} subjects for ${formatExamType(examType)}.`
+      : `Select ${min} to ${max} subjects for ${formatExamType(examType)}.`;
     return;
   }
   try {
@@ -765,7 +1023,7 @@ async function saveSetup() {
     localStorage.setItem("sia_exam_type", examType);
     localStorage.setItem("sia_subjects", JSON.stringify(selectedSubjects));
     err.textContent = "";
-    alert("Exam setup saved!");
+    alert("Exam profile saved! Your CBT practice will use " + formatExamType(examType) + " subjects.");
     loadProfile();
     refreshPage();
   } catch (e) {
@@ -775,5 +1033,12 @@ async function saveSetup() {
 
 window.beginExam = beginExam;
 window.closeExam = closeExam;
+window.submitExam = submitExam;
+window.goToQuestion = goToQuestion;
+window.goToSubject = goToSubject;
+window.startWithSubject = startWithSubject;
+window.prevQuestion = prevQuestion;
+window.nextQuestion = nextQuestion;
+window.selectAnswer = selectAnswer;
 window.showCbtExamView = showCbtExamView;
 window.showCbtListView = showCbtListView;

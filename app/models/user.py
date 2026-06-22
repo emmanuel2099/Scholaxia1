@@ -19,6 +19,7 @@ class ExamType(str, enum.Enum):
     JAMB = "JAMB"
     WAEC = "WAEC"
     NECO = "NECO"
+    POST_UTME = "POST_UTME"
     ALL = "ALL"
 
 
