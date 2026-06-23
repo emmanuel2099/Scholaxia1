@@ -15,6 +15,7 @@ from app.models.live_class import LiveClass, ClassAttendance, LiveSessionRequest
 from app.models.user import StudentProfile, User
 from app.core.subjects import subject_matches
 from app.services.live_class_room import has_mic_access
+from app.services.live_class_access import get_live_access_info, parse_uuid, consume_live_session
 from app.services.notification_service import send_subject_notification
 
 router = APIRouter(prefix="/live-classes", tags=["Live Classes"])
@@ -203,23 +204,47 @@ async def join_class(
     if not live_class.is_live:
         live_class.is_live = True
 
-    from app.models.payment import Payment, PaymentStatus
-    paid_res = await db.execute(
-        select(Payment).where(
-            Payment.student_id == current_user["sub"],
-            Payment.live_class_id == live_class.id,
-            Payment.status == PaymentStatus.success,
-        )
-    )
-    if not paid_res.scalar_one_or_none():
+    access = await get_live_access_info(db, current_user["sub"], class_id)
+    if not access["can_join"]:
+        if access.get("active_plan") and access.get("sessions_left", 0) <= 0:
+            raise HTTPException(
+                status_code=402,
+                detail="You have used all live sessions on your plan this month. Upgrade or renew your plan.",
+            )
         raise HTTPException(
             status_code=402,
-            detail="Payment required. Pay with Flutterwave before joining this live class.",
+            detail="Choose a Scholaxia One-on-One Live Class plan before joining.",
         )
+
+    student_uid = parse_uuid(current_user["sub"])
+    existing = await db.execute(
+        select(ClassAttendance).where(
+            ClassAttendance.live_class_id == live_class.id,
+            ClassAttendance.student_id == student_uid,
+            ClassAttendance.is_removed == False,  # noqa: E712
+        )
+    )
+    if existing.scalar_one_or_none():
+        uid = _user_uid(current_user["sub"])
+        token = _generate_agora_token(live_class.room_id, uid, is_teacher=False)
+        expires_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+        return {
+            "room_id": live_class.room_id,
+            "channel_id": live_class.room_id,
+            "agora_token": token,
+            "uid": uid,
+            "app_id": settings.AGORA_APP_ID,
+            "title": live_class.title,
+            "subject": live_class.subject,
+            "end_time": live_class.end_time.isoformat() if live_class.end_time else None,
+            "expires_at": expires_at,
+        }
+
+    await consume_live_session(db, current_user["sub"])
 
     attendance = ClassAttendance(
         live_class_id=live_class.id,
-        student_id=current_user["sub"],
+        student_id=student_uid,
         is_muted=True,
     )
     db.add(attendance)

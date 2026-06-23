@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     FLUTTERWAVE_SECRET_KEY: str = ""
     FLUTTERWAVE_SECRET_HASH: str = ""  # optional webhook hash
     LIVE_CLASS_JOIN_AMOUNT: float = 2000.0  # NGN per live class session
+    LIVE_CLASS_MONTHLY_DAYS: int = 30  # one payment unlocks all live classes for 30 days
 
     # Firebase — use FIREBASE_CREDENTIALS_JSON on Render (paste full JSON), or file locally
     FIREBASE_CREDENTIALS_PATH: str = "firebase-credentials.json"

@@ -689,6 +689,7 @@ async function loadLive(quiet) {
 
     renderLive(live);
     renderUpcoming(upcoming);
+    if (typeof loadLivePlans === "function") loadLivePlans();
 
     if (feed?.my_session_requests) renderRequests(feed.my_session_requests);
     else if (!quiet) loadMyRequests();

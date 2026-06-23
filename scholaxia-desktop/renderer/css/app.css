@@ -644,6 +644,107 @@ body:has(.app-shell-sidebar) {
 }
 .live-empty-compact p { margin: 0; }
 
+.live-plan-status-wrap { margin-bottom: 20px; }
+.live-plan-hint, .live-plan-active {
+  background: #f0faf3;
+  border: 1px solid #c8e6d4;
+  border-radius: 12px;
+  padding: 14px 18px;
+  font-size: 0.9rem;
+  color: #2d4a38;
+  line-height: 1.5;
+}
+.live-plans-section { margin-bottom: 28px; }
+.live-plans-grid { display: flex; flex-direction: column; gap: 28px; }
+.live-plan-group-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #0f3320;
+  margin: 0 0 14px;
+}
+.live-plans-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+.live-plan-card {
+  background: #fff;
+  border: 1px solid #d4e8da;
+  border-radius: 16px;
+  padding: 18px 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 4px 18px rgba(26, 77, 50, 0.05);
+}
+.live-plan-card-suggested {
+  border-color: #1a5c3a;
+  box-shadow: 0 8px 28px rgba(26, 92, 58, 0.12);
+}
+.live-plan-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.live-plan-cat {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #4a6b55;
+}
+.live-plan-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #1a5c3a;
+  background: #e8f5ec;
+  padding: 4px 8px;
+  border-radius: 999px;
+}
+.live-plan-card h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: #0f3320;
+}
+.live-plan-meta {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #5a6f64;
+  line-height: 1.45;
+}
+.live-plan-features {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.8rem;
+  color: #3d5248;
+  line-height: 1.5;
+  flex: 1;
+}
+.live-plan-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.live-plan-price {
+  font-size: 1.1rem;
+  color: #1a5c3a;
+}
+.live-plan-price span {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #5a6f64;
+}
+.live-plan-pay {
+  width: auto;
+  min-width: 120px;
+  padding: 10px 16px;
+  font-size: 0.85rem;
+}
+
 .notify-hint { font-size: 0.8rem; color: #6b7c74; font-style: italic; margin-top: 8px; }
 .portal-card {
   background: #fff; border: 1px solid #d4e8da; border-radius: 16px;

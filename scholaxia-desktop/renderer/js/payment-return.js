@@ -5,7 +5,7 @@
     var statusMsg = document.getElementById("status-msg");
     var err = document.getElementById("status-err");
     if (spinner) spinner.style.display = "none";
-    if (title) title.textContent = "Payment not completed";
+    if (title) title.textContent = "Could not complete payment";
     if (statusMsg) statusMsg.textContent = msg;
     if (err) {
       err.classList.remove("hidden");
@@ -14,11 +14,17 @@
   }
 
   function readPending() {
+    var raw = sessionStorage.getItem("sia_pay_return") || localStorage.getItem("sia_pay_return");
     try {
-      return JSON.parse(sessionStorage.getItem("sia_pay_return") || "null");
+      return raw ? JSON.parse(raw) : null;
     } catch (e) {
       return null;
     }
+  }
+
+  function clearPending() {
+    sessionStorage.removeItem("sia_pay_return");
+    localStorage.removeItem("sia_pay_return");
   }
 
   function fakeCard(pending) {
@@ -41,61 +47,81 @@
 
     var params = new URLSearchParams(window.location.search);
     var status = (params.get("status") || "").toLowerCase();
-    var transactionId = params.get("transaction_id");
+    var transactionId = params.get("transaction_id") || params.get("flw_ref");
     var txRef = params.get("tx_ref");
     var pending = readPending();
+    var classId = params.get("class_id") || (pending && pending.class_id);
+    var planId = params.get("plan_id") || (pending && pending.plan_id);
+    var payType = params.get("ctx") || (pending && pending.type);
 
     if (status === "cancelled" || status === "failed") {
-      sessionStorage.removeItem("sia_pay_return");
-      showError("You cancelled or the payment did not go through. Try again from Live Class.");
+      clearPending();
+      showError("Payment was cancelled. Your plan was not activated.");
       return;
     }
 
     if (status !== "successful" || !transactionId) {
-      sessionStorage.removeItem("sia_pay_return");
-      showError("We could not confirm this payment. If you were charged, contact support with reference: " + (txRef || "unknown"));
+      clearPending();
+      showError("We could not confirm this payment. Reference: " + (txRef || "unknown"));
       return;
     }
 
-    var payType = pending && pending.type;
     try {
-      if (payType === "live" && pending.class_id) {
+      if ((payType === "live" || (pending && pending.type === "live")) && planId) {
         await api("/api/v1/payments/flutterwave/verify", {
           method: "POST",
           body: JSON.stringify({
             transaction_id: String(transactionId),
-            class_id: pending.class_id,
-            tx_ref: txRef || pending.tx_ref || null,
+            plan_id: planId,
+            class_id: classId || null,
+            tx_ref: txRef || (pending && pending.tx_ref) || null,
           }),
         });
-        sessionStorage.removeItem("sia_pay_return");
-        document.getElementById("status-title").textContent = "Payment successful!";
-        document.getElementById("status-msg").textContent = "Joining your class now…";
-        await completeJoinClass(pending.class_id, fakeCard(pending));
+        clearPending();
+        if (classId) {
+          document.getElementById("status-title").textContent = "Plan activated!";
+          document.getElementById("status-msg").textContent = "Joining your live class now…";
+          await completeJoinClass(classId, fakeCard(pending));
+          return;
+        }
+        document.getElementById("status-title").textContent = "Plan activated!";
+        document.getElementById("status-msg").textContent = "Redirecting to Live Class…";
+        window.location.href = "app.html";
         return;
       }
 
-      if (payType === "material" && pending.material_id) {
+      if (payType === "material" || (pending && pending.type === "material")) {
+        var materialId = params.get("material_id") || (pending && pending.material_id);
         await api("/api/v1/payments/flutterwave/verify", {
           method: "POST",
           body: JSON.stringify({
             transaction_id: String(transactionId),
-            material_id: pending.material_id,
-            tx_ref: txRef || pending.tx_ref || null,
+            material_id: materialId,
+            tx_ref: txRef || (pending && pending.tx_ref) || null,
           }),
         });
-        sessionStorage.removeItem("sia_pay_return");
-        document.getElementById("status-title").textContent = "Payment successful!";
-        document.getElementById("status-msg").textContent = "Opening your material…";
-        window.location.href = "app.html#library";
+        clearPending();
+        window.location.href = "app.html";
         return;
       }
 
-      sessionStorage.removeItem("sia_pay_return");
-      showError("Payment received but session details were lost. Open Live Class and tap Join again — you should not be charged twice.");
+      clearPending();
+      showError("Payment received. Open Live Class and tap Join — your plan should be active.");
     } catch (e) {
-      sessionStorage.removeItem("sia_pay_return");
-      showError(e.message || "Verification failed. Try joining again from Live Class.");
+      if (classId && planId) {
+        try {
+          var access = await api("/api/v1/payments/live-class/" + encodeURIComponent(classId) + "/access");
+          if (access && access.paid) {
+            clearPending();
+            document.getElementById("status-title").textContent = "Plan active";
+            document.getElementById("status-msg").textContent = "Joining your live class now…";
+            await completeJoinClass(classId, fakeCard(pending));
+            return;
+          }
+        } catch (ignored) { /* fall through */ }
+      }
+      clearPending();
+      showError(e.message || "Verification failed. Open Live Class and try Join again.");
     }
   }
 

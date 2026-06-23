@@ -256,9 +256,18 @@
 
     <section id="page-live" class="page">
 
-      <div class="info-banner">Pay with Flutterwave (card, bank, USSD) before joining a live class. Price is shown when you tap Join.</div>
+      <div class="info-banner">Scholaxia <strong>One-on-One Live Class Plans</strong> — pay monthly (not per class). Choose your level below, then tap <strong>Join Class</strong> on any live session.</div>
 
-      <div class="section-header">
+      <div id="live-plan-status" class="live-plan-status-wrap"></div>
+
+      <div id="live-plans-section" class="live-plans-section">
+        <div class="section-header">
+          <h2>Monthly Plans</h2>
+        </div>
+        <div id="live-plans-grid" class="live-plans-grid"><div class="loading">Loading plans…</div></div>
+      </div>
+
+      <div class="section-header" style="margin-top:32px">
 
         <h2>Live Now</h2>
 
@@ -672,7 +681,8 @@
 <script src="js/community.js"></script>
 <script src="js/skills.js"></script>
 
-<script src="js/live-payment.js?v=pay-redirect"></script>
+<script src="js/live-plans.js"></script>
+<script src="js/live-payment.js?v=plans-v1"></script>
 <script src="js/library.js"></script>
 <script src="js/saved-live.js"></script>
 <script src="js/app.js?v=live-fix-2"></script>

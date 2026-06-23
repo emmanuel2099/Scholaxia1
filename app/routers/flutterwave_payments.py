@@ -8,12 +8,22 @@ import uuid
 from app.core.database import get_db
 from app.core.deps import require_student
 from app.core.config import settings
+from app.core.live_class_plans import (
+    all_plans_dict,
+    get_plan,
+    suggest_plan_ids,
+)
 from app.models.payment import Payment, PaymentStatus
 from app.models.live_class import LiveClass
 from app.models.teacher_material import TeacherMaterial, MaterialPurchase
-from app.models.user import User
+from app.models.user import User, StudentProfile
 from app.core.datetime_utils import naive_utc_now
 from app.services.flutterwave_service import verify_transaction
+from app.services.live_class_access import (
+    activate_live_plan,
+    get_live_access_info,
+    parse_uuid,
+)
 
 router = APIRouter(prefix="/payments", tags=["Payments"])
 
@@ -22,18 +32,18 @@ class FlutterwaveVerifyRequest(BaseModel):
     transaction_id: str
     class_id: Optional[str] = None
     material_id: Optional[str] = None
+    plan_id: Optional[str] = None
     tx_ref: Optional[str] = None
 
 
-async def _student_has_paid_for_class(db: AsyncSession, student_id: str, class_id: str) -> bool:
-    result = await db.execute(
-        select(Payment).where(
-            Payment.student_id == student_id,
-            Payment.live_class_id == class_id,
-            Payment.status == PaymentStatus.success,
-        )
-    )
-    return result.scalar_one_or_none() is not None
+class LivePlanInitRequest(BaseModel):
+    plan_id: str
+    class_id: Optional[str] = None
+
+
+async def _student_has_live_access(db: AsyncSession, student_id: str, class_id: str = "") -> bool:
+    access = await get_live_access_info(db, student_id, class_id or None)
+    return access["can_join"]
 
 
 async def _student_has_material_access(db: AsyncSession, student_id: str, material_id: str) -> bool:
@@ -52,16 +62,48 @@ async def _student_has_material_access(db: AsyncSession, student_id: str, materi
     return result.scalar_one_or_none() is not None
 
 
+@router.get("/live-class/plans")
+async def list_live_class_plans(
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    prof_res = await db.execute(
+        select(StudentProfile).where(StudentProfile.user_id == current_user["sub"])
+    )
+    profile = prof_res.scalar_one_or_none()
+    education_level = profile.education_level if profile else None
+    exam_type = profile.exam_type.value if profile and profile.exam_type else None
+    suggested = suggest_plan_ids(education_level, exam_type)
+    access = await get_live_access_info(db, current_user["sub"])
+    active = access.get("active_plan")
+    return {
+        "plans": all_plans_dict(),
+        "suggested_plan_ids": suggested,
+        "active_plan": {
+            **active,
+            "expires_at": active["expires_at"].isoformat() if active and active.get("expires_at") else None,
+        } if active else None,
+        "currency": "NGN",
+        "public_key": settings.FLUTTERWAVE_PUBLIC_KEY,
+    }
+
+
 @router.get("/live-class/{class_id}/access")
 async def live_class_access(
     class_id: str,
     current_user: dict = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ):
-    paid = await _student_has_paid_for_class(db, current_user["sub"], class_id)
+    access = await get_live_access_info(db, current_user["sub"], class_id)
+    valid_until = access.get("valid_until")
+    active = access.get("active_plan")
     return {
-        "paid": paid,
-        "amount": settings.LIVE_CLASS_JOIN_AMOUNT,
+        "paid": access["can_join"],
+        "need_plan": access.get("need_plan", True),
+        "monthly_pass": access.get("monthly_pass", False),
+        "sessions_left": access.get("sessions_left", 0),
+        "active_plan": active,
+        "valid_until": valid_until.isoformat() if valid_until else None,
         "currency": "NGN",
         "public_key": settings.FLUTTERWAVE_PUBLIC_KEY,
     }
@@ -89,9 +131,9 @@ async def material_access_payment(
     }
 
 
-@router.post("/flutterwave/live-class/{class_id}/init")
-async def init_live_class_payment(
-    class_id: str,
+@router.post("/flutterwave/live-plan/init")
+async def init_live_plan_payment(
+    payload: LivePlanInitRequest,
     current_user: dict = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ):
@@ -101,41 +143,48 @@ async def init_live_class_payment(
             detail="Payment system is not configured. Contact Scholaxia support.",
         )
 
-    result = await db.execute(select(LiveClass).where(LiveClass.id == class_id))
-    live_class = result.scalar_one_or_none()
-    now = naive_utc_now()
-    in_window = (
-        live_class
-        and live_class.start_time
-        and live_class.start_time <= now
-        and (live_class.end_time is None or live_class.end_time > now)
-    )
-    if not live_class or (not live_class.is_live and not in_window):
-        raise HTTPException(status_code=404, detail="Class not live")
+    plan = get_plan(payload.plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
 
-    if await _student_has_paid_for_class(db, current_user["sub"], class_id):
+    if await _student_has_live_access(db, current_user["sub"], payload.class_id or ""):
         return {
             "already_paid": True,
-            "amount": settings.LIVE_CLASS_JOIN_AMOUNT,
+            "plan_id": plan.id,
+            "amount": plan.price,
             "currency": "NGN",
             "public_key": settings.FLUTTERWAVE_PUBLIC_KEY,
         }
+
+    if payload.class_id:
+        result = await db.execute(select(LiveClass).where(LiveClass.id == payload.class_id))
+        live_class = result.scalar_one_or_none()
+        now = naive_utc_now()
+        in_window = (
+            live_class
+            and live_class.start_time
+            and live_class.start_time <= now
+            and (live_class.end_time is None or live_class.end_time > now)
+        )
+        if not live_class or (not live_class.is_live and not in_window):
+            raise HTTPException(status_code=404, detail="Class not live")
 
     user_res = await db.execute(select(User).where(User.id == current_user["sub"]))
     user = user_res.scalar_one_or_none()
     email = user.email if user else f"{current_user['sub']}@scholaxia.local"
     name = user.full_name if user else "Student"
 
-    tx_ref = f"scholaxia-live-{class_id[:8]}-{uuid.uuid4().hex[:16]}"
+    tx_ref = f"scholaxia-plan-{plan.id[:12]}-{uuid.uuid4().hex[:12]}"
 
     payment = Payment(
-        student_id=current_user["sub"],
-        amount=settings.LIVE_CLASS_JOIN_AMOUNT,
+        student_id=parse_uuid(current_user["sub"]),
+        amount=plan.price,
         currency="NGN",
         status=PaymentStatus.pending,
         flutterwave_tx_ref=tx_ref,
-        live_class_id=live_class.id,
-        description=f"Live class: {live_class.title}",
+        live_plan_id=plan.id,
+        live_class_id=parse_uuid(payload.class_id) if payload.class_id else None,
+        description=f"Live plan: {plan.name}",
     )
     db.add(payment)
     await db.flush()
@@ -143,14 +192,30 @@ async def init_live_class_payment(
     return {
         "already_paid": False,
         "payment_id": str(payment.id),
+        "plan_id": plan.id,
+        "plan_name": plan.name,
         "tx_ref": tx_ref,
-        "amount": settings.LIVE_CLASS_JOIN_AMOUNT,
+        "amount": plan.price,
         "currency": "NGN",
         "public_key": settings.FLUTTERWAVE_PUBLIC_KEY,
-        "class_title": live_class.title,
-        "class_subject": live_class.subject,
+        "class_id": payload.class_id,
         "customer": {"email": email, "name": name},
     }
+
+
+@router.post("/flutterwave/live-class/{class_id}/init")
+async def init_live_class_payment(
+    class_id: str,
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """Legacy endpoint — redirects clients to choose a monthly plan."""
+    if await _student_has_live_access(db, current_user["sub"], class_id):
+        return {"already_paid": True, "need_plan": False}
+    raise HTTPException(
+        status_code=402,
+        detail="Choose a Scholaxia One-on-One Live Class plan before joining.",
+    )
 
 
 @router.post("/flutterwave/material/{material_id}/init")
@@ -185,7 +250,7 @@ async def init_material_payment(
     tx_ref = f"scholaxia-mat-{material_id[:8]}-{uuid.uuid4().hex[:16]}"
 
     payment = Payment(
-        student_id=current_user["sub"],
+        student_id=parse_uuid(current_user["sub"]),
         amount=material.price,
         currency="NGN",
         status=PaymentStatus.pending,
@@ -215,16 +280,14 @@ async def verify_flutterwave_payment(
     current_user: dict = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ):
-    if not payload.class_id and not payload.material_id:
-        raise HTTPException(status_code=400, detail="class_id or material_id required")
+    if not payload.class_id and not payload.material_id and not payload.plan_id:
+        raise HTTPException(status_code=400, detail="class_id, plan_id, or material_id required")
 
-    if payload.class_id:
-        if await _student_has_paid_for_class(db, current_user["sub"], payload.class_id):
-            return {"paid": True, "class_id": payload.class_id}
+    if payload.class_id and await _student_has_live_access(db, current_user["sub"], payload.class_id):
+        return {"paid": True, "class_id": payload.class_id}
 
-    if payload.material_id:
-        if await _student_has_material_access(db, current_user["sub"], payload.material_id):
-            return {"paid": True, "material_id": payload.material_id, "has_access": True}
+    if payload.material_id and await _student_has_material_access(db, current_user["sub"], payload.material_id):
+        return {"paid": True, "material_id": payload.material_id, "has_access": True}
 
     try:
         data = await verify_transaction(payload.transaction_id)
@@ -241,28 +304,66 @@ async def verify_flutterwave_payment(
         pay_res = await db.execute(
             select(Payment).where(
                 Payment.flutterwave_tx_ref == tx_ref,
-                Payment.student_id == current_user["sub"],
+                Payment.student_id == parse_uuid(current_user["sub"]),
             )
         )
         payment = pay_res.scalar_one_or_none()
 
-    if payload.class_id:
-        if amount_paid < settings.LIVE_CLASS_JOIN_AMOUNT:
+    plan_id = payload.plan_id or (payment.live_plan_id if payment else None)
+    if plan_id or (payment and payment.live_plan_id):
+        plan_id = plan_id or payment.live_plan_id
+        plan = get_plan(plan_id)
+        if not plan:
+            raise HTTPException(status_code=400, detail="Unknown plan")
+        if amount_paid + 1 < plan.price:
             raise HTTPException(status_code=400, detail="Incorrect payment amount")
-        if payment and payment.live_class_id and str(payment.live_class_id) != payload.class_id:
-            raise HTTPException(status_code=400, detail="Payment does not match this class")
-
-        meta = data.get("meta") or {}
-        if meta.get("class_id") and str(meta.get("class_id")) != payload.class_id:
-            raise HTTPException(status_code=400, detail="Payment does not match this class")
 
         if not payment:
             payment = Payment(
-                student_id=current_user["sub"],
+                student_id=parse_uuid(current_user["sub"]),
                 amount=amount_paid,
                 currency=data.get("currency") or "NGN",
-                live_class_id=payload.class_id,
-                description="Live class access",
+                live_plan_id=plan.id,
+                description=f"Live plan: {plan.name}",
+            )
+            db.add(payment)
+
+        payment.status = PaymentStatus.success
+        payment.live_plan_id = plan.id
+        payment.flutterwave_transaction_id = str(data.get("id") or payload.transaction_id)
+        if tx_ref:
+            payment.flutterwave_tx_ref = tx_ref
+        activated = await activate_live_plan(db, current_user["sub"], plan.id)
+        await db.flush()
+        return {
+            "paid": True,
+            "plan_id": plan.id,
+            "class_id": payload.class_id,
+            "payment_id": str(payment.id),
+            "active_plan": {
+                **activated,
+                "expires_at": activated["expires_at"].isoformat(),
+            },
+        }
+
+    if payload.material_id:
+        mat_res = await db.execute(select(TeacherMaterial).where(TeacherMaterial.id == payload.material_id))
+        material = mat_res.scalar_one_or_none()
+        if not material or not material.is_active:
+            raise HTTPException(status_code=404, detail="Material not found")
+        if material.is_free:
+            return {"paid": True, "material_id": payload.material_id, "has_access": True}
+
+        if amount_paid < material.price:
+            raise HTTPException(status_code=400, detail="Incorrect payment amount")
+
+        if not payment:
+            payment = Payment(
+                student_id=parse_uuid(current_user["sub"]),
+                amount=amount_paid,
+                currency=data.get("currency") or "NGN",
+                material_id=material.id,
+                description=f"Material: {material.title}",
             )
             db.add(payment)
 
@@ -271,49 +372,21 @@ async def verify_flutterwave_payment(
         if tx_ref:
             payment.flutterwave_tx_ref = tx_ref
         await db.flush()
-        return {"paid": True, "class_id": payload.class_id, "payment_id": str(payment.id)}
 
-    # Material purchase
-    mat_res = await db.execute(select(TeacherMaterial).where(TeacherMaterial.id == payload.material_id))
-    material = mat_res.scalar_one_or_none()
-    if not material or not material.is_active:
-        raise HTTPException(status_code=404, detail="Material not found")
-    if material.is_free:
-        return {"paid": True, "material_id": payload.material_id, "has_access": True}
-
-    if amount_paid < material.price:
-        raise HTTPException(status_code=400, detail="Incorrect payment amount")
-    if payment and payment.material_id and str(payment.material_id) != payload.material_id:
-        raise HTTPException(status_code=400, detail="Payment does not match this material")
-
-    if not payment:
-        payment = Payment(
-            student_id=current_user["sub"],
-            amount=amount_paid,
-            currency=data.get("currency") or "NGN",
-            material_id=material.id,
-            description=f"Material: {material.title}",
+        existing = await db.execute(
+            select(MaterialPurchase).where(
+                MaterialPurchase.student_id == current_user["sub"],
+                MaterialPurchase.material_id == material.id,
+            )
         )
-        db.add(payment)
+        if not existing.scalar_one_or_none():
+            db.add(MaterialPurchase(
+                student_id=current_user["sub"],
+                material_id=material.id,
+                payment_id=payment.id,
+            ))
+            await db.flush()
 
-    payment.status = PaymentStatus.success
-    payment.flutterwave_transaction_id = str(data.get("id") or payload.transaction_id)
-    if tx_ref:
-        payment.flutterwave_tx_ref = tx_ref
-    await db.flush()
+        return {"paid": True, "material_id": payload.material_id, "has_access": True, "payment_id": str(payment.id)}
 
-    existing = await db.execute(
-        select(MaterialPurchase).where(
-            MaterialPurchase.student_id == current_user["sub"],
-            MaterialPurchase.material_id == material.id,
-        )
-    )
-    if not existing.scalar_one_or_none():
-        db.add(MaterialPurchase(
-            student_id=current_user["sub"],
-            material_id=material.id,
-            payment_id=payment.id,
-        ))
-        await db.flush()
-
-    return {"paid": True, "material_id": payload.material_id, "has_access": True, "payment_id": str(payment.id)}
+    raise HTTPException(status_code=400, detail="Could not verify payment")

@@ -1,6 +1,5 @@
 /**
- * Flutterwave checkout before joining a live class.
- * Uses full-page redirect (not iframe modal) so WebView2 desktop can complete payment.
+ * Flutterwave checkout for Scholaxia One-on-One Live Class monthly plans.
  */
 function loadFlutterwaveScript() {
   return new Promise(function (resolve, reject) {
@@ -20,12 +19,20 @@ function formatNaira(amount) {
   return "₦" + Number(amount).toLocaleString("en-NG");
 }
 
-function paymentReturnUrl() {
-  return window.location.origin + "/payment-return.html";
+function paymentReturnUrl(ctx) {
+  var base = window.location.origin + "/payment-return.html";
+  if (ctx.type === "material" && ctx.material_id) {
+    return base + "?ctx=material&material_id=" + encodeURIComponent(ctx.material_id);
+  }
+  var q = "?ctx=live&plan_id=" + encodeURIComponent(ctx.plan_id || "");
+  if (ctx.class_id) q += "&class_id=" + encodeURIComponent(ctx.class_id);
+  return base + q;
 }
 
 function savePaymentReturnContext(ctx) {
-  sessionStorage.setItem("sia_pay_return", JSON.stringify(ctx));
+  var raw = JSON.stringify(ctx);
+  sessionStorage.setItem("sia_pay_return", raw);
+  localStorage.setItem("sia_pay_return", raw);
 }
 
 function startFlutterwaveRedirect(init, ctx) {
@@ -43,24 +50,29 @@ function startFlutterwaveRedirect(init, ctx) {
     payment_options: "card, banktransfer, ussd",
     customer: { email: email, name: name },
     customizations: {
-      title: ctx.custom_title || "Scholaxia",
-      description: ctx.custom_description || "Payment",
+      title: ctx.custom_title || "Scholaxia Live Class",
+      description: ctx.custom_description || "Monthly live class plan",
       logo: window.location.origin + "/assets/logo.png",
     },
     meta: ctx.meta || {},
-    redirect_url: paymentReturnUrl(),
+    redirect_url: paymentReturnUrl(ctx),
   });
   return { redirecting: true };
 }
 
-async function payForLiveClass(classId, cardMeta) {
+async function payForLivePlan(planId, classId, btn) {
   await loadFlutterwaveScript();
 
-  var init = await api("/api/v1/payments/flutterwave/live-class/" + encodeURIComponent(classId) + "/init", {
+  var init = await api("/api/v1/payments/flutterwave/live-plan/init", {
     method: "POST",
+    body: JSON.stringify({
+      plan_id: planId,
+      class_id: classId || null,
+    }),
   });
 
   if (init.already_paid) {
+    if (classId) await completeJoinClass(classId, null);
     return { paid: true };
   }
 
@@ -68,18 +80,16 @@ async function payForLiveClass(classId, cardMeta) {
     throw new Error("Payment could not be started. Try again later.");
   }
 
-  var card = cardMeta && cardMeta.dataset ? cardMeta.dataset : {};
+  var card = btn && btn.dataset ? btn.dataset : {};
   return startFlutterwaveRedirect(init, {
     type: "live",
-    class_id: classId,
+    plan_id: planId,
+    class_id: classId || init.class_id || "",
     tx_ref: init.tx_ref,
-    title: card.title || init.class_title || "",
-    subject: card.subject || init.class_subject || "",
-    teacher: card.teacher || "",
-    end_time: card.end || "",
-    custom_title: "Scholaxia Live Class",
-    custom_description: (init.class_title || "Live class") + " — " + (init.class_subject || ""),
-    meta: { class_id: classId },
+    title: card.title || init.plan_name || "",
+    custom_title: "Scholaxia — " + (init.plan_name || "Live Plan"),
+    custom_description: (init.plan_name || "Monthly plan") + " — " + formatNaira(init.amount) + "/month",
+    meta: { plan_id: planId, class_id: classId || "" },
   });
 }
 
@@ -109,26 +119,26 @@ async function joinClassWithPayment(btn) {
   try {
     var access = await api("/api/v1/payments/live-class/" + encodeURIComponent(classId) + "/access");
     if (!access.paid) {
-      var price = formatNaira(access.amount || 2000);
-      var title = (card && card.dataset.title) || "this live class";
-      if (!confirm("Join \"" + title + "\"?\n\nPay " + price + " with Flutterwave (card, bank, or USSD) before entering.")) {
-        return;
-      }
-      var payResult = await payForLiveClass(classId, card);
-      if (payResult && payResult.redirecting) {
-        return;
-      }
+      if (typeof scrollToLivePlans === "function") scrollToLivePlans();
+      if (typeof loadLivePlans === "function") loadLivePlans(classId);
+      alert("Choose a monthly live class plan below, then pay once to join this class and others for 30 days.");
+      return;
     }
     await completeJoinClass(classId, card);
   } catch (e) {
+    if (String(e.message || "").indexOf("402") >= 0 || String(e.message).toLowerCase().indexOf("plan") >= 0) {
+      if (typeof scrollToLivePlans === "function") scrollToLivePlans();
+      if (typeof loadLivePlans === "function") loadLivePlans(classId);
+    }
     alert(e.message || "Could not join class.");
   }
 }
 
 window.joinClassWithPayment = joinClassWithPayment;
 window.completeJoinClass = completeJoinClass;
+window.payForLivePlan = payForLivePlan;
 
-async function payForMaterial(materialId, meta) {
+async function payForMaterial(materialId) {
   await loadFlutterwaveScript();
 
   var init = await api("/api/v1/payments/flutterwave/material/" + encodeURIComponent(materialId) + "/init", {

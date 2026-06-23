@@ -54,6 +54,9 @@ class StudentProfile(Base):
     selected_subjects: Mapped[list] = mapped_column(ARRAY(String), default=[])
     education_level: Mapped[str] = mapped_column(String(50), nullable=True)  # JSS1, SS1, JAMB etc.
     has_active_subscription: Mapped[bool] = mapped_column(Boolean, default=False)
+    live_plan_id: Mapped[str] = mapped_column(String(80), nullable=True)
+    live_plan_expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    live_plan_sessions_used: Mapped[int] = mapped_column(Integer, default=0)
     community_channel_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("community_channels.id"), nullable=True)
 
     user: Mapped["User"] = relationship("User", back_populates="student_profile")
