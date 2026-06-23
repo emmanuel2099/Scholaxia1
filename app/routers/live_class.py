@@ -201,6 +201,23 @@ async def join_class(
     now = naive_utc_now()
     if not live_class or not _class_is_active(live_class, now):
         raise HTTPException(status_code=404, detail="Class not live")
+
+    prof_res = await db.execute(
+        select(StudentProfile).where(StudentProfile.user_id == current_user["sub"])
+    )
+    profile = prof_res.scalar_one_or_none()
+    subjects = list(profile.selected_subjects or []) if profile else []
+    if not subjects:
+        raise HTTPException(
+            status_code=400,
+            detail="Add your subjects in profile setup to join live classes.",
+        )
+    if not subject_matches(live_class.subject, subjects):
+        raise HTTPException(
+            status_code=403,
+            detail="This live class is not for one of your selected subjects.",
+        )
+
     if not live_class.is_live:
         live_class.is_live = True
 
@@ -398,15 +415,17 @@ async def list_live_classes(
     result = await db.execute(query)
     classes = result.scalars().all()
 
-    # Students: live classes visible to everyone; upcoming filtered by profile subjects
+    # Students: only classes matching profile subjects (e.g. Maths → Mathematics live)
     if role == "student":
         prof_res = await db.execute(
             select(StudentProfile).where(StudentProfile.user_id == current_user["sub"])
         )
         profile = prof_res.scalar_one_or_none()
         subjects = list(profile.selected_subjects or []) if profile else []
-        if status != "live" and subjects:
+        if subjects:
             classes = [c for c in classes if subject_matches(c.subject, subjects)]
+        else:
+            classes = []
 
     # Fetch teacher names
     teacher_ids = list({str(c.teacher_id) for c in classes})

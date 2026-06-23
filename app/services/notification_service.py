@@ -6,6 +6,7 @@ from app.models.notification import Notification, DeviceToken, NotificationType
 import firebase_admin
 from firebase_admin import messaging, credentials
 from app.core.config import settings
+from app.core.subjects import subject_matches
 
 # Initialize Firebase once
 _firebase_initialized = False
@@ -145,17 +146,14 @@ async def send_subject_notification(
 ):
     """
     Send push + in-app notifications ONLY to students who selected the given subject.
-    This is the core targeted notification logic for live classes.
+    Uses flexible matching (e.g. "Maths" in profile matches "Mathematics" class).
     """
-    # Find all students who have this subject in their selected_subjects
-    result = await db.execute(
-        select(StudentProfile).where(
-            StudentProfile.selected_subjects.contains([subject])
-        )
-    )
+    result = await db.execute(select(StudentProfile))
     profiles = result.scalars().all()
-
-    student_ids = [str(p.user_id) for p in profiles]
+    student_ids = [
+        str(p.user_id) for p in profiles
+        if p.selected_subjects and subject_matches(subject, list(p.selected_subjects))
+    ]
 
     # Save in-app notifications
     for student_id in student_ids:

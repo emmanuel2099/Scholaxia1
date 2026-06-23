@@ -19,9 +19,9 @@ services:
       - key: DEBUG
         value: "False"
 
-      # Sia AI — Gemini (primary) + Groq (fallback)
+      # Sia AI — DeepSeek (primary) + Gemini/Groq (fallback)
       - key: AI_BACKEND
-        value: gemini
+        value: deepseek
       - key: GEMINI_API_KEY
         sync: false
       - key: GEMINI_MODEL

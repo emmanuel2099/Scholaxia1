@@ -246,7 +246,32 @@ window.onload = async () => {
   bindCbtGridClicks();
   await syncStudentProfile();
   loadSubjects();
-  refreshPage();
+
+  var urlParams = new URLSearchParams(window.location.search);
+  var openLive = urlParams.get("live") === "1";
+  if (typeof reconcilePendingPlanPayment === "function") {
+    await reconcilePendingPlanPayment();
+  }
+  if (openLive || urlParams.get("paid") === "1") {
+    try { sessionStorage.removeItem("sia_live_plans_cache"); } catch (e) { /* ignore */ }
+  }
+  var openLibrary = urlParams.get("library") === "1";
+  if (openLive) {
+    showPage("live");
+    if (urlParams.get("paid") === "1" && typeof loadLivePlans === "function") {
+      loadLivePlans(null, false);
+    }
+    if (window.history && window.history.replaceState) {
+      window.history.replaceState({}, "", "app.html");
+    }
+  } else if (openLibrary) {
+    showPage("library");
+    if (window.history && window.history.replaceState) {
+      window.history.replaceState({}, "", "app.html");
+    }
+  } else {
+    refreshPage();
+  }
   startLivePolling();
   if (typeof prefetchCommunityFeed === "function") prefetchCommunityFeed();
 };
@@ -644,12 +669,44 @@ function paintLiveFromCache() {
   return true;
 }
 
+function getStudentSubjects() {
+  try {
+    return JSON.parse(localStorage.getItem("sia_subjects") || "[]");
+  } catch (e) {
+    return [];
+  }
+}
+
+function filterSessionsBySubjects(sessions) {
+  var subjects = getStudentSubjects();
+  if (!subjects.length) return [];
+  return (sessions || []).filter(function (s) {
+    return sessionMatchesSubjects(s, subjects);
+  });
+}
+
 function sessionMatchesSubjects(session, subjects) {
   if (!subjects || !subjects.length) return true;
-  var s = (session.subject || "").toLowerCase();
+  var aliases = {
+    math: "mathematics",
+    maths: "mathematics",
+    english: "english language",
+    agric: "agricultural science",
+    agriculture: "agricultural science",
+    econs: "economics",
+    govt: "government",
+    geo: "geography",
+  };
+  function norm(s) {
+    var k = (s || "").toLowerCase().trim();
+    return aliases[k] || k;
+  }
+  var exam = norm(session.subject || "");
   return subjects.some(function (sub) {
-    var t = (sub || "").toLowerCase();
-    return s.indexOf(t) >= 0 || t.indexOf(s) >= 0;
+    var sel = norm(sub);
+    var raw = (sub || "").toLowerCase().trim();
+    var rawExam = (session.subject || "").toLowerCase().trim();
+    return exam === sel || rawExam === raw || rawExam.indexOf(raw) >= 0 || raw.indexOf(rawExam) >= 0;
   });
 }
 
@@ -693,13 +750,8 @@ async function loadLive(quiet) {
       api("/api/v1/live-classes/?status=upcoming&limit=50"),
     ]);
 
-    let live = liveRaw || [];
-    const upcoming = upcomingRaw || [];
-
-    if (!live.length) {
-      const all = await api("/api/v1/live-classes/?limit=50").catch(() => []);
-      live = (all || []).filter(function (s) { return s.is_live; });
-    }
+    let live = filterSessionsBySubjects(liveRaw || []);
+    const upcoming = filterSessionsBySubjects(upcomingRaw || []);
 
     if (quiet) {
       live.forEach(function (s) {
@@ -729,8 +781,8 @@ function renderLiveEmpty(el) {
   el.innerHTML = `
     <div class="live-empty-state">
       <div class="live-empty-icon" aria-hidden="true">&#127909;</div>
-      <h3>Nothing live yet</h3>
-      <p>Your teacher's class will show up here with a green <strong>Join Class</strong> button.</p>
+      <h3>Nothing live for your subjects</h3>
+      <p>When a teacher goes live in one of your profile subjects, you'll see a <strong>Join Class</strong> button here.</p>
       <button type="button" class="btn-action live-empty-refresh" onclick="refreshPage()">Check again</button>
     </div>`;
 }

@@ -28,6 +28,11 @@ function writePlansCache(data) {
   } catch (e) { /* ignore */ }
 }
 
+function clearPlansCache() {
+  _livePlansCache = null;
+  try { sessionStorage.removeItem(PLANS_CACHE_KEY); } catch (e) { /* ignore */ }
+}
+
 function formatPlanPrice(amount) {
   return "₦" + Number(amount).toLocaleString("en-NG");
 }
@@ -128,7 +133,8 @@ function fetchLivePlansFromApi() {
 async function loadLivePlans(pendingClassId, quiet) {
   _pendingJoinClassId = pendingClassId || null;
   var gridEl = document.getElementById("live-plans-grid");
-  var cached = readPlansCache();
+  var forceRefresh = !quiet && pendingClassId;
+  var cached = forceRefresh ? null : readPlansCache();
 
   if (cached) {
     renderLivePlansPage(cached, pendingClassId);
@@ -154,8 +160,16 @@ function scrollToLivePlans() {
 window.loadLivePlans = loadLivePlans;
 window.scrollToLivePlans = scrollToLivePlans;
 window.readPlansCache = readPlansCache;
+window.clearPlansCache = clearPlansCache;
 window.getPendingJoinClassId = function () { return _pendingJoinClassId; };
 
+(function paintPlansFromCacheEarly() {
+  var cached = readPlansCache();
+  if (cached) renderLivePlansPage(cached, null);
+})();
+
 if (typeof getToken === "function" && getToken()) {
-  fetchLivePlansFromApi().catch(function () { /* warm cache */ });
+  fetchLivePlansFromApi()
+    .then(function (data) { renderLivePlansPage(data, _pendingJoinClassId); })
+    .catch(function () { /* warm cache */ });
 }

@@ -65,13 +65,10 @@ async def _live_classes(
         )
     query = query.order_by(LiveClass.start_time.desc()).limit(limit * 3)
     result = await db.execute(query)
-    if status == "live":
-        classes = list(result.scalars().all())[:limit]
-    else:
-        classes = [
-            c for c in result.scalars().all()
-            if _matches_subjects(c.subject, selected_subjects)
-        ][:limit]
+    classes = [
+        c for c in result.scalars().all()
+        if selected_subjects and _matches_subjects(c.subject, selected_subjects)
+    ][:limit]
 
     teacher_ids = list({str(c.teacher_id) for c in classes})
     teachers_map = {}

@@ -35,6 +35,38 @@ function savePaymentReturnContext(ctx) {
   var raw = JSON.stringify(ctx);
   sessionStorage.setItem("sia_pay_return", raw);
   localStorage.setItem("sia_pay_return", raw);
+  if (ctx.tx_ref) {
+    localStorage.setItem("sia_plan_pending_verify", JSON.stringify({
+      tx_ref: ctx.tx_ref,
+      plan_id: ctx.plan_id || "",
+      class_id: ctx.class_id || "",
+    }));
+  }
+}
+
+function clearPlanPaymentPending() {
+  localStorage.removeItem("sia_plan_pending_verify");
+  try { sessionStorage.removeItem("sia_live_plans_cache"); } catch (e) { /* ignore */ }
+  if (typeof window._livePlansCache !== "undefined") window._livePlansCache = null;
+}
+
+async function reconcilePendingPlanPayment() {
+  var raw = localStorage.getItem("sia_plan_pending_verify");
+  var txRef = null;
+  if (raw) {
+    try { txRef = JSON.parse(raw).tx_ref || null; } catch (e) { /* ignore */ }
+  }
+  try {
+    var result = await api("/api/v1/payments/flutterwave/reconcile-plan", {
+      method: "POST",
+      body: JSON.stringify({ tx_ref: txRef }),
+    });
+    if (result && (result.paid || result.reconciled)) {
+      clearPlanPaymentPending();
+      return true;
+    }
+  } catch (e) { /* ignore */ }
+  return false;
 }
 
 function startFlutterwaveRedirect(init, ctx) {
@@ -154,6 +186,13 @@ async function joinClassWithPayment(btn) {
   _livePayBusy = true;
   setJoinButtonBusy(card, true, "Joining…");
   try {
+    var reconciled = await reconcilePendingPlanPayment();
+    if (reconciled) {
+      if (typeof clearPlansCache === "function") clearPlansCache();
+      else {
+        try { sessionStorage.removeItem("sia_live_plans_cache"); } catch (e) { /* ignore */ }
+      }
+    }
     var access = await api("/api/v1/payments/live-class/" + encodeURIComponent(classId) + "/access");
     if (!access || !access.paid) {
       if (typeof scrollToLivePlans === "function") scrollToLivePlans();
@@ -209,6 +248,8 @@ if (document.readyState === "loading") {
 window.joinClassWithPayment = joinClassWithPayment;
 window.completeJoinClass = completeJoinClass;
 window.payForLivePlan = payForLivePlan;
+window.reconcilePendingPlanPayment = reconcilePendingPlanPayment;
+window.clearPlanPaymentPending = clearPlanPaymentPending;
 
 async function payForMaterial(materialId) {
   await loadFlutterwaveScript();

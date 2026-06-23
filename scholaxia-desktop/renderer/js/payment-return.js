@@ -9,7 +9,7 @@
     if (statusMsg) statusMsg.textContent = msg;
     if (err) {
       err.classList.remove("hidden");
-      err.innerHTML = '<a href="app.html">Back to Scholaxia</a>';
+      err.innerHTML = '<a href="app.html?live=1">Open Live Class</a>';
     }
   }
 
@@ -25,6 +25,7 @@
   function clearPending() {
     sessionStorage.removeItem("sia_pay_return");
     localStorage.removeItem("sia_pay_return");
+    if (typeof clearPlanPaymentPending === "function") clearPlanPaymentPending();
   }
 
   function fakeCard(pending) {
@@ -37,6 +38,14 @@
         end: pending.end_time || "",
       },
     };
+  }
+
+  function goToLiveClass(classId) {
+    if (classId) {
+      window.location.href = "classroom.html";
+      return;
+    }
+    window.location.href = "app.html?live=1&paid=1";
   }
 
   async function handleReturn() {
@@ -52,7 +61,7 @@
     var pending = readPending();
     var classId = params.get("class_id") || (pending && pending.class_id);
     var planId = params.get("plan_id") || (pending && pending.plan_id);
-    var payType = params.get("ctx") || (pending && pending.type);
+    var payType = params.get("ctx") || (pending && pending.type) || "live";
 
     if (status === "cancelled" || status === "failed") {
       clearPending();
@@ -67,61 +76,76 @@
     }
 
     try {
-      if ((payType === "live" || (pending && pending.type === "live")) && planId) {
-        await api("/api/v1/payments/flutterwave/verify", {
-          method: "POST",
-          body: JSON.stringify({
-            transaction_id: String(transactionId),
-            plan_id: planId,
-            class_id: classId || null,
-            tx_ref: txRef || (pending && pending.tx_ref) || null,
-          }),
-        });
-        clearPending();
-        if (classId) {
-          document.getElementById("status-title").textContent = "Plan activated!";
-          document.getElementById("status-msg").textContent = "Joining your live class now…";
-          await completeJoinClass(classId, fakeCard(pending));
-          return;
-        }
-        document.getElementById("status-title").textContent = "Plan activated!";
-        document.getElementById("status-msg").textContent = "Redirecting to Live Class…";
-        window.location.href = "app.html";
-        return;
+      var verifyBody = {
+        transaction_id: String(transactionId),
+        tx_ref: txRef || (pending && pending.tx_ref) || null,
+      };
+      if (payType === "material") {
+        var materialId = params.get("material_id") || (pending && pending.material_id);
+        verifyBody.material_id = materialId || null;
+      } else {
+        verifyBody.plan_id = planId || null;
+        verifyBody.class_id = classId || null;
       }
 
-      if (payType === "material" || (pending && pending.type === "material")) {
-        var materialId = params.get("material_id") || (pending && pending.material_id);
-        await api("/api/v1/payments/flutterwave/verify", {
-          method: "POST",
-          body: JSON.stringify({
-            transaction_id: String(transactionId),
-            material_id: materialId,
-            tx_ref: txRef || (pending && pending.tx_ref) || null,
-          }),
-        });
-        clearPending();
-        window.location.href = "app.html";
-        return;
-      }
+      var verified = await api("/api/v1/payments/flutterwave/verify", {
+        method: "POST",
+        body: JSON.stringify(verifyBody),
+      });
 
       clearPending();
-      showError("Payment received. Open Live Class and tap Join — your plan should be active.");
+      try { sessionStorage.removeItem("sia_live_plans_cache"); } catch (e) { /* ignore */ }
+
+      if (payType === "material") {
+        document.getElementById("status-title").textContent = "Payment successful";
+        document.getElementById("status-msg").textContent = "Your material is unlocked.";
+        setTimeout(function () {
+          window.location.href = "app.html?library=1";
+        }, 800);
+        return;
+      }
+
+      if (classId && verified && verified.paid) {
+        document.getElementById("status-title").textContent = "Plan activated!";
+        document.getElementById("status-msg").textContent = "Joining your live class now…";
+        await completeJoinClass(classId, fakeCard(pending));
+        return;
+      }
+
+      document.getElementById("status-title").textContent = "Plan activated!";
+      document.getElementById("status-msg").textContent = "You can join live classes now.";
+      setTimeout(function () {
+        window.location.href = "app.html?live=1&paid=1";
+      }, 800);
     } catch (e) {
-      if (classId && planId) {
-        try {
-          var access = await api("/api/v1/payments/live-class/" + encodeURIComponent(classId) + "/access");
-          if (access && access.paid) {
-            clearPending();
+      try {
+        var access = await api("/api/v1/payments/live-class/plans");
+        if (access && access.active_plan && access.active_plan.sessions_left > 0) {
+          clearPending();
+          if (classId) {
             document.getElementById("status-title").textContent = "Plan active";
             document.getElementById("status-msg").textContent = "Joining your live class now…";
             await completeJoinClass(classId, fakeCard(pending));
             return;
           }
-        } catch (ignored) { /* fall through */ }
+          window.location.href = "app.html?live=1&paid=1";
+          return;
+        }
+      } catch (ignored) { /* fall through */ }
+
+      if (classId) {
+        try {
+          var classAccess = await api("/api/v1/payments/live-class/" + encodeURIComponent(classId) + "/access");
+          if (classAccess && classAccess.paid) {
+            clearPending();
+            await completeJoinClass(classId, fakeCard(pending));
+            return;
+          }
+        } catch (ignored2) { /* fall through */ }
       }
+
       clearPending();
-      showError(e.message || "Verification failed. Open Live Class and try Join again.");
+      showError(e.message || "Verification failed. Open Live Class and tap Join again.");
     }
   }
 

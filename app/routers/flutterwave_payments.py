@@ -18,7 +18,7 @@ from app.models.live_class import LiveClass
 from app.models.teacher_material import TeacherMaterial, MaterialPurchase
 from app.models.user import User, StudentProfile
 from app.core.datetime_utils import naive_utc_now
-from app.services.flutterwave_service import verify_transaction
+from app.services.flutterwave_service import verify_transaction, verify_transaction_by_reference
 from app.services.live_class_access import (
     activate_live_plan,
     get_live_access_info,
@@ -39,6 +39,10 @@ class FlutterwaveVerifyRequest(BaseModel):
 class LivePlanInitRequest(BaseModel):
     plan_id: str
     class_id: Optional[str] = None
+
+
+class ReconcilePlanRequest(BaseModel):
+    tx_ref: Optional[str] = None
 
 
 async def _student_has_live_access(db: AsyncSession, student_id: str, class_id: str = "") -> bool:
@@ -274,14 +278,144 @@ async def init_material_payment(
     }
 
 
+@router.post("/flutterwave/reconcile-plan")
+async def reconcile_plan_payment(
+    payload: ReconcilePlanRequest,
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """Activate a plan when payment succeeded but the return page was missed."""
+    sid = parse_uuid(current_user["sub"])
+    payment = None
+
+    if payload.tx_ref:
+        pay_res = await db.execute(
+            select(Payment).where(
+                Payment.flutterwave_tx_ref == payload.tx_ref,
+                Payment.student_id == sid,
+            )
+        )
+        payment = pay_res.scalar_one_or_none()
+
+    if not payment:
+        pending_res = await db.execute(
+            select(Payment)
+            .where(
+                Payment.student_id == sid,
+                Payment.live_plan_id.isnot(None),
+                Payment.status == PaymentStatus.pending,
+            )
+            .order_by(Payment.created_at.desc())
+            .limit(1)
+        )
+        payment = pending_res.scalar_one_or_none()
+
+    if not payment or not payment.live_plan_id:
+        access = await get_live_access_info(db, current_user["sub"])
+        return {
+            "reconciled": False,
+            "paid": access["paid"],
+            "active_plan": access.get("active_plan"),
+        }
+
+    plan = get_plan(payment.live_plan_id)
+    if not plan:
+        raise HTTPException(status_code=400, detail="Unknown plan")
+
+    if payment.status == PaymentStatus.success:
+        access = await get_live_access_info(db, current_user["sub"])
+        if access["paid"]:
+            active = access.get("active_plan") or {}
+            expires = active.get("expires_at")
+            return {
+                "reconciled": True,
+                "paid": True,
+                "plan_id": plan.id,
+                "active_plan": {
+                    **active,
+                    "expires_at": expires.isoformat() if hasattr(expires, "isoformat") else expires,
+                },
+            }
+        activated = await activate_live_plan(db, current_user["sub"], plan.id)
+        await db.flush()
+        access = await get_live_access_info(db, current_user["sub"])
+        return {
+            "reconciled": True,
+            "paid": access["paid"],
+            "plan_id": plan.id,
+            "active_plan": {
+                **activated,
+                "expires_at": activated["expires_at"].isoformat(),
+            },
+        }
+
+    tx_ref = payment.flutterwave_tx_ref
+    if not tx_ref:
+        raise HTTPException(status_code=400, detail="Payment reference missing")
+
+    try:
+        data = await verify_transaction_by_reference(tx_ref)
+    except Exception as exc:
+        access = await get_live_access_info(db, current_user["sub"])
+        return {
+            "reconciled": False,
+            "paid": access["paid"],
+            "message": str(exc),
+        }
+
+    if (data.get("status") or "").lower() != "successful":
+        access = await get_live_access_info(db, current_user["sub"])
+        return {
+            "reconciled": False,
+            "paid": access["paid"],
+            "message": "Payment not completed yet",
+        }
+
+    amount_paid = float(data.get("amount") or data.get("charged_amount") or 0)
+    expected_amount = float(payment.amount) if payment.amount else plan.price
+    if amount_paid + 1 < expected_amount and amount_paid + 1 < plan.price:
+        raise HTTPException(status_code=400, detail="Incorrect payment amount")
+
+    payment.status = PaymentStatus.success
+    payment.live_plan_id = plan.id
+    payment.flutterwave_transaction_id = str(data.get("id") or "")
+    payment.flutterwave_tx_ref = data.get("tx_ref") or tx_ref
+
+    activated = await activate_live_plan(db, current_user["sub"], plan.id)
+    await db.flush()
+    access = await get_live_access_info(db, current_user["sub"])
+    return {
+        "reconciled": True,
+        "paid": access["paid"],
+        "plan_id": plan.id,
+        "payment_id": str(payment.id),
+        "active_plan": {
+            **activated,
+            "expires_at": activated["expires_at"].isoformat(),
+        },
+    }
+
+
 @router.post("/flutterwave/verify")
 async def verify_flutterwave_payment(
     payload: FlutterwaveVerifyRequest,
     current_user: dict = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ):
-    if not payload.class_id and not payload.material_id and not payload.plan_id:
-        raise HTTPException(status_code=400, detail="class_id, plan_id, or material_id required")
+    plan_id = payload.plan_id
+    if not payload.class_id and not payload.material_id and not plan_id:
+        if payload.tx_ref:
+            pay_lookup = await db.execute(
+                select(Payment).where(
+                    Payment.flutterwave_tx_ref == payload.tx_ref,
+                    Payment.student_id == parse_uuid(current_user["sub"]),
+                )
+            )
+            existing = pay_lookup.scalar_one_or_none()
+            if existing and existing.live_plan_id:
+                plan_id = existing.live_plan_id
+        if not plan_id and not payload.material_id and not payload.class_id:
+            raise HTTPException(status_code=400, detail="class_id, plan_id, or material_id required")
 
     if payload.class_id and await _student_has_live_access(db, current_user["sub"], payload.class_id):
         return {"paid": True, "class_id": payload.class_id}
@@ -309,14 +443,33 @@ async def verify_flutterwave_payment(
         )
         payment = pay_res.scalar_one_or_none()
 
-    plan_id = payload.plan_id or (payment.live_plan_id if payment else None)
+    plan_id = plan_id or (payment.live_plan_id if payment else None)
+    if not plan_id and payment and payment.live_plan_id:
+        plan_id = payment.live_plan_id
+
     if plan_id or (payment and payment.live_plan_id):
         plan_id = plan_id or payment.live_plan_id
         plan = get_plan(plan_id)
         if not plan:
             raise HTTPException(status_code=400, detail="Unknown plan")
-        if amount_paid + 1 < plan.price:
+
+        expected_amount = float(payment.amount) if payment and payment.amount else plan.price
+        if amount_paid + 1 < expected_amount and amount_paid + 1 < plan.price:
             raise HTTPException(status_code=400, detail="Incorrect payment amount")
+
+        if payment and payment.status == PaymentStatus.success and payment.live_plan_id:
+            activated = await activate_live_plan(db, current_user["sub"], payment.live_plan_id)
+            await db.flush()
+            return {
+                "paid": True,
+                "plan_id": payment.live_plan_id,
+                "class_id": payload.class_id,
+                "payment_id": str(payment.id),
+                "active_plan": {
+                    **activated,
+                    "expires_at": activated["expires_at"].isoformat(),
+                },
+            }
 
         if not payment:
             payment = Payment(

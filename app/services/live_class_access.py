@@ -106,10 +106,62 @@ async def _legacy_payment_plan(
     }
 
 
+async def _ensure_profile_plan_from_payment(
+    db: AsyncSession, student_id: str, now: datetime
+) -> None:
+    """If Flutterwave payment succeeded but profile was not updated, sync from payments."""
+    try:
+        sid = parse_uuid(student_id)
+    except ValueError:
+        return
+
+    profile = await _get_profile(db, student_id)
+    if (
+        profile
+        and profile.live_plan_id
+        and profile.live_plan_expires_at
+        and profile.live_plan_expires_at > now
+    ):
+        return
+
+    result = await db.execute(
+        select(Payment)
+        .where(
+            Payment.student_id == sid,
+            Payment.status == PaymentStatus.success,
+            Payment.live_plan_id.isnot(None),
+        )
+        .order_by(Payment.created_at.desc())
+        .limit(1)
+    )
+    payment = result.scalar_one_or_none()
+    if not payment or not payment.live_plan_id:
+        return
+
+    plan = get_plan(payment.live_plan_id)
+    if not plan:
+        return
+
+    expires = payment.created_at + timedelta(days=settings.LIVE_CLASS_MONTHLY_DAYS)
+    if expires <= now:
+        return
+
+    if not profile:
+        profile = StudentProfile(user_id=sid, selected_subjects=[])
+        db.add(profile)
+
+    profile.live_plan_id = plan.id
+    profile.live_plan_expires_at = expires
+    profile.live_plan_sessions_used = profile.live_plan_sessions_used or 0
+    profile.has_active_subscription = True
+    await db.flush()
+
+
 async def get_live_access_info(
     db: AsyncSession, student_id: str, class_id: Optional[str] = None
 ) -> dict:
     now = naive_utc_now()
+    await _ensure_profile_plan_from_payment(db, student_id, now)
     profile = await _get_profile(db, student_id)
     active = _active_plan_from_profile(profile, now)
 
@@ -142,7 +194,9 @@ async def activate_live_plan(
 
     profile = await _get_profile(db, student_id)
     if not profile:
-        raise ValueError("Student profile not found")
+        profile = StudentProfile(user_id=parse_uuid(student_id), selected_subjects=[])
+        db.add(profile)
+        await db.flush()
 
     now = naive_utc_now()
     profile.live_plan_id = plan.id
