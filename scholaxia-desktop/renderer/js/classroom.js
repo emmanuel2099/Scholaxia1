@@ -165,10 +165,69 @@ function getRemoteClassMediaStream() {
 }
 
 function updateSaveLiveUi() {
+  var label = liveSaveActive ? "Stop saving" : "Save class";
   var btn = document.getElementById("btn-save-live");
+  var topBtn = document.getElementById("btn-save-class-top");
   var badge = document.getElementById("save-live-badge");
-  if (btn) btn.classList.toggle("save-active", liveSaveActive);
+  if (btn) {
+    btn.classList.toggle("save-active", liveSaveActive);
+    btn.innerHTML = (liveSaveActive ? "&#9632; " : "&#128190; ") + label;
+  }
+  if (topBtn) {
+    topBtn.classList.toggle("save-active", liveSaveActive);
+    topBtn.innerHTML = (liveSaveActive ? "&#9632; " : "&#128190; ") + label;
+  }
   if (badge) badge.classList.toggle("hidden", !liveSaveActive);
+}
+
+var liveSaveWaitTimer = null;
+var liveSaveHintShown = false;
+
+function maybeShowSaveClassHint() {
+  if (isTeacherRole() || liveSaveHintShown || liveSaveActive || liveSaveWaitTimer) return;
+  liveSaveHintShown = true;
+  addChatMessage("", "Tip: tap <strong>Save class</strong> at the top to record this lesson on your device.", true);
+}
+
+function startLiveSave(stream) {
+  liveSaveChunks = [];
+  liveSaveStartedAt = Date.now();
+  try {
+    liveSaveRecorder = new MediaRecorder(stream, { mimeType: pickRecorderMimeType() });
+  } catch (e) {
+    liveSaveRecorder = new MediaRecorder(stream);
+  }
+  liveSaveRecorder.ondataavailable = function (ev) {
+    if (ev.data && ev.data.size) liveSaveChunks.push(ev.data);
+  };
+  liveSaveRecorder.start(1000);
+  liveSaveActive = true;
+  updateSaveLiveUi();
+  addChatMessage("", "Recording this class on your device. Tap <strong>Stop saving</strong> when finished, or leave the class to save automatically.", true);
+}
+
+function waitForRemoteStreamAndSave(maxMs) {
+  if (liveSaveWaitTimer) clearInterval(liveSaveWaitTimer);
+  var started = Date.now();
+  liveSaveWaitTimer = setInterval(function () {
+    if (liveSaveActive) {
+      clearInterval(liveSaveWaitTimer);
+      liveSaveWaitTimer = null;
+      return;
+    }
+    var stream = getRemoteClassMediaStream();
+    if (stream) {
+      clearInterval(liveSaveWaitTimer);
+      liveSaveWaitTimer = null;
+      startLiveSave(stream);
+      return;
+    }
+    if (Date.now() - started > maxMs) {
+      clearInterval(liveSaveWaitTimer);
+      liveSaveWaitTimer = null;
+      addChatMessage("", "Teacher video/audio not connected yet. Tap Save class again when you can hear the lesson.", true);
+    }
+  }, 1500);
 }
 
 function pickRecorderMimeType() {
@@ -187,23 +246,11 @@ function toggleSaveLive() {
   }
   var stream = getRemoteClassMediaStream();
   if (!stream) {
-    addChatMessage("", "Wait for the teacher video/audio to connect, then tap Save live again.", true);
+    addChatMessage("", "Waiting for teacher video or audio… recording will start automatically.", true);
+    waitForRemoteStreamAndSave(45000);
     return;
   }
-  liveSaveChunks = [];
-  liveSaveStartedAt = Date.now();
-  try {
-    liveSaveRecorder = new MediaRecorder(stream, { mimeType: pickRecorderMimeType() });
-  } catch (e) {
-    liveSaveRecorder = new MediaRecorder(stream);
-  }
-  liveSaveRecorder.ondataavailable = function (ev) {
-    if (ev.data && ev.data.size) liveSaveChunks.push(ev.data);
-  };
-  liveSaveRecorder.start(1000);
-  liveSaveActive = true;
-  updateSaveLiveUi();
-  addChatMessage("", "Saving this class on your computer. Tap Save live again to finish.", true);
+  startLiveSave(stream);
 }
 
 async function stopLiveSaveAndStore(showNotice) {
@@ -231,7 +278,7 @@ async function stopLiveSaveAndStore(showNotice) {
           duration_hint: mins ? (mins + " min") : "",
         }, blob);
         if (showNotice) {
-          addChatMessage("", "Live class saved on this device. Open Saved Lives in the app to watch.", true);
+          addChatMessage("", "Class saved on this device. Open <strong>Saved Lives</strong> in the app menu to watch again.", true);
         }
       } catch (e) {
         if (showNotice) addChatMessage("", "Could not save recording: " + e.message, true);
@@ -1177,9 +1224,41 @@ function hasValidAgoraToken(token) {
 function agoraCertMissingMessage() {
   return (
     "Live video is not configured on the server (Agora certificate missing on Render). " +
-    "Chat and board still work. Ask admin to set AGORA_APP_CERTIFICATE in Render environment variables."
+    "Set AGORA_APP_CERTIFICATE in Render → Environment. Chat and board still work."
   );
 }
+
+function showAgoraSetupBanner(message) {
+  var bar = document.getElementById("agora-setup-banner");
+  var msg = document.getElementById("agora-setup-msg");
+  if (msg && message) msg.textContent = message;
+  if (bar) bar.classList.remove("hidden");
+}
+
+function hideAgoraSetupBanner() {
+  var bar = document.getElementById("agora-setup-banner");
+  if (bar) bar.classList.add("hidden");
+}
+
+async function checkAgoraServerConfig() {
+  try {
+    var status = await api("/api/v1/live-classes/agora/status");
+    if (status && !status.configured) {
+      showAgoraSetupBanner(status.message || agoraCertMissingMessage());
+      return false;
+    }
+    return true;
+  } catch (e) {
+    return true;
+  }
+}
+
+function retryAgoraConnect() {
+  hideAgoraSetupBanner();
+  tryStartAgora(true);
+}
+
+window.retryAgoraConnect = retryAgoraConnect;
 
 async function refreshAgoraToken() {
   var classId = liveSession.class_id || liveSession.classId;
@@ -1268,6 +1347,7 @@ function scheduleClassAutoEnd() {
 }
 
 function handleClassEnded(message) {
+  try { localStorage.setItem("sia_stop_live_ring", String(Date.now())); } catch (e) { /* ignore */ }
   addChatMessage("", message || "Class has ended.", true);
   setStatus("Class ended");
   setTimeout(function () { leaveClassroom(); }, 2500);
@@ -1304,17 +1384,14 @@ function scheduleAgoraRetry() {
 async function transitionHostToAgoraBroadcast() {
   var wantCam = camOn || !!localPreviewStream;
   var wantMic = micOn || !!localPreviewStream;
+  if (wantCam) await setCam(true);
+  if (wantMic) await setMic(true);
   if (localPreviewStream) {
     localPreviewStream.getTracks().forEach(function (t) { t.stop(); });
     localPreviewStream = null;
     stopSelfHear();
     stopMicMonitor();
   }
-  localTracks = { audio: null, video: null, screen: null };
-  micOn = false;
-  camOn = false;
-  if (wantCam) await setCam(true);
-  if (wantMic) await setMic(true);
 }
 
 async function ensureHostPublishing() {
@@ -1345,6 +1422,7 @@ function enterChatOnlyMode(message) {
   agoraJoined = false;
   agoraClient = null;
   if (!camOn && !localPreviewStream) showVideoPlaceholder(message);
+  showAgoraSetupBanner(message || agoraCertMissingMessage());
   if (isTeacherRole()) {
     showHostTools(true);
     board.canDraw = true;
@@ -1397,6 +1475,9 @@ async function tryStartAgora(isRetry) {
           await agoraClient.subscribe(user, mediaType);
           if (mediaType === "video") {
             playRemoteVideo(user, isScreenShareTrack(user.videoTrack));
+            if (!isTeacherRole() && !liveSaveActive && !liveSaveWaitTimer) {
+              maybeShowSaveClassHint();
+            }
           }
           if (mediaType === "audio") {
             user.audioTrack.setVolume(100);
@@ -1404,6 +1485,7 @@ async function tryStartAgora(isRetry) {
             if (!isTeacherRole()) {
               hideVideoPlaceholder();
               setStatus("Connected — you can hear the teacher");
+              maybeShowSaveClassHint();
             }
           }
           updateAudienceStats();
@@ -1427,6 +1509,13 @@ async function tryStartAgora(isRetry) {
             : "Waiting for the teacher…");
         }
       });
+      agoraClient.on("token-privilege-will-expire", function () {
+        refreshAgoraToken().then(function (ok) {
+          if (ok && liveSession.agora_token) {
+            agoraClient.renewToken(liveSession.agora_token).catch(function () {});
+          }
+        });
+      });
     }
 
     var channel = liveSession.channel_id || liveSession.room_id;
@@ -1446,6 +1535,7 @@ async function tryStartAgora(isRetry) {
     agoraJoined = true;
     mediaMode = "agora";
     stopAgoraRetry();
+    hideAgoraSetupBanner();
     await subscribeToExistingUsers();
     updateAudienceStats();
     setVideoControlsEnabled(isTeacherRole() || studentMicAllowed);
@@ -1560,6 +1650,7 @@ async function setCam(on) {
       localTracks.video = await AgoraRTC.createCameraVideoTrack();
     }
     await agoraClient.publish([localTracks.video]);
+    localEl.innerHTML = "";
     localTracks.video.play(localEl);
     localEl.classList.remove("hidden");
     hideVideoPlaceholder();
@@ -1657,39 +1748,12 @@ async function toggleScreenShare() {
   if (!isTeacherRole()) return;
 
   if (mediaMode === "local") {
-    var localEl = document.getElementById("video-local");
-    try {
-      if (!screenOn) {
-        localScreenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-        var vid = document.createElement("video");
-        vid.srcObject = localScreenStream;
-        vid.autoplay = true;
-        vid.muted = true;
-        vid.playsInline = true;
-        localEl.innerHTML = "";
-        localEl.appendChild(vid);
-        localEl.classList.remove("hidden");
-        screenOn = true;
-        updateMediaButton(document.getElementById("btn-share"), true);
-        addChatMessage("", "Screen preview on your device only — students cannot see it until live video connects. Open Board for teaching meanwhile.", true);
-        localScreenStream.getVideoTracks()[0].onended = function () {
-          screenOn = false;
-          updateMediaButton(document.getElementById("btn-share"), false);
-          restoreLocalCameraPreview();
-        };
-      } else {
-        if (localScreenStream) {
-          localScreenStream.getTracks().forEach(function (t) { t.stop(); });
-          localScreenStream = null;
-        }
-        screenOn = false;
-        updateMediaButton(document.getElementById("btn-share"), false);
-        restoreLocalCameraPreview();
-      }
-    } catch (e) {
-      addChatMessage("", "Screen share: " + e.message, true);
+    addChatMessage("", "Connecting live video first so students can see your screen…", true);
+    await tryStartAgora(true);
+    if (mediaMode !== "agora" || !agoraJoined) {
+      addChatMessage("", "Screen share needs live video. Fix the Agora banner at the top, then tap Retry video.", true);
+      return;
     }
-    return;
   }
 
   if (!agoraJoined || !agoraClient) {
@@ -1730,9 +1794,15 @@ async function toggleScreenShare() {
   }
 }
 
+window.toggleSaveLive = toggleSaveLive;
+
 async function leaveClassroom() {
+  if (liveSaveWaitTimer) {
+    clearInterval(liveSaveWaitTimer);
+    liveSaveWaitTimer = null;
+  }
   if (liveSaveActive) {
-    await stopLiveSaveAndStore(false);
+    await stopLiveSaveAndStore(true);
   }
   try {
     if (liveSession && liveSession.class_id && liveSession.role === "student") {
@@ -1811,9 +1881,11 @@ window.onload = function () {
     }
   }
   loadAgoraScript(function () {
-    if (isTeacherRole()) {
-      startLocalPreviewOnly().catch(function () {});
-    }
-    tryStartAgora();
+    checkAgoraServerConfig().then(function () {
+      if (isTeacherRole()) {
+        startLocalPreviewOnly().catch(function () {});
+      }
+      tryStartAgora();
+    });
   });
 };

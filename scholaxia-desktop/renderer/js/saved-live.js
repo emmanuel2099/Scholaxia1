@@ -79,7 +79,7 @@ async function loadSavedLivesPage() {
       '<div class="empty-state-premium">' +
       '<div class="empty-icon">&#127909;</div>' +
       "<h3>No saved live classes yet</h3>" +
-      "<p>During a live class, tap <strong>Save live</strong> to record on this computer. You can watch it later even after leaving.</p>" +
+      "<p>During a live class, tap <strong>Save class</strong> (top bar or bottom controls) to record on this computer. Watch again from <strong>Saved Lives</strong> in the menu.</p>" +
       "</div>";
     return;
   }

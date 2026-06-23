@@ -3,11 +3,13 @@
  */
 (function () {
   var pollTimer = null;
+  var livePollTimer = null;
   var ringTimer = null;
   var audioCtx = null;
   var notifications = [];
   var knownIds = {};
   var notificationsInitialized = false;
+  var liveClassActive = false;
 
   function getBell() {
     return document.getElementById("topbar-bell");
@@ -52,16 +54,29 @@
 
   function isLiveNotif(n) {
     var t = String(n.type || "").toLowerCase();
-    return t.indexOf("live") >= 0;
+    if (t.indexOf("live") < 0) return false;
+    try {
+      var data = n.data ? (typeof n.data === "string" ? JSON.parse(n.data) : n.data) : {};
+      if (data && data.event === "class_ended") return false;
+    } catch (e) { /* ignore */ }
+    var body = String(n.body || "").toLowerCase();
+    var title = String(n.title || "").toLowerCase();
+    if (body.indexOf("has ended") >= 0 || title.indexOf("ended") >= 0) return false;
+    return true;
   }
 
   function startRing() {
-    stopRing();
+    if (!liveClassActive) return;
+    stopRing(false);
     try {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       if (audioCtx.state === "suspended") audioCtx.resume();
 
       function beep() {
+        if (!liveClassActive) {
+          stopRing();
+          return;
+        }
         var osc = audioCtx.createOscillator();
         var gain = audioCtx.createGain();
         osc.type = "sine";
@@ -86,18 +101,53 @@
     }
   }
 
-  function stopRing() {
+  function stopRing(hideBar) {
     if (ringTimer) {
       clearInterval(ringTimer);
       ringTimer = null;
     }
-    var bar = document.getElementById("notif-ring-bar");
-    if (bar) bar.classList.add("hidden");
+    if (hideBar !== false) {
+      var bar = document.getElementById("notif-ring-bar");
+      if (bar) bar.classList.add("hidden");
+    }
+  }
+
+  async function dismissStaleLiveAlerts() {
+    var stale = notifications.some(function (n) { return isLiveNotif(n) && !n.is_read; });
+    if (!stale) return;
+    try {
+      await api("/api/v1/notifications/read-all", { method: "POST" });
+      notifications.forEach(function (n) { n.is_read = true; });
+      updateBadge();
+      if (typeof currentPage !== "undefined" && currentPage === "notifications") {
+        renderNotificationsList();
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  async function syncRingWithLiveStatus() {
+    if (typeof getToken !== "function" || !getToken()) return;
+    try {
+      var live = await api("/api/v1/live-classes/?status=live&limit=50");
+      var count = (live || []).length;
+      liveClassActive = count > 0;
+
+      if (!liveClassActive) {
+        stopRing();
+        await dismissStaleLiveAlerts();
+        return;
+      }
+
+      var unreadLive = notifications.filter(function (n) { return isLiveNotif(n) && !n.is_read; });
+      if (unreadLive.length && ringTimer === null) {
+        startRing();
+      }
+    } catch (e) { /* ignore */ }
   }
 
   function onNewNotifications(newOnes) {
     var hasLive = newOnes.some(function (n) { return isLiveNotif(n) && !n.is_read; });
-    if (hasLive) startRing();
+    if (hasLive && liveClassActive) startRing();
     updateBadge();
     if (typeof currentPage !== "undefined" && currentPage === "notifications") {
       renderNotificationsList();
@@ -125,6 +175,7 @@
     try {
       var list = await api("/api/v1/notifications/");
       notifications = list || [];
+      await syncRingWithLiveStatus();
       var fresh = detectNew(notifications);
       if (fresh.length) onNewNotifications(fresh);
       else updateBadge();
@@ -137,7 +188,7 @@
   function notifAction(n) {
     stopRing();
     var t = String(n.type || "").toLowerCase();
-    if (t.indexOf("live") >= 0) {
+    if (t.indexOf("live") >= 0 && isLiveNotif(n)) {
       if (typeof showPage === "function") showPage("live");
       return;
     }
@@ -176,7 +227,7 @@
         "<p>" + escHtml(n.body || "") + "</p>" +
         '<span class="notif-time">' + escHtml(formatNotifTime(n.created_at)) + "</span>" +
         "</div>" +
-        (live ? '<button type="button" class="btn-sm primary notif-open-btn">Join</button>' : "") +
+        (live && liveClassActive ? '<button type="button" class="btn-sm primary notif-open-btn">Join</button>' : "") +
         "</article>"
       );
     }).join("");
@@ -219,8 +270,19 @@
     });
   }
 
+  function checkStopRingFlag() {
+    try {
+      if (localStorage.getItem("sia_stop_live_ring")) {
+        localStorage.removeItem("sia_stop_live_ring");
+        stopRing();
+        liveClassActive = false;
+      }
+    } catch (e) { /* ignore */ }
+  }
+
   function init() {
     bindBell();
+    checkStopRingFlag();
     try {
       var raw = localStorage.getItem("sia_known_notif_ids");
       if (raw) JSON.parse(raw).forEach(function (id) { knownIds[id] = true; });
@@ -229,6 +291,8 @@
     fetchNotifications();
     if (pollTimer) clearInterval(pollTimer);
     pollTimer = setInterval(fetchNotifications, 20000);
+    if (livePollTimer) clearInterval(livePollTimer);
+    livePollTimer = setInterval(syncRingWithLiveStatus, 15000);
   }
 
   window.loadNotifications = function () {
@@ -238,10 +302,11 @@
   window.markAllNotificationsRead = markAllRead;
   window.stopNotificationRing = stopRing;
   window.scholaxiaNotifyRefresh = fetchNotifications;
+  window.scholaxiaSyncLiveRing = syncRingWithLiveStatus;
   window.scholaxiaNotifyIncoming = function (payload) {
     fetchNotifications();
-    if (payload && (payload.type || "").toLowerCase().indexOf("live") >= 0) {
-      startRing();
+    if (payload && liveClassActive && (payload.type || "").toLowerCase().indexOf("live") >= 0) {
+      if (isLiveNotif(payload)) startRing();
     }
   };
 

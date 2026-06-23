@@ -537,20 +537,29 @@ async function loadCommunityAnnouncements() {
   if (!el) return;
   el.innerHTML = '<div class="loading">Loading announcements…</div>';
   try {
-    var channels = await api("/api/v1/community/channels");
-    var ann = (channels || []).find(function (c) { return c.type === "teacher_announcement"; });
-    if (!ann) {
-      el.innerHTML = '<div class="empty">No announcement channel yet.</div>';
-      return;
-    }
-    var posts = await api("/api/v1/community/posts?channel_id=" + encodeURIComponent(ann.id) + "&limit=40");
+    var posts = await api("/api/v1/community/announcements?limit=40");
     if (!posts || !posts.length) {
       el.innerHTML = '<div class="empty">No announcements from your teachers yet.</div>';
       return;
     }
     renderCommunityPosts(posts, el);
   } catch (e) {
-    el.innerHTML = '<div class="empty">' + escHtml(e.message) + '</div>';
+    try {
+      var channels = await api("/api/v1/community/channels");
+      var ann = (channels || []).find(function (c) { return c.type === "teacher_announcement"; });
+      if (!ann) {
+        el.innerHTML = '<div class="empty">No announcement channel yet.</div>';
+        return;
+      }
+      var posts = await api("/api/v1/community/posts?channel_id=" + encodeURIComponent(ann.id) + "&limit=40");
+      if (!posts || !posts.length) {
+        el.innerHTML = '<div class="empty">No announcements from your teachers yet.</div>';
+        return;
+      }
+      renderCommunityPosts(posts, el);
+    } catch (e2) {
+      el.innerHTML = '<div class="empty">' + escHtml(e2.message || e.message) + '</div>';
+    }
   }
 }
 

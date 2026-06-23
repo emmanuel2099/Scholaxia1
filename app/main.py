@@ -195,6 +195,9 @@ async def debug_posts(db: AsyncSession = Depends(get_db)):
     except Exception as e:
         import traceback
         return {"status": "error", "detail": str(e), "trace": traceback.format_exc()}
+
+
+@app.get("/debug-sia")
 async def debug_sia(db: AsyncSession = Depends(get_db)):
     """Debug endpoint to test Sia directly."""
     try:

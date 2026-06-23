@@ -21,6 +21,23 @@ from app.services.notification_service import send_subject_notification
 router = APIRouter(prefix="/live-classes", tags=["Live Classes"])
 
 
+@router.get("/agora/status")
+async def agora_video_status(current_user: dict = Depends(get_current_user)):
+    """Check whether live video (Agora) is configured on the server."""
+    cert = (settings.AGORA_APP_CERTIFICATE or "").strip()
+    configured = bool(cert) and "NOT_SET" not in cert.upper()
+    return {
+        "app_id": settings.AGORA_APP_ID,
+        "configured": configured,
+        "video_available": configured,
+        "message": (
+            "Live video is ready."
+            if configured
+            else "Set AGORA_APP_CERTIFICATE on the server (Render env) to enable camera, mic, and screen share."
+        ),
+    }
+
+
 # ── Agora token helper ────────────────────────────────────────────────────────
 
 def _generate_agora_token(channel_id: str, uid: int, is_teacher: bool) -> str:
@@ -663,6 +680,18 @@ async def end_class(
                 "class_id": class_id,
                 "message": "Class ended by the teacher.",
             },
+        )
+    except Exception:
+        pass
+
+    try:
+        await send_subject_notification(
+            db,
+            live_class.subject,
+            title="Live class ended",
+            body=f"{live_class.title} has ended.",
+            notification_type="live_class",
+            data={"class_id": str(live_class.id), "event": "class_ended"},
         )
     except Exception:
         pass

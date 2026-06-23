@@ -10,6 +10,22 @@ body {
 
 .classroom-shell { display: flex; flex-direction: column; height: 100vh; }
 
+.agora-setup-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  background: #7f1d1d;
+  color: #fecaca;
+  border-bottom: 1px solid #b91c1c;
+  font-size: 0.88rem;
+}
+
+.agora-setup-banner.hidden { display: none; }
+
+.agora-setup-banner strong { color: #fff; }
+
 .classroom-top {
   display: flex; align-items: center; gap: 16px;
   padding: 14px 20px; background: #12261a; border-bottom: 1px solid #1e3d2a;
@@ -199,6 +215,39 @@ body {
   align-self: center;
 }
 .vc-btn.save-active { background: rgba(251, 191, 36, 0.25); border-color: #fbbf24; }
+
+.btn-save-class-top {
+  margin-left: auto;
+  border: 1px solid #2d8a5e;
+  background: linear-gradient(135deg, #1a6b44, #228b52);
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.btn-save-class-top:hover { filter: brightness(1.08); }
+
+.btn-save-class-top.save-active {
+  background: linear-gradient(135deg, #b45309, #d97706);
+  border-color: #fbbf24;
+}
+
+.vc-btn.save-class-btn {
+  border-color: #2d8a5e;
+  background: rgba(34, 139, 82, 0.2);
+  color: #a7f3d0;
+  font-weight: 600;
+}
+
+.vc-btn.save-class-btn.save-active {
+  background: rgba(251, 191, 36, 0.25);
+  border-color: #fbbf24;
+  color: #fde68a;
+}
 
 @media (max-width: 900px) {
   .classroom-main { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }

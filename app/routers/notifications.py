@@ -34,6 +34,7 @@ async def get_notifications(
             "body": n.body,
             "is_read": n.is_read,
             "created_at": n.created_at,
+            "data": n.data,
         }
         for n in notifications
     ]

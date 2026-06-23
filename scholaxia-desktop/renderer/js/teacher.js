@@ -167,6 +167,7 @@ async function teacherStartClass(id) {
 async function teacherEndClass(id) {
   try {
     await teacherApi("/api/v1/live-classes/" + id + "/end", { method: "POST" });
+    try { localStorage.setItem("sia_stop_live_ring", String(Date.now())); } catch (e) { /* ignore */ }
     loadTeacherLive();
   } catch (e) { alert(e.message); }
 }

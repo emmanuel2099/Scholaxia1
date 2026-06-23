@@ -12,6 +12,12 @@
 <body>
 
 <div class="classroom-shell">
+  <div id="agora-setup-banner" class="agora-setup-banner hidden" role="alert">
+    <strong>Live video not connected.</strong>
+    <span id="agora-setup-msg">Students cannot see your camera or screen until Agora is configured on the server.</span>
+    <button type="button" class="btn-sm" onclick="retryAgoraConnect()">Retry video</button>
+  </div>
+
   <header class="classroom-top">
     <button type="button" class="btn-back" onclick="leaveClassroom()">&#8592; Leave</button>
     <div class="classroom-title-wrap">
@@ -22,6 +28,7 @@
       </div>
     </div>
     <span id="audience-badge" class="audience-badge host-only hidden">0 in class</span>
+    <button type="button" id="btn-save-class-top" class="btn-save-class-top student-only hidden" onclick="toggleSaveLive()" title="Save this class on your device">&#128190; Save class</button>
     <span id="cr-status" class="cr-status">Connecting…</span>
   </header>
 
@@ -74,8 +81,8 @@
         <button type="button" id="btn-cam" class="vc-btn" onclick="toggleCam()" title="Camera">&#128247; Cam</button>
         <button type="button" id="btn-share" class="vc-btn host-only hidden" onclick="toggleScreenShare()" title="Share screen">&#128187; Share screen</button>
         <button type="button" id="btn-board" class="vc-btn host-only hidden" onclick="toggleBoard()" title="Teaching board">&#128221; Board</button>
-        <button type="button" id="btn-save-live" class="vc-btn student-only hidden" onclick="toggleSaveLive()" title="Save live on this device">&#128190; Save live</button>
-        <span id="save-live-badge" class="save-live-badge student-only hidden">Saving locally…</span>
+        <button type="button" id="btn-save-live" class="vc-btn save-class-btn student-only hidden" onclick="toggleSaveLive()" title="Record and save this class on your device">&#128190; Save class</button>
+        <span id="save-live-badge" class="save-live-badge student-only hidden">Recording… tap Stop saving when done</span>
         <button type="button" class="vc-btn" onclick="raiseHand()">&#9995; Raise hand</button>
       </div>
     </section>

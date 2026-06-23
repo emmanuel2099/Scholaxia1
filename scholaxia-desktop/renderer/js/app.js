@@ -766,6 +766,11 @@ async function loadLive(quiet) {
     renderLive(live);
     renderUpcoming(upcoming);
 
+    if (!live.length) {
+      if (typeof window.stopNotificationRing === "function") window.stopNotificationRing();
+      if (typeof window.scholaxiaSyncLiveRing === "function") window.scholaxiaSyncLiveRing();
+    }
+
     if (!quiet) {
       api("/api/v1/home/feed").then(function (feed) {
         if (feed && feed.my_session_requests) renderRequests(feed.my_session_requests);
