@@ -743,6 +743,16 @@ body:has(.app-shell-sidebar) {
   min-width: 120px;
   padding: 10px 16px;
   font-size: 0.85rem;
+  cursor: pointer;
+  pointer-events: auto;
+  position: relative;
+  z-index: 3;
+}
+
+.card .btn-join,
+#page-live .btn-join {
+  cursor: pointer;
+  pointer-events: auto;
 }
 
 .notify-hint { font-size: 0.8rem; color: #6b7c74; font-style: italic; margin-top: 8px; }

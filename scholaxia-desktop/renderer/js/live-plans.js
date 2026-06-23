@@ -3,6 +3,30 @@
  */
 var _livePlansCache = null;
 var _pendingJoinClassId = null;
+var _plansFetchPromise = null;
+var PLANS_CACHE_KEY = "sia_live_plans_cache";
+var PLANS_CACHE_MS = 10 * 60 * 1000;
+
+function readPlansCache() {
+  if (_livePlansCache) return _livePlansCache;
+  try {
+    var raw = sessionStorage.getItem(PLANS_CACHE_KEY);
+    if (!raw) return null;
+    var o = JSON.parse(raw);
+    if (!o || !o.data || Date.now() - o.at > PLANS_CACHE_MS) return null;
+    _livePlansCache = o.data;
+    return o.data;
+  } catch (e) {
+    return null;
+  }
+}
+
+function writePlansCache(data) {
+  _livePlansCache = data;
+  try {
+    sessionStorage.setItem(PLANS_CACHE_KEY, JSON.stringify({ at: Date.now(), data: data }));
+  } catch (e) { /* ignore */ }
+}
 
 function formatPlanPrice(amount) {
   return "₦" + Number(amount).toLocaleString("en-NG");
@@ -65,14 +89,14 @@ function renderLivePlansPage(data, pendingClassId) {
         "</div>";
     } else {
       statusEl.innerHTML =
-        '<p class="live-plan-hint">Pick a monthly plan below. One payment covers all your live classes for 30 days — not ₦2,000 per class.</p>';
+        '<p class="live-plan-hint">Pick a monthly plan below. One payment covers your live classes for 30 days.</p>';
     }
   }
 
   var plans = (data && data.plans) || [];
   var suggested = (data && data.suggested_plan_ids) || [];
   if (!plans.length) {
-    gridEl.innerHTML = '<div class="empty">Plans could not be loaded.</div>';
+    gridEl.innerHTML = '<div class="empty">Plans could not be loaded. Tap Refresh above.</div>';
     return;
   }
 
@@ -86,28 +110,39 @@ function renderLivePlansPage(data, pendingClassId) {
     html += "</div></div>";
   });
   gridEl.innerHTML = html;
-
-  gridEl.querySelectorAll(".live-plan-pay").forEach(function (btn) {
-    btn.addEventListener("click", function () {
-      var planId = btn.getAttribute("data-plan-id");
-      var classId = btn.getAttribute("data-class-id") || _pendingJoinClassId || "";
-      if (typeof payForLivePlan === "function") {
-        payForLivePlan(planId, classId || null, btn);
-      }
-    });
-  });
 }
 
-async function loadLivePlans(pendingClassId) {
+function fetchLivePlansFromApi() {
+  if (_plansFetchPromise) return _plansFetchPromise;
+  _plansFetchPromise = api("/api/v1/payments/live-class/plans")
+    .then(function (data) {
+      writePlansCache(data);
+      return data;
+    })
+    .finally(function () {
+      _plansFetchPromise = null;
+    });
+  return _plansFetchPromise;
+}
+
+async function loadLivePlans(pendingClassId, quiet) {
   _pendingJoinClassId = pendingClassId || null;
   var gridEl = document.getElementById("live-plans-grid");
-  if (gridEl) gridEl.innerHTML = '<div class="loading">Loading plans…</div>';
+  var cached = readPlansCache();
+
+  if (cached) {
+    renderLivePlansPage(cached, pendingClassId);
+  } else if (!quiet && gridEl) {
+    gridEl.innerHTML = '<div class="loading">Loading plans…</div>';
+  }
+
   try {
-    var data = await api("/api/v1/payments/live-class/plans");
-    _livePlansCache = data;
+    var data = await fetchLivePlansFromApi();
     renderLivePlansPage(data, pendingClassId);
   } catch (e) {
-    if (gridEl) gridEl.innerHTML = '<div class="empty">' + escHtml(e.message) + "</div>";
+    if (!cached && gridEl) {
+      gridEl.innerHTML = '<div class="empty">' + escHtml(e.message) + "</div>";
+    }
   }
 }
 
@@ -118,3 +153,9 @@ function scrollToLivePlans() {
 
 window.loadLivePlans = loadLivePlans;
 window.scrollToLivePlans = scrollToLivePlans;
+window.readPlansCache = readPlansCache;
+window.getPendingJoinClassId = function () { return _pendingJoinClassId; };
+
+if (typeof getToken === "function" && getToken()) {
+  fetchLivePlansFromApi().catch(function () { /* warm cache */ });
+}

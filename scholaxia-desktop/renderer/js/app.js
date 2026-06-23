@@ -630,6 +630,19 @@ function refreshPage() {
 
 var livePollTimer = null;
 var knownLiveClassIds = new Set();
+var _liveSessionsCache = { live: [], upcoming: [], at: 0 };
+var LIVE_CACHE_MS = 20000;
+
+function cacheLiveSessions(live, upcoming) {
+  _liveSessionsCache = { live: live || [], upcoming: upcoming || [], at: Date.now() };
+}
+
+function paintLiveFromCache() {
+  if (!(_liveSessionsCache.at && Date.now() - _liveSessionsCache.at < LIVE_CACHE_MS)) return false;
+  renderLive(_liveSessionsCache.live);
+  renderUpcoming(_liveSessionsCache.upcoming);
+  return true;
+}
 
 function sessionMatchesSubjects(session, subjects) {
   if (!subjects || !subjects.length) return true;
@@ -644,7 +657,7 @@ function startLivePolling() {
   if (livePollTimer) return;
   livePollTimer = setInterval(function () {
     if (currentPage === "live") loadLive(true);
-  }, 10000);
+  }, 30000);
 }
 
 function showLiveClassToast(session) {
@@ -660,16 +673,24 @@ function showLiveClassToast(session) {
 }
 
 async function loadLive(quiet) {
+  var hadLiveCache = paintLiveFromCache();
+
   if (!quiet) {
-    document.getElementById("live-grid").innerHTML = `<div class="loading">Loading…</div>`;
-    document.getElementById("upcoming-grid").innerHTML = `<div class="loading">Loading…</div>`;
+    if (typeof loadLivePlans === "function") {
+      loadLivePlans(null, !!(typeof readPlansCache === "function" && readPlansCache()));
+    }
+    if (!hadLiveCache) {
+      document.getElementById("live-grid").innerHTML = `<div class="loading">Loading…</div>`;
+      document.getElementById("upcoming-grid").innerHTML = `<div class="loading">Loading…</div>`;
+    }
   }
+
   try {
-    if (!quiet) await syncStudentProfile();
-    const [liveRaw, upcomingRaw, feed] = await Promise.all([
+    if (!quiet) syncStudentProfile().catch(function () { /* background */ });
+
+    const [liveRaw, upcomingRaw] = await Promise.all([
       api("/api/v1/live-classes/?status=live&limit=50"),
       api("/api/v1/live-classes/?status=upcoming&limit=50"),
-      api("/api/v1/home/feed").catch(() => null),
     ]);
 
     let live = liveRaw || [];
@@ -687,14 +708,18 @@ async function loadLive(quiet) {
     }
     knownLiveClassIds = new Set(live.map(function (s) { return s.id; }));
 
+    cacheLiveSessions(live, upcoming);
     renderLive(live);
     renderUpcoming(upcoming);
-    if (typeof loadLivePlans === "function") loadLivePlans();
 
-    if (feed?.my_session_requests) renderRequests(feed.my_session_requests);
-    else if (!quiet) loadMyRequests();
-  } catch (e) {
     if (!quiet) {
+      api("/api/v1/home/feed").then(function (feed) {
+        if (feed && feed.my_session_requests) renderRequests(feed.my_session_requests);
+        else loadMyRequests();
+      }).catch(function () { loadMyRequests(); });
+    }
+  } catch (e) {
+    if (!quiet && !_liveSessionsCache.live.length) {
       document.getElementById("live-grid").innerHTML = `<div class="empty">${escHtml(e.message)}</div>`;
     }
   }
@@ -731,7 +756,7 @@ function renderLive(sessions) {
       <div class="live-pill">${badge}</div>
       <h3>${escHtml(s.title)}</h3>
       <p class="meta">${escHtml(s.subject)} · ${escHtml(s.teacher_name)}</p>
-      <button class="btn-join" data-id="${s.id}" data-title="${escHtml(s.title)}" data-subject="${escHtml(s.subject)}" data-teacher="${escHtml(s.teacher_name)}" onclick="joinClassWithPayment(this)">Join Class</button>
+      <button type="button" class="btn-join" data-id="${escHtml(s.id)}" data-title="${escHtml(s.title)}" data-subject="${escHtml(s.subject)}" data-teacher="${escHtml(s.teacher_name)}">Join Class</button>
     </div>
   `;
   }).join("");
@@ -755,7 +780,7 @@ function renderUpcoming(sessions) {
       <h3>${escHtml(s.title)}</h3>
       <p class="meta">${escHtml(s.subject)} · ${escHtml(s.teacher_name)}</p>
       <p class="schedule-meta">&#128197; ${formatDate(s.start_time)}${s.end_time ? " → " + formatDate(s.end_time) : ""}</p>
-      ${s.is_live ? `<button class="btn-join" onclick="joinClassWithPayment(this)" data-id="${s.id}" data-title="${escHtml(s.title)}" data-subject="${escHtml(s.subject)}" data-teacher="${escHtml(s.teacher_name)}" data-end="${escHtml(s.end_time || "")}">Join now</button>` : (started ? `<p class="notify-hint">Class should go live shortly — this page refreshes automatically.</p>` : `<p class="notify-hint">You'll be notified when class starts at the scheduled time.</p>`)}
+      ${s.is_live ? `<button type="button" class="btn-join" data-id="${escHtml(s.id)}" data-title="${escHtml(s.title)}" data-subject="${escHtml(s.subject)}" data-teacher="${escHtml(s.teacher_name)}" data-end="${escHtml(s.end_time || "")}">Join now</button>` : (started ? `<p class="notify-hint">Class should go live shortly — this page refreshes automatically.</p>` : `<p class="notify-hint">You'll be notified when class starts at the scheduled time.</p>`)}
     </div>`;
   }).join("");
 }

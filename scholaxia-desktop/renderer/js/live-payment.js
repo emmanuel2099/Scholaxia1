@@ -1,6 +1,8 @@
 /**
  * Flutterwave checkout for Scholaxia One-on-One Live Class monthly plans.
  */
+var _livePayBusy = false;
+
 function loadFlutterwaveScript() {
   return new Promise(function (resolve, reject) {
     if (window.FlutterwaveCheckout) {
@@ -60,41 +62,69 @@ function startFlutterwaveRedirect(init, ctx) {
   return { redirecting: true };
 }
 
+function setJoinButtonBusy(btn, busy, label) {
+  if (!btn) return;
+  btn.disabled = !!busy;
+  if (busy) {
+    if (!btn.dataset.prevLabel) btn.dataset.prevLabel = btn.textContent;
+    btn.textContent = label || "Please wait…";
+  } else if (btn.dataset.prevLabel) {
+    btn.textContent = btn.dataset.prevLabel;
+  }
+}
+
 async function payForLivePlan(planId, classId, btn) {
-  await loadFlutterwaveScript();
+  if (_livePayBusy) return;
+  if (!planId) {
+    alert("Plan not found. Refresh the page and try again.");
+    return;
+  }
+  _livePayBusy = true;
+  setJoinButtonBusy(btn, true, "Opening payment…");
+  try {
+    await loadFlutterwaveScript();
 
-  var init = await api("/api/v1/payments/flutterwave/live-plan/init", {
-    method: "POST",
-    body: JSON.stringify({
+    var init = await api("/api/v1/payments/flutterwave/live-plan/init", {
+      method: "POST",
+      body: JSON.stringify({
+        plan_id: planId,
+        class_id: classId || null,
+      }),
+    });
+
+    if (!init) throw new Error("Could not start payment.");
+
+    if (init.already_paid) {
+      if (classId) await completeJoinClass(classId, null);
+      return { paid: true };
+    }
+
+    if (!init.public_key || !init.tx_ref) {
+      throw new Error("Payment could not be started. Try again later.");
+    }
+
+    return startFlutterwaveRedirect(init, {
+      type: "live",
       plan_id: planId,
-      class_id: classId || null,
-    }),
-  });
-
-  if (init.already_paid) {
-    if (classId) await completeJoinClass(classId, null);
-    return { paid: true };
+      class_id: classId || init.class_id || "",
+      tx_ref: init.tx_ref,
+      custom_title: "Scholaxia — " + (init.plan_name || "Live Plan"),
+      custom_description: (init.plan_name || "Monthly plan") + " — " + formatNaira(init.amount) + "/month",
+      meta: { plan_id: planId, class_id: classId || "" },
+    });
+  } catch (e) {
+    alert(e.message || "Payment could not start.");
+    throw e;
+  } finally {
+    _livePayBusy = false;
+    setJoinButtonBusy(btn, false);
   }
-
-  if (!init.public_key || !init.tx_ref) {
-    throw new Error("Payment could not be started. Try again later.");
-  }
-
-  var card = btn && btn.dataset ? btn.dataset : {};
-  return startFlutterwaveRedirect(init, {
-    type: "live",
-    plan_id: planId,
-    class_id: classId || init.class_id || "",
-    tx_ref: init.tx_ref,
-    title: card.title || init.plan_name || "",
-    custom_title: "Scholaxia — " + (init.plan_name || "Live Plan"),
-    custom_description: (init.plan_name || "Monthly plan") + " — " + formatNaira(init.amount) + "/month",
-    meta: { plan_id: planId, class_id: classId || "" },
-  });
 }
 
 async function completeJoinClass(classId, card) {
+  if (!classId) throw new Error("Class not found.");
   var data = await api("/api/v1/live-classes/" + classId + "/join", { method: "POST" });
+  if (!data) throw new Error("Could not join class.");
   localStorage.setItem("live_session", JSON.stringify({
     class_id: classId,
     classId: classId,
@@ -103,35 +133,77 @@ async function completeJoinClass(classId, card) {
     agora_token: data.agora_token,
     uid: data.uid,
     app_id: data.app_id,
-    title: data.title || (card && card.dataset.title) || "Live Class",
-    subject: data.subject || (card && card.dataset.subject) || "",
-    teacher_name: (card && card.dataset.teacher) || "",
+    title: data.title || (card && card.dataset && card.dataset.title) || "Live Class",
+    subject: data.subject || (card && card.dataset && card.dataset.subject) || "",
+    teacher_name: (card && card.dataset && card.dataset.teacher) || "",
     role: "student",
-    end_time: data.end_time || (card && card.dataset.end) || null,
+    end_time: data.end_time || (card && card.dataset && card.dataset.end) || null,
   }));
   window.location.href = "classroom.html";
 }
 
 async function joinClassWithPayment(btn) {
-  var classId = typeof btn === "string" ? btn : btn.dataset.id;
+  if (_livePayBusy) return;
+  var classId = typeof btn === "string" ? btn : (btn && (btn.getAttribute("data-id") || btn.dataset.id));
   var card = typeof btn === "string" ? null : btn;
+  if (!classId) {
+    alert("Class not found. Refresh and try again.");
+    return;
+  }
 
+  _livePayBusy = true;
+  setJoinButtonBusy(card, true, "Joining…");
   try {
     var access = await api("/api/v1/payments/live-class/" + encodeURIComponent(classId) + "/access");
-    if (!access.paid) {
+    if (!access || !access.paid) {
       if (typeof scrollToLivePlans === "function") scrollToLivePlans();
-      if (typeof loadLivePlans === "function") loadLivePlans(classId);
-      alert("Choose a monthly live class plan below, then pay once to join this class and others for 30 days.");
+      if (typeof loadLivePlans === "function") loadLivePlans(classId, false);
+      alert("Choose a monthly plan below, then pay once to join this class.");
       return;
     }
     await completeJoinClass(classId, card);
   } catch (e) {
-    if (String(e.message || "").indexOf("402") >= 0 || String(e.message).toLowerCase().indexOf("plan") >= 0) {
+    var msg = e.message || "Could not join class.";
+    if (msg.toLowerCase().indexOf("plan") >= 0 || msg.indexOf("402") >= 0) {
       if (typeof scrollToLivePlans === "function") scrollToLivePlans();
-      if (typeof loadLivePlans === "function") loadLivePlans(classId);
+      if (typeof loadLivePlans === "function") loadLivePlans(classId, false);
     }
-    alert(e.message || "Could not join class.");
+    alert(msg);
+  } finally {
+    _livePayBusy = false;
+    setJoinButtonBusy(card, false);
   }
+}
+
+function bindLivePageClickHandlers() {
+  if (window._livePageClicksBound) return;
+  window._livePageClicksBound = true;
+
+  document.addEventListener("click", function (e) {
+    var planBtn = e.target.closest(".live-plan-pay");
+    if (planBtn && planBtn.closest("#page-live")) {
+      e.preventDefault();
+      e.stopPropagation();
+      var planId = planBtn.getAttribute("data-plan-id");
+      var classId = planBtn.getAttribute("data-class-id") ||
+        (typeof getPendingJoinClassId === "function" ? getPendingJoinClassId() : "") || "";
+      payForLivePlan(planId, classId || null, planBtn);
+      return;
+    }
+
+    var joinBtn = e.target.closest(".btn-join[data-id]");
+    if (joinBtn && joinBtn.closest("#page-live, #page-skills")) {
+      e.preventDefault();
+      e.stopPropagation();
+      joinClassWithPayment(joinBtn);
+    }
+  }, true);
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", bindLivePageClickHandlers);
+} else {
+  bindLivePageClickHandlers();
 }
 
 window.joinClassWithPayment = joinClassWithPayment;

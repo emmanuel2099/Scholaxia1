@@ -159,7 +159,7 @@ function renderSkillLiveClasses(skill, sessions) {
       '<h4>' + escHtml(s.title) + '</h4>' +
       '<p class="meta">' + escHtml(s.subject) + ' · ' + escHtml(s.teacher_name || "Instructor") + '</p>' +
       (s.start_time ? '<p class="schedule-meta">&#128197; ' + formatDate(s.start_time) + '</p>' : '') +
-      '<button type="button" class="btn-join" data-id="' + escHtml(s.id) + '" data-title="' + escHtml(s.title) + '" data-subject="' + escHtml(s.subject) + '" data-teacher="' + escHtml(s.teacher_name || "") + '" onclick="joinClassWithPayment(this)">Join live class</button>' +
+      '<button type="button" class="btn-join" data-id="' + escHtml(s.id) + '" data-title="' + escHtml(s.title) + '" data-subject="' + escHtml(s.subject) + '" data-teacher="' + escHtml(s.teacher_name || "") + '">Join live class</button>' +
       '</div>';
   }).join("") + '</div>';
 }
