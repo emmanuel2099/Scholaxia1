@@ -266,32 +266,13 @@ body {
   }
 }
 
-/* ── Auth login ── */
+/* ── Auth intro landing ── */
 @media (max-width: 900px) {
-  .auth-statue-panel {
-    display: none;
-  }
-
-  .auth-card-wrap {
-    padding: 16px 20px 28px;
+  .intro-auth-panel {
+    max-width: 100%;
   }
 
   .auth-card {
     padding: 28px 24px;
-    max-width: 100%;
-  }
-
-  .auth-topbar {
-    padding: 16px 20px;
-  }
-}
-
-@media (max-width: 480px) {
-  .auth-topbar {
-    padding: 12px 16px;
-  }
-
-  .school-brand strong {
-    font-size: 0.82rem;
   }
 }

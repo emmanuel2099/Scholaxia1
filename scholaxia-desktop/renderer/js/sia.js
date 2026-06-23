@@ -43,6 +43,11 @@ async function syncSiaLevelFromProfile() {
 }
 
 function loadSia() {
+  if (typeof isCbtExamActive === "function" && isCbtExamActive()) {
+    var err = document.getElementById("sia-error");
+    if (err) err.textContent = "Finish your exam before using Sia.";
+    return;
+  }
   updateSiaLevelLabel();
   if (siaHistory.length) return;
 
@@ -363,6 +368,10 @@ function siaSubject() {
 
 async function askSiaQuestion(question, alreadyShown) {
   var err = document.getElementById("sia-error");
+  if (typeof isCbtExamActive === "function" && isCbtExamActive()) {
+    if (err) err.textContent = "Sia is locked during an exam. Submit your exam first.";
+    return;
+  }
   if (!alreadyShown) {
     siaHistory.push({ role: "user", content: question });
   } else if (!siaHistory.some(function (m) { return m.role === "user" && m.content === question && !m.meta; })) {
@@ -400,6 +409,10 @@ async function askSiaQuestion(question, alreadyShown) {
 async function sendSiaMessage() {
   var input = document.getElementById("sia-input");
   var err = document.getElementById("sia-error");
+  if (typeof isCbtExamActive === "function" && isCbtExamActive()) {
+    if (err) err.textContent = "Sia is locked during an exam. Submit your exam first.";
+    return;
+  }
   var question = input.value.trim();
   if (!question) return;
   err.textContent = "";

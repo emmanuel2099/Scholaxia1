@@ -36,6 +36,13 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
 
+    def end_headers(self):
+        path = self.path.split("?", 1)[0]
+        if path.endswith((".js", ".css", ".html")):
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.send_header("Pragma", "no-cache")
+        super().end_headers()
+
     def _proxy_api(self, method):
         remote_path = self.path[len("/api-proxy") :]
         if not remote_path.startswith("/"):

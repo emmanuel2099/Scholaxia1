@@ -5,10 +5,11 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime
 import httpx
+import json
 from app.core.database import get_db
 from app.core.deps import require_student, require_admin, get_current_user, require_teacher
 from app.models.cbt import CBTExam, CBTQuestion, CBTSession, ExamProctorLog
-from app.models.user import StudentProfile
+from app.models.user import StudentProfile, User
 from app.core.subjects import subject_matches
 
 router = APIRouter(prefix="/cbt", tags=["CBT"])
@@ -265,6 +266,9 @@ class CreateSchoolExamRequest(BaseModel):
     scheduled_start: datetime
     scheduled_end: datetime
     questions: List[SchoolExamQuestionCreate]
+    camera_required: bool = False
+    ai_locked: bool = False
+    block_minimize: bool = False
 
 
 class QuestionOut(BaseModel):
@@ -447,9 +451,7 @@ async def start_session(
     if exam.is_school_exam:
         if not _school_exam_is_open(exam, now):
             raise HTTPException(status_code=403, detail="This school exam is not open right now")
-        # School exams always require online session — enforce security flags
-        if not exam.camera_required:
-            exam.camera_required = True
+        # School exams: lock AI and navigation; camera only if teacher enabled it
         if not exam.ai_locked:
             exam.ai_locked = True
         if not exam.block_minimize:
@@ -762,9 +764,9 @@ async def teacher_create_school_exam(
         created_by=current_user["sub"],
         is_published=True,
         is_school_exam=True,
-        ai_locked=True,
-        camera_required=True,
-        block_minimize=True,
+        ai_locked=payload.ai_locked,
+        camera_required=payload.camera_required,
+        block_minimize=payload.block_minimize,
         scheduled_start=payload.scheduled_start,
         scheduled_end=payload.scheduled_end,
     )
@@ -785,4 +787,81 @@ async def teacher_create_school_exam(
         ))
 
     await db.flush()
+
+    try:
+        from app.models.notification import Notification, NotificationType
+        prof_res = await db.execute(select(StudentProfile))
+        for prof in prof_res.scalars().all():
+            if not subject_matches(payload.subject, prof.selected_subjects or []):
+                continue
+            db.add(Notification(
+                user_id=prof.user_id,
+                type=NotificationType.cbt_reminder,
+                title="New Scholaxia exam",
+                body=f"{payload.title} ({payload.subject}) — open Exams to take it.",
+                data=json.dumps({"exam_id": str(exam.id)}),
+            ))
+    except Exception:
+        pass
+
     return _exam_summary(exam)
+
+
+@router.get("/school-exams/mine")
+async def teacher_list_school_exams(
+    current_user: dict = Depends(require_teacher),
+    db: AsyncSession = Depends(get_db),
+):
+    """Exams created by this teacher."""
+    result = await db.execute(
+        select(CBTExam)
+        .where(CBTExam.created_by == current_user["sub"], CBTExam.is_school_exam == True)  # noqa: E712
+        .order_by(CBTExam.created_at.desc())
+    )
+    return [_exam_summary(e) for e in result.scalars().all()]
+
+
+@router.get("/school-exams/{exam_id}/results")
+async def teacher_school_exam_results(
+    exam_id: str,
+    current_user: dict = Depends(require_teacher),
+    db: AsyncSession = Depends(get_db),
+):
+    """Student names and scores for a teacher's exam."""
+    exam_res = await db.execute(
+        select(CBTExam).where(
+            CBTExam.id == exam_id,
+            CBTExam.created_by == current_user["sub"],
+            CBTExam.is_school_exam == True,  # noqa: E712
+        )
+    )
+    exam = exam_res.scalar_one_or_none()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+
+    rows = await db.execute(
+        select(CBTSession, User)
+        .join(User, User.id == CBTSession.student_id)
+        .where(
+            CBTSession.exam_id == exam_id,
+            CBTSession.submitted_at != None,  # noqa: E711
+        )
+        .order_by(CBTSession.submitted_at.desc())
+    )
+    out = []
+    for session, user in rows.all():
+        out.append({
+            "session_id": str(session.id),
+            "student_id": str(session.student_id),
+            "student_name": user.full_name or user.email or "Student",
+            "score": session.score or 0,
+            "percentage": session.percentage or 0,
+            "total_correct": session.total_correct or 0,
+            "total_wrong": session.total_wrong or 0,
+            "submitted_at": session.submitted_at.isoformat() if session.submitted_at else None,
+        })
+    return {
+        "exam": _exam_summary(exam),
+        "results": out,
+        "submitted_count": len(out),
+    }

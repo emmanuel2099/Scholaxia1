@@ -1800,6 +1800,16 @@ window.onload = function () {
   }
   connectChat();
   scheduleClassAutoEnd();
+  if (isTeacherRole()) {
+    var startClassId = liveSession.class_id || liveSession.classId;
+    if (startClassId) {
+      api("/api/v1/live-classes/" + startClassId + "/start", { method: "POST" })
+        .then(function () {
+          addChatMessage("", "Students can now see this class on Live Class and tap Join.", true);
+        })
+        .catch(function () { /* already live or network */ });
+    }
+  }
   loadAgoraScript(function () {
     if (isTeacherRole()) {
       startLocalPreviewOnly().catch(function () {});

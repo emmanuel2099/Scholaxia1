@@ -5,7 +5,7 @@ Returns content only for the student's selected subjects and exam type.
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, and_
 from datetime import datetime
 from typing import Optional
 
@@ -48,18 +48,30 @@ async def _live_classes(
     now = datetime.utcnow()
     query = select(LiveClass)
     if status == "live":
-        query = query.where(LiveClass.is_live == True)  # noqa: E712
+        query = query.where(
+            or_(
+                LiveClass.is_live == True,  # noqa: E712
+                and_(
+                    LiveClass.start_time <= now,
+                    or_(LiveClass.end_time > now, LiveClass.end_time.is_(None)),
+                ),
+            )
+        )
     elif status == "upcoming":
         query = query.where(
             LiveClass.is_live == False,  # noqa: E712
             LiveClass.start_time > now,
+            or_(LiveClass.end_time > now, LiveClass.end_time.is_(None)),
         )
     query = query.order_by(LiveClass.start_time.desc()).limit(limit * 3)
     result = await db.execute(query)
-    classes = [
-        c for c in result.scalars().all()
-        if _matches_subjects(c.subject, selected_subjects)
-    ][:limit]
+    if status == "live":
+        classes = list(result.scalars().all())[:limit]
+    else:
+        classes = [
+            c for c in result.scalars().all()
+            if _matches_subjects(c.subject, selected_subjects)
+        ][:limit]
 
     teacher_ids = list({str(c.teacher_id) for c in classes})
     teachers_map = {}

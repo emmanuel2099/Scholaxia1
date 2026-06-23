@@ -35,6 +35,61 @@ function initAuthPage() {
   document.querySelectorAll(".toggle-pw").forEach(function (btn) {
     btn.addEventListener("click", function () { togglePw(btn.dataset.target, btn); });
   });
+
+  initIntroPage();
+}
+
+function scrollToAuth(tab) {
+  var panel = document.getElementById("auth");
+  if (panel) panel.scrollIntoView({ behavior: "smooth", block: "center" });
+  if (tab) switchTab(tab);
+}
+
+function initIntroPage() {
+  var heroLogin = document.getElementById("hero-login");
+  var heroRegister = document.getElementById("hero-register");
+  var navLogin = document.getElementById("nav-login");
+  var navRegister = document.getElementById("nav-register");
+  var contactForm = document.getElementById("contact-form");
+
+  if (heroLogin) heroLogin.addEventListener("click", function () { scrollToAuth("login"); });
+  if (heroRegister) heroRegister.addEventListener("click", function () { scrollToAuth("signup"); });
+  if (navLogin) navLogin.addEventListener("click", function (e) {
+    e.preventDefault();
+    scrollToAuth("login");
+  });
+  if (navRegister) navRegister.addEventListener("click", function () { scrollToAuth("signup"); });
+
+  if (contactForm) {
+    contactForm.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var ok = document.getElementById("contact-success");
+      if (ok) ok.classList.remove("hidden");
+      contactForm.reset();
+      setTimeout(function () {
+        if (ok) ok.classList.add("hidden");
+      }, 6000);
+    });
+  }
+
+  if ("IntersectionObserver" in window) {
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add("visible");
+          observer.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.15, rootMargin: "0px 0px -40px 0px" });
+
+    document.querySelectorAll(".reveal").forEach(function (el) {
+      observer.observe(el);
+    });
+  } else {
+    document.querySelectorAll(".reveal").forEach(function (el) {
+      el.classList.add("visible");
+    });
+  }
 }
 
 function switchTab(tab) {

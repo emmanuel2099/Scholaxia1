@@ -41,7 +41,7 @@
       <button type="button" class="topnav-btn active" data-page="live"><span class="nav-ico">&#127909;</span> Live Classes</button>
       <button type="button" class="topnav-btn" data-page="materials"><span class="nav-ico">&#128218;</span> Study Materials</button>
       <button type="button" class="topnav-btn" data-page="curriculum"><span class="nav-ico">&#128197;</span> Curriculum</button>
-      <button type="button" class="topnav-btn" data-page="notes"><span class="nav-ico">&#128221;</span> Learn Notes</button>
+      <button type="button" class="topnav-btn" data-page="exams"><span class="nav-ico">&#128221;</span> Scholaxia Exam</button>
       <button type="button" class="topnav-btn" data-page="requests"><span class="nav-ico">&#128172;</span> Requests</button>
       <button type="button" class="topnav-btn" data-page="community"><span class="nav-ico">&#128227;</span> Community</button>
       <button type="button" class="topnav-btn" data-page="ai"><span class="nav-ico">&#129302;</span> Teacher AI</button>
@@ -131,15 +131,70 @@
       <div id="curriculum-list"></div>
     </section>
 
-    <section id="page-notes" class="teacher-page">
+    <section id="page-exams" class="teacher-page">
       <div class="teacher-page-head">
         <div>
-          <h2>Learn Notes</h2>
-          <p class="page-desc">Lesson plans and teaching guides — saved to your account on this device.</p>
+          <h2>Scholaxia Exam</h2>
+          <p class="page-desc">Upload a question file — students in your subject see it under <strong>Exams</strong>, get their score instantly, and you track every result here.</p>
         </div>
-        <button type="button" class="btn-action" id="save-notes-btn">Save notes</button>
       </div>
-      <div id="notes-list"></div>
+
+      <div class="community-compose-card teacher-exam-upload-card">
+        <div class="community-compose-header">
+          <div class="community-compose-icon teacher-ai-icon" aria-hidden="true">&#128221;</div>
+          <div>
+            <h3>Upload exam (JSON)</h3>
+            <p class="community-compose-hint">Upload a .json file with questions — not typed one-by-one. Students with matching subjects can take it anytime in the exam window.</p>
+          </div>
+        </div>
+
+        <div class="teacher-ai-fields teacher-exam-meta">
+          <label class="teacher-ai-field">
+            <span>Exam title</span>
+            <input type="text" id="texam-title" placeholder="e.g. Mathematics — Week 4 test" />
+          </label>
+          <label class="teacher-ai-field">
+            <span>Subject</span>
+            <input type="text" id="texam-subject" list="texam-subject-list" placeholder="Mathematics" />
+            <datalist id="texam-subject-list"></datalist>
+          </label>
+          <label class="teacher-ai-field">
+            <span>Duration (minutes)</span>
+            <input type="number" id="texam-duration" min="5" max="180" value="30" />
+          </label>
+        </div>
+
+        <div class="teacher-ai-fields teacher-exam-meta">
+          <label class="teacher-ai-field">
+            <span>Open from</span>
+            <input type="datetime-local" id="texam-start" />
+          </label>
+          <label class="teacher-ai-field">
+            <span>Close at</span>
+            <input type="datetime-local" id="texam-end" />
+          </label>
+          <label class="teacher-ai-field">
+            <span>Questions file</span>
+            <input type="file" id="texam-file" accept=".json,application/json" />
+          </label>
+        </div>
+
+        <div class="teacher-exam-template-row">
+          <button type="button" class="btn-sm" id="texam-download-template">Download sample JSON</button>
+          <span class="teacher-exam-file-hint" id="texam-file-hint">No file chosen</span>
+        </div>
+
+        <div class="announce-compose-footer teacher-exam-footer">
+          <p class="teacher-ai-footnote">All registered Scholaxia students (not only live-class payers) see exams for their subjects.</p>
+          <button type="button" class="btn-action primary announce-send-btn" id="texam-publish-btn">Publish exam</button>
+        </div>
+        <p id="texam-error" class="error-msg"></p>
+      </div>
+
+      <div class="community-feed-section">
+        <h3 class="community-feed-title">Your exams &amp; student scores</h3>
+        <div id="teacher-exam-list" class="announce-feed"><div class="loading">Loading exams…</div></div>
+      </div>
     </section>
 
     <section id="page-requests" class="teacher-page">
@@ -154,34 +209,67 @@
     </section>
 
     <section id="page-community" class="teacher-page">
-      <h2>Community &amp; Announcements</h2>
-      <p class="page-desc">Send announcements to all students. They get a notification even when the app is closed.</p>
-      <div class="host-card">
-        <h3>New announcement</h3>
-        <textarea id="teacher-announce-input" rows="4" placeholder="Write an announcement for your students…"></textarea>
-        <div class="voice-note-compose" style="margin-top:10px">
-          <button type="button" id="teacher-voice-btn" class="btn-voice-record">&#127908; Tap to record voice</button>
-          <p id="teacher-voice-status" class="voice-status hidden"></p>
-          <div id="teacher-voice-preview" class="voice-preview hidden">
-            <audio id="teacher-voice-playback" controls playsinline></audio>
-            <button type="button" id="teacher-voice-delete" class="btn-image-clear">&#128465; Delete voice</button>
+      <div class="teacher-page-head">
+        <div>
+          <h2>Community &amp; Announcements</h2>
+          <p class="page-desc">Send announcements to all students. They get a notification even when the app is closed.</p>
+        </div>
+      </div>
+
+      <div class="community-compose-card">
+        <div class="community-compose-header">
+          <div class="community-compose-icon" aria-hidden="true">&#128227;</div>
+          <div>
+            <h3>New announcement</h3>
+            <p class="community-compose-hint">Write a message, record a voice note, or send both.</p>
           </div>
         </div>
-        <div class="form-row" style="margin-top:10px">
-          <button type="button" class="btn-action primary" id="teacher-announce-send">Send announcement</button>
+        <textarea
+          id="teacher-announce-input"
+          class="announce-compose-input"
+          rows="5"
+          placeholder="Write an announcement for your students…"
+        ></textarea>
+        <div class="announce-compose-footer">
+          <div class="voice-note-compose community-voice">
+            <button type="button" id="teacher-voice-btn" class="btn-voice-record light">&#127908; Tap to record voice</button>
+            <p id="teacher-voice-status" class="voice-status hidden"></p>
+            <div id="teacher-voice-preview" class="voice-preview hidden">
+              <audio id="teacher-voice-playback" controls playsinline></audio>
+              <button type="button" id="teacher-voice-delete" class="btn-image-clear">&#128465; Delete voice</button>
+            </div>
+          </div>
+          <button type="button" class="btn-action primary announce-send-btn" id="teacher-announce-send">Send announcement</button>
         </div>
         <p id="teacher-announce-error" class="error-msg"></p>
       </div>
-      <h3 style="margin-top:24px">Recent announcements</h3>
-      <div id="teacher-announce-list" class="data-table-wrap"><div class="loading">Loading…</div></div>
+
+      <div class="community-feed-section">
+        <h3 class="community-feed-title">Recent announcements</h3>
+        <div id="teacher-announce-list" class="announce-feed"><div class="loading">Loading…</div></div>
+      </div>
     </section>
 
     <section id="page-ai" class="teacher-page">
-      <h2>Teacher AI</h2>
-      <p class="page-desc">Lesson plans, quizzes, grading help, and class analytics — powered by Sia for teachers.</p>
-      <div class="host-card">
-        <div class="form-grid">
-          <label><span>Task</span>
+      <div class="teacher-page-head">
+        <div>
+          <h2>Teacher AI</h2>
+          <p class="page-desc">Lesson plans, quizzes, grading help, and class analytics — powered by Sia for teachers.</p>
+        </div>
+      </div>
+
+      <div class="teacher-ai-card">
+        <div class="community-compose-header">
+          <div class="community-compose-icon teacher-ai-icon" aria-hidden="true">&#10024;</div>
+          <div>
+            <h3>Ask Sia</h3>
+            <p class="community-compose-hint">Choose a task, describe what you need, and Sia will draft it for you.</p>
+          </div>
+        </div>
+
+        <div class="teacher-ai-fields">
+          <label class="teacher-ai-field">
+            <span>Task</span>
             <select id="teacher-ai-task">
               <option value="lesson_plan">Lesson plan</option>
               <option value="assignment">Assignment ideas</option>
@@ -191,15 +279,47 @@
               <option value="general">General help</option>
             </select>
           </label>
-          <label><span>Subject</span><input type="text" id="teacher-ai-subject" placeholder="Mathematics" /></label>
-          <label><span>Level</span><input type="text" id="teacher-ai-level" placeholder="SS2, JAMB, etc." /></label>
-          <label class="span-2"><span>What do you need?</span>
-            <textarea id="teacher-ai-details" rows="5" placeholder="e.g. Create a 45-minute lesson on quadratic equations with 5 practice questions"></textarea>
+          <label class="teacher-ai-field">
+            <span>Subject</span>
+            <input type="text" id="teacher-ai-subject" list="teacher-ai-subject-list" placeholder="Mathematics" />
+            <datalist id="teacher-ai-subject-list"></datalist>
+          </label>
+          <label class="teacher-ai-field">
+            <span>Level</span>
+            <input type="text" id="teacher-ai-level" placeholder="SS2, JAMB, etc." />
           </label>
         </div>
-        <button type="button" class="btn-action primary" id="teacher-ai-ask">Ask Teacher AI</button>
+
+        <label class="teacher-ai-prompt-label">
+          <span>What do you need?</span>
+          <textarea
+            id="teacher-ai-details"
+            class="announce-compose-input teacher-ai-prompt"
+            rows="6"
+            placeholder="e.g. Create a 45-minute lesson on quadratic equations with 5 practice questions"
+          ></textarea>
+        </label>
+
+        <div class="teacher-ai-quick-prompts">
+          <span class="quick-prompts-label">Quick ideas</span>
+          <div class="ai-prompt-chips">
+            <button type="button" class="ai-prompt-chip" data-task="lesson_plan" data-prompt="Create a 45-minute lesson plan with objectives, activities, and a short quiz.">45-min lesson</button>
+            <button type="button" class="ai-prompt-chip" data-task="quiz" data-prompt="Write 10 multiple-choice questions with answers and brief explanations.">10 MCQ quiz</button>
+            <button type="button" class="ai-prompt-chip" data-task="assignment" data-prompt="Suggest 3 homework tasks of increasing difficulty for this topic.">Homework ideas</button>
+            <button type="button" class="ai-prompt-chip" data-task="grading" data-prompt="Give constructive feedback templates I can use when marking student work.">Grading feedback</button>
+          </div>
+        </div>
+
+        <div class="announce-compose-footer teacher-ai-footer">
+          <p class="teacher-ai-footnote">Powered by Sia — Scholaxia Intelligent Assistant</p>
+          <button type="button" class="btn-action primary announce-send-btn" id="teacher-ai-ask">Ask Teacher AI</button>
+        </div>
         <p id="teacher-ai-error" class="error-msg"></p>
-        <div id="teacher-ai-result" class="teacher-ai-result hidden"></div>
+      </div>
+
+      <div id="teacher-ai-result-wrap" class="teacher-ai-result-wrap hidden">
+        <h3 class="community-feed-title">Sia&rsquo;s response</h3>
+        <div id="teacher-ai-result" class="teacher-ai-result"></div>
       </div>
     </section>
   </main>

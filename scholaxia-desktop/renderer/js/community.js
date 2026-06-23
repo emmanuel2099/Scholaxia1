@@ -3,7 +3,43 @@ var communityDraftImage = null;
 var communityVoiceRecorder = null;
 var communityPendingPost = null;
 var communityActiveTab = "feed";
+var COMMUNITY_CHANNEL_KEY = "sia_community_channel_id";
+var COMMUNITY_POSTS_CACHE_KEY = "sia_community_posts_cache";
 var POST_COMMENT_RE = /^@post:([^\s]+)\s*([\s\S]*)$/;
+
+function restoreCommunityChannelId() {
+  if (communityChannelId) return;
+  try {
+    var cached = localStorage.getItem(COMMUNITY_CHANNEL_KEY);
+    if (cached) communityChannelId = cached;
+  } catch (e) { /* ignore */ }
+}
+
+function saveCommunityChannelId(id) {
+  if (!id) return;
+  communityChannelId = id;
+  try { localStorage.setItem(COMMUNITY_CHANNEL_KEY, id); } catch (e) { /* ignore */ }
+}
+
+function saveCommunityCache(posts) {
+  if (!posts || !posts.length) return;
+  try {
+    localStorage.setItem(COMMUNITY_POSTS_CACHE_KEY, JSON.stringify({
+      saved_at: Date.now(),
+      posts: posts,
+    }));
+  } catch (e) { /* ignore */ }
+}
+
+function loadCommunityCache() {
+  try {
+    var raw = localStorage.getItem(COMMUNITY_POSTS_CACHE_KEY);
+    if (!raw) return null;
+    var data = JSON.parse(raw);
+    if (!data || !Array.isArray(data.posts)) return null;
+    return data;
+  } catch (e) { return null; }
+}
 
 function isPostComment(content) {
   return POST_COMMENT_RE.test(content || "");
@@ -163,11 +199,12 @@ function renderCommunityPosts(posts, targetEl) {
 }
 
 async function ensureCommunityChannel() {
+  restoreCommunityChannelId();
   if (communityChannelId) return communityChannelId;
   var channels = await api("/api/v1/community/channels");
   var general = (channels || []).find(function (c) { return c.type === "general"; }) || (channels || [])[0];
   if (!general) return null;
-  communityChannelId = general.id;
+  saveCommunityChannelId(general.id);
   try {
     await api("/api/v1/community/join", {
       method: "POST",
@@ -298,19 +335,36 @@ async function loadCommunity(newPost) {
     return loadCommunityAnnouncements();
   }
   var feed = document.getElementById("community-feed");
-  feed.innerHTML = '<div class="loading">Loading posts…</div>';
+  if (!feed) return;
+
+  restoreCommunityChannelId();
+  var cached = loadCommunityCache();
+  var showingCache = false;
+  if (cached && cached.posts && cached.posts.length) {
+    renderCommunityPosts(newPost ? prependNewPost(cached.posts, newPost) : cached.posts);
+    showingCache = true;
+  } else if (newPost) {
+    renderCommunityPosts([newPost]);
+    showingCache = true;
+  } else {
+    feed.innerHTML = '<div class="loading">Loading posts…</div>';
+  }
+
   try {
     var channelId = await ensureCommunityChannel();
     if (!channelId) {
-      feed.innerHTML = '<div class="empty">Community is not set up yet.</div>';
+      if (!showingCache) feed.innerHTML = '<div class="empty">Community is not set up yet.</div>';
       return;
     }
     var posts = await fetchCommunityPosts();
     if (newPost) posts = prependNewPost(posts, newPost);
+    saveCommunityCache(posts);
     renderCommunityPosts(posts);
   } catch (e) {
+    if (showingCache) return;
     if (newPost) {
       renderCommunityPosts([newPost]);
+      saveCommunityCache([newPost]);
       return;
     }
     var msg = e.message === "Failed to fetch"
@@ -318,6 +372,15 @@ async function loadCommunity(newPost) {
       : e.message;
     feed.innerHTML = '<div class="empty">' + escHtml(msg) + '</div>';
   }
+}
+
+async function prefetchCommunityFeed() {
+  restoreCommunityChannelId();
+  try {
+    await ensureCommunityChannel();
+    var posts = await fetchCommunityPosts();
+    if (posts && posts.length) saveCommunityCache(posts);
+  } catch (e) { /* background warm-up */ }
 }
 
 async function submitCommunityPost() {
@@ -371,6 +434,8 @@ async function submitCommunityPost() {
       }),
     });
     var newPost = normalizeCreatedPost(created, content, mediaUrl, mediaType);
+    var cachedPosts = (loadCommunityCache() || {}).posts || [];
+    saveCommunityCache(prependNewPost(cachedPosts, newPost));
     clearCommunityImage();
     clearCommunityVoice();
     if (input) input.value = "";
@@ -489,6 +554,7 @@ function clearCommunityVoice() {
   if (communityVoiceRecorder) communityVoiceRecorder.cancel();
 }
 
+window.prefetchCommunityFeed = prefetchCommunityFeed;
 window.showCommunityTab = showCommunityTab;
 window.clearCommunityVoice = clearCommunityVoice;
 window.initCommunityVoiceRecorder = initCommunityVoiceRecorder;

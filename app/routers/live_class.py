@@ -3,7 +3,7 @@ import time
 import hashlib
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, or_, and_
 from pydantic import BaseModel
 from datetime import datetime, timezone, timedelta
 from typing import Optional
@@ -54,6 +54,16 @@ def _can_manage_class(current_user: dict, live_class: LiveClass) -> bool:
     if role == "admin":
         return True
     return str(live_class.teacher_id) == current_user["sub"]
+
+
+def _class_is_active(live_class: LiveClass, now: datetime) -> bool:
+    """True when class is live or within its scheduled window."""
+    if live_class.is_live:
+        return True
+    if live_class.start_time and live_class.start_time <= now:
+        if live_class.end_time is None or live_class.end_time > now:
+            return True
+    return False
 
 
 class CreateClassRequest(BaseModel):
@@ -161,18 +171,22 @@ async def start_class(
     if not _can_manage_class(current_user, live_class):
         raise HTTPException(status_code=403, detail="Not your class")
 
+    was_live = live_class.is_live
     live_class.is_live = True
+    now = naive_utc_now()
+    if live_class.start_time and live_class.start_time > now:
+        live_class.start_time = now
 
-    # Notify only students who selected this subject
-    await send_subject_notification(
-        db=db,
-        subject=live_class.subject,
-        title=f"Live class starting now",
-        body=f"Your {live_class.subject} live class is starting now.",
-        notification_type="live_class",
-        data={"class_id": str(live_class.id), "room_id": live_class.room_id},
-    )
-    return {"message": "Class started", "room_id": live_class.room_id}
+    if not was_live:
+        await send_subject_notification(
+            db=db,
+            subject=live_class.subject,
+            title="Live class starting now",
+            body=f"Your {live_class.subject} live class is starting now.",
+            notification_type="live_class",
+            data={"class_id": str(live_class.id), "room_id": live_class.room_id},
+        )
+    return {"message": "Class started", "room_id": live_class.room_id, "is_live": True}
 
 
 @router.post("/{class_id}/join")
@@ -183,8 +197,11 @@ async def join_class(
 ):
     result = await db.execute(select(LiveClass).where(LiveClass.id == class_id))
     live_class = result.scalar_one_or_none()
-    if not live_class or not live_class.is_live:
+    now = naive_utc_now()
+    if not live_class or not _class_is_active(live_class, now):
         raise HTTPException(status_code=404, detail="Class not live")
+    if not live_class.is_live:
+        live_class.is_live = True
 
     from app.models.payment import Payment, PaymentStatus
     paid_res = await db.execute(
@@ -325,12 +342,21 @@ async def list_live_classes(
         query = query.where(LiveClass.subject == subject)
 
     if status == "live":
-        query = query.where(LiveClass.is_live == True)  # noqa: E712
+        # Live now OR within scheduled window (started but teacher has not tapped Start yet)
+        query = query.where(
+            or_(
+                LiveClass.is_live == True,  # noqa: E712
+                and_(
+                    LiveClass.start_time <= now,
+                    or_(LiveClass.end_time > now, LiveClass.end_time.is_(None)),
+                ),
+            )
+        )
     elif status == "upcoming":
         query = query.where(
             LiveClass.is_live == False,  # noqa: E712
-            (LiveClass.end_time > now) | (LiveClass.end_time.is_(None)),
-            LiveClass.start_time > now - timedelta(days=30),
+            LiveClass.start_time > now,
+            or_(LiveClass.end_time > now, LiveClass.end_time.is_(None)),
         )
     elif status == "past":
         query = query.where(
@@ -347,14 +373,14 @@ async def list_live_classes(
     result = await db.execute(query)
     classes = result.scalars().all()
 
-    # Students only see classes matching their selected subjects
+    # Students: live classes visible to everyone; upcoming filtered by profile subjects
     if role == "student":
         prof_res = await db.execute(
             select(StudentProfile).where(StudentProfile.user_id == current_user["sub"])
         )
         profile = prof_res.scalar_one_or_none()
         subjects = list(profile.selected_subjects or []) if profile else []
-        if subjects:
+        if status != "live" and subjects:
             classes = [c for c in classes if subject_matches(c.subject, subjects)]
 
     # Fetch teacher names

@@ -1,0 +1,250 @@
+var SKILLS_PROGRAMS = [
+  {
+    id: "web-design",
+    icon: "&#127760;",
+    title: "Web Design",
+    subtitle: "Frontend & Backend",
+    duration: "6 months",
+    fee: 250000,
+    keywords: ["web", "html", "css", "javascript", "frontend", "backend", "react", "node"],
+    phases: [
+      { name: "Frontend Development", duration: "3 months", topics: ["HTML5 & semantic markup", "CSS3, Flexbox & Grid", "JavaScript fundamentals", "Responsive design", "UI/UX basics", "React or Vue introduction"] },
+      { name: "Backend Development", duration: "3 months", topics: ["Node.js / Python APIs", "Databases (SQL & NoSQL)", "Authentication & security", "REST APIs", "Deployment & hosting", "Full-stack portfolio project"] },
+    ],
+    description: "Learn to build complete websites and web applications from scratch. The frontend track teaches you how users see and interact with the web — layouts, styling, animations, and modern JavaScript frameworks. The backend track covers servers, databases, APIs, and deployment so you can ship production-ready apps. Graduates can work as junior web developers, freelance site builders, or continue into advanced full-stack roles.",
+    outcomes: ["Build responsive websites and web apps", "Create and consume REST APIs", "Deploy projects to the internet", "Portfolio of 3+ real projects"],
+  },
+  {
+    id: "mobile-app",
+    icon: "&#128241;",
+    title: "Mobile App Development",
+    subtitle: "Frontend, Backend & Project",
+    duration: "9 months",
+    fee: 300000,
+    keywords: ["mobile", "android", "ios", "flutter", "react native", "app"],
+    phases: [
+      { name: "Mobile Frontend", duration: "3 months", topics: ["UI components & navigation", "Flutter / React Native basics", "State management", "Device APIs (camera, GPS)", "App store guidelines"] },
+      { name: "Mobile Backend", duration: "3 months", topics: ["Firebase / custom APIs", "Push notifications", "Offline sync", "Payment integration", "User authentication"] },
+      { name: "Capstone Project", duration: "3 months", topics: ["Team or solo app build", "Mentor reviews", "Testing & debugging", "Play Store / App Store prep", "Launch & presentation"] },
+    ],
+    description: "Master the full mobile development lifecycle. You will design beautiful interfaces, connect them to real backends, and ship a complete app as your final project. Live classes walk you through industry tools used by startups and agencies worldwide. This program is ideal if you want to build your own app idea or get hired as a mobile developer.",
+    outcomes: ["Publish-ready mobile application", "Frontend + backend integration skills", "App store submission experience", "Professional capstone for your CV"],
+  },
+  {
+    id: "gsm-repairs",
+    icon: "&#128295;",
+    title: "Computer / GSM Repairs",
+    subtitle: "Hardware & Software",
+    duration: "6 months",
+    fee: 150000,
+    keywords: ["repair", "gsm", "phone", "computer", "hardware", "laptop"],
+    phases: [
+      { name: "Hardware Repair", duration: "3 months", topics: ["Phone & laptop disassembly", "Screen & battery replacement", "Motherboard basics", "Soldering & micro-soldering intro", "Diagnostic tools & multimeters"] },
+      { name: "Software & Troubleshooting", duration: "3 months", topics: ["OS installation & recovery", "Virus removal & optimization", "IMEI & firmware flashing", "Data recovery basics", "Customer service & pricing"] },
+    ],
+    description: "A practical, hands-on program for anyone who wants to earn from device repair. You will work on real phones and computers in live lab sessions — not just theory. Learn hardware fixes (screens, batteries, charging ports) and software solutions (OS issues, unlocking, data recovery). Perfect for opening a repair shop or working in a service center.",
+    outcomes: ["Diagnose and fix common device faults", "Safe disassembly and reassembly", "Software troubleshooting toolkit", "Business basics for repair shops"],
+  },
+  {
+    id: "graphics",
+    icon: "&#127912;",
+    title: "Graphics Design",
+    subtitle: "Brand, Print & Digital",
+    duration: "3 months",
+    fee: 70000,
+    keywords: ["graphics", "design", "photoshop", "illustrator", "canva", "brand"],
+    phases: [
+      { name: "Core Design", duration: "3 months", topics: ["Design principles & colour theory", "Typography & layout", "Adobe Photoshop & Illustrator", "Logo & brand identity", "Social media creatives", "Print design (flyers, banners)"] },
+    ],
+    description: "Turn your creativity into a marketable skill. This intensive program covers visual design from concept to finished artwork. Live classes include live demos in industry-standard tools plus critiques of your work. You will build a portfolio of logos, social posts, and print materials that you can show clients on day one after graduation.",
+    outcomes: ["Professional design portfolio", "Brand identity packages", "Social media design templates", "Client-ready deliverables"],
+  },
+  {
+    id: "data-analysis",
+    icon: "&#128202;",
+    title: "Data Analysis",
+    subtitle: "Excel, SQL & Visualization",
+    duration: "6 months",
+    fee: 100000,
+    keywords: ["data", "analysis", "excel", "sql", "python", "power bi"],
+    phases: [
+      { name: "Foundations", duration: "3 months", topics: ["Excel advanced (pivot, VLOOKUP)", "Data cleaning & validation", "Basic statistics", "SQL queries", "Introduction to Python for data"] },
+      { name: "Analytics & Reporting", duration: "3 months", topics: ["Power BI / Tableau dashboards", "Data storytelling", "Business KPIs", "Real datasets & case studies", "Final analytics project"] },
+    ],
+    description: "Data drives every modern business. Learn to collect, clean, analyze, and present data so decision-makers can act on it. Live sessions use real spreadsheets and databases from Nigerian businesses. Whether you want a corporate analyst role or freelance reporting gigs, this program gives you the toolkit employers ask for.",
+    outcomes: ["Interactive dashboards", "SQL & Excel proficiency", "Data cleaning workflows", "Business report portfolio"],
+  },
+  {
+    id: "cyber-security",
+    icon: "&#128274;",
+    title: "Cyber Security",
+    subtitle: "Defence & Ethical Hacking Basics",
+    duration: "3 months",
+    fee: 150000,
+    keywords: ["cyber", "security", "hacking", "network", "firewall"],
+    phases: [
+      { name: "Security Fundamentals", duration: "3 months", topics: ["Network security basics", "Threats & vulnerabilities", "Firewalls & encryption", "Password & access management", "Ethical hacking introduction", "Incident response basics"] },
+    ],
+    description: "Protect systems and understand how attackers think — legally and ethically. This fast-track program introduces network security, common attack vectors, and defensive practices used in banks, schools, and tech companies. Live labs simulate real scenarios in a safe environment. A strong entry point into IT security careers or securing your own business.",
+    outcomes: ["Security assessment checklist", "Network hardening skills", "Ethical hacking lab experience", "Foundation for advanced certs"],
+  },
+  {
+    id: "digital-marketing",
+    icon: "&#128226;",
+    title: "Digital Marketing",
+    subtitle: "Social, Ads & Growth",
+    duration: "2 months",
+    fee: 80000,
+    keywords: ["marketing", "digital", "social media", "ads", "seo"],
+    phases: [
+      { name: "Growth Marketing", duration: "2 months", topics: ["Social media strategy", "Facebook & Instagram ads", "Google Ads basics", "Content marketing", "Email campaigns", "Analytics & ROI tracking"] },
+    ],
+    description: "Learn to grow brands online with proven digital marketing tactics. Short but intensive — perfect for entrepreneurs, influencers, or anyone managing social accounts for businesses. Live classes cover campaign setup, ad targeting, and measuring results in Naira. You will run a practice campaign before graduation.",
+    outcomes: ["Complete marketing plan template", "Live ad campaign experience", "Content calendar system", "ROI reporting skills"],
+  },
+  {
+    id: "scratch-robotics",
+    icon: "&#129302;",
+    title: "Scratch Coding & Robotics",
+    subtitle: "Kids, Teens & Beginners",
+    duration: "3 months",
+    fee: 65000,
+    keywords: ["scratch", "robotics", "coding", "arduino", "stem"],
+    phases: [
+      { name: "Coding & Robotics", duration: "3 months", topics: ["Scratch block programming", "Logic, loops & variables", "Arduino / micro:bit basics", "Building simple robots", "Sensors & motors", "STEM project showcase"] },
+    ],
+    description: "An engaging program for young learners and absolute beginners. Start with Scratch's visual blocks to understand programming logic, then move to physical robotics — wiring sensors, motors, and writing code that makes things move. Live classes are interactive and project-based. Great for students, parents who homeschool, or teachers adding STEM to their classroom.",
+    outcomes: ["Scratch games & animations", "Working robot prototype", "STEM problem-solving skills", "Showcase project for school or competitions"],
+  },
+];
+
+var skillsLiveCache = null;
+var skillsExpandedId = null;
+
+function formatNaira(amount) {
+  return "₦" + Number(amount || 0).toLocaleString("en-NG");
+}
+
+function installmentBreakdown(fee) {
+  var half = Math.round(fee / 2);
+  return formatNaira(half) + " at enrollment + " + formatNaira(fee - half) + " at midpoint";
+}
+
+function sessionMatchesSkill(session, keywords) {
+  var hay = ((session.title || "") + " " + (session.subject || "") + " " + (session.description || "")).toLowerCase();
+  return keywords.some(function (kw) { return hay.indexOf(kw) >= 0; });
+}
+
+async function fetchSkillLiveSessions() {
+  try {
+    var live = await api("/api/v1/live-classes/?status=live") || [];
+    var upcoming = await api("/api/v1/live-classes/?status=upcoming") || [];
+    return (live || []).concat(upcoming || []);
+  } catch (e) {
+    return [];
+  }
+}
+
+function renderSkillLiveClasses(skill, sessions) {
+  var matched = (sessions || []).filter(function (s) { return sessionMatchesSkill(s, skill.keywords); });
+  if (!matched.length) {
+    return '<div class="skill-live-empty">' +
+      '<p>No live sessions scheduled for this skill yet. New classes are added regularly — check back or request one from the <button type="button" class="skill-link-btn" onclick="showPage(\'live\')">Live Class</button> tab.</p>' +
+      '</div>';
+  }
+  return '<div class="skill-live-grid">' + matched.map(function (s) {
+    var badge = s.is_live || s.status === "live" ? '<span class="live-pill">LIVE</span>' : '<span class="time-badge">Upcoming</span>';
+    return '<div class="skill-live-card">' +
+      badge +
+      '<h4>' + escHtml(s.title) + '</h4>' +
+      '<p class="meta">' + escHtml(s.subject) + ' · ' + escHtml(s.teacher_name || "Instructor") + '</p>' +
+      (s.start_time ? '<p class="schedule-meta">&#128197; ' + formatDate(s.start_time) + '</p>' : '') +
+      '<button type="button" class="btn-join" data-id="' + escHtml(s.id) + '" data-title="' + escHtml(s.title) + '" data-subject="' + escHtml(s.subject) + '" data-teacher="' + escHtml(s.teacher_name || "") + '" onclick="joinClassWithPayment(this)">Join live class</button>' +
+      '</div>';
+  }).join("") + '</div>';
+}
+
+function renderSkillCard(skill, sessions, expanded) {
+  var isOpen = expanded === skill.id;
+  var phasesHtml = (skill.phases || []).map(function (ph) {
+    return '<div class="skill-phase">' +
+      '<div class="skill-phase-head"><strong>' + escHtml(ph.name) + '</strong><span>' + escHtml(ph.duration) + '</span></div>' +
+      '<ul>' + (ph.topics || []).map(function (t) { return '<li>' + escHtml(t) + '</li>'; }).join("") + '</ul>' +
+      '</div>';
+  }).join("");
+
+  var outcomesHtml = (skill.outcomes || []).map(function (o) {
+    return '<li>' + escHtml(o) + '</li>';
+  }).join("");
+
+  return '<article class="skill-card' + (isOpen ? " open" : "") + '" data-skill-id="' + escHtml(skill.id) + '">' +
+    '<button type="button" class="skill-card-toggle" onclick="toggleSkillCard(\'' + skill.id + '\')">' +
+    '<span class="skill-card-icon" aria-hidden="true">' + skill.icon + '</span>' +
+    '<div class="skill-card-summary">' +
+    '<h3>' + escHtml(skill.title) + '</h3>' +
+    '<p class="skill-subtitle">' + escHtml(skill.subtitle) + '</p>' +
+    '<div class="skill-meta-row">' +
+    '<span>&#9201; ' + escHtml(skill.duration) + '</span>' +
+    '<span class="skill-fee">' + formatNaira(skill.fee) + '</span>' +
+    '</div></div>' +
+    '<span class="skill-chevron" aria-hidden="true">' + (isOpen ? "&#9650;" : "&#9660;") + '</span>' +
+    '</button>' +
+    (isOpen ? '<div class="skill-card-body">' +
+      '<p class="skill-description">' + escHtml(skill.description) + '</p>' +
+      '<div class="skill-installment">' +
+      '<strong>2-installment plan:</strong> ' + escHtml(installmentBreakdown(skill.fee)) +
+      '</div>' +
+      '<h4>Program structure</h4>' +
+      '<div class="skill-phases">' + phasesHtml + '</div>' +
+      '<h4>What you will achieve</h4>' +
+      '<ul class="skill-outcomes">' + outcomesHtml + '</ul>' +
+      '<h4>Live classes for this skill</h4>' +
+      renderSkillLiveClasses(skill, sessions) +
+      '<div class="skill-enroll-row">' +
+      '<button type="button" class="btn-action" onclick="showSkillEnrollInfo(\'' + skill.id + '\')">Enroll — pay in 2 installments</button>' +
+      '<button type="button" class="btn-secondary" onclick="showPage(\'live\')">View all live classes</button>' +
+      '</div>' +
+      '</div>' : '') +
+    '</article>';
+}
+
+function toggleSkillCard(id) {
+  skillsExpandedId = skillsExpandedId === id ? null : id;
+  renderSkillsPrograms(skillsLiveCache || []);
+}
+
+function showSkillEnrollInfo(id) {
+  var skill = SKILLS_PROGRAMS.find(function (s) { return s.id === id; });
+  if (!skill) return;
+  var half = Math.round(skill.fee / 2);
+  alert(
+    "Enroll in " + skill.title + "\n\n" +
+    "Total fee: " + formatNaira(skill.fee) + "\n" +
+    "Duration: " + skill.duration + "\n\n" +
+    "Payment (2 installments only):\n" +
+    "1. " + formatNaira(half) + " — at enrollment\n" +
+    "2. " + formatNaira(skill.fee - half) + " — at program midpoint\n\n" +
+    "Contact Scholaxia support or your coordinator to complete enrollment and receive your class schedule."
+  );
+}
+
+function renderSkillsPrograms(sessions) {
+  var el = document.getElementById("skills-programs");
+  if (!el) return;
+  el.innerHTML = SKILLS_PROGRAMS.map(function (skill) {
+    return renderSkillCard(skill, sessions, skillsExpandedId);
+  }).join("");
+}
+
+async function loadSkillsTraining() {
+  var el = document.getElementById("skills-programs");
+  if (!el) return;
+  renderSkillsPrograms(skillsLiveCache || []);
+  var sessions = await fetchSkillLiveSessions();
+  skillsLiveCache = sessions;
+  renderSkillsPrograms(sessions);
+}
+
+window.toggleSkillCard = toggleSkillCard;
+window.showSkillEnrollInfo = showSkillEnrollInfo;
+window.loadSkillsTraining = loadSkillsTraining;

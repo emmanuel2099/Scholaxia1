@@ -3,89 +3,210 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; connect-src https://scholaxia1.onrender.com http://127.0.0.1:*; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; connect-src https://scholaxia1.onrender.com http://127.0.0.1:*; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; frame-src https://www.google.com https://maps.google.com" />
   <title>Scholaxia — Student Portal</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/auth.css" />
   <link rel="stylesheet" href="css/responsive.css" />
 </head>
 <body>
 
-<div class="auth-screen">
-  <aside class="auth-statue-panel">
-    <img src="assets/statue.png" alt="" class="statue-img" />
-    <div class="statue-caption">
-      <h2>Illuminate<br/>your mind.</h2>
-      <p>Scholaxia — intelligent education for Africa and beyond.</p>
-    </div>
-  </aside>
+<div class="intro-page">
 
-  <main class="auth-main">
-    <div class="auth-building-bg"></div>
-    <div class="auth-overlay"></div>
+  <header class="intro-header">
+    <a href="#home" class="intro-brand">
+      <img src="assets/logo.png" alt="" class="intro-brand-logo" />
+      <strong>SCHOLAXIA</strong>
+    </a>
+    <nav class="intro-nav" aria-label="Intro navigation">
+      <a href="#home" class="intro-nav-link active">Home</a>
+      <a href="#contact" class="intro-nav-link">Contact</a>
+      <a href="#auth" class="intro-nav-link" id="nav-login">Login</a>
+    </nav>
+    <button type="button" class="intro-cta-header" id="nav-register">Create free account</button>
+  </header>
 
-    <header class="auth-topbar">
-      <div class="school-brand">
-        <img src="assets/logo.png" alt="" class="brand-seal-img" />
-        <div>
-          <strong>SCHOLAXIA</strong>
-          <span>Student Learning Portal</span>
+  <section id="home" class="intro-hero">
+    <div class="intro-hero-bg" aria-hidden="true"></div>
+    <div class="intro-hero-overlay" aria-hidden="true"></div>
+
+    <div class="intro-hero-inner">
+      <div class="intro-hero-copy">
+        <div class="intro-badge">&#127942; Learn smarter with Scholaxia</div>
+        <h1>Pass your exams with <span>confidence</span></h1>
+        <p class="intro-lead">Join students practising daily with live classes, Scholaxia exams, CBT practice, skills training and a vibrant learning community — all in one desktop app.</p>
+        <div class="intro-hero-actions">
+          <button type="button" class="intro-btn-ghost" id="hero-register">Register free</button>
+          <button type="button" class="intro-btn-ghost" id="hero-login">Login</button>
+        </div>
+        <div class="intro-stats">
+          <div><strong>Live</strong><span>Video classes</span></div>
+          <div><strong>CBT</strong><span>Practice exams</span></div>
+          <div><strong>8+</strong><span>Skill programs</span></div>
+          <div><strong>Free</strong><span>To start</span></div>
         </div>
       </div>
-    </header>
 
-    <div class="auth-card-wrap">
-      <div class="auth-card">
-        <img src="assets/logo.png" alt="" class="card-seal-img" />
-        <h1 id="portal-title">STUDENT PORTAL</h1>
-        <p class="card-sub" id="portal-sub">Sign in to access live classes, exams &amp; CBT</p>
+      <div id="auth" class="intro-auth-panel">
+        <div class="auth-card">
+          <img src="assets/logo.png" alt="" class="card-seal-img" />
+          <h1 id="portal-title">STUDENT PORTAL</h1>
+          <p class="card-sub" id="portal-sub">Sign in to access live classes, exams &amp; CBT</p>
 
-        <div class="auth-tabs">
-          <button type="button" id="tab-login" class="auth-tab active">Log in</button>
-          <button type="button" id="tab-signup" class="auth-tab">Register</button>
-        </div>
-
-        <form id="form-login" class="auth-form">
-          <label class="field">
-            <span class="field-icon">&#127891;</span>
-            <input type="email" id="login-email" placeholder="Email address" autocomplete="email" required />
-          </label>
-          <label class="field">
-            <span class="field-icon">&#128274;</span>
-            <input type="password" id="login-password" placeholder="Password" autocomplete="current-password" required />
-            <button type="button" class="toggle-pw" data-target="login-password">&#128065;</button>
-          </label>
-          <div class="form-row">
-            <label class="remember"><input type="checkbox" id="remember-me" /> Remember me</label>
+          <div class="auth-tabs">
+            <button type="button" id="tab-login" class="auth-tab active">Log in</button>
+            <button type="button" id="tab-signup" class="auth-tab">Register</button>
           </div>
-          <p id="login-error" class="error-msg"></p>
-          <button type="submit" class="btn-primary" id="btn-login">LOG IN</button>
-          <p class="switch-text">Don't have an account? <button type="button" class="link-btn" id="go-signup">Register</button></p>
-        </form>
 
-        <form id="form-signup" class="auth-form hidden">
-          <label class="field">
-            <span class="field-icon">&#128100;</span>
-            <input type="text" id="signup-name" placeholder="Full name" autocomplete="name" required />
-          </label>
-          <label class="field">
-            <span class="field-icon">&#127891;</span>
-            <input type="email" id="signup-email" placeholder="Email address" autocomplete="email" required />
-          </label>
-          <label class="field">
-            <span class="field-icon">&#128274;</span>
-            <input type="password" id="signup-password" placeholder="Password (min 8 characters)" autocomplete="new-password" required minlength="8" />
-            <button type="button" class="toggle-pw" data-target="signup-password">&#128065;</button>
-          </label>
-          <p id="signup-error" class="error-msg"></p>
-          <button type="submit" class="btn-primary" id="btn-signup">CREATE ACCOUNT</button>
-          <p class="switch-text">Already have an account? <button type="button" class="link-btn" id="go-login">Log in</button></p>
-        </form>
-        <p class="auth-admin-link"><a href="teacher.html">Teacher portal →</a> · <a href="admin.html">Admin portal →</a></p>
+          <form id="form-login" class="auth-form">
+            <label class="field">
+              <span class="field-label">Email</span>
+              <input type="email" id="login-email" placeholder="Email address" autocomplete="email" required />
+            </label>
+            <label class="field">
+              <span class="field-label">Password</span>
+              <span class="field-input-wrap">
+                <input type="password" id="login-password" placeholder="Password" autocomplete="current-password" required />
+                <button type="button" class="toggle-pw" data-target="login-password">&#128065;</button>
+              </span>
+            </label>
+            <div class="form-row">
+              <label class="remember"><input type="checkbox" id="remember-me" /> Remember me</label>
+            </div>
+            <p id="login-error" class="error-msg"></p>
+            <button type="submit" class="btn-primary" id="btn-login">LOG IN</button>
+            <p class="switch-text">Don't have an account? <button type="button" class="link-btn" id="go-signup">Register</button></p>
+          </form>
+
+          <form id="form-signup" class="auth-form hidden">
+            <label class="field">
+              <span class="field-label">Full name</span>
+              <input type="text" id="signup-name" placeholder="Full name" autocomplete="name" required />
+            </label>
+            <label class="field">
+              <span class="field-label">Email</span>
+              <input type="email" id="signup-email" placeholder="Email address" autocomplete="email" required />
+            </label>
+            <label class="field">
+              <span class="field-label">Password</span>
+              <span class="field-input-wrap">
+                <input type="password" id="signup-password" placeholder="Password (min 8 characters)" autocomplete="new-password" required minlength="8" />
+                <button type="button" class="toggle-pw" data-target="signup-password">&#128065;</button>
+              </span>
+            </label>
+            <p id="signup-error" class="error-msg"></p>
+            <button type="submit" class="btn-primary" id="btn-signup">CREATE ACCOUNT</button>
+            <p class="switch-text">Already have an account? <button type="button" class="link-btn" id="go-login">Log in</button></p>
+          </form>
+        </div>
       </div>
     </div>
-  </main>
+  </section>
+
+  <section class="intro-tagline reveal">
+    <h2>A learning platform built for Nigerian students</h2>
+    <p>Scholaxia brings your classroom online — from JAMB &amp; WAEC CBT practice to live video lessons, teacher exams, skills training and community support.</p>
+  </section>
+
+  <section class="intro-features">
+    <div class="intro-feature reveal">
+      <div class="intro-feature-icon">&#127909;</div>
+      <h3>Live classes</h3>
+      <p>Join real-time lessons with expert teachers. Pay per class with Flutterwave and learn from anywhere on your desktop.</p>
+    </div>
+    <div class="intro-feature reveal reveal-delay-1">
+      <div class="intro-feature-icon">&#128221;</div>
+      <h3>Scholaxia Exam</h3>
+      <p>Take tests your teachers upload and get your score instantly. Practice under exam conditions with smart proctoring.</p>
+    </div>
+    <div class="intro-feature reveal reveal-delay-2">
+      <div class="intro-feature-icon">&#127891;</div>
+      <h3>Skills training</h3>
+      <p>Web design, mobile apps, graphics, cyber security, data analysis and more — with live classes and flexible payment plans.</p>
+    </div>
+    <div class="intro-feature reveal reveal-delay-3">
+      <div class="intro-feature-icon">&#128172;</div>
+      <h3>Community</h3>
+      <p>Share ideas, ask questions and stay connected with fellow students and teachers across Scholaxia.</p>
+    </div>
+  </section>
+
+  <section class="intro-story">
+    <div class="intro-story-block reveal">
+      <h3>Everything you need in one app</h3>
+      <p>Scholaxia is more than an exam app. It is your complete student hub — library materials, saved live recordings, Sia AI tutor, Scholaxia Marketplace for books, and official school exams through our CBT portal.</p>
+    </div>
+    <div class="intro-story-block reveal">
+      <h3>Built for real students, real results</h3>
+      <p>Whether you are preparing for UTME, practising past questions, learning a vocational skill, or joining a live lesson before an exam, Scholaxia keeps you focused with a clean desktop experience designed for serious study.</p>
+    </div>
+    <div class="intro-story-block reveal">
+      <h3>Start free, grow at your pace</h3>
+      <p>Create your free account in seconds. Set up your exam profile, pick your subjects, and explore live classes, CBT practice and skills programs whenever you are ready.</p>
+    </div>
+  </section>
+
+  <section id="contact" class="intro-contact">
+    <div class="intro-contact-hero">
+      <div class="intro-contact-hero-inner">
+        <p class="intro-breadcrumb">Home &rarr; Contact</p>
+        <h2>Get In Touch</h2>
+      </div>
+    </div>
+
+    <div class="intro-contact-body">
+      <div class="intro-contact-map-wrap reveal">
+        <iframe
+          class="intro-contact-map"
+          title="Scholaxia location"
+          src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3976.792402444334!2d3.3792057!3d6.5243793!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x103b8e2ae93c8c07%3A0xe26dcf03faa8f1d2!2sLagos%2C%20Nigeria!5e0!3m2!1sen!2sng!4v1710000000000!5m2!1sen!2sng"
+          loading="lazy"
+          referrerpolicy="no-referrer-when-downgrade"
+          allowfullscreen
+        ></iframe>
+      </div>
+
+      <div class="intro-contact-row">
+        <div class="intro-contact-form-wrap reveal">
+          <h3><span class="contact-form-icon" aria-hidden="true">&#128221;</span> Send us a Message</h3>
+          <form id="contact-form" class="contact-form">
+            <label>
+              <span>Your Name *</span>
+              <input type="text" id="contact-name" placeholder="Your full name" required />
+            </label>
+            <label>
+              <span>Email Address *</span>
+              <input type="email" id="contact-email" placeholder="you@email.com" required />
+            </label>
+            <label>
+              <span>Message *</span>
+              <textarea id="contact-message" rows="4" placeholder="How can we help you?" required></textarea>
+            </label>
+            <p id="contact-success" class="contact-success hidden">Thank you! Your message has been sent. We will get back to you soon.</p>
+            <button type="submit" class="btn-primary contact-submit">Send message</button>
+          </form>
+        </div>
+
+        <div class="intro-office-card reveal reveal-delay-1">
+          <div class="office-pin" aria-hidden="true">&#128205;</div>
+          <h4>Office Location</h4>
+          <p>Scholaxia Education Hub<br />Lagos, Nigeria</p>
+          <p class="office-email"><strong>Email:</strong> support@scholaxia.com</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="intro-footer">
+    <p>&copy; Scholaxia. All rights reserved.</p>
+    <div class="intro-footer-links">
+      <a href="#home">Home</a>
+      <a href="#auth">Login</a>
+      <a href="#contact">Contact</a>
+    </div>
+  </footer>
+
 </div>
 
 <script src="js/api.js"></script>

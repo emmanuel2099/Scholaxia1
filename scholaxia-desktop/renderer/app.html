@@ -8,7 +8,7 @@
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://checkout.flutterwave.com; script-src-attr 'unsafe-inline'; connect-src https://scholaxia1.onrender.com https://api.flutterwave.com https://www.scholaxiacbtexam.blog https://scholaxiacbtexam.blog http://127.0.0.1:*; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://www.scholaxiacbtexam.blog https://scholaxiacbtexam.blog; font-src https://fonts.gstatic.com https://www.scholaxiacbtexam.blog https://scholaxiacbtexam.blog; img-src 'self' data: https:; media-src 'self' blob: https:; frame-src https://www.scholaxiacbtexam.blog https://scholaxiacbtexam.blog https://checkout.flutterwave.com" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://checkout.flutterwave.com; script-src-attr 'unsafe-inline'; connect-src https://scholaxia1.onrender.com https://api.flutterwave.com https://www.scholaxiacbtexam.blog https://scholaxiacbtexam.blog https://store.scholaxia.com http://127.0.0.1:*; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://www.scholaxiacbtexam.blog https://scholaxiacbtexam.blog https://store.scholaxia.com; font-src https://fonts.gstatic.com https://www.scholaxiacbtexam.blog https://scholaxiacbtexam.blog https://store.scholaxia.com; img-src 'self' data: https:; media-src 'self' blob: https:; frame-src https://www.scholaxiacbtexam.blog https://scholaxiacbtexam.blog https://store.scholaxia.com https://checkout.flutterwave.com" />
 
   <title>Scholaxia Student</title>
 
@@ -24,45 +24,237 @@
 
 
 
-<div class="app-shell app-shell-topnav">
+<div class="app-shell app-shell-sidebar">
 
-  <header class="student-topbar">
-    <div class="student-brand">
-      <img src="assets/logo.png" alt="" class="brand-logo" />
-      <div><strong>Scholaxia</strong><span id="sidebar-exam">Student</span></div>
-    </div>
-    <nav class="topnav" id="student-topnav">
-      <button type="button" class="topnav-btn active" data-page="live" onclick="showPage('live')"><span class="nav-ico">&#127909;</span><span class="nav-label">Live</span></button>
-      <button type="button" class="topnav-btn" data-page="school" onclick="showPage('school')"><span class="nav-ico">&#128221;</span><span class="nav-label">Exams</span></button>
-      <button type="button" class="topnav-btn" data-page="school-portal" onclick="showPage('school-portal')"><span class="nav-ico">&#127979;</span><span class="nav-label">School Exam</span></button>
-      <button type="button" class="topnav-btn" data-page="cbt" onclick="showPage('cbt')"><span class="nav-ico">&#128218;</span><span class="nav-label">CBT</span></button>
-      <button type="button" class="topnav-btn" data-page="library" onclick="showPage('library')"><span class="nav-ico">&#128214;</span><span class="nav-label">Library</span></button>
-      <button type="button" class="topnav-btn" data-page="saved-lives" onclick="showPage('saved-lives')"><span class="nav-ico">&#128249;</span><span class="nav-label">Saved Lives</span></button>
-      <button type="button" class="topnav-btn" data-page="sia" onclick="showPage('sia')"><span class="nav-ico">&#10024;</span><span class="nav-label">Sia</span></button>
-      <button type="button" class="topnav-btn" data-page="community" onclick="showPage('community')"><span class="nav-ico">&#128172;</span><span class="nav-label">Community</span></button>
-      <button type="button" class="topnav-btn" data-page="profile" onclick="showPage('profile')"><span class="nav-ico">&#128100;</span><span class="nav-label">Profile</span></button>
-    </nav>
-    <div class="student-user">
-      <div class="user-avatar" id="user-avatar">S</div>
-      <div class="user-meta-wrap">
-        <strong id="sidebar-name">Student</strong>
-        <button type="button" class="btn-logout compact" onclick="logout()">Sign out</button>
+  <div class="sidebar-wrap" id="sidebar-wrap">
+    <aside class="app-sidebar" id="student-sidebar">
+      <a href="#" class="sidebar-brand" onclick="showPage('dashboard'); return false;">
+        <img src="assets/logo.png" alt="" class="brand-logo sidebar-brand-logo" />
+        <span class="sidebar-brand-text">scholaxia</span>
+      </a>
+
+      <nav class="sidebar-nav" id="student-topnav" aria-label="Main navigation">
+        <button type="button" class="nav-item topnav-btn active" data-page="dashboard" onclick="showPage('dashboard')">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-9.5z"/></svg></span>
+          <span class="nav-label">Home</span>
+        </button>
+        <button type="button" class="nav-item topnav-btn" data-page="cbt" onclick="showPage('cbt')">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 4v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V7l8-4z"/><path d="M9 12l2 2 4-4"/></svg></span>
+          <span class="nav-label">Study</span>
+        </button>
+        <button type="button" class="nav-item topnav-btn" data-page="school" onclick="showPage('school')">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+          <span class="nav-label">Scholaxia Exam</span>
+        </button>
+        <button type="button" class="nav-item topnav-btn" data-page="live" onclick="showPage('live')">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 10l5-3v10l-5-3v-4z"/><rect x="3" y="6" width="12" height="12" rx="2"/></svg></span>
+          <span class="nav-label">Live Class</span>
+        </button>
+        <button type="button" class="nav-item topnav-btn" data-page="school-portal" onclick="showPage('school-portal')">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10l8-6 8 6v10"/><path d="M9 20v-6h6v6"/></svg></span>
+          <span class="nav-label">School Exam</span>
+        </button>
+        <button type="button" class="nav-item topnav-btn" data-page="skills" onclick="showPage('skills')">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 14l9-5-9-5-9 5 9 5z"/><path d="M12 14l6.16-3.422A12.083 12.083 0 0 1 21 13.5c0 2.5-4 4.5-9 4.5s-9-2-9-4.5c0-1.042.564-2.02 1.58-2.922L12 14z"/></svg></span>
+          <span class="nav-label">Skills</span>
+        </button>
+        <button type="button" class="nav-item topnav-btn" data-page="library" onclick="showPage('library')">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15z"/></svg></span>
+          <span class="nav-label">Library</span>
+        </button>
+        <button type="button" class="nav-item topnav-btn" data-page="marketplace" onclick="showPage('marketplace')">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="20" r="1"/><circle cx="17" cy="20" r="1"/><path d="M2 4h2l2 12h12l2-8H6"/></svg></span>
+          <span class="nav-label">Marketplace</span>
+        </button>
+        <button type="button" class="nav-item topnav-btn" data-page="sia" onclick="showPage('sia')">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"/><path d="M5 19l1 2 1-2 2-1-2-1-1-2-1 2-2 1 2 1z"/></svg></span>
+          <span class="nav-label">Sia</span>
+        </button>
+        <button type="button" class="nav-item topnav-btn" data-page="community" onclick="showPage('community')">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-1.9 5.4 8.5 8.5 0 0 1-13 0 8.38 8.38 0 0 1-1.9-5.4 8.5 8.5 0 0 1 13 0z"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/></svg></span>
+          <span class="nav-label">Community</span>
+        </button>
+        <button type="button" class="nav-item topnav-btn" data-page="saved-lives" onclick="showPage('saved-lives')">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M10 9l5 3-5 3V9z"/></svg></span>
+          <span class="nav-label">Saved</span>
+        </button>
+        <button type="button" class="nav-item topnav-btn" data-page="profile" onclick="showPage('profile')">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-6 8-6s8 2 8 6"/></svg></span>
+          <span class="nav-label">Profile</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-promo-wrap">
+        <div class="sidebar-promo-badge" aria-hidden="true">&#128274;</div>
+        <div class="sidebar-promo">
+          <p class="sidebar-promo-title">Skills Training</p>
+          <p class="sidebar-promo-text">Web design, mobile apps, cyber security &amp; more — live classes with flexible payment.</p>
+          <button type="button" class="sidebar-promo-btn" onclick="showPage('skills')">Explore programs &rarr;</button>
+        </div>
+      </div>
+    </aside>
+
+    <button type="button" class="sidebar-edge-toggle" id="sidebar-toggle" aria-label="Hide menu" title="Hide menu">&#8249;</button>
+  </div>
+
+  <div class="app-main-wrap">
+    <header class="app-topbar">
+      <div class="app-topbar-left">
+        <h1 id="page-title">Home</h1>
+        <span id="sidebar-exam" class="topbar-exam-pill">Student</span>
+      </div>
+      <div class="app-topbar-right">
+        <div class="topbar-toolbar">
+          <button type="button" class="btn-refresh topbar-tool" onclick="refreshPage()">&#8635; Refresh</button>
+          <button type="button" class="topbar-bell topbar-tool" aria-label="Notifications" title="Notifications">&#128276;</button>
+          <div class="topbar-user topbar-tool">
+            <div class="user-avatar" id="user-avatar">S</div>
+            <div class="topbar-user-meta">
+              <strong id="header-user-name">Student</strong>
+              <span id="header-user-handle">@student</span>
+            </div>
+          </div>
+          <button type="button" class="btn-logout topbar-logout topbar-tool" onclick="logout()">Sign out</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="main-content main-content-sidebar">
+
+    <!-- Global exam UI (shown above any tab during a test) -->
+    <div id="exam-screen" class="exam-screen hidden">
+      <div id="exam-lock-banner" class="exam-lock-banner hidden">
+        <span>&#128274; Exam in progress — all other tabs are locked until you submit.</span>
+        <button type="button" class="btn-submit-exam exam-lock-submit" onclick="submitExam()">Submit exam</button>
+      </div>
+      <div class="exam-header">
+        <div>
+          <h2 id="exam-title">Exam</h2>
+          <p id="exam-meta"></p>
+        </div>
+        <div class="exam-timer" id="exam-timer">00:00</div>
+      </div>
+      <div id="subject-tabs" class="subject-tabs hidden"></div>
+      <div id="subject-start-picker" class="subject-start-picker hidden">
+        <div class="subject-start-box">
+          <h3>Choose a subject to start with</h3>
+          <p>Tap any subject — you can switch between subjects anytime during the exam.</p>
+          <div id="subject-start-list" class="subject-start-list"></div>
+          <button type="button" class="btn-secondary subject-start-skip" onclick="startWithSubject(0)">Start from question 1</button>
+        </div>
+      </div>
+      <div class="exam-body">
+        <div class="q-nav" id="q-nav"></div>
+        <div class="q-panel">
+          <p class="q-num" id="q-num">Question 1</p>
+          <p class="q-text" id="q-text"></p>
+          <div id="q-image" class="q-image hidden"></div>
+          <div id="q-options" class="q-options"></div>
+          <div class="q-actions">
+            <button type="button" class="btn-secondary" onclick="prevQuestion()">Previous</button>
+            <button type="button" class="btn-action" onclick="nextQuestion()">Next</button>
+            <button type="button" class="btn-submit-exam" onclick="submitExam()">Submit Exam</button>
+          </div>
+        </div>
       </div>
     </div>
-  </header>
 
-  <main class="main-content main-content-topnav">
+    <div id="result-screen" class="result-screen hidden">
+      <h2>Exam Result</h2>
+      <div class="score-circle" id="score-display">—</div>
+      <p id="result-detail"></p>
+      <button class="btn-action" id="exam-result-close-btn" onclick="closeExam()">Back to Exams</button>
+    </div>
 
-    <header class="page-head-bar">
-      <h1 id="page-title">Live Class</h1>
-      <button class="btn-refresh" onclick="refreshPage()">&#8635; Refresh</button>
-    </header>
+
+
+    <!-- Dashboard Home -->
+
+    <section id="page-dashboard" class="page active">
+      <div class="dash-greeting">
+        <h2 id="dash-greeting-title">Good morning</h2>
+        <p id="dash-greeting-sub">Let's beat your weak topics today.</p>
+      </div>
+
+      <div class="dash-hero-row">
+        <div class="dash-hero-card">
+          <div class="dash-hero-body">
+            <span class="dash-hero-tag" id="dash-hero-tag">Quick Practice</span>
+            <h3 id="dash-hero-title">CBT Practice</h3>
+            <div class="dash-hero-pills">
+              <span id="dash-hero-exam">Your exam</span>
+              <span>Past questions</span>
+              <span>Timed mode</span>
+            </div>
+            <button type="button" class="dash-hero-btn" onclick="showPage('cbt')">Start Practice &rarr;</button>
+          </div>
+          <div class="dash-hero-art" aria-hidden="true">&#128218;</div>
+        </div>
+
+        <div class="dash-side-card">
+          <div class="dash-side-icon" aria-hidden="true">&#127942;</div>
+          <p class="dash-side-label">Your focus</p>
+          <h4 id="dash-focus-subject">Set up subjects</h4>
+          <div class="dash-progress-bar"><div class="dash-progress-fill" id="dash-progress-fill"></div></div>
+          <p class="dash-progress-text" id="dash-progress-text">0 subjects selected</p>
+          <button type="button" class="dash-side-link" onclick="showPage('profile')">Update profile &rarr;</button>
+        </div>
+      </div>
+
+      <div class="dash-stats-row">
+        <div class="dash-stat-card">
+          <span class="dash-stat-icon green">&#10003;</span>
+          <div>
+            <strong id="dash-stat-live">0</strong>
+            <span>Live classes</span>
+          </div>
+        </div>
+        <div class="dash-stat-card">
+          <span class="dash-stat-icon blue">&#128221;</span>
+          <div>
+            <strong id="dash-stat-exams">0</strong>
+            <span>Scholaxia exams</span>
+          </div>
+        </div>
+        <div class="dash-stat-card">
+          <span class="dash-stat-icon gold">&#11088;</span>
+          <div>
+            <strong id="dash-stat-subjects">0</strong>
+            <span>Your subjects</span>
+          </div>
+        </div>
+      </div>
+
+      <h3 class="dash-section-title">Quick Actions</h3>
+      <div class="dash-actions-grid">
+        <button type="button" class="dash-action-card" onclick="showPage('live')">
+          <span class="dash-action-icon">&#127909;</span>
+          <strong>Live Class</strong>
+          <span>Join a lesson now</span>
+        </button>
+        <button type="button" class="dash-action-card" onclick="showPage('school')">
+          <span class="dash-action-icon">&#128221;</span>
+          <strong>Scholaxia Exam</strong>
+          <span>Teacher tests &amp; scores</span>
+        </button>
+        <button type="button" class="dash-action-card" onclick="showPage('skills')">
+          <span class="dash-action-icon">&#127891;</span>
+          <strong>Skills Training</strong>
+          <span>Vocational programs</span>
+        </button>
+        <button type="button" class="dash-action-card" onclick="showPage('sia')">
+          <span class="dash-action-icon">&#10024;</span>
+          <strong>Ask Sia</strong>
+          <span>AI study assistant</span>
+        </button>
+      </div>
+    </section>
 
 
 
     <!-- Live Class -->
 
-    <section id="page-live" class="page active">
+    <section id="page-live" class="page">
 
       <div class="info-banner">Pay with Flutterwave (card, bank, USSD) before joining a live class. Price is shown when you tap Join.</div>
 
@@ -112,11 +304,11 @@
 
 
 
-    <!-- Scholaxia Exams (tutor CBT) -->
+    <!-- Scholaxia Exam (teacher uploads) -->
 
     <section id="page-school" class="page">
 
-      <div class="info-banner">&#128221; <strong>Scholaxia Exams</strong> — your tutors set CBT exams here for you to answer.</div>
+      <div class="info-banner">&#128221; <strong>Scholaxia Exam</strong> — tests your teacher uploads. You see your score immediately after you submit. <em>Any registered student</em> can take these (live-class payment is only for joining live video classes).</div>
 
       <div id="school-grid" class="card-grid"><div class="loading">Loading Scholaxia exams…</div></div>
 
@@ -148,6 +340,49 @@
 
 
 
+    <!-- Scholaxia Marketplace -->
+
+    <section id="page-marketplace" class="page">
+
+      <div class="portal-embed-wrap">
+        <div class="portal-embed-head portal-embed-head-slim">
+          <span class="portal-pill">Scholaxia Marketplace</span>
+          <p>Books, materials and more on <strong>store.scholaxia.com</strong> — browse here without leaving the app.</p>
+        </div>
+        <iframe
+          id="marketplace-frame"
+          class="portal-embed-frame"
+          title="Scholaxia Marketplace"
+          src="https://store.scholaxia.com/"
+          loading="lazy"
+          referrerpolicy="no-referrer-when-downgrade"
+          allow="fullscreen; payment"
+        ></iframe>
+      </div>
+
+    </section>
+
+
+
+    <!-- Scholaxia Skills Training -->
+
+    <section id="page-skills" class="page">
+      <div class="skills-hero">
+        <h2>Scholaxia Skills Training</h2>
+        <p>Professional vocational programs with <strong>live classes</strong>, hands-on projects, and mentor support. Build real-world skills employers and clients pay for.</p>
+        <div class="skills-payment-banner">
+          <span>&#128179;</span>
+          <div>
+            <strong>Payment plan — 2 installments only</strong>
+            <p>Pay half when you enroll and the balance at the midpoint of your program. No extra fees beyond the listed tuition.</p>
+          </div>
+        </div>
+      </div>
+      <div id="skills-programs" class="skills-programs"><div class="loading">Loading programs…</div></div>
+    </section>
+
+
+
     <!-- CBT — scholaxiacbtexam.blog embedded (same as School Exam) -->
 
     <section id="page-cbt" class="page">
@@ -169,81 +404,6 @@
       </div>
 
       <div id="cbt-grid" class="card-grid card-grid-premium hidden"></div>
-
-
-
-      <!-- Exam taking screen -->
-
-      <div id="exam-screen" class="exam-screen hidden">
-
-        <div class="exam-header">
-
-          <div>
-
-            <h2 id="exam-title">Exam</h2>
-
-            <p id="exam-meta"></p>
-
-          </div>
-
-          <div class="exam-timer" id="exam-timer">00:00</div>
-
-        </div>
-
-        <div id="subject-tabs" class="subject-tabs hidden"></div>
-
-        <div id="subject-start-picker" class="subject-start-picker hidden">
-          <div class="subject-start-box">
-            <h3>Choose a subject to start with</h3>
-            <p>Tap any subject — you can switch between subjects anytime during the exam.</p>
-            <div id="subject-start-list" class="subject-start-list"></div>
-            <button type="button" class="btn-secondary subject-start-skip" onclick="startWithSubject(0)">Start from question 1</button>
-          </div>
-        </div>
-
-        <div class="exam-body">
-
-          <div class="q-nav" id="q-nav"></div>
-
-          <div class="q-panel">
-
-            <p class="q-num" id="q-num">Question 1</p>
-
-            <p class="q-text" id="q-text"></p>
-
-            <div id="q-image" class="q-image hidden"></div>
-
-            <div id="q-options" class="q-options"></div>
-
-            <div class="q-actions">
-
-              <button type="button" class="btn-secondary" onclick="prevQuestion()">Previous</button>
-
-              <button type="button" class="btn-action" onclick="nextQuestion()">Next</button>
-
-              <button type="button" class="btn-submit-exam" onclick="submitExam()">Submit Exam</button>
-
-            </div>
-
-          </div>
-
-        </div>
-
-      </div>
-
-
-
-      <div id="result-screen" class="result-screen hidden">
-
-        <h2>Exam Result</h2>
-
-        <div class="score-circle" id="score-display">—</div>
-
-        <p id="result-detail"></p>
-
-        <button class="btn-action" onclick="closeExam()">Back to Exams</button>
-
-      </div>
 
     </section>
 
@@ -468,6 +628,7 @@
     </section>
 
   </main>
+  </div>
 
 </div>
 
@@ -509,11 +670,12 @@
 
 <script src="js/voice-recorder.js"></script>
 <script src="js/community.js"></script>
+<script src="js/skills.js"></script>
 
 <script src="js/live-payment.js"></script>
 <script src="js/library.js"></script>
 <script src="js/saved-live.js"></script>
-<script src="js/app.js"></script>
+<script src="js/app.js?v=live-fix-2"></script>
 <script src="js/responsive.js"></script>
 
 </body>

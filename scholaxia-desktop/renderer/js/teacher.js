@@ -105,9 +105,9 @@ function showTeacherPage(page) {
   else if (page === "requests") loadTeacherRequests();
   else if (page === "materials") loadTeacherMaterials();
   else if (page === "curriculum") loadTeacherCurriculum();
-  else if (page === "notes") loadTeacherNotes();
+  else if (page === "exams") loadTeacherExams();
   else if (page === "community") loadTeacherCommunity();
-  else if (page === "ai") { /* static form */ }
+  else if (page === "ai") initTeacherAI();
 }
 
 function getSchedulePayload(goLiveNow) {
@@ -173,6 +173,7 @@ async function teacherEndClass(id) {
 
 async function teacherEnterClassroom(classId, title, subject, endTime) {
   try {
+    await teacherApi("/api/v1/live-classes/" + classId + "/start", { method: "POST" });
     var token = await teacherApi("/api/v1/live-classes/" + classId + "/token");
     if (!token) return;
     localStorage.setItem("live_session", JSON.stringify({
@@ -598,22 +599,230 @@ function removeCurriculumWeek(index) {
   loadTeacherCurriculum();
 }
 
-function loadTeacherNotes() {
-  var el = document.getElementById("notes-list");
-  if (!el) return;
-  var saved = localStorage.getItem("sia_teacher_notes_v1") || "";
-  el.innerHTML =
-    '<textarea id="teacher-notes-editor" class="notes-editor" placeholder="Write lesson notes for your next class…" rows="14"></textarea>' +
-    '<p class="notes-hint">Tip: include objectives, key points, and homework for students.</p>';
-  var editor = document.getElementById("teacher-notes-editor");
-  if (editor) editor.value = saved;
+function initTeacherExamForm() {
+  var subjects = getTeacherSubjects();
+  var datalist = document.getElementById("texam-subject-list");
+  var sub = document.getElementById("texam-subject");
+  if (datalist) {
+    datalist.innerHTML = subjects.map(function (s) {
+      return '<option value="' + escHtml(s) + '">';
+    }).join("");
+  }
+  if (sub && !sub.value.trim() && subjects[0]) sub.value = subjects[0];
+
+  var start = document.getElementById("texam-start");
+  var end = document.getElementById("texam-end");
+  var now = new Date();
+  if (start && !start.value) {
+    start.value = toLocalDatetimeInput(now);
+  }
+  if (end && !end.value) {
+    var later = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+    end.value = toLocalDatetimeInput(later);
+  }
 }
 
-function saveTeacherNotes() {
-  var editor = document.getElementById("teacher-notes-editor");
-  if (!editor) return;
-  localStorage.setItem("sia_teacher_notes_v1", editor.value);
-  alert("Notes saved on this device.");
+function toLocalDatetimeInput(d) {
+  var pad = function (n) { return String(n).padStart(2, "0"); };
+  return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) +
+    "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
+}
+
+function localDatetimeToIso(value) {
+  if (!value) return new Date().toISOString();
+  return new Date(value).toISOString();
+}
+
+function downloadTeacherExamTemplate() {
+  var sample = {
+    title: "Mathematics — Week 4 test",
+    subject: "Mathematics",
+    duration_minutes: 30,
+    questions: [
+      {
+        question_text: "What is 15% of 200?",
+        option_a: "25",
+        option_b: "30",
+        option_c: "35",
+        option_d: "40",
+        correct_option: "B",
+        explanation: "15/100 × 200 = 30",
+        topic: "Percentages",
+      },
+      {
+        question_text: "Solve: 2x + 5 = 17",
+        option_a: "x = 5",
+        option_b: "x = 6",
+        option_c: "x = 7",
+        option_d: "x = 8",
+        correct_option: "B",
+        topic: "Algebra",
+      },
+    ],
+  };
+  var blob = new Blob([JSON.stringify(sample, null, 2)], { type: "application/json" });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url;
+  a.download = "scholaxia-exam-template.json";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function parseTeacherExamFile(text) {
+  var data = JSON.parse(text);
+  var questions = Array.isArray(data) ? data : (data.questions || []);
+  if (!questions.length) throw new Error("The JSON file has no questions.");
+  questions.forEach(function (q, i) {
+    var n = i + 1;
+    if (!q.question_text) throw new Error("Question " + n + " is missing question_text.");
+    if (!q.option_a || !q.option_b || !q.option_c || !q.option_d) {
+      throw new Error("Question " + n + " needs options A–D.");
+    }
+    if (!q.correct_option) throw new Error("Question " + n + " needs correct_option (A/B/C/D).");
+  });
+  return {
+    questions: questions,
+    title: data.title,
+    subject: data.subject,
+    duration_minutes: data.duration_minutes,
+  };
+}
+
+async function publishTeacherExam() {
+  var err = document.getElementById("texam-error");
+  var btn = document.getElementById("texam-publish-btn");
+  if (err) err.textContent = "";
+  var title = (document.getElementById("texam-title") || {}).value.trim();
+  var subject = (document.getElementById("texam-subject") || {}).value.trim();
+  var duration = parseInt((document.getElementById("texam-duration") || {}).value, 10) || 30;
+  var startVal = (document.getElementById("texam-start") || {}).value;
+  var endVal = (document.getElementById("texam-end") || {}).value;
+  var fileInput = document.getElementById("texam-file");
+  if (!title || !subject) {
+    if (err) err.textContent = "Title and subject are required.";
+    return;
+  }
+  if (!fileInput || !fileInput.files || !fileInput.files[0]) {
+    if (err) err.textContent = "Choose a JSON questions file to upload.";
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = "Publishing…";
+  try {
+    var text = await fileInput.files[0].text();
+    var parsed = parseTeacherExamFile(text);
+    if (parsed.title && !title) title = parsed.title;
+    if (parsed.subject && !subject) subject = parsed.subject;
+    if (parsed.duration_minutes) duration = parsed.duration_minutes;
+    await teacherApi("/api/v1/cbt/school-exams", {
+      method: "POST",
+      body: JSON.stringify({
+        title: title,
+        subject: subject,
+        duration_minutes: duration,
+        scheduled_start: localDatetimeToIso(startVal),
+        scheduled_end: localDatetimeToIso(endVal),
+        questions: parsed.questions,
+        camera_required: false,
+        ai_locked: true,
+        block_minimize: true,
+      }),
+    });
+    fileInput.value = "";
+    var hint = document.getElementById("texam-file-hint");
+    if (hint) hint.textContent = "No file chosen";
+    alert("Exam published! Students were notified — they can take it under Exams.");
+    loadTeacherExams();
+  } catch (e) {
+    if (err) err.textContent = e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Publish exam";
+  }
+}
+
+async function loadTeacherExamResults(examId, container) {
+  if (!container) return;
+  container.innerHTML = '<div class="loading">Loading scores…</div>';
+  try {
+    var data = await teacherApi("/api/v1/cbt/school-exams/" + encodeURIComponent(examId) + "/results");
+    var rows = data.results || [];
+    if (!rows.length) {
+      container.innerHTML = '<p class="exam-results-empty">No students have submitted this exam yet.</p>';
+      return;
+    }
+    container.innerHTML =
+      '<div class="data-table-wrap"><table class="data-table exam-scores-table"><thead><tr>' +
+      "<th>Student</th><th>Score</th><th>%</th><th>Correct</th><th>Wrong</th><th>Submitted</th>" +
+      "</tr></thead><tbody>" +
+      rows.map(function (r) {
+        return "<tr><td>" + escHtml(r.student_name) + "</td><td>" + escHtml(String(r.score)) + "</td><td>" +
+          escHtml(String(Math.round(r.percentage || 0))) + "%</td><td>" + escHtml(String(r.total_correct)) +
+          "</td><td>" + escHtml(String(r.total_wrong)) + "</td><td>" +
+          escHtml(formatDateTime(r.submitted_at)) + "</td></tr>";
+      }).join("") +
+      "</tbody></table></div>";
+  } catch (e) {
+    container.innerHTML = '<p class="error-msg">' + escHtml(e.message) + "</p>";
+  }
+}
+
+async function loadTeacherExams() {
+  initTeacherExamForm();
+  var el = document.getElementById("teacher-exam-list");
+  if (!el) return;
+  el.innerHTML = '<div class="loading">Loading exams…</div>';
+  try {
+    var exams = await teacherApi("/api/v1/cbt/school-exams/mine") || [];
+    if (!exams.length) {
+      el.innerHTML =
+        '<div class="empty-state-premium">' +
+        '<div class="empty-icon">&#128221;</div>' +
+        "<h3>No exams yet</h3>" +
+        "<p>Upload a JSON file above. Students see it in the <strong>Exams</strong> tab and get their score right after submitting.</p>" +
+        "</div>";
+      return;
+    }
+    el.innerHTML = exams.map(function (e) {
+      return (
+        '<article class="announce-card teacher-exam-card" data-exam-id="' + escHtml(e.id) + '">' +
+        '<div class="announce-card-head">' +
+        '<span class="announce-date">' + escHtml(e.subject) + " · " + escHtml(String(e.total_questions)) + " questions</span>" +
+        '<span class="announce-badge">' + escHtml(String(e.duration_minutes)) + " min</span>" +
+        "</div>" +
+        "<h4 class=\"teacher-exam-card-title\">" + escHtml(e.title) + "</h4>" +
+        '<p class="announce-body muted">' +
+        (e.scheduled_start ? "Open: " + escHtml(formatDateTime(e.scheduled_start)) + " — " + escHtml(formatDateTime(e.scheduled_end)) : "Always open") +
+        "</p>" +
+        '<div class="material-actions">' +
+        '<button type="button" class="btn-sm primary" data-exam-action="scores" data-id="' + escHtml(e.id) + '">View student scores</button>' +
+        "</div>" +
+        '<div class="exam-results-panel hidden" id="exam-results-' + escHtml(e.id) + '"></div>' +
+        "</article>"
+      );
+    }).join("");
+
+    el.querySelectorAll("[data-exam-action=scores]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id = btn.dataset.id;
+        var panel = document.getElementById("exam-results-" + id);
+        if (!panel) return;
+        var open = panel.classList.contains("hidden");
+        el.querySelectorAll(".exam-results-panel").forEach(function (p) {
+          if (p !== panel) p.classList.add("hidden");
+        });
+        if (open) {
+          panel.classList.remove("hidden");
+          loadTeacherExamResults(id, panel);
+        } else {
+          panel.classList.add("hidden");
+        }
+      });
+    });
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
+  }
 }
 
 function setDefaultScheduleDate() {
@@ -648,7 +857,12 @@ async function loadTeacherCommunity() {
     window._teacherAnnounceChannelId = ann.id;
     var posts = await teacherApi("/api/v1/community/posts?channel_id=" + encodeURIComponent(ann.id) + "&limit=30");
     if (!posts || !posts.length) {
-      listEl.innerHTML = '<div class="empty-state">No announcements yet.</div>';
+      listEl.innerHTML =
+        '<div class="empty-state-premium">' +
+        '<div class="empty-icon">&#128227;</div>' +
+        '<h3>No announcements yet</h3>' +
+        '<p>Your messages will appear here after you send them. Students get a push notification too.</p>' +
+        '</div>';
       return;
     }
     listEl.innerHTML = posts.map(function (p) {
@@ -656,8 +870,20 @@ async function loadTeacherCommunity() {
       if (p.media_url && p.media_type === "audio") {
         media = '<audio controls src="' + escHtml(p.media_url) + '" class="post-audio"></audio>';
       }
-      return '<div class="announce-item"><strong>' + formatDateTime(p.created_at) + '</strong><p>' +
-        escHtml(p.content || "") + '</p>' + media + '</div>';
+      var badge = p.media_url ? (p.content ? "Text + voice" : "Voice") : "Text";
+      var body = p.content
+        ? '<p class="announce-body">' + escHtml(p.content) + "</p>"
+        : (media ? "" : '<p class="announce-body muted">Voice announcement</p>');
+      return (
+        '<article class="announce-card">' +
+        '<div class="announce-card-head">' +
+        '<span class="announce-date">' + escHtml(formatDateTime(p.created_at)) + "</span>" +
+        '<span class="announce-badge">' + escHtml(badge) + "</span>" +
+        "</div>" +
+        body +
+        media +
+        "</article>"
+      );
     }).join("");
   } catch (e) {
     listEl.innerHTML = '<div class="empty-state">' + escHtml(e.message) + '</div>';
@@ -716,9 +942,38 @@ async function sendTeacherAnnouncement() {
   }
 }
 
+function initTeacherAI() {
+  var subjects = getTeacherSubjects();
+  var datalist = document.getElementById("teacher-ai-subject-list");
+  var subjectInput = document.getElementById("teacher-ai-subject");
+  if (datalist) {
+    datalist.innerHTML = subjects.map(function (s) {
+      return '<option value="' + escHtml(s) + '">';
+    }).join("");
+  }
+  if (subjectInput && !subjectInput.value.trim() && subjects[0]) {
+    subjectInput.value = subjects[0];
+  }
+  var levelInput = document.getElementById("teacher-ai-level");
+  if (levelInput && !levelInput.value.trim()) {
+    levelInput.value = "SS2";
+  }
+}
+
+function applyTeacherAIPrompt(chip) {
+  if (!chip) return;
+  var task = document.getElementById("teacher-ai-task");
+  var details = document.getElementById("teacher-ai-details");
+  if (task && chip.dataset.task) task.value = chip.dataset.task;
+  if (details && chip.dataset.prompt) details.value = chip.dataset.prompt;
+  if (details) details.focus();
+}
+
 async function askTeacherAI() {
   var err = document.getElementById("teacher-ai-error");
   var out = document.getElementById("teacher-ai-result");
+  var wrap = document.getElementById("teacher-ai-result-wrap");
+  var btn = document.getElementById("teacher-ai-ask");
   if (err) err.textContent = "";
   var task = document.getElementById("teacher-ai-task").value;
   var subject = document.getElementById("teacher-ai-subject").value.trim();
@@ -728,9 +983,14 @@ async function askTeacherAI() {
     if (err) err.textContent = "Subject and details are required.";
     return;
   }
+  if (wrap) wrap.classList.remove("hidden");
   if (out) {
-    out.classList.remove("hidden");
-    out.textContent = "Thinking…";
+    out.classList.add("loading");
+    out.textContent = "Sia is thinking…";
+  }
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Working…";
   }
   try {
     var res = await teacherApi("/api/v1/teacher-ai/ask", {
@@ -742,10 +1002,19 @@ async function askTeacherAI() {
         details: details,
       }),
     });
-    if (out) out.textContent = res.result || "No response.";
+    if (out) {
+      out.classList.remove("loading");
+      out.textContent = res.result || "No response.";
+    }
+    if (wrap) wrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
   } catch (e) {
     if (err) err.textContent = e.message;
-    if (out) out.classList.add("hidden");
+    if (wrap) wrap.classList.add("hidden");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Ask Teacher AI";
+    }
   }
 }
 
@@ -848,8 +1117,17 @@ function bindTeacherUI() {
 
   var addWeekBtn = document.getElementById("add-curriculum-week-btn");
   if (addWeekBtn) addWeekBtn.addEventListener("click", addCurriculumWeek);
-  var saveNotesBtn = document.getElementById("save-notes-btn");
-  if (saveNotesBtn) saveNotesBtn.addEventListener("click", saveTeacherNotes);
+  var texamFile = document.getElementById("texam-file");
+  if (texamFile) {
+    texamFile.addEventListener("change", function () {
+      var hint = document.getElementById("texam-file-hint");
+      if (hint) hint.textContent = texamFile.files && texamFile.files[0] ? texamFile.files[0].name : "No file chosen";
+    });
+  }
+  var texamTemplate = document.getElementById("texam-download-template");
+  if (texamTemplate) texamTemplate.addEventListener("click", downloadTeacherExamTemplate);
+  var texamPublish = document.getElementById("texam-publish-btn");
+  if (texamPublish) texamPublish.addEventListener("click", publishTeacherExam);
   var reqRefresh = document.getElementById("requests-refresh-btn");
   if (reqRefresh) reqRefresh.addEventListener("click", loadTeacherRequests);
 
@@ -867,6 +1145,9 @@ function bindTeacherUI() {
   if (announceSend) announceSend.addEventListener("click", sendTeacherAnnouncement);
   var aiAsk = document.getElementById("teacher-ai-ask");
   if (aiAsk) aiAsk.addEventListener("click", askTeacherAI);
+  document.querySelectorAll(".ai-prompt-chip").forEach(function (chip) {
+    chip.addEventListener("click", function () { applyTeacherAIPrompt(chip); });
+  });
 }
 
 window.teacherLogin = teacherLogin;
@@ -886,7 +1167,8 @@ window.openLibraryBook = openLibraryBook;
 window.addCurriculumWeek = addCurriculumWeek;
 window.removeCurriculumWeek = removeCurriculumWeek;
 window.persistCurriculumFromDom = persistCurriculumFromDom;
-window.saveTeacherNotes = saveTeacherNotes;
+window.loadTeacherExams = loadTeacherExams;
+window.publishTeacherExam = publishTeacherExam;
 window.updateTeacherRequest = updateTeacherRequest;
 window.teacherHostClass = teacherHostClass;
 window.teacherStartClass = teacherStartClass;

@@ -1,7 +1,10 @@
 const PAGE_TITLES = {
+  dashboard: "Home",
   live: "Live Class",
-  school: "Scholaxia Exams",
+  school: "Scholaxia Exam",
   "school-portal": "School Exam",
+  marketplace: "Scholaxia Marketplace",
+  skills: "Scholaxia Skills Training",
   cbt: "CBT",
   library: "Library",
   "saved-lives": "Saved Lives",
@@ -11,7 +14,7 @@ const PAGE_TITLES = {
   profile: "Profile",
 };
 
-let currentPage = "live";
+let currentPage = "dashboard";
 let practiceExams = [];
 let schoolExams = [];
 let allSubjects = [];
@@ -23,6 +26,7 @@ let currentQ = 0;
 let timerInterval = null;
 let timerEndsAt = 0;
 let secondsLeft = 0;
+let examLockBypass = false;
 let pendingSchoolExamId = null;
 let cameraStream = null;
 let activeSubjectTab = "";
@@ -230,12 +234,21 @@ window.onload = async () => {
     window.location.href = "index.html";
     return;
   }
+  window.addEventListener("beforeunload", (e) => {
+    if (isCbtExamActive()) {
+      e.preventDefault();
+      e.returnValue = "";
+    }
+  });
   initUserUI();
+  initSidebarToggle();
+  bindExamLockListeners();
   bindCbtGridClicks();
   await syncStudentProfile();
   loadSubjects();
   refreshPage();
   startLivePolling();
+  if (typeof prefetchCommunityFeed === "function") prefetchCommunityFeed();
 };
 
 function showCbtLoadingOverlay(message) {
@@ -340,23 +353,38 @@ function bindCbtGridClicks() {
 }
 
 function showCbtExamView() {
-  const embed = document.getElementById("cbt-embed-wrap");
-  if (embed) embed.classList.add("hidden");
-  document.getElementById("cbt-grid").classList.add("hidden");
+  examLockBypass = true;
+  const targetPage = currentSession && currentSession.is_school_exam ? "school" : "cbt";
+  if (currentPage !== targetPage) {
+    currentPage = targetPage;
+    document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
+    document.querySelectorAll(".topnav-btn").forEach((n) => n.classList.remove("active"));
+    const pg = document.getElementById("page-" + targetPage);
+    if (pg) pg.classList.add("active");
+    const navEl = document.querySelector('.topnav-btn[data-page="' + targetPage + '"]');
+    if (navEl) navEl.classList.add("active");
+    document.getElementById("page-title").textContent = PAGE_TITLES[targetPage] || targetPage;
+  }
+  examLockBypass = false;
+
   document.getElementById("result-screen").classList.add("hidden");
   const screen = document.getElementById("exam-screen");
   screen.classList.remove("hidden");
-  const main = document.querySelector(".main-content-topnav");
+  setExamLockMode(true);
+  const main = document.querySelector(".main-content-sidebar") || document.querySelector(".main-content");
   if (main) main.scrollTop = 0;
   screen.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function showCbtListView() {
+  setExamLockMode(false);
   const embed = document.getElementById("cbt-embed-wrap");
   if (embed) embed.classList.remove("hidden");
   document.getElementById("exam-screen").classList.add("hidden");
   document.getElementById("result-screen").classList.add("hidden");
   document.getElementById("cbt-grid").classList.add("hidden");
+  const schoolGrid = document.getElementById("school-grid");
+  if (schoolGrid) schoolGrid.classList.remove("hidden");
 }
 
 function setCbtStartLoading(loading) {
@@ -404,11 +432,40 @@ function subjectMinimumForExamType(examType) {
   return 1;
 }
 
+function initSidebarToggle() {
+  var shell = document.querySelector(".app-shell-sidebar");
+  var btn = document.getElementById("sidebar-toggle");
+  if (!shell || !btn) return;
+
+  if (localStorage.getItem("sia_sidebar_collapsed") === "1") {
+    shell.classList.add("sidebar-collapsed");
+  }
+  updateSidebarToggleBtn(btn, shell.classList.contains("sidebar-collapsed"));
+
+  btn.addEventListener("click", function () {
+    shell.classList.toggle("sidebar-collapsed");
+    var collapsed = shell.classList.contains("sidebar-collapsed");
+    localStorage.setItem("sia_sidebar_collapsed", collapsed ? "1" : "0");
+    updateSidebarToggleBtn(btn, collapsed);
+  });
+}
+
+function updateSidebarToggleBtn(btn, collapsed) {
+  btn.textContent = collapsed ? "\u203A" : "\u2039";
+  btn.setAttribute("aria-label", collapsed ? "Show menu" : "Hide menu");
+  btn.title = collapsed ? "Show menu" : "Hide menu";
+}
+
 function initUserUI() {
   const user = getUser();
   const initial = firstName(user.name)[0].toUpperCase();
-  document.getElementById("sidebar-name").textContent = firstName(user.name);
-  document.getElementById("sidebar-exam").textContent = formatExamType(user.examType);
+  const first = firstName(user.name);
+  const handle = "@" + (user.email ? user.email.split("@")[0] : "student");
+  const nameEl = document.getElementById("header-user-name");
+  const handleEl = document.getElementById("header-user-handle");
+  if (nameEl) nameEl.textContent = first;
+  if (handleEl) handleEl.textContent = handle;
+  document.getElementById("sidebar-exam").textContent = formatExamType(user.examType) || "Student";
   document.getElementById("user-avatar").textContent = initial;
   document.getElementById("profile-avatar").textContent = initial;
   document.getElementById("profile-name").textContent = user.name;
@@ -416,13 +473,125 @@ function initUserUI() {
 }
 
 function logout() {
+  if (isCbtExamActive()) {
+    alert("Submit your exam first — you cannot sign out or open other tabs until you finish.");
+    return;
+  }
   clearSession();
   window.location.href = "index.html";
 }
 
+function setExamLockMode(on) {
+  document.body.classList.toggle("exam-lock-active", !!on);
+  const topnav = document.getElementById("student-topnav");
+  if (topnav) {
+    topnav.querySelectorAll(".topnav-btn").forEach((btn) => {
+      btn.disabled = !!on;
+      btn.setAttribute("aria-disabled", on ? "true" : "false");
+      if (on) btn.setAttribute("tabindex", "-1");
+      else btn.removeAttribute("tabindex");
+    });
+  }
+  const refreshBtn = document.querySelector(".btn-refresh");
+  if (refreshBtn) {
+    refreshBtn.style.display = on ? "none" : "";
+    refreshBtn.disabled = !!on;
+  }
+  const logoutBtn = document.querySelector(".btn-logout");
+  if (logoutBtn) logoutBtn.disabled = !!on;
+  const lockBanner = document.getElementById("exam-lock-banner");
+  if (lockBanner) lockBanner.classList.toggle("hidden", !on);
+  const fab = document.getElementById("community-fab");
+  if (fab) fab.style.display = on ? "none" : (currentPage === "community" ? "flex" : "none");
+  const headBar = document.querySelector(".app-topbar");
+  if (headBar) headBar.style.display = on ? "none" : "";
+}
+
+function getGreeting() {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  return "Good evening";
+}
+
+async function loadDashboard() {
+  const user = getUser();
+  const subjects = user.subjects || [];
+  const titleEl = document.getElementById("dash-greeting-title");
+  const subEl = document.getElementById("dash-greeting-sub");
+  if (titleEl) titleEl.textContent = getGreeting() + " " + firstName(user.name);
+  if (subEl) subEl.textContent = "Let's beat your weak topics today.";
+
+  const heroTitle = document.getElementById("dash-hero-title");
+  const heroExam = document.getElementById("dash-hero-exam");
+  const focusSubject = document.getElementById("dash-focus-subject");
+  const progressText = document.getElementById("dash-progress-text");
+  const progressFill = document.getElementById("dash-progress-fill");
+  const examLabel = formatExamType(user.examType) || "Your exam";
+
+  if (heroTitle) {
+    heroTitle.textContent = subjects[0]
+      ? subjects[0] + " — Quick Practice"
+      : "CBT Practice";
+  }
+  if (heroExam) heroExam.textContent = examLabel;
+  if (focusSubject) {
+    focusSubject.textContent = subjects[0] || "Set up subjects in Profile";
+  }
+  const subCount = subjects.length;
+  const maxSubs = examLabel.indexOf("WAEC") >= 0 || examLabel.indexOf("NECO") >= 0 ? 9 : 4;
+  const pct = maxSubs ? Math.min(100, Math.round((subCount / maxSubs) * 100)) : 0;
+  if (progressFill) progressFill.style.width = pct + "%";
+  if (progressText) {
+    progressText.textContent = subCount
+      ? subCount + " subject" + (subCount === 1 ? "" : "s") + " selected"
+      : "0 subjects selected";
+  }
+
+  const statSubs = document.getElementById("dash-stat-subjects");
+  if (statSubs) statSubs.textContent = String(subCount);
+
+  try {
+    const [liveRaw, examData] = await Promise.all([
+      api("/api/v1/live-classes/?status=live").catch(function () { return []; }),
+      api("/api/v1/cbt/exams/for-me").catch(function () { return null; }),
+    ]);
+    const liveEl = document.getElementById("dash-stat-live");
+    const examsEl = document.getElementById("dash-stat-exams");
+    if (liveEl) liveEl.textContent = String((liveRaw || []).length);
+    if (examsEl) {
+      const count = examData && examData.school_exams ? examData.school_exams.length : 0;
+      examsEl.textContent = String(count);
+    }
+  } catch (e) { /* stats optional */ }
+}
+
+function bindExamLockListeners() {
+  if (window._examLockBound) return;
+  window._examLockBound = true;
+  document.addEventListener("click", (e) => {
+    if (!isCbtExamActive() || examLockBypass) return;
+    const blocked = e.target.closest(
+      ".topnav-btn, .nav-item, .btn-logout, .btn-refresh, .community-fab, .sidebar-brand"
+    );
+    if (blocked) {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      alert("You are in an exam. Submit the exam first — other tabs (Sia, Community, Marketplace, etc.) stay locked until then.");
+    }
+  }, true);
+  document.addEventListener("keydown", (e) => {
+    if (!isCbtExamActive() || examLockBypass) return;
+    if ((e.altKey && e.key === "Tab") || (e.ctrlKey && e.key === "Tab")) {
+      e.preventDefault();
+    }
+  }, true);
+}
+
 function showPage(page) {
-  if (isCbtExamActive() && page !== "cbt") {
-    if (!confirm("Leave the exam? Your timer will keep running.")) return;
+  if (isCbtExamActive() && !examLockBypass) {
+    alert("You are in an exam. Submit the exam to leave — other tabs (Sia, Community, etc.) are locked until then.");
+    return;
   }
   currentPage = page;
   document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
@@ -438,9 +607,12 @@ function showPage(page) {
 }
 
 function refreshPage() {
-  if (currentPage === "live") loadLive();
+  if (currentPage === "dashboard") loadDashboard();
+  else if (currentPage === "live") loadLive();
   else if (currentPage === "school") loadSchoolExams();
   else if (currentPage === "school-portal") { /* static */ }
+  else if (currentPage === "marketplace") { /* embedded store */ }
+  else if (currentPage === "skills") loadSkillsTraining();
   else if (currentPage === "cbt") { /* embedded scholaxiacbtexam.blog */ }
   else if (currentPage === "library") loadLibrary();
   else if (currentPage === "saved-lives") loadSavedLivesPage();
@@ -472,7 +644,7 @@ function startLivePolling() {
   if (livePollTimer) return;
   livePollTimer = setInterval(function () {
     if (currentPage === "live") loadLive(true);
-  }, 30000);
+  }, 10000);
 }
 
 function showLiveClassToast(session) {
@@ -493,15 +665,20 @@ async function loadLive(quiet) {
     document.getElementById("upcoming-grid").innerHTML = `<div class="loading">Loading…</div>`;
   }
   try {
-    const userSubjects = getUser().subjects || [];
+    if (!quiet) await syncStudentProfile();
     const [liveRaw, upcomingRaw, feed] = await Promise.all([
-      api("/api/v1/live-classes/?status=live"),
-      api("/api/v1/live-classes/?status=upcoming"),
+      api("/api/v1/live-classes/?status=live&limit=50"),
+      api("/api/v1/live-classes/?status=upcoming&limit=50"),
       api("/api/v1/home/feed").catch(() => null),
     ]);
 
-    const live = (liveRaw || []).filter((s) => sessionMatchesSubjects(s, userSubjects));
-    const upcoming = (upcomingRaw || []).filter((s) => sessionMatchesSubjects(s, userSubjects));
+    let live = liveRaw || [];
+    const upcoming = upcomingRaw || [];
+
+    if (!live.length) {
+      const all = await api("/api/v1/live-classes/?limit=50").catch(() => []);
+      live = (all || []).filter(function (s) { return s.is_live; });
+    }
 
     if (quiet) {
       live.forEach(function (s) {
@@ -522,28 +699,48 @@ async function loadLive(quiet) {
   }
 }
 
+function renderLiveEmpty(el) {
+  el.innerHTML = `
+    <div class="live-empty-state">
+      <div class="live-empty-icon" aria-hidden="true">&#127909;</div>
+      <h3>Nothing live yet</h3>
+      <p>Your teacher's class will show up here with a green <strong>Join Class</strong> button.</p>
+      <button type="button" class="btn-action live-empty-refresh" onclick="refreshPage()">Check again</button>
+    </div>`;
+}
+
+function renderUpcomingEmpty(el) {
+  el.innerHTML = `
+    <div class="live-empty-state live-empty-compact">
+      <p>No classes scheduled. Ask your teacher to schedule one, or send a request below.</p>
+    </div>`;
+}
+
 function renderLive(sessions) {
   document.getElementById("live-count").textContent = sessions.length;
   const el = document.getElementById("live-grid");
   if (!sessions.length) {
-    el.innerHTML = `<div class="empty">No live classes right now. Check upcoming sessions below.</div>`;
+    renderLiveEmpty(el);
     return;
   }
-  el.innerHTML = sessions.map((s) => `
+  el.innerHTML = sessions.map((s) => {
+    const badge = s.is_live ? "LIVE" : "STARTING";
+    return `
     <div class="card">
-      <div class="live-pill">LIVE</div>
+      <div class="live-pill">${badge}</div>
       <h3>${escHtml(s.title)}</h3>
       <p class="meta">${escHtml(s.subject)} · ${escHtml(s.teacher_name)}</p>
       <button class="btn-join" data-id="${s.id}" data-title="${escHtml(s.title)}" data-subject="${escHtml(s.subject)}" data-teacher="${escHtml(s.teacher_name)}" onclick="joinClassWithPayment(this)">Join Class</button>
     </div>
-  `).join("");
+  `;
+  }).join("");
 }
 
 function renderUpcoming(sessions) {
   const el = document.getElementById("upcoming-grid");
   const now = Date.now();
   if (!sessions.length) {
-    el.innerHTML = `<div class="empty">No upcoming classes scheduled for your subjects yet.</div>`;
+    renderUpcomingEmpty(el);
     return;
   }
   el.innerHTML = sessions.map((s) => {
@@ -619,22 +816,26 @@ async function loadSchoolExams() {
 function renderSchoolGrid() {
   const el = document.getElementById("school-grid");
   if (!schoolExams.length) {
-    el.innerHTML = `<div class="empty">No school exams scheduled for your subjects.</div>`;
+    el.innerHTML = `<div class="empty">No teacher exams for your subjects yet. When your teacher uploads one, it appears here.</div>`;
     return;
   }
   el.innerHTML = schoolExams.map((e) => `
     <div class="card">
-      <div class="time-badge">&#128248; School Exam</div>
+      <div class="time-badge">&#128221; Teacher exam</div>
       <h3>${escHtml(e.title)}</h3>
       <p class="meta">${escHtml(e.subject)} · ${e.total_questions} questions · ${e.duration_minutes} min</p>
       ${e.scheduled_start ? `<p class="meta">${formatDate(e.scheduled_start)} – ${formatDate(e.scheduled_end)}</p>` : ""}
-      <button class="btn-join" onclick="openSchoolExam('${e.id}')">Enter Exam</button>
+      <button class="btn-join" onclick="openSchoolExam('${e.id}', ${e.camera_required ? "true" : "false"})">Start exam</button>
     </div>
   `).join("");
 }
 
-function openSchoolExam(examId) {
+function openSchoolExam(examId, needsCamera) {
   pendingSchoolExamId = examId;
+  if (!needsCamera) {
+    beginExam(examId, true);
+    return;
+  }
   document.getElementById("camera-modal").classList.remove("hidden");
   navigator.mediaDevices.getUserMedia({ video: true })
     .then((stream) => {
@@ -880,7 +1081,8 @@ async function beginExam(examId, isSchool, utmeYear) {
     showCbtExamView();
     document.getElementById("exam-title").textContent = exam.title;
     document.getElementById("exam-meta").textContent =
-      `${exam.subject} · ${exam.questions.length} questions · ${isSchool ? "School (proctored)" : "Practice"}`;
+      `${exam.subject} · ${exam.questions.length} questions · ${isSchool ? "Scholaxia exam (locked mode)" : "Practice"}`;
+    if (isSchool && session.block_minimize) bindSchoolExamGuards();
 
     buildQNav();
     renderQuestion();
@@ -896,6 +1098,33 @@ async function beginExam(examId, isSchool, utmeYear) {
     hideCbtLoadingOverlay();
     setCbtStartLoading(false);
   }
+}
+
+function bindSchoolExamGuards() {
+  if (window._schoolExamGuardBound) return;
+  window._schoolExamGuardBound = true;
+  document.addEventListener("visibilitychange", onExamVisibilityChange);
+}
+
+async function onExamVisibilityChange() {
+  if (!isCbtExamActive() || !currentSession || !currentSession.is_school_exam) {
+    if (!document.hidden && timerEndsAt) tickCbtTimer();
+    return;
+  }
+  if (!document.hidden) {
+    if (timerEndsAt) tickCbtTimer();
+    return;
+  }
+  try {
+    await api("/api/v1/cbt/proctor/event", {
+      method: "POST",
+      body: JSON.stringify({
+        session_id: currentSession.session_id,
+        event_type: "tab_switch",
+      }),
+    });
+  } catch (e) { /* ignore */ }
+  alert("Stay on the exam screen until you submit. Sia and other tabs are locked during the test.");
 }
 
 function isCbtExamActive() {
@@ -1047,11 +1276,18 @@ async function submitExam(force) {
 }
 
 function showResult(result) {
+  setExamLockMode(false);
   hideSubjectStartPicker();
   hideCbtLoadingOverlay();
   document.getElementById("exam-screen").classList.add("hidden");
   const resultEl = document.getElementById("result-screen");
   resultEl.classList.remove("hidden");
+  const closeBtn = document.getElementById("exam-result-close-btn");
+  if (closeBtn) {
+    closeBtn.textContent = currentSession && currentSession.is_school_exam
+      ? "Back to Scholaxia Exam"
+      : "Back to Exams";
+  }
   resultEl.scrollIntoView({ behavior: "smooth", block: "start" });
   const raw = result.score_percent != null ? result.score_percent : result.percentage;
   const pct = raw != null ? Math.round(raw) : "—";
@@ -1076,8 +1312,25 @@ function closeExam() {
   stopCamera();
   hideSubjectStartPicker();
   hideCbtLoadingOverlay();
+  setExamLockMode(false);
+  window._schoolExamGuardBound = false;
+  const wasSchool = currentSession && currentSession.is_school_exam;
   currentExam = null;
   currentSession = null;
+  document.getElementById("exam-screen").classList.add("hidden");
+  document.getElementById("result-screen").classList.add("hidden");
+  if (wasSchool) {
+    currentPage = "school";
+    document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
+    document.querySelectorAll(".topnav-btn").forEach((n) => n.classList.remove("active"));
+    const pg = document.getElementById("page-school");
+    if (pg) pg.classList.add("active");
+    const navEl = document.querySelector('.topnav-btn[data-page="school"]');
+    if (navEl) navEl.classList.add("active");
+    document.getElementById("page-title").textContent = PAGE_TITLES.school;
+    loadSchoolExams();
+    return;
+  }
   showCbtListView();
 }
 
@@ -1166,6 +1419,10 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 document.addEventListener("visibilitychange", () => {
+  if (window._schoolExamGuardBound && isCbtExamActive() && currentSession && currentSession.is_school_exam) {
+    onExamVisibilityChange();
+    return;
+  }
   if (!document.hidden && timerEndsAt) tickCbtTimer();
 });
 

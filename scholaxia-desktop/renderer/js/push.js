@@ -26,6 +26,7 @@
         if (typeof showPage !== "function") return;
         var t = (data.type || data.notification_type || "").toLowerCase();
         if (t.indexOf("live") >= 0) showPage("live");
+        else if (t.indexOf("cbt") >= 0 || t.indexOf("exam") >= 0) showPage("school");
         else if (t.indexOf("community") >= 0 || t.indexOf("announcement") >= 0) showPage("community");
         else showPage("live");
       };
