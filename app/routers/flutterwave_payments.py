@@ -16,6 +16,7 @@ from app.core.live_class_plans import (
 from app.models.payment import Payment, PaymentStatus
 from app.models.live_class import LiveClass
 from app.models.teacher_material import TeacherMaterial, MaterialPurchase
+from app.models.content import Book, BookPurchase
 from app.models.user import User, StudentProfile
 from app.core.datetime_utils import naive_utc_now
 from app.services.flutterwave_service import verify_transaction, verify_transaction_by_reference
@@ -32,6 +33,7 @@ class FlutterwaveVerifyRequest(BaseModel):
     transaction_id: str
     class_id: Optional[str] = None
     material_id: Optional[str] = None
+    book_id: Optional[str] = None
     plan_id: Optional[str] = None
     tx_ref: Optional[str] = None
 
@@ -61,6 +63,22 @@ async def _student_has_material_access(db: AsyncSession, student_id: str, materi
         select(MaterialPurchase).where(
             MaterialPurchase.student_id == student_id,
             MaterialPurchase.material_id == material_id,
+        )
+    )
+    return result.scalar_one_or_none() is not None
+
+
+async def _student_has_book_access(db: AsyncSession, student_id: str, book_id: str) -> bool:
+    book_res = await db.execute(select(Book).where(Book.id == book_id))
+    book = book_res.scalar_one_or_none()
+    if not book or not book.is_active:
+        return False
+    if book.is_free:
+        return True
+    result = await db.execute(
+        select(BookPurchase).where(
+            BookPurchase.student_id == student_id,
+            BookPurchase.book_id == book_id,
         )
     )
     return result.scalar_one_or_none() is not None
@@ -278,6 +296,84 @@ async def init_material_payment(
     }
 
 
+@router.get("/book/{book_id}/access")
+async def book_access_payment(
+    book_id: str,
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Book).where(Book.id == book_id))
+    book = result.scalar_one_or_none()
+    if not book or not book.is_active:
+        raise HTTPException(status_code=404, detail="Book not found")
+    has_access = await _student_has_book_access(db, current_user["sub"], book_id)
+    return {
+        "has_access": has_access,
+        "is_free": book.is_free,
+        "paid": has_access,
+        "amount": book.price if not book.is_free else 0,
+        "currency": "NGN",
+        "public_key": settings.FLUTTERWAVE_PUBLIC_KEY,
+        "title": book.title,
+    }
+
+
+@router.post("/flutterwave/book/{book_id}/init")
+async def init_book_payment(
+    book_id: str,
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    if not settings.FLUTTERWAVE_PUBLIC_KEY or not settings.FLUTTERWAVE_SECRET_KEY:
+        raise HTTPException(status_code=503, detail="Payment system is not configured.")
+
+    result = await db.execute(select(Book).where(Book.id == book_id))
+    book = result.scalar_one_or_none()
+    if not book or not book.is_active:
+        raise HTTPException(status_code=404, detail="Book not found")
+    if book.is_free:
+        return {"already_paid": True, "is_free": True, "has_access": True}
+
+    if await _student_has_book_access(db, current_user["sub"], book_id):
+        return {
+            "already_paid": True,
+            "amount": book.price,
+            "currency": "NGN",
+            "public_key": settings.FLUTTERWAVE_PUBLIC_KEY,
+        }
+
+    user_res = await db.execute(select(User).where(User.id == current_user["sub"]))
+    user = user_res.scalar_one_or_none()
+    email = user.email if user else f"{current_user['sub']}@scholaxia.local"
+    name = user.full_name if user else "Student"
+
+    tx_ref = f"scholaxia-book-{book_id[:8]}-{uuid.uuid4().hex[:16]}"
+
+    payment = Payment(
+        student_id=parse_uuid(current_user["sub"]),
+        amount=book.price,
+        currency="NGN",
+        status=PaymentStatus.pending,
+        flutterwave_tx_ref=tx_ref,
+        book_id=book.id,
+        description=f"Scholaxia material: {book.title}",
+    )
+    db.add(payment)
+    await db.flush()
+
+    return {
+        "already_paid": False,
+        "payment_id": str(payment.id),
+        "tx_ref": tx_ref,
+        "amount": book.price,
+        "currency": "NGN",
+        "public_key": settings.FLUTTERWAVE_PUBLIC_KEY,
+        "book_title": book.title,
+        "book_subject": book.subject,
+        "customer": {"email": email, "name": name},
+    }
+
+
 @router.post("/flutterwave/reconcile-plan")
 async def reconcile_plan_payment(
     payload: ReconcilePlanRequest,
@@ -403,7 +499,7 @@ async def verify_flutterwave_payment(
     db: AsyncSession = Depends(get_db),
 ):
     plan_id = payload.plan_id
-    if not payload.class_id and not payload.material_id and not plan_id:
+    if not payload.class_id and not payload.material_id and not payload.book_id and not plan_id:
         if payload.tx_ref:
             pay_lookup = await db.execute(
                 select(Payment).where(
@@ -414,14 +510,17 @@ async def verify_flutterwave_payment(
             existing = pay_lookup.scalar_one_or_none()
             if existing and existing.live_plan_id:
                 plan_id = existing.live_plan_id
-        if not plan_id and not payload.material_id and not payload.class_id:
-            raise HTTPException(status_code=400, detail="class_id, plan_id, or material_id required")
+        if not plan_id and not payload.material_id and not payload.book_id and not payload.class_id:
+            raise HTTPException(status_code=400, detail="class_id, plan_id, material_id, or book_id required")
 
     if payload.class_id and await _student_has_live_access(db, current_user["sub"], payload.class_id):
         return {"paid": True, "class_id": payload.class_id}
 
     if payload.material_id and await _student_has_material_access(db, current_user["sub"], payload.material_id):
         return {"paid": True, "material_id": payload.material_id, "has_access": True}
+
+    if payload.book_id and await _student_has_book_access(db, current_user["sub"], payload.book_id):
+        return {"paid": True, "book_id": payload.book_id, "has_access": True}
 
     try:
         data = await verify_transaction(payload.transaction_id)
@@ -541,5 +640,48 @@ async def verify_flutterwave_payment(
             await db.flush()
 
         return {"paid": True, "material_id": payload.material_id, "has_access": True, "payment_id": str(payment.id)}
+
+    if payload.book_id:
+        book_res = await db.execute(select(Book).where(Book.id == payload.book_id))
+        book = book_res.scalar_one_or_none()
+        if not book or not book.is_active:
+            raise HTTPException(status_code=404, detail="Book not found")
+        if book.is_free:
+            return {"paid": True, "book_id": payload.book_id, "has_access": True}
+
+        if amount_paid < book.price:
+            raise HTTPException(status_code=400, detail="Incorrect payment amount")
+
+        if not payment:
+            payment = Payment(
+                student_id=parse_uuid(current_user["sub"]),
+                amount=amount_paid,
+                currency=data.get("currency") or "NGN",
+                book_id=book.id,
+                description=f"Scholaxia material: {book.title}",
+            )
+            db.add(payment)
+
+        payment.status = PaymentStatus.success
+        payment.flutterwave_transaction_id = str(data.get("id") or payload.transaction_id)
+        if tx_ref:
+            payment.flutterwave_tx_ref = tx_ref
+        await db.flush()
+
+        existing = await db.execute(
+            select(BookPurchase).where(
+                BookPurchase.student_id == current_user["sub"],
+                BookPurchase.book_id == book.id,
+            )
+        )
+        if not existing.scalar_one_or_none():
+            db.add(BookPurchase(
+                student_id=current_user["sub"],
+                book_id=book.id,
+                payment_id=payment.id,
+            ))
+            await db.flush()
+
+        return {"paid": True, "book_id": payload.book_id, "has_access": True, "payment_id": str(payment.id)}
 
     raise HTTPException(status_code=400, detail="Could not verify payment")

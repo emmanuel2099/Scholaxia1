@@ -5,6 +5,7 @@ var communityPendingPost = null;
 var communityActiveTab = "feed";
 var COMMUNITY_CHANNEL_KEY = "sia_community_channel_id";
 var COMMUNITY_POSTS_CACHE_KEY = "sia_community_posts_cache";
+var COMMUNITY_DRAFT_KEY = "sia_community_compose_draft";
 var POST_COMMENT_RE = /^@post:([^\s]+)\s*([\s\S]*)$/;
 
 function restoreCommunityChannelId() {
@@ -39,6 +40,23 @@ function loadCommunityCache() {
     if (!data || !Array.isArray(data.posts)) return null;
     return data;
   } catch (e) { return null; }
+}
+
+function saveCommunityDraft(text) {
+  try { localStorage.setItem(COMMUNITY_DRAFT_KEY, text || ""); } catch (e) { /* ignore */ }
+}
+
+function restoreCommunityDraft() {
+  var input = document.getElementById("community-create-input");
+  if (!input) return;
+  try {
+    var draft = localStorage.getItem(COMMUNITY_DRAFT_KEY);
+    if (draft && !input.value) input.value = draft;
+  } catch (e) { /* ignore */ }
+}
+
+function clearCommunityDraft() {
+  try { localStorage.removeItem(COMMUNITY_DRAFT_KEY); } catch (e) { /* ignore */ }
 }
 
 function isPostComment(content) {
@@ -322,6 +340,7 @@ function initCommunityCreate() {
   var err = document.getElementById("community-create-error");
   var postBtn = document.getElementById("community-post-btn");
   if (input) input.value = "";
+  restoreCommunityDraft();
   if (err) err.textContent = "";
   if (postBtn) { postBtn.disabled = false; postBtn.textContent = "Post"; }
   clearCommunityImage();
@@ -438,6 +457,7 @@ async function submitCommunityPost() {
     saveCommunityCache(prependNewPost(cachedPosts, newPost));
     clearCommunityImage();
     clearCommunityVoice();
+    clearCommunityDraft();
     if (input) input.value = "";
     communityPendingPost = newPost;
     showPage("community");
@@ -560,3 +580,19 @@ window.clearCommunityVoice = clearCommunityVoice;
 window.initCommunityVoiceRecorder = initCommunityVoiceRecorder;
 window.openCommunityCreate = openCommunityCreate;
 window.submitCommunityPost = submitCommunityPost;
+
+(function bindCommunityDraft() {
+  function attach() {
+    var input = document.getElementById("community-create-input");
+    if (!input || input.dataset.draftBound) return;
+    input.dataset.draftBound = "1";
+    input.addEventListener("input", function () {
+      saveCommunityDraft(input.value);
+    });
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", attach);
+  } else {
+    attach();
+  }
+})();

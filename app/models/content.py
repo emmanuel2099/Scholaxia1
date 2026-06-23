@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, Text, Integer, Enum
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, Text, Integer, Enum, Float
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from app.core.database import Base
@@ -36,12 +36,27 @@ class Book(Base):
     allow_screenshot: Mapped[bool] = mapped_column(Boolean, default=False)  # frontend enforces this
     allow_print: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Scholaxia materials — admin can mark free or paid (Flutterwave unlock)
+    is_free: Mapped[bool] = mapped_column(Boolean, default=True)
+    price: Mapped[float] = mapped_column(Float, default=0.0)
+
     uploaded_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     saved_by: Mapped[list["SavedBook"]] = relationship("SavedBook", back_populates="book")
     read_progress: Mapped[list["BookReadProgress"]] = relationship("BookReadProgress", back_populates="book")
+
+
+class BookPurchase(Base):
+    """Student paid access to a Scholaxia library book."""
+    __tablename__ = "book_purchases"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    student_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), index=True)
+    book_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("books.id"), index=True)
+    payment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("payments.id"), nullable=True)
+    purchased_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class SavedBook(Base):

@@ -77,7 +77,11 @@
         if (lastId && newest.id !== lastId && !newest.is_read) {
           showNativeNotification({
             notification: { title: newest.title, body: newest.body },
+            data: { type: newest.type },
           });
+          if (typeof window.scholaxiaNotifyIncoming === "function") {
+            window.scholaxiaNotifyIncoming(newest);
+          }
         }
         lastId = newest.id;
         localStorage.setItem("sia_last_notif_id", newest.id);

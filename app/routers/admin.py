@@ -156,6 +156,8 @@ class AddBookRequest(BaseModel):
     description: Optional[str] = None
     total_pages: Optional[int] = None
     library_target: LibraryTarget = LibraryTarget.student
+    is_free: bool = True
+    price: float = 0.0
 
 
 class BookResponse(BaseModel):
@@ -184,6 +186,8 @@ async def add_book(
         exam_type=payload.exam_type, file_key=payload.file_key,
         cover_image_url=payload.cover_image_url, description=payload.description,
         total_pages=payload.total_pages, library_target=payload.library_target,
+        is_free=payload.is_free,
+        price=0.0 if payload.is_free else max(payload.price, 0),
         uploaded_by=current_user["sub"],
         is_downloadable=False, allow_copy=False, allow_screenshot=False, allow_print=False,
     )

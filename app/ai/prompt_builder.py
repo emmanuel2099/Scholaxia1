@@ -499,6 +499,34 @@ ANTI-PATTERNS (never do these — generic AIs do):
 Think like the world's best human tutor. Respond like a brilliant, warm teacher.
 """
 
+SIA_CODE_FORMAT = """
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CODE & PROGRAMMING TEACHING (ChatGPT-style)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+When teaching programming (Flutter, Dart, Python, JavaScript, HTML, etc.):
+1. Start with 1–2 friendly sentences explaining what you will show.
+2. Put ALL code in fenced blocks with the correct language tag, e.g.:
+```dart
+import 'package:flutter/material.dart';
+void main() { runApp(MyApp()); }
+```
+3. After each code block, explain it in simple numbered steps for the student's level.
+4. Use **bold** for key terms; never dump code as plain unformatted text.
+5. End with warm encouragement: "Don't worry if this looks confusing — we will learn step by step."
+6. For Flutter widgets, show a minimal working example first, then explain each line.
+"""
+
+_CODE_KEYWORDS = (
+    "code", "flutter", "dart", "python", "program", "function", "class ", "widget",
+    "html", "css", "javascript", "java", "kotlin", "swift", "write a", "example",
+    "hello world", "app looks", "syntax", "variable", "loop", "array", "api",
+)
+
+
+def _needs_code_formatting(question: str) -> bool:
+    q = (question or "").lower()
+    return any(k in q for k in _CODE_KEYWORDS)
+
 # ── Level Profiles ────────────────────────────────────────────────────────────
 
 LEVEL_PROFILES = {
@@ -708,7 +736,8 @@ def build_sia_system_prompt(student_name: str, subject: str, education_level: st
 def build_chat_user_prompt(question: str, student_name: str = "there",
                            conversation_history: list = None,
                            education_level: str = None,
-                           subject: str = None) -> str:
+                           subject: str = None,
+                           tutor_mode: str = "smart") -> str:
     """Slim user message — system prompt carries teaching rules."""
     history_block = ""
     if conversation_history:
@@ -728,7 +757,19 @@ def build_chat_user_prompt(question: str, student_name: str = "there",
             f"not higher classes. Use subheadings and spaced paragraphs.]\n"
         )
 
-    return f"""{history_block}{level_block}
+    code_block = ""
+    if tutor_mode == "smart" and _needs_code_formatting(question):
+        code_block = f"\n{SIA_CODE_FORMAT}\n"
+
+    smart_block = ""
+    if tutor_mode == "smart":
+        smart_block = (
+            "\n[SMART TUTOR MODE: Combine the best of ChatGPT, Gemini, and DeepSeek — "
+            "deep reasoning, clear structure, exam-aligned accuracy, and warm teaching. "
+            "Use markdown: **bold**, numbered steps, and ```code fences``` for any code.]\n"
+        )
+
+    return f"""{history_block}{level_block}{smart_block}{code_block}
 
 {student_name}: {question}
 

@@ -26,6 +26,9 @@ function paymentReturnUrl(ctx) {
   if (ctx.type === "material" && ctx.material_id) {
     return base + "?ctx=material&material_id=" + encodeURIComponent(ctx.material_id);
   }
+  if (ctx.type === "book" && ctx.book_id) {
+    return base + "?ctx=book&book_id=" + encodeURIComponent(ctx.book_id);
+  }
   var q = "?ctx=live&plan_id=" + encodeURIComponent(ctx.plan_id || "");
   if (ctx.class_id) q += "&class_id=" + encodeURIComponent(ctx.class_id);
   return base + q;
@@ -277,3 +280,30 @@ async function payForMaterial(materialId) {
 }
 
 window.payForMaterial = payForMaterial;
+
+async function payForBook(bookId) {
+  await loadFlutterwaveScript();
+
+  var init = await api("/api/v1/payments/flutterwave/book/" + encodeURIComponent(bookId) + "/init", {
+    method: "POST",
+  });
+
+  if (init.already_paid || init.is_free) {
+    return { paid: true, has_access: true };
+  }
+
+  if (!init.public_key || !init.tx_ref) {
+    throw new Error("Payment could not be started. Try again later.");
+  }
+
+  return startFlutterwaveRedirect(init, {
+    type: "book",
+    book_id: bookId,
+    tx_ref: init.tx_ref,
+    custom_title: "Scholaxia Materials",
+    custom_description: (init.book_title || "Study material") + " — " + (init.book_subject || ""),
+    meta: { book_id: bookId },
+  });
+}
+
+window.payForBook = payForBook;

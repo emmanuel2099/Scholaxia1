@@ -80,7 +80,8 @@ async def _prepare_sia_context(
 
 async def get_ai_response(question: str, subject: str, education_level: str,
                           language: str, student_id: str, student_name: str = "there",
-                          conversation_history: list = None) -> str:
+                          conversation_history: list = None,
+                          tutor_mode: str = "smart") -> str:
     safe, reason = is_educational(question)
     if not safe:
         return reason
@@ -94,6 +95,7 @@ async def get_ai_response(question: str, subject: str, education_level: str,
         conversation_history=conversation_history,
         education_level=education_level,
         subject=subject,
+        tutor_mode=tutor_mode,
     )
     try:
         raw = await _run_sia_inference(

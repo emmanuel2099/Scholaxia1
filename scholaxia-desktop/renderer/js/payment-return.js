@@ -83,6 +83,9 @@
       if (payType === "material") {
         var materialId = params.get("material_id") || (pending && pending.material_id);
         verifyBody.material_id = materialId || null;
+      } else if (payType === "book") {
+        var bookId = params.get("book_id") || (pending && pending.book_id);
+        verifyBody.book_id = bookId || null;
       } else {
         verifyBody.plan_id = planId || null;
         verifyBody.class_id = classId || null;
@@ -96,7 +99,7 @@
       clearPending();
       try { sessionStorage.removeItem("sia_live_plans_cache"); } catch (e) { /* ignore */ }
 
-      if (payType === "material") {
+      if (payType === "material" || payType === "book") {
         document.getElementById("status-title").textContent = "Payment successful";
         document.getElementById("status-msg").textContent = "Your material is unlocked.";
         setTimeout(function () {

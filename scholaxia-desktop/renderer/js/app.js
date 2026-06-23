@@ -11,6 +11,7 @@ const PAGE_TITLES = {
   sia: "Ask Sia",
   community: "Community",
   "community-create": "New Post",
+  notifications: "Notifications",
   profile: "Profile",
 };
 
@@ -648,6 +649,7 @@ function refreshPage() {
     loadCommunity(pending);
   }
   else if (currentPage === "community-create") initCommunityCreate();
+  else if (currentPage === "notifications") loadNotifications();
   else if (currentPage === "profile") loadProfile();
 }
 

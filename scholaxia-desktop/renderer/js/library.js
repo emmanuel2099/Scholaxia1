@@ -12,7 +12,14 @@ function libraryTypeLabel(type) {
 }
 
 function libraryPriceTag(item) {
-  if (item.source === "book") return '<span class="material-price free">Library book</span>';
+  if (item.source === "book") {
+    if (item.is_free || item.has_access) {
+      return item.is_free
+        ? '<span class="material-price free">Scholaxia · Free</span>'
+        : '<span class="material-price free">Unlocked</span>';
+    }
+    return '<span class="material-price">₦' + Number(item.price || 0).toLocaleString("en-NG") + "</span>";
+  }
   if (item.is_free || item.has_access) {
     return item.is_free
       ? '<span class="material-price free">Free</span>'
@@ -21,13 +28,22 @@ function libraryPriceTag(item) {
   return '<span class="material-price">₦' + Number(item.price || 0).toLocaleString("en-NG") + "</span>";
 }
 
-async function openLibraryBookStudent(bookId) {
+async function openLibraryBookStudent(bookId, item) {
+  item = item || {};
+  if (!item.is_free && !item.has_access) {
+    var pay = await payForBook(bookId);
+    if (pay && pay.redirecting) return;
+  }
   try {
     var data = await api("/api/v1/library/" + encodeURIComponent(bookId) + "/read");
     if (data && data.read_url) {
       window.open(data.read_url, "_blank", "noopener,noreferrer");
     }
   } catch (e) {
+    if (e.message && e.message.indexOf("402") >= 0) {
+      var r = await payForBook(bookId);
+      if (r && r.redirecting) return;
+    }
     alert(e.message || "Could not open book.");
   }
 }
@@ -78,8 +94,9 @@ async function loadLibrary() {
       description: b.description || ("By " + (b.author || "Scholaxia")),
       teacher_name: b.author || "Scholaxia",
       cover: b.cover_image_url,
-      is_free: true,
-      has_access: true,
+      is_free: b.is_free !== false,
+      has_access: b.has_access !== false,
+      price: b.price || 0,
     });
   });
   materials.forEach(function (m) {
@@ -118,7 +135,11 @@ async function loadLibrary() {
   el.innerHTML = items.map(function (item) {
     var actions = "";
     if (item.source === "book") {
-      actions = '<button type="button" class="btn-sm primary" data-lib-action="open-book" data-id="' + escHtml(item.id) + '">Read</button>';
+      if (item.has_access || item.is_free) {
+        actions = '<button type="button" class="btn-sm primary" data-lib-action="open-book" data-id="' + escHtml(item.id) + '">Read</button>';
+      } else {
+        actions = '<button type="button" class="btn-sm primary" data-lib-action="pay-book" data-id="' + escHtml(item.id) + '">Pay &amp; unlock</button>';
+      }
     } else if (item.has_access || item.is_free) {
       actions = '<button type="button" class="btn-sm primary" data-lib-action="open-material" data-id="' + escHtml(item.id) + '">Open</button>';
     } else {
@@ -141,7 +162,15 @@ async function loadLibrary() {
       var action = btn.dataset.libAction;
       var id = btn.dataset.id;
       if (action === "open-book") {
-        openLibraryBookStudent(id);
+        var bookItem = items.find(function (m) { return m.id === id && m.source === "book"; });
+        openLibraryBookStudent(id, bookItem);
+        return;
+      }
+      if (action === "pay-book") {
+        payForBook(id).then(function (r) {
+          if (r && r.redirecting) return;
+          loadLibrary();
+        }).catch(function (e) { alert(e.message); });
         return;
       }
       var item = materials.find(function (m) { return m.id === id; });

@@ -106,7 +106,7 @@
       <div class="app-topbar-right">
         <div class="topbar-toolbar">
           <button type="button" class="btn-refresh topbar-tool" onclick="refreshPage()">&#8635; Refresh</button>
-          <button type="button" class="topbar-bell topbar-tool" aria-label="Notifications" title="Notifications">&#128276;</button>
+          <button type="button" class="topbar-bell topbar-tool" id="topbar-bell" aria-label="Notifications" title="Notifications">&#128276;</button>
           <div class="topbar-user topbar-tool">
             <div class="user-avatar" id="user-avatar">S</div>
             <div class="topbar-user-meta">
@@ -118,6 +118,12 @@
         </div>
       </div>
     </header>
+
+    <div id="notif-ring-bar" class="notif-ring-bar hidden">
+      <span>&#128276; Live class alert — your teacher is live for your subject!</span>
+      <button type="button" class="btn-sm" onclick="stopNotificationRing()">Stop sound</button>
+      <button type="button" class="btn-sm primary" onclick="showPage('live')">Go to Live Class</button>
+    </div>
 
     <main class="main-content main-content-sidebar">
 
@@ -422,7 +428,7 @@
 
     <section id="page-sia" class="page">
 
-      <div class="info-banner success">&#10024; Sia asks your level first, remembers your question, and explains at the right depth for your class.</div>
+      <div class="info-banner success">&#10024; Sia uses <strong>Smart tutor mode</strong> — structured answers with code blocks like ChatGPT, tuned for your class level.</div>
 
       <div class="sia-chat-wrap">
 
@@ -434,7 +440,11 @@
             <input type="text" id="sia-input" placeholder="Ask Sia anything…" onkeydown="if(event.key==='Enter')sendSiaMessage()" />
             <button class="btn-action" onclick="sendSiaMessage()">Send</button>
           </div>
-          <p class="sia-level-bar"><span id="sia-level-label">Level: not set</span> · <button type="button" class="sia-level-change" onclick="changeSiaLevel()">Change</button></p>
+          <p class="sia-level-bar">
+            <span id="sia-level-label">Level: not set</span> ·
+            <button type="button" class="sia-level-change" onclick="changeSiaLevel()">Change</button> ·
+            <button type="button" class="sia-level-change sia-mode-toggle" id="sia-mode-label" onclick="toggleSiaSmartMode()">Smart tutor ON</button>
+          </p>
 
         </div>
 
@@ -442,6 +452,19 @@
 
       </div>
 
+    </section>
+
+
+
+    <!-- Notifications -->
+
+    <section id="page-notifications" class="page">
+      <div class="info-banner">&#128276; Alerts for live classes in your subjects, exams, and community updates.</div>
+      <div class="notif-toolbar">
+        <button type="button" class="btn-secondary" onclick="markAllNotificationsRead()">Mark all read</button>
+        <button type="button" class="btn-secondary" onclick="stopNotificationRing()">Stop sound</button>
+      </div>
+      <div id="notifications-list" class="notifications-list"><div class="loading">Loading notifications…</div></div>
     </section>
 
 
@@ -674,6 +697,7 @@
 <script src="js/cbt-portal.js"></script>
 <script src="js/firebase-config.js"></script>
 <script src="js/push.js"></script>
+<script src="js/notifications-ui.js"></script>
 
 <script src="js/sia.js"></script>
 

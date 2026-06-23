@@ -49,6 +49,7 @@ function loadSia() {
     return;
   }
   updateSiaLevelLabel();
+  updateSiaModeLabel();
   if (siaHistory.length) return;
 
   syncSiaLevelFromProfile().then(function (level) {
@@ -179,7 +180,7 @@ function inlineSiaFormat(text) {
     .replace(/\*(.+?)\*/g, "<em>$1</em>");
 }
 
-function formatSiaMarkdown(raw) {
+function formatSiaTextBlocks(raw) {
   var lines = normalizeSiaText(raw).split("\n");
   var html = [];
   var para = [];
@@ -276,6 +277,70 @@ function formatSiaMarkdown(raw) {
   }
 
   return html.join("");
+}
+
+function formatSiaMarkdown(raw) {
+  var text = String(raw || "");
+  if (!text.trim()) return "";
+
+  var parts = [];
+  var fenceRe = /```(\w*)\n?([\s\S]*?)```/g;
+  var lastIndex = 0;
+  var match;
+  while ((match = fenceRe.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push({ type: "text", content: text.slice(lastIndex, match.index) });
+    }
+    parts.push({ type: "code", lang: match[1] || "code", content: match[2].replace(/\s+$/, "") });
+    lastIndex = fenceRe.lastIndex;
+  }
+  if (lastIndex < text.length) {
+    parts.push({ type: "text", content: text.slice(lastIndex) });
+  }
+  if (!parts.length) parts.push({ type: "text", content: text });
+
+  return parts.map(function (part) {
+    if (part.type === "code") {
+      var langLabel = part.lang && part.lang !== "code" ? part.lang : "Code";
+      return (
+        '<div class="sia-code-wrap">' +
+        '<div class="sia-code-head"><span>' + escHtml(langLabel) + '</span>' +
+        '<button type="button" class="sia-code-copy" onclick="copySiaCode(this)">Copy</button></div>' +
+        '<pre class="sia-code-block"><code>' + escHtml(part.content) + "</code></pre></div>"
+      );
+    }
+    return formatSiaTextBlocks(part.content);
+  }).join("");
+}
+
+function copySiaCode(btn) {
+  var pre = btn && btn.closest(".sia-code-wrap") && btn.closest(".sia-code-wrap").querySelector("code");
+  if (!pre) return;
+  var text = pre.textContent || "";
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function () {
+      btn.textContent = "Copied!";
+      setTimeout(function () { btn.textContent = "Copy"; }, 1500);
+    }).catch(function () { /* ignore */ });
+  }
+}
+
+function isSiaSmartMode() {
+  var v = localStorage.getItem("sia_tutor_mode");
+  return v !== "plain";
+}
+
+function toggleSiaSmartMode() {
+  var next = isSiaSmartMode() ? "plain" : "smart";
+  localStorage.setItem("sia_tutor_mode", next);
+  updateSiaModeLabel();
+}
+
+function updateSiaModeLabel() {
+  var el = document.getElementById("sia-mode-label");
+  if (!el) return;
+  el.textContent = isSiaSmartMode() ? "Smart tutor ON" : "Plain text";
+  el.classList.toggle("sia-mode-on", isSiaSmartMode());
 }
 
 function splitSiaBlocks(raw) {
@@ -393,6 +458,7 @@ async function askSiaQuestion(question, alreadyShown) {
         language: "english",
         education_level: level,
         conversation_history: buildSiaApiHistory().slice(0, -1),
+        tutor_mode: isSiaSmartMode() ? "smart" : "plain",
       }),
     });
     var answer = (data && (data.sia || data.answer || data.result)) || "Sorry, I could not answer that.";

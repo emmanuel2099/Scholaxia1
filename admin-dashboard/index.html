@@ -716,7 +716,7 @@
             const [books, setBooks] = useState([]);
             const [loading, setLoading] = useState(true);
             const [showModal, setShowModal] = useState(false);
-            const [newBook, setNewBook] = useState({ title: '', author: '', subject: '', exam_type: 'JAMB', file_key: '', description: '' });
+            const [newBook, setNewBook] = useState({ title: '', author: '', subject: '', exam_type: 'JAMB', file_key: '', description: '', is_free: true, price: 0 });
             const [error, setError] = useState('');
             
             // Fetch books on mount
@@ -748,9 +748,11 @@
                         file_key: newBook.file_key || 'placeholder-key',
                         description: newBook.description,
                         library_target: 'student',
+                        is_free: newBook.is_free,
+                        price: newBook.is_free ? 0 : Number(newBook.price || 0),
                     });
                     setShowModal(false);
-                    setNewBook({ title: '', author: '', subject: '', exam_type: 'JAMB', file_key: '', description: '' });
+                    setNewBook({ title: '', author: '', subject: '', exam_type: 'JAMB', file_key: '', description: '', is_free: true, price: 0 });
                     fetchBooks(); // Refresh list
                 } catch (err) {
                     setError(err.message || 'Failed to add book');
@@ -889,6 +891,28 @@
                                             rows="2"
                                         />
                                     </div>
+                                    <div className="flex items-center gap-3">
+                                        <input
+                                            id="book-is-free"
+                                            type="checkbox"
+                                            checked={newBook.is_free}
+                                            onChange={(e) => setNewBook({...newBook, is_free: e.target.checked, price: e.target.checked ? 0 : newBook.price})}
+                                        />
+                                        <label htmlFor="book-is-free" className="text-sm font-medium text-gray-700">Free Scholaxia material</label>
+                                    </div>
+                                    {!newBook.is_free && (
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">Price (₦)</label>
+                                            <input
+                                                type="number"
+                                                min="100"
+                                                value={newBook.price}
+                                                onChange={(e) => setNewBook({...newBook, price: e.target.value})}
+                                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                                                placeholder="2500"
+                                            />
+                                        </div>
+                                    )}
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">File Key (placeholder for now)</label>
                                         <input
@@ -911,7 +935,7 @@
                                         onClick={() => {
                                             setShowModal(false);
                                             setError('');
-                                            setNewBook({ title: '', author: '', subject: '', exam_type: 'JAMB', file_key: '', description: '' });
+                                            setNewBook({ title: '', author: '', subject: '', exam_type: 'JAMB', file_key: '', description: '', is_free: true, price: 0 });
                                         }}
                                         className="flex-1 px-6 py-3 border border-gray-300 rounded-lg font-semibold hover:bg-gray-50 transition"
                                     >

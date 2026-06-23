@@ -91,6 +91,7 @@ class AskRequest(BaseModel):
     language: str = "english"
     education_level: Optional[str] = None
     conversation_history: Optional[list] = None  # last N messages for context
+    tutor_mode: str = "smart"  # smart = ChatGPT-style structured answers with code fences
 
 
 @router.post("/ask")
@@ -112,6 +113,7 @@ async def ask_sia(
         student_id=current_user["sub"],
         student_name=student_name,
         conversation_history=payload.conversation_history,
+        tutor_mode=payload.tutor_mode or "smart",
     )
 
     board = extract_board_content(answer)

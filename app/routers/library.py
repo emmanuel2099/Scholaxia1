@@ -21,7 +21,7 @@ from datetime import datetime
 
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_student, require_teacher
-from app.models.content import Book, SavedBook, BookReadProgress, LibraryTarget
+from app.models.content import Book, BookPurchase, SavedBook, BookReadProgress, LibraryTarget
 from app.models.user import UserRole
 from app.services.media_service import generate_read_url
 
@@ -30,7 +30,8 @@ router = APIRouter(prefix="/library", tags=["Library"])
 
 # ── Shared: Book detail response with DRM flags ───────────────────────────────
 
-def _book_response(book: Book, read_url: str = None, current_page: int = 1) -> dict:
+def _book_response(book: Book, read_url: str = None, current_page: int = 1,
+                   has_access: bool = True) -> dict:
     return {
         "id": str(book.id),
         "title": book.title,
@@ -41,6 +42,10 @@ def _book_response(book: Book, read_url: str = None, current_page: int = 1) -> d
         "description": book.description,
         "total_pages": book.total_pages,
         "library_target": book.library_target,
+        "source": "scholaxia",
+        "is_free": getattr(book, "is_free", True),
+        "price": float(getattr(book, "price", 0) or 0),
+        "has_access": has_access,
         # DRM flags — frontend must respect these
         "drm": {
             "is_downloadable": False,       # always False — no exceptions
@@ -52,6 +57,18 @@ def _book_response(book: Book, read_url: str = None, current_page: int = 1) -> d
         "read_url": read_url,
         "current_page": current_page,
     }
+
+
+async def _student_has_book_access(db: AsyncSession, student_id: str, book: Book) -> bool:
+    if getattr(book, "is_free", True):
+        return True
+    result = await db.execute(
+        select(BookPurchase).where(
+            BookPurchase.student_id == student_id,
+            BookPurchase.book_id == book.id,
+        )
+    )
+    return result.scalar_one_or_none() is not None
 
 
 # ── Student Library ───────────────────────────────────────────────────────────
@@ -76,7 +93,11 @@ async def student_library(
     result = await db.execute(query.order_by(Book.created_at.desc()))
     books = result.scalars().all()
 
-    return [_book_response(b) for b in books]
+    out = []
+    for b in books:
+        has_access = await _student_has_book_access(db, current_user["sub"], b)
+        out.append(_book_response(b, has_access=has_access))
+    return out
 
 
 # ── Teacher Library ───────────────────────────────────────────────────────────
@@ -130,6 +151,10 @@ async def open_book(
     if role == UserRole.teacher and book.library_target != LibraryTarget.teacher:
         raise HTTPException(status_code=403, detail="This book is not in your library")
 
+    if role == UserRole.student:
+        if not await _student_has_book_access(db, current_user["sub"], book):
+            raise HTTPException(status_code=402, detail="Pay to unlock this Scholaxia material")
+
     # Get current reading progress
     progress_result = await db.execute(
         select(BookReadProgress).where(
@@ -143,7 +168,7 @@ async def open_book(
     # Generate signed read URL — 30 min expiry, inline only
     read_url = generate_read_url(book.file_key, expires_in_seconds=1800)
 
-    return _book_response(book, read_url=read_url, current_page=current_page)
+    return _book_response(book, read_url=read_url, current_page=current_page, has_access=True)
 
 
 # ── Save a book inside the app ────────────────────────────────────────────────
