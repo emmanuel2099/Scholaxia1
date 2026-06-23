@@ -34,7 +34,8 @@ async function openLibraryBookStudent(bookId) {
 
 async function openTeacherMaterial(item) {
   if (!item.is_free && !item.has_access) {
-    await payForMaterial(item.id);
+    var pay = await payForMaterial(item.id);
+    if (pay && pay.redirecting) return;
   }
   var access = await api("/api/v1/materials/" + encodeURIComponent(item.id) + "/access");
   if (!access.has_access) {
@@ -148,7 +149,10 @@ async function loadLibrary() {
         item = { id: id, is_free: false, has_access: false };
       }
       if (action === "pay-material") {
-        payForMaterial(id).then(function () { loadLibrary(); }).catch(function (e) { alert(e.message); });
+        payForMaterial(id).then(function (r) {
+          if (r && r.redirecting) return;
+          loadLibrary();
+        }).catch(function (e) { alert(e.message); });
         return;
       }
       if (item) openTeacherMaterial(item);

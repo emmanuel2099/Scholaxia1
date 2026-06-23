@@ -12,6 +12,7 @@ from app.models.payment import Payment, PaymentStatus
 from app.models.live_class import LiveClass
 from app.models.teacher_material import TeacherMaterial, MaterialPurchase
 from app.models.user import User
+from app.core.datetime_utils import naive_utc_now
 from app.services.flutterwave_service import verify_transaction
 
 router = APIRouter(prefix="/payments", tags=["Payments"])
@@ -102,7 +103,14 @@ async def init_live_class_payment(
 
     result = await db.execute(select(LiveClass).where(LiveClass.id == class_id))
     live_class = result.scalar_one_or_none()
-    if not live_class or not live_class.is_live:
+    now = naive_utc_now()
+    in_window = (
+        live_class
+        and live_class.start_time
+        and live_class.start_time <= now
+        and (live_class.end_time is None or live_class.end_time > now)
+    )
+    if not live_class or (not live_class.is_live and not in_window):
         raise HTTPException(status_code=404, detail="Class not live")
 
     if await _student_has_paid_for_class(db, current_user["sub"], class_id):

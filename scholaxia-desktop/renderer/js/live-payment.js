@@ -1,5 +1,6 @@
 /**
  * Flutterwave checkout before joining a live class.
+ * Uses full-page redirect (not iframe modal) so WebView2 desktop can complete payment.
  */
 function loadFlutterwaveScript() {
   return new Promise(function (resolve, reject) {
@@ -19,6 +20,39 @@ function formatNaira(amount) {
   return "₦" + Number(amount).toLocaleString("en-NG");
 }
 
+function paymentReturnUrl() {
+  return window.location.origin + "/payment-return.html";
+}
+
+function savePaymentReturnContext(ctx) {
+  sessionStorage.setItem("sia_pay_return", JSON.stringify(ctx));
+}
+
+function startFlutterwaveRedirect(init, ctx) {
+  savePaymentReturnContext(ctx);
+  var user = typeof getUser === "function" ? getUser() : { name: "Student", email: "" };
+  var customer = init.customer || {};
+  var email = customer.email || localStorage.getItem("sia_email") || "student@scholaxia.local";
+  var name = customer.name || user.name || "Student";
+
+  window.FlutterwaveCheckout({
+    public_key: init.public_key,
+    tx_ref: init.tx_ref,
+    amount: init.amount,
+    currency: init.currency || "NGN",
+    payment_options: "card, banktransfer, ussd",
+    customer: { email: email, name: name },
+    customizations: {
+      title: ctx.custom_title || "Scholaxia",
+      description: ctx.custom_description || "Payment",
+      logo: window.location.origin + "/assets/logo.png",
+    },
+    meta: ctx.meta || {},
+    redirect_url: paymentReturnUrl(),
+  });
+  return { redirecting: true };
+}
+
 async function payForLiveClass(classId, cardMeta) {
   await loadFlutterwaveScript();
 
@@ -34,45 +68,18 @@ async function payForLiveClass(classId, cardMeta) {
     throw new Error("Payment could not be started. Try again later.");
   }
 
-  var user = typeof getUser === "function" ? getUser() : { name: "Student", email: "" };
-  var customer = init.customer || {};
-  var email = customer.email || localStorage.getItem("sia_email") || "student@scholaxia.local";
-  var name = customer.name || user.name || "Student";
-
-  return new Promise(function (resolve, reject) {
-    window.FlutterwaveCheckout({
-      public_key: init.public_key,
-      tx_ref: init.tx_ref,
-      amount: init.amount,
-      currency: init.currency || "NGN",
-      payment_options: "card, banktransfer, ussd",
-      customer: { email: email, name: name },
-      customizations: {
-        title: "Scholaxia Live Class",
-        description: (init.class_title || "Live class") + " — " + (init.class_subject || ""),
-        logo: "assets/logo.png",
-      },
-      meta: { class_id: classId, student_id: localStorage.getItem("sia_token") ? "student" : "" },
-      callback: function (response) {
-        if (response.status !== "successful") {
-          reject(new Error("Payment was not completed."));
-          return;
-        }
-        api("/api/v1/payments/flutterwave/verify", {
-          method: "POST",
-          body: JSON.stringify({
-            transaction_id: String(response.transaction_id),
-            class_id: classId,
-            tx_ref: init.tx_ref,
-          }),
-        }).then(function (verified) {
-          resolve(verified);
-        }).catch(reject);
-      },
-      onclose: function () {
-        reject(new Error("Payment window closed."));
-      },
-    });
+  var card = cardMeta && cardMeta.dataset ? cardMeta.dataset : {};
+  return startFlutterwaveRedirect(init, {
+    type: "live",
+    class_id: classId,
+    tx_ref: init.tx_ref,
+    title: card.title || init.class_title || "",
+    subject: card.subject || init.class_subject || "",
+    teacher: card.teacher || "",
+    end_time: card.end || "",
+    custom_title: "Scholaxia Live Class",
+    custom_description: (init.class_title || "Live class") + " — " + (init.class_subject || ""),
+    meta: { class_id: classId },
   });
 }
 
@@ -107,7 +114,10 @@ async function joinClassWithPayment(btn) {
       if (!confirm("Join \"" + title + "\"?\n\nPay " + price + " with Flutterwave (card, bank, or USSD) before entering.")) {
         return;
       }
-      await payForLiveClass(classId, card);
+      var payResult = await payForLiveClass(classId, card);
+      if (payResult && payResult.redirecting) {
+        return;
+      }
     }
     await completeJoinClass(classId, card);
   } catch (e) {
@@ -118,7 +128,7 @@ async function joinClassWithPayment(btn) {
 window.joinClassWithPayment = joinClassWithPayment;
 window.completeJoinClass = completeJoinClass;
 
-async function payForMaterial(materialId) {
+async function payForMaterial(materialId, meta) {
   await loadFlutterwaveScript();
 
   var init = await api("/api/v1/payments/flutterwave/material/" + encodeURIComponent(materialId) + "/init", {
@@ -133,43 +143,13 @@ async function payForMaterial(materialId) {
     throw new Error("Payment could not be started. Try again later.");
   }
 
-  var user = typeof getUser === "function" ? getUser() : { name: "Student", email: "" };
-  var customer = init.customer || {};
-  var email = customer.email || localStorage.getItem("sia_email") || "student@scholaxia.local";
-  var name = customer.name || user.name || "Student";
-
-  return new Promise(function (resolve, reject) {
-    window.FlutterwaveCheckout({
-      public_key: init.public_key,
-      tx_ref: init.tx_ref,
-      amount: init.amount,
-      currency: init.currency || "NGN",
-      payment_options: "card, banktransfer, ussd",
-      customer: { email: email, name: name },
-      customizations: {
-        title: "Scholaxia Library",
-        description: (init.material_title || "Study material") + " — " + (init.material_subject || ""),
-        logo: "assets/logo.png",
-      },
-      meta: { material_id: materialId },
-      callback: function (response) {
-        if (response.status !== "successful") {
-          reject(new Error("Payment was not completed."));
-          return;
-        }
-        api("/api/v1/payments/flutterwave/verify", {
-          method: "POST",
-          body: JSON.stringify({
-            transaction_id: String(response.transaction_id),
-            material_id: materialId,
-            tx_ref: init.tx_ref,
-          }),
-        }).then(resolve).catch(reject);
-      },
-      onclose: function () {
-        reject(new Error("Payment window closed."));
-      },
-    });
+  return startFlutterwaveRedirect(init, {
+    type: "material",
+    material_id: materialId,
+    tx_ref: init.tx_ref,
+    custom_title: "Scholaxia Library",
+    custom_description: (init.material_title || "Study material") + " — " + (init.material_subject || ""),
+    meta: { material_id: materialId },
   });
 }
 
