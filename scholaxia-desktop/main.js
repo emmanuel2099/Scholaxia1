@@ -1,10 +1,6 @@
 const { app, BrowserWindow, shell, screen } = require("electron");
 const path = require("path");
-const { setup: setupPushReceiver } = require("@cuj1559/electron-push-receiver");
-
 let mainWindow;
-
-const isAdminMode = process.argv.includes("--admin");
 
 function getWindowSize() {
   const display = screen.getPrimaryDisplay();
@@ -23,7 +19,7 @@ function createWindow() {
     height: size.height,
     minWidth: size.minWidth,
     minHeight: size.minHeight,
-    title: isAdminMode ? "Scholaxia Admin Console" : "Scholaxia Student Portal",
+    title: "Scholaxia Student Portal",
     icon: path.join(__dirname, "assets", "logo.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -31,16 +27,12 @@ function createWindow() {
       nodeIntegration: false,
     },
     autoHideMenuBar: true,
-    backgroundColor: isAdminMode ? "#0a1410" : "#0d1f14",
+    backgroundColor: "#0d1f14",
     resizable: true,
     fullscreenable: true,
   });
 
-  setupPushReceiver(mainWindow.webContents);
-
-  const page = isAdminMode ? "admin.html" : "index.html";
-  mainWindow.loadFile(path.join(__dirname, "renderer", page));
-
+  mainWindow.loadFile(path.join(__dirname, "renderer", "app.html"));
   if (size.width >= screen.getPrimaryDisplay().workAreaSize.width * 0.95) {
     mainWindow.maximize();
   }

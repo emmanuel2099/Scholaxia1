@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://download.agora.io; script-src-attr 'unsafe-inline'; connect-src 'self' https://scholaxia1.onrender.com wss://scholaxia1.onrender.com http://127.0.0.1:* https://*.agora.io wss://*.agora.io https://*.sd-rtn.com wss://*.sd-rtn.com https://*.edge.agora.io wss://*.edge.agora.io https://statscollector-1.agora.io; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self' blob: https: wss:" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; script-src-attr 'unsafe-inline'; connect-src 'self' https://scholaxia1.onrender.com wss://scholaxia1.onrender.com http://127.0.0.1:* wss://scholaxia-neyu04kd.livekit.cloud https://scholaxia-neyu04kd.livekit.cloud wss://*.livekit.cloud https://*.livekit.cloud; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self' blob: https: wss:" />
   <title>Live Classroom — Scholaxia</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/classroom.css" />
@@ -12,10 +12,10 @@
 <body>
 
 <div class="classroom-shell">
-  <div id="agora-setup-banner" class="agora-setup-banner hidden" role="alert">
+  <div id="livekit-setup-banner" class="livekit-setup-banner hidden" role="alert">
     <strong>Live video not connected.</strong>
-    <span id="agora-setup-msg">Students cannot see your camera or screen until Agora is configured on the server.</span>
-    <button type="button" class="btn-sm" onclick="retryAgoraConnect()">Retry video</button>
+    <span id="livekit-setup-msg">Students cannot see your camera or screen until LiveKit is configured on the server.</span>
+    <button type="button" class="btn-sm" onclick="retryLiveKitConnect()">Retry video</button>
   </div>
 
   <header class="classroom-top">
@@ -106,6 +106,7 @@
 
 <script src="js/api.js"></script>
 <script src="js/saved-live.js"></script>
-<script src="js/classroom.js?v=live-fix-2"></script>
+<script src="js/classroom-livekit.js"></script>
+<script src="js/classroom.js?v=livekit-1"></script>
 </body>
 </html>

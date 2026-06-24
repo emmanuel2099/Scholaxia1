@@ -1,5 +1,4 @@
 import uuid
-import time
 import hashlib
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,49 +20,92 @@ from app.services.notification_service import send_subject_notification
 router = APIRouter(prefix="/live-classes", tags=["Live Classes"])
 
 
-@router.get("/agora/status")
-async def agora_video_status(current_user: dict = Depends(get_current_user)):
-    """Check whether live video (Agora) is configured on the server."""
-    cert = (settings.AGORA_APP_CERTIFICATE or "").strip()
-    configured = bool(cert) and "NOT_SET" not in cert.upper()
+@router.get("/livekit/status")
+async def livekit_video_status(current_user: dict = Depends(get_current_user)):
+    """Check whether live video (LiveKit) is configured on the server."""
+    configured = _livekit_configured()
     return {
-        "app_id": settings.AGORA_APP_ID,
+        "livekit_url": settings.LIVEKIT_URL if configured else "",
         "configured": configured,
         "video_available": configured,
         "message": (
             "Live video is ready."
             if configured
-            else "Set AGORA_APP_CERTIFICATE on the server (Render env) to enable camera, mic, and screen share."
+            else "Set LIVEKIT_URL, LIVEKIT_API_KEY, and LIVEKIT_API_SECRET on the server to enable camera, mic, and screen share."
         ),
     }
 
 
-# ── Agora token helper ────────────────────────────────────────────────────────
+@router.get("/agora/status")
+async def agora_video_status(current_user: dict = Depends(get_current_user)):
+    """Deprecated alias — use /livekit/status."""
+    return await livekit_video_status(current_user)
 
-def _generate_agora_token(channel_id: str, uid: int, is_teacher: bool) -> str:
-    """Generate an Agora RTC token. Falls back to a placeholder if no certificate."""
-    if not settings.AGORA_APP_CERTIFICATE:
-        # No certificate configured — return a placeholder so the app doesn't crash
-        return f"AGORA_CERT_NOT_SET_{channel_id}_{uid}"
+
+# ── LiveKit token helper ────────────────────────────────────────────────────────
+
+def _livekit_configured() -> bool:
+    return bool(
+        (settings.LIVEKIT_URL or "").strip()
+        and (settings.LIVEKIT_API_KEY or "").strip()
+        and (settings.LIVEKIT_API_SECRET or "").strip()
+    )
+
+
+def _generate_livekit_token(
+    room_name: str,
+    identity: str,
+    display_name: str,
+    can_publish: bool,
+) -> str:
+    """Generate a LiveKit room JWT. Falls back to a placeholder if not configured."""
+    if not _livekit_configured():
+        return f"LIVEKIT_NOT_CONFIGURED_{room_name}"
     try:
-        from agora_token_builder import RtcTokenBuilder
-        role = 1 if is_teacher else 2  # 1=Publisher, 2=Subscriber
-        expire_ts = int(time.time()) + 3600  # 1 hour
-        token = RtcTokenBuilder.buildTokenWithUid(
-            settings.AGORA_APP_ID,
-            settings.AGORA_APP_CERTIFICATE,
-            channel_id,
-            uid,
-            role,
-            expire_ts,
+        from livekit.api import AccessToken, VideoGrants
+
+        token = AccessToken(settings.LIVEKIT_API_KEY, settings.LIVEKIT_API_SECRET)
+        token.with_identity(identity)
+        if display_name:
+            token.with_name(display_name)
+        token.with_ttl(timedelta(hours=6))
+        token.with_grants(
+            VideoGrants(
+                room_join=True,
+                room=room_name,
+                can_publish=can_publish,
+                can_subscribe=True,
+                can_publish_data=True,
+            )
         )
-        return token
+        return token.to_jwt()
     except Exception:
-        return f"TOKEN_ERROR_{channel_id}_{uid}"
+        return f"TOKEN_ERROR_{room_name}"
+
+
+def _livekit_token_payload(
+    room_id: str,
+    user_id: str,
+    display_name: str,
+    can_publish: bool,
+) -> dict:
+    identity = str(user_id)
+    token = _generate_livekit_token(room_id, identity, display_name, can_publish)
+    expires_at = (datetime.now(timezone.utc) + timedelta(hours=6)).isoformat()
+    return {
+        "room_id": room_id,
+        "channel_id": room_id,
+        "livekit_token": token,
+        "livekit_url": settings.LIVEKIT_URL,
+        "token": token,
+        "identity": identity,
+        "can_publish": can_publish,
+        "expires_at": expires_at,
+    }
 
 
 def _user_uid(user_id: str) -> int:
-    """Convert UUID to a stable integer UID for Agora (Agora needs uint32)."""
+    """Legacy numeric UID (kept for older clients)."""
     return int(hashlib.md5(user_id.encode()).hexdigest()[:8], 16) % (2**31)
 
 
@@ -259,19 +301,17 @@ async def join_class(
         )
     )
     if existing.scalar_one_or_none():
-        uid = _user_uid(current_user["sub"])
-        token = _generate_agora_token(live_class.room_id, uid, is_teacher=False)
-        expires_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+        payload = _livekit_token_payload(
+            live_class.room_id,
+            current_user["sub"],
+            current_user.get("email") or "student",
+            can_publish=has_mic_access(live_class.room_id, current_user["sub"]),
+        )
         return {
-            "room_id": live_class.room_id,
-            "channel_id": live_class.room_id,
-            "agora_token": token,
-            "uid": uid,
-            "app_id": settings.AGORA_APP_ID,
+            **payload,
             "title": live_class.title,
             "subject": live_class.subject,
             "end_time": live_class.end_time.isoformat() if live_class.end_time else None,
-            "expires_at": expires_at,
         }
 
     await consume_live_session(db, current_user["sub"])
@@ -284,32 +324,30 @@ async def join_class(
     db.add(attendance)
     await db.flush()
 
-    uid = _user_uid(current_user["sub"])
-    token = _generate_agora_token(live_class.room_id, uid, is_teacher=False)
-    expires_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    payload = _livekit_token_payload(
+        live_class.room_id,
+        current_user["sub"],
+        current_user.get("email") or "student",
+        can_publish=False,
+    )
 
     return {
         "class_id": str(live_class.id),
         "title": live_class.title,
         "subject": live_class.subject,
-        "room_id": live_class.room_id,
-        "agora_token": token,
-        "uid": uid,
-        "channel_id": live_class.room_id,
-        "app_id": settings.AGORA_APP_ID,
+        **payload,
         "is_muted": True,
-        "expires_at": expires_at,
         "end_time": live_class.end_time.isoformat() if live_class.end_time else None,
     }
 
 
 @router.get("/{class_id}/token")
-async def get_agora_token(
+async def get_livekit_token(
     class_id: str,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get a fresh Agora RTC token for a live class room."""
+    """Get a fresh LiveKit token for a live class room."""
     result = await db.execute(select(LiveClass).where(LiveClass.id == class_id))
     live_class = result.scalar_one_or_none()
     if not live_class:
@@ -319,17 +357,18 @@ async def get_agora_token(
         str(live_class.teacher_id) == current_user["sub"]
         or current_user.get("role") == "admin"
     )
-    uid = _user_uid(current_user["sub"])
     can_publish = is_teacher or has_mic_access(live_class.room_id, current_user["sub"])
-    token = _generate_agora_token(live_class.room_id, uid, is_teacher=can_publish)
-    expires_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    display = current_user.get("email") or current_user.get("sub") or "user"
+    payload = _livekit_token_payload(
+        live_class.room_id,
+        current_user["sub"],
+        display,
+        can_publish=can_publish,
+    )
 
     return {
-        "token": token,
-        "channel_id": live_class.room_id,
-        "uid": uid,
-        "app_id": settings.AGORA_APP_ID,
-        "expires_at": expires_at,
+        **payload,
+        "uid": _user_uid(current_user["sub"]),
         "end_time": live_class.end_time.isoformat() if live_class.end_time else None,
         "is_live": live_class.is_live,
     }

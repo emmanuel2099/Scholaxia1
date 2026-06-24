@@ -158,6 +158,20 @@ body:has(.app-shell-sidebar) {
   font-weight: 600;
 }
 
+.app-sidebar .nav-item.nav-locked .nav-label::after {
+  content: " 🔒";
+  font-size: 0.75em;
+  opacity: 0.65;
+}
+
+.app-sidebar .nav-item.nav-locked {
+  opacity: 0.72;
+}
+
+.app-sidebar .nav-item.nav-locked:hover {
+  opacity: 0.85;
+}
+
 .app-sidebar .nav-icon {
   width: 20px;
   height: 20px;
@@ -2610,5 +2624,31 @@ body.exam-lock-active .main-content-topnav {
   padding: 0;
   font-size: inherit;
 }
-.skill-enroll-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.skill-enroll-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; justify-content: flex-end; }
+.btn-enroll {
+  background: linear-gradient(135deg, #1a8f4a, #157a3d);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 12px 22px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(26, 143, 74, 0.35);
+}
+.btn-enroll:hover { filter: brightness(1.05); }
+.skill-enroll-box { text-align: left; max-width: 520px; }
+.skill-enroll-form { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
+.skill-enroll-form label { display: flex; flex-direction: column; gap: 6px; font-size: 0.85rem; font-weight: 600; color: #2d4a38; }
+.skill-enroll-form input,
+.skill-enroll-form textarea {
+  font-weight: 400;
+  border: 1px solid #c8d9ce;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.92rem;
+}
+.skill-enroll-fee { font-size: 0.88rem; color: #1a5c3a; margin: 4px 0 0; line-height: 1.45; }
+.skill-enroll-actions { justify-content: flex-end; margin-top: 8px; }
+.section-sub { margin: -8px 0 20px; color: #5a6f62; font-size: 0.92rem; max-width: 720px; }
 

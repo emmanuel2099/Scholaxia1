@@ -245,7 +245,7 @@ def main():
     elif is_admin:
         page, title, bg = "admin.html", "Scholaxia Admin Console", "#0a1410"
     else:
-        page, title, bg = "index.html", "Scholaxia Student Portal", "#0d1f14"
+        page, title, bg = "app.html", "Scholaxia Student Portal", "#0d1f14"
 
     url = f"http://127.0.0.1:{PORT}/{page}"
     width, height, min_size = get_window_size()

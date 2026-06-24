@@ -161,12 +161,15 @@ async def send_message(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    channel_result = await db.execute(select(CommunityChannel).where(CommunityChannel.id == payload.channel_id))
+    channel_result = await db.execute(
+        select(CommunityChannel).where(CommunityChannel.id == parse_uuid(payload.channel_id))
+    )
     channel = channel_result.scalar_one_or_none()
     if not channel:
         raise HTTPException(status_code=404, detail="Channel not found")
 
     role = current_user.get("role")
+    channel_id_str = str(channel.id)
 
     # Teacher announcement: only teachers/admins can post
     if channel.is_readonly_for_students and role == UserRole.student:
@@ -178,13 +181,13 @@ async def send_message(
             select(StudentProfile).where(StudentProfile.user_id == current_user["sub"])
         )
         profile = profile_result.scalar_one_or_none()
-        if not profile or str(profile.community_channel_id) != payload.channel_id:
+        if not profile or str(profile.community_channel_id) != channel_id_str:
             raise HTTPException(status_code=403, detail="You must join this channel first")
 
     flagged, reason = await check_message_content(payload.content)
 
     message = CommunityMessage(
-        channel_id=payload.channel_id,
+        channel_id=parse_uuid(payload.channel_id),
         sender_id=current_user["sub"],
         content=payload.content,
         media_url=payload.media_url,
@@ -485,10 +488,11 @@ async def get_messages(
     Optional cursor: before_id for pagination.
     """
     from app.models.community import CommunityMessage
+    channel_uuid = parse_uuid(channel_id)
     query = (
         select(CommunityMessage)
         .where(
-            CommunityMessage.channel_id == channel_id,
+            CommunityMessage.channel_id == channel_uuid,
             CommunityMessage.is_deleted == False,  # noqa: E712
         )
         .order_by(CommunityMessage.created_at.desc())
@@ -502,7 +506,8 @@ async def get_messages(
     sender_ids = list({str(m.sender_id) for m in msgs})
     users_map = {}
     if sender_ids:
-        users_result = await db.execute(select(User).where(User.id.in_(sender_ids)))
+        sender_uuids = [parse_uuid(sid) for sid in sender_ids]
+        users_result = await db.execute(select(User).where(User.id.in_(sender_uuids)))
         users_map = {str(u.id): u.full_name for u in users_result.scalars().all()}
 
     return [
@@ -660,6 +665,7 @@ async def _fetch_channel_posts(
 
     result = await db.execute(query)
     posts = result.scalars().all()
+    posts = [p for p in posts if not POST_COMMENT_RE.match(p.content or "")]
 
     author_ids = list({str(p.author_id) for p in posts})
     users_map = {}
@@ -717,6 +723,47 @@ async def list_posts(
     return await _fetch_channel_posts(channel_id, limit, offset, current_user, db)
 
 
+@router.get("/post-comments")
+async def list_post_comments(
+    channel_id: str,
+    limit: int = 200,
+    offset: int = 0,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return reply posts (@post:parent_id ...) for attaching comments in the feed."""
+    channel_uuid = parse_uuid(channel_id)
+    ch_res = await db.execute(select(CommunityChannel).where(CommunityChannel.id == channel_uuid))
+    if not ch_res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Channel not found")
+
+    result = await db.execute(
+        select(CommunityPost)
+        .where(
+            CommunityPost.channel_id == channel_uuid,
+            CommunityPost.is_deleted == False,  # noqa: E712
+            CommunityPost.content.like("@post:%"),
+        )
+        .order_by(CommunityPost.created_at.asc())
+        .limit(min(limit, 300))
+        .offset(offset)
+    )
+    posts = result.scalars().all()
+
+    author_ids = list({str(p.author_id) for p in posts})
+    users_map = {}
+    if author_ids:
+        author_uuids = [parse_uuid(aid) for aid in author_ids]
+        users_result = await db.execute(select(User).where(User.id.in_(author_uuids)))
+        users_map = {str(u.id): u.full_name for u in users_result.scalars().all()}
+
+    viewer_id = current_user["sub"]
+    return [
+        _serialize_post(p, users_map, set(), viewer_id, current_user.get("role"))
+        for p in posts
+    ]
+
+
 @router.get("/announcements")
 async def list_announcements(
     limit: int = 40,
@@ -745,7 +792,7 @@ async def create_post(
     Supports is_anonymous, visibility, media_url/media_type, and cbt_exam_id.
     """
     channel_res = await db.execute(
-        select(CommunityChannel).where(CommunityChannel.id == payload.channel_id)
+        select(CommunityChannel).where(CommunityChannel.id == parse_uuid(payload.channel_id))
     )
     channel = channel_res.scalar_one_or_none()
     if not channel:
@@ -763,8 +810,10 @@ async def create_post(
     if flagged:
         raise HTTPException(status_code=400, detail=f"Post blocked: {reason}")
 
+    comment_match = POST_COMMENT_RE.match(payload.content or "")
+
     post = CommunityPost(
-        channel_id=payload.channel_id,
+        channel_id=parse_uuid(payload.channel_id),
         author_id=current_user["sub"],
         content=payload.content,
         is_anonymous=payload.is_anonymous,
@@ -778,39 +827,55 @@ async def create_post(
 
     author_res = await db.execute(select(User).where(User.id == current_user["sub"]))
     author = author_res.scalar_one_or_none()
-    author_name = author.full_name if author else "Teacher"
+    author_name = author.full_name if author else "Student"
 
     try:
-        preview = (payload.content or "New post")[:160]
-        if payload.media_type == "audio":
-            preview = "Voice note"
-        if channel.channel_type == ChannelType.teacher_announcement:
-            await send_all_students_notification(
-                db=db,
-                title=f"Announcement: {channel.name}",
-                body=f"{author_name}: {preview}",
-                notification_type="announcement",
-                data={"channel_id": str(channel.id), "post_id": str(post.id)},
+        if comment_match:
+            parent_id = comment_match.group(1)
+            parent_res = await db.execute(
+                select(CommunityPost).where(CommunityPost.id == parse_uuid(parent_id))
             )
-        elif channel.channel_type == ChannelType.general:
-            if role == UserRole.student:
-                await send_all_teachers_notification(
+            parent = parent_res.scalar_one_or_none()
+            if parent and str(parent.author_id) != current_user["sub"]:
+                await send_user_notification(
                     db=db,
+                    user_id=str(parent.author_id),
+                    title="New comment on your post",
+                    body=f"{author_name}: {comment_match.group(2)[:120]}",
+                    notification_type="community_mention",
+                    data={"post_id": parent_id, "channel_id": str(channel.id)},
+                )
+        else:
+            preview = (payload.content or "New post")[:160]
+            if payload.media_type == "audio":
+                preview = "Voice note"
+            if channel.channel_type == ChannelType.teacher_announcement:
+                await send_all_students_notification(
+                    db=db,
+                    title=f"Announcement: {channel.name}",
+                    body=f"{author_name}: {preview}",
+                    notification_type="announcement",
+                    data={"channel_id": str(channel.id), "post_id": str(post.id)},
+                )
+            elif channel.channel_type == ChannelType.general:
+                if role == UserRole.student:
+                    await send_all_teachers_notification(
+                        db=db,
+                        title="New community post",
+                        body=f"{author_name}: {preview}",
+                        notification_type="community_mention",
+                        data={"channel_id": str(channel.id), "post_id": str(post.id)},
+                        exclude_user_id=current_user["sub"],
+                    )
+                await send_channel_members_notification(
+                    db=db,
+                    channel_id=str(channel.id),
                     title="New community post",
                     body=f"{author_name}: {preview}",
                     notification_type="community_mention",
                     data={"channel_id": str(channel.id), "post_id": str(post.id)},
                     exclude_user_id=current_user["sub"],
                 )
-            await send_channel_members_notification(
-                db=db,
-                channel_id=str(channel.id),
-                title="New community post",
-                body=f"{author_name}: {preview}",
-                notification_type="community_mention",
-                data={"channel_id": str(channel.id), "post_id": str(post.id)},
-                exclude_user_id=current_user["sub"],
-            )
     except Exception:
         pass
 
@@ -818,7 +883,7 @@ async def create_post(
         "id": str(post.id),
         "channel_id": str(post.channel_id),
         "author_id": None if payload.is_anonymous else str(post.author_id),
-        "author_name": "Anonymous" if payload.is_anonymous else None,
+        "author_name": "Anonymous" if payload.is_anonymous else author_name,
         "content": post.content,
         "is_anonymous": post.is_anonymous,
         "visibility": _visibility_str(post.visibility),

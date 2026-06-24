@@ -3,8 +3,8 @@ title Build Scholaxia Windows Installer
 cd /d "%~dp0"
 
 echo.
-echo Building Scholaxia for Windows / tablet...
-echo This creates files in the dist folder you can send to others.
+echo Building Scholaxia STUDENT app for Windows...
+echo Admin and teacher portals are NOT included in this installer.
 echo.
 
 if exist "D:\node.exe" (

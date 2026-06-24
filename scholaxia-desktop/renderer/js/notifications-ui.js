@@ -283,6 +283,7 @@
   function init() {
     bindBell();
     checkStopRingFlag();
+    if (typeof isStudentLoggedIn === "function" && !isStudentLoggedIn()) return;
     try {
       var raw = localStorage.getItem("sia_known_notif_ids");
       if (raw) JSON.parse(raw).forEach(function (id) { knownIds[id] = true; });

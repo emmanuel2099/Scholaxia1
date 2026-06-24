@@ -57,6 +57,15 @@
       "main.js",
       "preload.js",
       "renderer/**/*",
+      "!renderer/admin.html",
+      "!renderer/teacher.html",
+      "!renderer/js/admin.js",
+      "!renderer/js/admin-api.js",
+      "!renderer/js/teacher.js",
+      "!renderer/js/teacher-api.js",
+      "!renderer/js/teacher-notifications.js",
+      "!renderer/css/admin.css",
+      "!renderer/css/teacher.css",
       "assets/**/*",
       "node_modules/**/*"
     ],
@@ -67,7 +76,5 @@
       }
     ]
   },
-  "dependencies": {
-    "@cuj1559/electron-push-receiver": "^3.1.8"
-  }
+  "dependencies": {}
 }

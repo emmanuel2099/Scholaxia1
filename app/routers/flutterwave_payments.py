@@ -13,6 +13,13 @@ from app.core.live_class_plans import (
     get_plan,
     suggest_plan_ids,
 )
+from app.core.skills_programs import (
+    get_skill_program,
+    skill_plan_key,
+    is_skill_plan_key,
+    skill_id_from_plan_key,
+    first_installment_amount,
+)
 from app.models.payment import Payment, PaymentStatus
 from app.models.live_class import LiveClass
 from app.models.teacher_material import TeacherMaterial, MaterialPurchase
@@ -35,7 +42,16 @@ class FlutterwaveVerifyRequest(BaseModel):
     material_id: Optional[str] = None
     book_id: Optional[str] = None
     plan_id: Optional[str] = None
+    skill_id: Optional[str] = None
     tx_ref: Optional[str] = None
+
+
+class SkillEnrollInitRequest(BaseModel):
+    full_name: str
+    phone: str
+    email: Optional[str] = None
+    preferred_start: Optional[str] = None
+    notes: Optional[str] = None
 
 
 class LivePlanInitRequest(BaseModel):
@@ -82,6 +98,59 @@ async def _student_has_book_access(db: AsyncSession, student_id: str, book_id: s
         )
     )
     return result.scalar_one_or_none() is not None
+
+
+@router.post("/flutterwave/skills/{skill_id}/init")
+async def init_skill_enrollment_payment(
+    skill_id: str,
+    payload: SkillEnrollInitRequest,
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    if not settings.FLUTTERWAVE_PUBLIC_KEY or not settings.FLUTTERWAVE_SECRET_KEY:
+        raise HTTPException(status_code=503, detail="Payment system is not configured.")
+
+    program = get_skill_program(skill_id)
+    if not program:
+        raise HTTPException(status_code=404, detail="Training program not found")
+
+    full_name = (payload.full_name or "").strip()
+    phone = (payload.phone or "").strip()
+    if not full_name or not phone:
+        raise HTTPException(status_code=400, detail="Full name and phone are required")
+
+    user_res = await db.execute(select(User).where(User.id == current_user["sub"]))
+    user = user_res.scalar_one_or_none()
+    email = (payload.email or "").strip() or (user.email if user else "") or f"{current_user['sub']}@scholaxia.local"
+    amount = first_installment_amount(program["fee"])
+
+    tx_ref = f"scholaxia-skill-{skill_id[:12]}-{uuid.uuid4().hex[:16]}"
+
+    payment = Payment(
+        student_id=parse_uuid(current_user["sub"]),
+        amount=amount,
+        currency="NGN",
+        status=PaymentStatus.pending,
+        flutterwave_tx_ref=tx_ref,
+        live_plan_id=skill_plan_key(skill_id),
+        description=f"Skills enroll: {program['title']} | {full_name} | {phone}"[:255],
+    )
+    db.add(payment)
+    await db.flush()
+
+    return {
+        "already_paid": False,
+        "payment_id": str(payment.id),
+        "tx_ref": tx_ref,
+        "amount": amount,
+        "currency": "NGN",
+        "public_key": settings.FLUTTERWAVE_PUBLIC_KEY,
+        "program_title": program["title"],
+        "program_duration": program["duration"],
+        "installment": 1,
+        "total_fee": program["fee"],
+        "customer": {"email": email, "name": full_name},
+    }
 
 
 @router.get("/live-class/plans")
@@ -499,7 +568,8 @@ async def verify_flutterwave_payment(
     db: AsyncSession = Depends(get_db),
 ):
     plan_id = payload.plan_id
-    if not payload.class_id and not payload.material_id and not payload.book_id and not plan_id:
+    skill_id = payload.skill_id
+    if not payload.class_id and not payload.material_id and not payload.book_id and not plan_id and not skill_id:
         if payload.tx_ref:
             pay_lookup = await db.execute(
                 select(Payment).where(
@@ -509,9 +579,12 @@ async def verify_flutterwave_payment(
             )
             existing = pay_lookup.scalar_one_or_none()
             if existing and existing.live_plan_id:
-                plan_id = existing.live_plan_id
-        if not plan_id and not payload.material_id and not payload.book_id and not payload.class_id:
-            raise HTTPException(status_code=400, detail="class_id, plan_id, material_id, or book_id required")
+                if is_skill_plan_key(existing.live_plan_id):
+                    skill_id = skill_id or skill_id_from_plan_key(existing.live_plan_id)
+                else:
+                    plan_id = plan_id or existing.live_plan_id
+        if not plan_id and not payload.material_id and not payload.book_id and not payload.class_id and not skill_id:
+            raise HTTPException(status_code=400, detail="class_id, plan_id, material_id, book_id, or skill_id required")
 
     if payload.class_id and await _student_has_live_access(db, current_user["sub"], payload.class_id):
         return {"paid": True, "class_id": payload.class_id}
@@ -546,7 +619,45 @@ async def verify_flutterwave_payment(
     if not plan_id and payment and payment.live_plan_id:
         plan_id = payment.live_plan_id
 
-    if plan_id or (payment and payment.live_plan_id):
+    if skill_id or (plan_id and is_skill_plan_key(plan_id)):
+        resolved_skill = skill_id or skill_id_from_plan_key(plan_id)
+        program = get_skill_program(resolved_skill)
+        if not program:
+            raise HTTPException(status_code=400, detail="Unknown skills program")
+
+        expected_amount = first_installment_amount(program["fee"])
+        if payment and payment.amount:
+            expected_amount = float(payment.amount)
+        if amount_paid + 1 < expected_amount:
+            raise HTTPException(status_code=400, detail="Incorrect payment amount")
+
+        if not payment:
+            payment = Payment(
+                student_id=parse_uuid(current_user["sub"]),
+                amount=amount_paid,
+                currency=data.get("currency") or "NGN",
+                live_plan_id=skill_plan_key(resolved_skill),
+                description=f"Skills enroll: {program['title']}",
+            )
+            db.add(payment)
+
+        payment.status = PaymentStatus.success
+        payment.live_plan_id = skill_plan_key(resolved_skill)
+        payment.flutterwave_transaction_id = str(data.get("id") or payload.transaction_id)
+        if tx_ref:
+            payment.flutterwave_tx_ref = tx_ref
+        await db.flush()
+
+        return {
+            "paid": True,
+            "skill_id": resolved_skill,
+            "program_title": program["title"],
+            "enrollment": True,
+            "installment": 1,
+            "payment_id": str(payment.id),
+        }
+
+    if plan_id and not is_skill_plan_key(plan_id):
         plan_id = plan_id or payment.live_plan_id
         plan = get_plan(plan_id)
         if not plan:

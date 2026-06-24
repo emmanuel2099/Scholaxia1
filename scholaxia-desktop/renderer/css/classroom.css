@@ -10,7 +10,7 @@ body {
 
 .classroom-shell { display: flex; flex-direction: column; height: 100vh; }
 
-.agora-setup-banner {
+.livekit-setup-banner {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -22,9 +22,9 @@ body {
   font-size: 0.88rem;
 }
 
-.agora-setup-banner.hidden { display: none; }
+.livekit-setup-banner.hidden { display: none; }
 
-.agora-setup-banner strong { color: #fff; }
+.livekit-setup-banner strong { color: #fff; }
 
 .classroom-top {
   display: flex; align-items: center; gap: 16px;

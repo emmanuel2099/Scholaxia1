@@ -37,6 +37,13 @@ function initAuthPage() {
   });
 
   initIntroPage();
+
+  var params = new URLSearchParams(window.location.search);
+  var ret = params.get("return");
+  if (ret) {
+    sessionStorage.setItem("sia_login_return", ret);
+    setTimeout(function () { scrollToAuth("login"); }, 400);
+  }
 }
 
 function scrollToAuth(tab) {
@@ -130,7 +137,13 @@ async function routeAfterAuth(accessToken, role, email, nameOverride) {
   } catch (e) {
     localStorage.setItem("sia_name", nameOverride || email);
   }
-  window.location.href = "app.html";
+  var ret = sessionStorage.getItem("sia_login_return");
+  sessionStorage.removeItem("sia_login_return");
+  if (ret) {
+    window.location.href = "app.html?open=" + encodeURIComponent(ret);
+  } else {
+    window.location.href = "app.html";
+  }
 }
 
 async function login(e) {

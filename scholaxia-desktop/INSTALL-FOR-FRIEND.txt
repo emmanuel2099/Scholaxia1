@@ -1,7 +1,7 @@
-SCHOLAXIA — INSTALL ON WINDOWS OR TABLET
-=========================================
+SCHOLAXIA STUDENT — INSTALL ON WINDOWS OR TABLET
+=================================================
 
-You received Scholaxia for Windows PC or Windows tablet.
+You received the Scholaxia Student app for Windows PC or Windows tablet.
 
 WHAT YOU NEED
 -------------
@@ -11,31 +11,22 @@ WHAT YOU NEED
 
 OPTION A — INSTALLER (recommended)
 ----------------------------------
-1. Double-click: Scholaxia Student Setup.exe
+1. Close Scholaxia Student if it is open (check the taskbar and Task Manager)
+2. Double-click: Scholaxia Student Setup.exe
 2. If Windows asks "Do you want to allow this app?", click Yes
 3. Follow the install steps → Finish
-4. Open Scholaxia from Desktop or Start menu
-
-   Student app  → Scholaxia Student
-   Admin app    → Scholaxia Admin
+4. Open Scholaxia Student from Desktop or Start menu
 
 OPTION B — PORTABLE (no install)
 --------------------------------
-1. Unzip Scholaxia-Portable.zip to a folder (e.g. Desktop\Scholaxia)
-2. Double-click Scholaxia Student.exe
-3. For admin: run Scholaxia Admin.bat
+1. Copy Scholaxia-Portable.exe to a folder (e.g. Desktop\Scholaxia)
+2. Double-click Scholaxia-Portable.exe
 
 FIRST TIME USE
 --------------
-Students:
-  1. Open Scholaxia Student
-  2. Sign up or log in
-  3. Use Live Class, CBT, Ask Sia, Community
-
-Teachers / Admin:
-  1. Open Scholaxia Admin
-  2. Log in with admin account
-  3. Manage students, live classes, exams
+1. Open Scholaxia Student
+2. Sign up or log in with your student account
+3. Use Live Class, CBT, Ask Sia, Community, and Library
 
 TABLET TIPS
 -----------
@@ -48,5 +39,7 @@ TROUBLESHOOTING
 - App won't open: Right-click → Run as administrator once
 - Login fails: Check internet; server may be waking up (wait 30 sec, retry)
 - Camera/mic: Settings → Privacy → allow Camera and Microphone for Scholaxia
+
+Teachers and admins use separate Scholaxia apps — not included in this student package.
 
 Support: contact the person who sent you this app.

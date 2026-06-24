@@ -59,6 +59,10 @@ function clearCommunityDraft() {
   try { localStorage.removeItem(COMMUNITY_DRAFT_KEY); } catch (e) { /* ignore */ }
 }
 
+function normalizePostId(id) {
+  return String(id || "").trim().toLowerCase();
+}
+
 function isPostComment(content) {
   return POST_COMMENT_RE.test(content || "");
 }
@@ -70,7 +74,7 @@ function isRealPostId(id) {
 function parsePostComment(content) {
   var match = POST_COMMENT_RE.exec(content || "");
   if (!match) return null;
-  return { parentId: match[1], text: (match[2] || "").trim() };
+  return { parentId: normalizePostId(match[1]), text: (match[2] || "").trim() };
 }
 
 function displayPostContent(content) {
@@ -95,53 +99,51 @@ function mapMessagesToPosts(messages) {
     });
 }
 
+function ingestCommentItems(commentsByPost, items, nameKey) {
+  (items || []).forEach(function (item) {
+    var parsed = parsePostComment(item.content || "");
+    if (!parsed || !parsed.text) return;
+    var parentId = parsed.parentId;
+    if (!commentsByPost[parentId]) commentsByPost[parentId] = [];
+    commentsByPost[parentId].push({
+      id: item.id || "",
+      author_name: item[nameKey] || item.author_name || "Student",
+      content: parsed.text,
+      created_at: item.created_at,
+    });
+  });
+}
+
 async function fetchPostComments() {
   var commentsByPost = {};
   if (!communityChannelId) return commentsByPost;
+
   try {
-    var messages = await api("/api/v1/community/messages?channel_id=" + communityChannelId + "&limit=100");
-    (messages || []).forEach(function (m) {
-      var parsed = parsePostComment(m.content || "");
-      if (!parsed || !parsed.text) return;
-      if (!commentsByPost[parsed.parentId]) commentsByPost[parsed.parentId] = [];
-      commentsByPost[parsed.parentId].push({
-        author_name: m.sender_name || "Student",
-        content: parsed.text,
-        created_at: m.created_at,
-      });
-    });
-  } catch (e) { /* comments are optional */ }
+    var messages = await api(
+      "/api/v1/community/messages?channel_id=" + encodeURIComponent(communityChannelId) + "&limit=200"
+    );
+    ingestCommentItems(commentsByPost, messages, "sender_name");
+  } catch (e) {
+    console.warn("Could not load comment messages", e);
+  }
+
+  try {
+    var replyPosts = await api(
+      "/api/v1/community/post-comments?channel_id=" + encodeURIComponent(communityChannelId) + "&limit=200"
+    );
+    ingestCommentItems(commentsByPost, replyPosts, "author_name");
+  } catch (e) {
+    console.warn("Could not load comment posts", e);
+  }
+
   return commentsByPost;
 }
 
 function attachComments(posts, commentsByPost) {
-  var result = (posts || []).map(function (p) {
-    return Object.assign({}, p, { comments: commentsByPost[p.id] || [] });
+  return (posts || []).map(function (p) {
+    var pid = normalizePostId(p.id);
+    return Object.assign({}, p, { comments: commentsByPost[pid] || [] });
   });
-  var known = {};
-  result.forEach(function (p) { known[p.id] = true; });
-
-  Object.keys(commentsByPost).forEach(function (parentId) {
-    if (known[parentId]) return;
-    commentsByPost[parentId].forEach(function (c) {
-      result.push({
-        id: parentId,
-        card_key: parentId + "-" + String(c.created_at || ""),
-        author_name: c.author_name,
-        content: c.content,
-        created_at: c.created_at,
-        like_count: 0,
-        liked_by_me: false,
-        comments: [],
-        is_flat_comment: true,
-      });
-    });
-  });
-
-  result.sort(function (a, b) {
-    return new Date(b.created_at || 0) - new Date(a.created_at || 0);
-  });
-  return result;
 }
 
 function postCardDomId(p) {
@@ -488,18 +490,24 @@ async function submitCommunityComment(postId, domId) {
   if (!input) return;
   var text = input.value.trim();
   if (!text) return;
-  if (!communityChannelId) await loadCommunity();
-  if (!communityChannelId) return;
+  await ensureCommunityChannel();
+  if (!communityChannelId) {
+    alert("Community is not available right now.");
+    return;
+  }
+  var parentId = normalizePostId(postId);
   try {
-    await api("/api/v1/community/messages", {
+    await api("/api/v1/community/posts", {
       method: "POST",
       body: JSON.stringify({
         channel_id: communityChannelId,
-        content: "@post:" + postId + " " + text,
+        content: "@post:" + parentId + " " + text,
       }),
     });
     input.value = "";
-    loadCommunity();
+    var box = document.getElementById("comment-box-" + (domId || postId));
+    if (box) box.classList.remove("open");
+    await loadCommunity();
   } catch (e) {
     alert(e.message || "Could not post comment.");
   }

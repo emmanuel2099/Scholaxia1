@@ -13,6 +13,31 @@ function getToken() {
   return localStorage.getItem("sia_token") || localStorage.getItem("sia_teacher_token") || localStorage.getItem("sia_admin_token") || "";
 }
 
+function isStudentLoggedIn() {
+  return !!localStorage.getItem("sia_token");
+}
+
+var PUBLIC_APP_PAGES = ["dashboard", "school-portal", "marketplace"];
+
+function isPagePublic(page) {
+  return PUBLIC_APP_PAGES.indexOf(page) >= 0;
+}
+
+function goToLogin(returnPage) {
+  var page = returnPage || sessionStorage.getItem("sia_current_page") || "dashboard";
+  if (page && !isPagePublic(page)) {
+    sessionStorage.setItem("sia_login_return", page);
+  }
+  window.location.href = "index.html" + (page && !isPagePublic(page) ? "?return=" + encodeURIComponent(page) : "");
+}
+
+if (typeof window !== "undefined") {
+  window.isStudentLoggedIn = isStudentLoggedIn;
+  window.isPagePublic = isPagePublic;
+  window.goToLogin = goToLogin;
+  window.PUBLIC_APP_PAGES = PUBLIC_APP_PAGES;
+}
+
 function getUser() {
   return {
     name: localStorage.getItem("sia_name") || "Student",
@@ -75,8 +100,13 @@ async function api(path, options) {
   }
   var data = await res.json().catch(function () { return {}; });
   if (res.status === 401) {
+    var hadSession = !!localStorage.getItem("sia_token");
     clearSession();
-    window.location.href = "index.html";
+    if (hadSession && typeof goToLogin === "function") {
+      goToLogin(sessionStorage.getItem("sia_current_page"));
+    } else if (hadSession) {
+      window.location.href = "index.html";
+    }
     return null;
   }
   if (!res.ok) throw new Error(formatApiError(data.detail) || "Request failed (" + res.status + ")");
@@ -102,8 +132,13 @@ async function apiUpload(path, file) {
   }
   var data = await res.json().catch(function () { return {}; });
   if (res.status === 401) {
+    var hadSession = !!localStorage.getItem("sia_token");
     clearSession();
-    window.location.href = "index.html";
+    if (hadSession && typeof goToLogin === "function") {
+      goToLogin(sessionStorage.getItem("sia_current_page"));
+    } else if (hadSession) {
+      window.location.href = "index.html";
+    }
     return null;
   }
   if (!res.ok) throw new Error(formatApiError(data.detail) || "Upload failed (" + res.status + ")");

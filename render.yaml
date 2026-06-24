@@ -93,10 +93,12 @@ services:
       - key: ELEVENLABS_MODEL_ID
         value: eleven_multilingual_v2
 
-      # Agora (Live Classes)
-      - key: AGORA_APP_ID
-        value: 2735ab34da634131bd67bdaa9a200d8b
-      - key: AGORA_APP_CERTIFICATE
+      # LiveKit (Live Classes — video, audio, screen share)
+      - key: LIVEKIT_URL
+        value: wss://scholaxia-neyu04kd.livekit.cloud
+      - key: LIVEKIT_API_KEY
+        sync: false
+      - key: LIVEKIT_API_SECRET
         sync: false
 
       # ALOC CBT past questions (questions.aloc.com.ng)

@@ -38,9 +38,13 @@
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-9.5z"/></svg></span>
           <span class="nav-label">Home</span>
         </button>
+        <button type="button" class="nav-item topnav-btn" data-page="library" onclick="showPage('library')">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15z"/></svg></span>
+          <span class="nav-label">Study Materials</span>
+        </button>
         <button type="button" class="nav-item topnav-btn" data-page="cbt" onclick="showPage('cbt')">
-          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l8 4v6c0 5-3.5 8.5-8 9-4.5-.5-8-4-8-9V7l8-4z"/><path d="M9 12l2 2 4-4"/></svg></span>
-          <span class="nav-label">Study</span>
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 14h6M9 18h4"/></svg></span>
+          <span class="nav-label">CBT Practice</span>
         </button>
         <button type="button" class="nav-item topnav-btn" data-page="school" onclick="showPage('school')">
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
@@ -57,10 +61,6 @@
         <button type="button" class="nav-item topnav-btn" data-page="skills" onclick="showPage('skills')">
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 14l9-5-9-5-9 5 9 5z"/><path d="M12 14l6.16-3.422A12.083 12.083 0 0 1 21 13.5c0 2.5-4 4.5-9 4.5s-9-2-9-4.5c0-1.042.564-2.02 1.58-2.922L12 14z"/></svg></span>
           <span class="nav-label">Skills</span>
-        </button>
-        <button type="button" class="nav-item topnav-btn" data-page="library" onclick="showPage('library')">
-          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15z"/></svg></span>
-          <span class="nav-label">Library</span>
         </button>
         <button type="button" class="nav-item topnav-btn" data-page="marketplace" onclick="showPage('marketplace')">
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="20" r="1"/><circle cx="17" cy="20" r="1"/><path d="M2 4h2l2 12h12l2-8H6"/></svg></span>
@@ -114,7 +114,7 @@
               <span id="header-user-handle">@student</span>
             </div>
           </div>
-          <button type="button" class="btn-logout topbar-logout topbar-tool" onclick="logout()">Sign out</button>
+          <button type="button" class="btn-logout topbar-logout topbar-tool" onclick="handleAuthButton()">Sign out</button>
         </div>
       </div>
     </header>
@@ -185,14 +185,14 @@
       <div class="dash-hero-row">
         <div class="dash-hero-card">
           <div class="dash-hero-body">
-            <span class="dash-hero-tag" id="dash-hero-tag">Quick Practice</span>
-            <h3 id="dash-hero-title">CBT Practice</h3>
+            <span class="dash-hero-tag" id="dash-hero-tag">Scholaxia CBT</span>
+            <h3 id="dash-hero-title">Practice Exam</h3>
             <div class="dash-hero-pills">
               <span id="dash-hero-exam">Your exam</span>
-              <span>Past questions</span>
+              <span>Your subjects</span>
               <span>Timed mode</span>
             </div>
-            <button type="button" class="dash-hero-btn" onclick="showPage('cbt')">Start Practice &rarr;</button>
+            <button type="button" class="dash-hero-btn" onclick="showPage('cbt')">Start CBT Practice &rarr;</button>
           </div>
           <div class="dash-hero-art" aria-hidden="true">&#128218;</div>
         </div>
@@ -398,27 +398,32 @@
 
 
 
-    <!-- CBT — scholaxiacbtexam.blog embedded (same as School Exam) -->
+    <!-- CBT Practice — Scholaxia question bank (ALOC) -->
 
     <section id="page-cbt" class="page">
 
-      <div id="cbt-embed-wrap" class="portal-embed-wrap">
+      <div class="section-header">
+        <h2>CBT Practice</h2>
+        <p class="section-sub">Timed practice exams from the Scholaxia question bank — based on your profile subjects.</p>
+      </div>
+
+      <div id="cbt-embed-wrap" class="portal-embed-wrap hidden">
         <div class="portal-embed-head portal-embed-head-slim">
-          <span class="portal-pill">CBT practice</span>
-          <p>Past questions and CBT practice on <strong>scholaxiacbtexam.blog</strong> — use the site here without opening a browser.</p>
+          <span class="portal-pill">External bank</span>
+          <p>Legacy past-questions site — use Scholaxia CBT cards below instead.</p>
         </div>
         <iframe
           id="cbt-portal-frame"
           class="portal-embed-frame"
           title="Scholaxia CBT"
-          src="https://www.scholaxiacbtexam.blog/past-questions"
+          src="about:blank"
           loading="lazy"
           referrerpolicy="no-referrer-when-downgrade"
           allow="fullscreen"
         ></iframe>
       </div>
 
-      <div id="cbt-grid" class="card-grid card-grid-premium hidden"></div>
+      <div id="cbt-grid" class="card-grid card-grid-premium"></div>
 
     </section>
 
@@ -688,6 +693,39 @@
 
   </div>
 
+</div>
+
+
+
+<div id="skill-enroll-modal" class="modal hidden" role="dialog" aria-labelledby="skill-enroll-title" aria-modal="true">
+  <div class="modal-box skill-enroll-box">
+    <h3 id="skill-enroll-title">Enroll in program</h3>
+    <p id="skill-enroll-sub">Fill in your details. You will pay the first installment on the next screen.</p>
+    <form id="skill-enroll-form" class="skill-enroll-form" onsubmit="submitSkillEnrollment(event)">
+      <input type="hidden" id="skill-enroll-id" value="" />
+      <label>Full name
+        <input type="text" id="skill-enroll-name" required placeholder="Your full name" />
+      </label>
+      <label>Phone number
+        <input type="tel" id="skill-enroll-phone" required placeholder="08012345678" />
+      </label>
+      <label>Email
+        <input type="email" id="skill-enroll-email" required placeholder="you@email.com" />
+      </label>
+      <label>Preferred start (optional)
+        <input type="text" id="skill-enroll-start" placeholder="e.g. July 2026" />
+      </label>
+      <label>Notes (optional)
+        <textarea id="skill-enroll-notes" rows="2" placeholder="Anything we should know?"></textarea>
+      </label>
+      <p id="skill-enroll-fee" class="skill-enroll-fee"></p>
+      <p id="skill-enroll-error" class="error-msg"></p>
+      <div class="modal-actions skill-enroll-actions">
+        <button type="button" class="btn-secondary" onclick="closeSkillEnrollment()">Cancel</button>
+        <button type="submit" class="btn-action" id="skill-enroll-submit">Continue to payment</button>
+      </div>
+    </form>
+  </div>
 </div>
 
 

@@ -88,9 +88,14 @@ class Settings(BaseSettings):
     ELEVENLABS_VOICE_ID: str = "21m00Tcm4TlvDq8ikWAM"
     ELEVENLABS_MODEL_ID: str = "eleven_multilingual_v2"
 
-    # Agora (Live Classes — real-time video/audio)
-    AGORA_APP_ID: str = "2735ab34da634131bd67bdaa9a200d8b"
-    AGORA_APP_CERTIFICATE: str = ""  # set in Render env vars
+    # LiveKit (Live Classes — real-time video/audio/screen share)
+    LIVEKIT_URL: str = ""  # e.g. wss://your-project.livekit.cloud
+    LIVEKIT_API_KEY: str = ""
+    LIVEKIT_API_SECRET: str = ""
+
+    # Legacy Agora (unused — kept so old env vars do not break deploy)
+    AGORA_APP_ID: str = ""
+    AGORA_APP_CERTIFICATE: str = ""
 
     # ALOC past questions (questions.aloc.com.ng) — JAMB / WAEC CBT bank
     ALOC_ACCESS_TOKEN: str = ""

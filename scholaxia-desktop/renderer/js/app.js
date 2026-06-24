@@ -5,8 +5,8 @@ const PAGE_TITLES = {
   "school-portal": "School Exam",
   marketplace: "Scholaxia Marketplace",
   skills: "Scholaxia Skills Training",
-  cbt: "CBT",
-  library: "Library",
+  cbt: "CBT Practice",
+  library: "Study Materials",
   "saved-lives": "Saved Lives",
   sia: "Ask Sia",
   community: "Community",
@@ -231,10 +231,6 @@ function goToSubject(index) {
 }
 
 window.onload = async () => {
-  if (!getToken()) {
-    window.location.href = "index.html";
-    return;
-  }
   window.addEventListener("beforeunload", (e) => {
     if (isCbtExamActive()) {
       e.preventDefault();
@@ -245,19 +241,30 @@ window.onload = async () => {
   initSidebarToggle();
   bindExamLockListeners();
   bindCbtGridClicks();
-  await syncStudentProfile();
-  loadSubjects();
+
+  const loggedIn = isStudentLoggedIn();
+  if (loggedIn) {
+    await syncStudentProfile();
+    loadSubjects();
+    if (typeof reconcilePendingPlanPayment === "function") {
+      await reconcilePendingPlanPayment();
+    }
+  }
 
   var urlParams = new URLSearchParams(window.location.search);
+  var openPage = urlParams.get("open");
   var openLive = urlParams.get("live") === "1";
-  if (typeof reconcilePendingPlanPayment === "function") {
-    await reconcilePendingPlanPayment();
-  }
   if (openLive || urlParams.get("paid") === "1") {
     try { sessionStorage.removeItem("sia_live_plans_cache"); } catch (e) { /* ignore */ }
   }
   var openLibrary = urlParams.get("library") === "1";
-  if (openLive) {
+  var openSkills = urlParams.get("skills") === "1";
+  if (openPage) {
+    showPage(openPage);
+    if (window.history && window.history.replaceState) {
+      window.history.replaceState({}, "", "app.html");
+    }
+  } else if (openLive) {
     showPage("live");
     if (urlParams.get("paid") === "1" && typeof loadLivePlans === "function") {
       loadLivePlans(null, false);
@@ -270,11 +277,23 @@ window.onload = async () => {
     if (window.history && window.history.replaceState) {
       window.history.replaceState({}, "", "app.html");
     }
+  } else if (openSkills) {
+    showPage("skills");
+    if (urlParams.get("enrolled") === "1") {
+      setTimeout(function () {
+        alert("Enrollment payment received! Scholaxia will contact you with your class schedule.");
+      }, 400);
+    }
+    if (window.history && window.history.replaceState) {
+      window.history.replaceState({}, "", "app.html");
+    }
   } else {
     refreshPage();
   }
-  startLivePolling();
-  if (typeof prefetchCommunityFeed === "function") prefetchCommunityFeed();
+  if (loggedIn) {
+    startLivePolling();
+    if (typeof prefetchCommunityFeed === "function") prefetchCommunityFeed();
+  }
 };
 
 function showCbtLoadingOverlay(message) {
@@ -405,10 +424,10 @@ function showCbtExamView() {
 function showCbtListView() {
   setExamLockMode(false);
   const embed = document.getElementById("cbt-embed-wrap");
-  if (embed) embed.classList.remove("hidden");
+  if (embed) embed.classList.add("hidden");
   document.getElementById("exam-screen").classList.add("hidden");
   document.getElementById("result-screen").classList.add("hidden");
-  document.getElementById("cbt-grid").classList.add("hidden");
+  document.getElementById("cbt-grid").classList.remove("hidden");
   const schoolGrid = document.getElementById("school-grid");
   if (schoolGrid) schoolGrid.classList.remove("hidden");
 }
@@ -482,7 +501,51 @@ function updateSidebarToggleBtn(btn, collapsed) {
   btn.title = collapsed ? "Show menu" : "Hide menu";
 }
 
+function applyGuestNavLocks() {
+  var guest = !isStudentLoggedIn();
+  document.querySelectorAll(".topnav-btn[data-page]").forEach(function (btn) {
+    var pg = btn.getAttribute("data-page");
+    var locked = guest && !isPagePublic(pg);
+    btn.classList.toggle("nav-locked", locked);
+  });
+  var fab = document.getElementById("community-fab");
+  if (fab && guest) fab.style.display = "none";
+  var bell = document.getElementById("topbar-bell");
+  if (bell) bell.style.display = guest ? "none" : "";
+  var ringBar = document.getElementById("notif-ring-bar");
+  if (ringBar && guest) ringBar.classList.add("hidden");
+}
+
+function handleAuthButton() {
+  if (isStudentLoggedIn()) logout();
+  else goToLogin(currentPage || "dashboard");
+}
+
 function initUserUI() {
+  const loggedIn = isStudentLoggedIn();
+  const logoutBtn = document.querySelector(".btn-logout");
+  if (!loggedIn) {
+    const nameEl = document.getElementById("header-user-name");
+    const handleEl = document.getElementById("header-user-handle");
+    if (nameEl) nameEl.textContent = "Guest";
+    if (handleEl) handleEl.textContent = "Sign in to unlock";
+    const examEl = document.getElementById("sidebar-exam");
+    if (examEl) examEl.textContent = "Browse";
+    const av = document.getElementById("user-avatar");
+    if (av) av.textContent = "G";
+    const pav = document.getElementById("profile-avatar");
+    if (pav) pav.textContent = "G";
+    const pn = document.getElementById("profile-name");
+    if (pn) pn.textContent = "Guest";
+    const pe = document.getElementById("profile-email");
+    if (pe) pe.textContent = "Sign in to access your account";
+    if (logoutBtn) {
+      logoutBtn.textContent = "Sign in";
+      logoutBtn.setAttribute("aria-label", "Sign in");
+    }
+    applyGuestNavLocks();
+    return;
+  }
   const user = getUser();
   const initial = firstName(user.name)[0].toUpperCase();
   const first = firstName(user.name);
@@ -496,6 +559,11 @@ function initUserUI() {
   document.getElementById("profile-avatar").textContent = initial;
   document.getElementById("profile-name").textContent = user.name;
   document.getElementById("profile-email").textContent = user.email;
+  if (logoutBtn) {
+    logoutBtn.textContent = "Sign out";
+    logoutBtn.setAttribute("aria-label", "Sign out");
+  }
+  applyGuestNavLocks();
 }
 
 function logout() {
@@ -504,7 +572,7 @@ function logout() {
     return;
   }
   clearSession();
-  window.location.href = "index.html";
+  window.location.href = "app.html";
 }
 
 function setExamLockMode(on) {
@@ -541,10 +609,31 @@ function getGreeting() {
 }
 
 async function loadDashboard() {
-  const user = getUser();
-  const subjects = user.subjects || [];
   const titleEl = document.getElementById("dash-greeting-title");
   const subEl = document.getElementById("dash-greeting-sub");
+  if (!isStudentLoggedIn()) {
+    if (titleEl) titleEl.textContent = getGreeting() + ", welcome";
+    if (subEl) subEl.textContent = "Browse School Exam and Marketplace — sign in for CBT, Live Class, Community, and more.";
+    const statSubs = document.getElementById("dash-stat-subjects");
+    const liveEl = document.getElementById("dash-stat-live");
+    const examsEl = document.getElementById("dash-stat-exams");
+    if (statSubs) statSubs.textContent = "—";
+    if (liveEl) liveEl.textContent = "—";
+    if (examsEl) examsEl.textContent = "—";
+    const heroTitle = document.getElementById("dash-hero-title");
+    if (heroTitle) heroTitle.textContent = "Scholaxia CBT Practice";
+    const heroExam = document.getElementById("dash-hero-exam");
+    if (heroExam) heroExam.textContent = "Sign in to start";
+    const focusSubject = document.getElementById("dash-focus-subject");
+    if (focusSubject) focusSubject.textContent = "Sign in to set subjects";
+    const progressFill = document.getElementById("dash-progress-fill");
+    if (progressFill) progressFill.style.width = "0%";
+    const progressText = document.getElementById("dash-progress-text");
+    if (progressText) progressText.textContent = "Sign in to track progress";
+    return;
+  }
+  const user = getUser();
+  const subjects = user.subjects || [];
   if (titleEl) titleEl.textContent = getGreeting() + " " + firstName(user.name);
   if (subEl) subEl.textContent = "Let's beat your weak topics today.";
 
@@ -557,8 +646,8 @@ async function loadDashboard() {
 
   if (heroTitle) {
     heroTitle.textContent = subjects[0]
-      ? subjects[0] + " — Quick Practice"
-      : "CBT Practice";
+      ? subjects[0] + " — CBT Practice"
+      : "Scholaxia CBT Practice";
   }
   if (heroExam) heroExam.textContent = examLabel;
   if (focusSubject) {
@@ -619,6 +708,11 @@ function showPage(page) {
     alert("You are in an exam. Submit the exam to leave — other tabs (Sia, Community, etc.) are locked until then.");
     return;
   }
+  sessionStorage.setItem("sia_current_page", page);
+  if (!isPagePublic(page) && !isStudentLoggedIn()) {
+    goToLogin(page);
+    return;
+  }
   currentPage = page;
   document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
   document.querySelectorAll(".topnav-btn").forEach((n) => n.classList.remove("active"));
@@ -628,7 +722,8 @@ function showPage(page) {
   if (navEl) navEl.classList.add("active");
   document.getElementById("page-title").textContent = PAGE_TITLES[page] || page;
   const fab = document.getElementById("community-fab");
-  if (fab) fab.style.display = page === "community" ? "flex" : "none";
+  if (fab) fab.style.display = page === "community" && isStudentLoggedIn() ? "flex" : "none";
+  applyGuestNavLocks();
   refreshPage();
 }
 
@@ -639,7 +734,7 @@ function refreshPage() {
   else if (currentPage === "school-portal") { /* static */ }
   else if (currentPage === "marketplace") { /* embedded store */ }
   else if (currentPage === "skills") loadSkillsTraining();
-  else if (currentPage === "cbt") { /* embedded scholaxiacbtexam.blog */ }
+  else if (currentPage === "cbt") loadCbtExams();
   else if (currentPage === "library") loadLibrary();
   else if (currentPage === "saved-lives") loadSavedLivesPage();
   else if (currentPage === "sia") loadSia();
@@ -1496,9 +1591,6 @@ function toggleSubject(subject, max) {
 
 document.addEventListener("DOMContentLoaded", () => {
   if (typeof warmScholaxiaApi === "function") warmScholaxiaApi();
-  const cbtFrame = document.getElementById("cbt-portal-frame");
-  const embedUrl = window.CBT_PORTAL_CONFIG && window.CBT_PORTAL_CONFIG.embedUrl;
-  if (cbtFrame && embedUrl) cbtFrame.src = embedUrl;
   const sel = document.getElementById("setup-exam-type");
   if (sel) sel.addEventListener("change", () => { selectedSubjects = []; renderSubjectPicker(); });
 });

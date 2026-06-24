@@ -201,8 +201,8 @@ function renderSkillCard(skill, sessions, expanded) {
       '<h4>Live classes for this skill</h4>' +
       renderSkillLiveClasses(skill, sessions) +
       '<div class="skill-enroll-row">' +
-      '<button type="button" class="btn-action" onclick="showSkillEnrollInfo(\'' + skill.id + '\')">Enroll — pay in 2 installments</button>' +
-      '<button type="button" class="btn-secondary" onclick="showPage(\'live\')">View all live classes</button>' +
+      '<button type="button" class="btn-enroll" onclick="openSkillEnrollment(\'' + skill.id + '\')">Enroll now</button>' +
+      '<button type="button" class="btn-secondary" onclick="showPage(\'live\')">View live classes</button>' +
       '</div>' +
       '</div>' : '') +
     '</article>';
@@ -213,19 +213,74 @@ function toggleSkillCard(id) {
   renderSkillsPrograms(skillsLiveCache || []);
 }
 
-function showSkillEnrollInfo(id) {
+function openSkillEnrollment(id) {
   var skill = SKILLS_PROGRAMS.find(function (s) { return s.id === id; });
   if (!skill) return;
+  var modal = document.getElementById("skill-enroll-modal");
   var half = Math.round(skill.fee / 2);
-  alert(
-    "Enroll in " + skill.title + "\n\n" +
-    "Total fee: " + formatNaira(skill.fee) + "\n" +
-    "Duration: " + skill.duration + "\n\n" +
-    "Payment (2 installments only):\n" +
-    "1. " + formatNaira(half) + " — at enrollment\n" +
-    "2. " + formatNaira(skill.fee - half) + " — at program midpoint\n\n" +
-    "Contact Scholaxia support or your coordinator to complete enrollment and receive your class schedule."
-  );
+  document.getElementById("skill-enroll-id").value = skill.id;
+  document.getElementById("skill-enroll-title").textContent = "Enroll — " + skill.title;
+  document.getElementById("skill-enroll-sub").textContent =
+    "Complete this form, then pay the first installment (" + formatNaira(half) + ") to secure your place.";
+  document.getElementById("skill-enroll-fee").textContent =
+    "Total program fee: " + formatNaira(skill.fee) + " · 2 installments (" + formatNaira(half) + " now + " + formatNaira(skill.fee - half) + " at midpoint)";
+  document.getElementById("skill-enroll-error").textContent = "";
+  var user = typeof getUser === "function" ? getUser() : {};
+  document.getElementById("skill-enroll-name").value = user.name || localStorage.getItem("sia_name") || "";
+  document.getElementById("skill-enroll-email").value = localStorage.getItem("sia_email") || "";
+  document.getElementById("skill-enroll-phone").value = "";
+  document.getElementById("skill-enroll-start").value = "";
+  document.getElementById("skill-enroll-notes").value = "";
+  if (modal) modal.classList.remove("hidden");
+}
+
+function closeSkillEnrollment() {
+  var modal = document.getElementById("skill-enroll-modal");
+  if (modal) modal.classList.add("hidden");
+}
+
+async function submitSkillEnrollment(ev) {
+  if (ev) ev.preventDefault();
+  var skillId = document.getElementById("skill-enroll-id").value;
+  var errEl = document.getElementById("skill-enroll-error");
+  var btn = document.getElementById("skill-enroll-submit");
+  var form = {
+    full_name: document.getElementById("skill-enroll-name").value.trim(),
+    phone: document.getElementById("skill-enroll-phone").value.trim(),
+    email: document.getElementById("skill-enroll-email").value.trim(),
+    preferred_start: document.getElementById("skill-enroll-start").value.trim(),
+    notes: document.getElementById("skill-enroll-notes").value.trim(),
+  };
+  if (!form.full_name || !form.phone || !form.email) {
+    if (errEl) errEl.textContent = "Name, phone, and email are required.";
+    return;
+  }
+  if (!getToken || !getToken()) {
+    if (errEl) errEl.textContent = "Please sign in first.";
+    return;
+  }
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Opening payment…";
+  }
+  try {
+    if (typeof payForSkillEnrollment !== "function") {
+      throw new Error("Payment is not available. Refresh and try again.");
+    }
+    await payForSkillEnrollment(skillId, form, btn);
+    closeSkillEnrollment();
+  } catch (e) {
+    if (errEl) errEl.textContent = e.message || "Could not start enrollment payment.";
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Continue to payment";
+    }
+  }
+}
+
+function showSkillEnrollInfo(id) {
+  openSkillEnrollment(id);
 }
 
 function renderSkillsPrograms(sessions) {
@@ -246,5 +301,8 @@ async function loadSkillsTraining() {
 }
 
 window.toggleSkillCard = toggleSkillCard;
+window.openSkillEnrollment = openSkillEnrollment;
+window.closeSkillEnrollment = closeSkillEnrollment;
+window.submitSkillEnrollment = submitSkillEnrollment;
 window.showSkillEnrollInfo = showSkillEnrollInfo;
 window.loadSkillsTraining = loadSkillsTraining;

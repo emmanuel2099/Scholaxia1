@@ -29,6 +29,9 @@ function paymentReturnUrl(ctx) {
   if (ctx.type === "book" && ctx.book_id) {
     return base + "?ctx=book&book_id=" + encodeURIComponent(ctx.book_id);
   }
+  if (ctx.type === "skill" && ctx.skill_id) {
+    return base + "?ctx=skill&skill_id=" + encodeURIComponent(ctx.skill_id);
+  }
   var q = "?ctx=live&plan_id=" + encodeURIComponent(ctx.plan_id || "");
   if (ctx.class_id) q += "&class_id=" + encodeURIComponent(ctx.class_id);
   return base + q;
@@ -165,9 +168,9 @@ async function completeJoinClass(classId, card) {
     classId: classId,
     room_id: data.room_id,
     channel_id: data.channel_id,
-    agora_token: data.agora_token,
-    uid: data.uid,
-    app_id: data.app_id,
+    livekit_token: data.livekit_token,
+    livekit_url: data.livekit_url,
+    identity: data.identity,
     title: data.title || (card && card.dataset && card.dataset.title) || "Live Class",
     subject: data.subject || (card && card.dataset && card.dataset.subject) || "",
     teacher_name: (card && card.dataset && card.dataset.teacher) || "",
@@ -307,3 +310,30 @@ async function payForBook(bookId) {
 }
 
 window.payForBook = payForBook;
+
+async function payForSkillEnrollment(skillId, form, btn) {
+  if (!skillId) throw new Error("Program not found.");
+  await loadFlutterwaveScript();
+
+  var init = await api("/api/v1/payments/flutterwave/skills/" + encodeURIComponent(skillId) + "/init", {
+    method: "POST",
+    body: JSON.stringify(form || {}),
+  });
+
+  if (!init) throw new Error("Could not start payment.");
+
+  if (!init.public_key || !init.tx_ref) {
+    throw new Error("Payment could not be started. Try again later.");
+  }
+
+  return startFlutterwaveRedirect(init, {
+    type: "skill",
+    skill_id: skillId,
+    tx_ref: init.tx_ref,
+    custom_title: "Scholaxia Skills Training",
+    custom_description: (init.program_title || "Training program") + " — 1st installment " + formatNaira(init.amount),
+    meta: { skill_id: skillId },
+  });
+}
+
+window.payForSkillEnrollment = payForSkillEnrollment;

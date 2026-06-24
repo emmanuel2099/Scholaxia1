@@ -86,6 +86,9 @@
       } else if (payType === "book") {
         var bookId = params.get("book_id") || (pending && pending.book_id);
         verifyBody.book_id = bookId || null;
+      } else if (payType === "skill") {
+        var skillId = params.get("skill_id") || (pending && pending.skill_id);
+        verifyBody.skill_id = skillId || null;
       } else {
         verifyBody.plan_id = planId || null;
         verifyBody.class_id = classId || null;
@@ -105,6 +108,17 @@
         setTimeout(function () {
           window.location.href = "app.html?library=1";
         }, 800);
+        return;
+      }
+
+      if (payType === "skill") {
+        document.getElementById("status-title").textContent = "Enrollment successful!";
+        document.getElementById("status-msg").textContent =
+          (verified && verified.program_title ? verified.program_title + " — " : "") +
+          "Your first installment was received. We will contact you with your class schedule.";
+        setTimeout(function () {
+          window.location.href = "app.html?skills=1&enrolled=1";
+        }, 1200);
         return;
       }
 
