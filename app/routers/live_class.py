@@ -13,7 +13,8 @@ from app.core.config import settings
 from app.models.live_class import LiveClass, ClassAttendance, LiveSessionRequest, LiveSessionRequestStatus
 from app.models.user import StudentProfile, User
 from app.core.subjects import subject_matches
-from app.services.live_class_room import has_mic_access
+from app.services.live_class_room import has_mic_access, grant_mic, revoke_mic
+from app.websockets import live_class_ws
 from app.services.live_class_access import get_live_access_info, parse_uuid, consume_live_session
 from app.services.notification_service import send_subject_notification
 
@@ -374,6 +375,53 @@ async def get_livekit_token(
     }
 
 
+@router.get("/{class_id}/students")
+async def list_class_students(
+    class_id: str,
+    current_user: dict = Depends(require_teacher_or_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """List students currently in (or who joined) a live class — for mic management."""
+    class_uuid = parse_uuid(class_id)
+    result = await db.execute(select(LiveClass).where(LiveClass.id == class_uuid))
+    live_class = result.scalar_one_or_none()
+    if not live_class:
+        raise HTTPException(status_code=404, detail="Class not found")
+    if not _can_manage_class(current_user, live_class):
+        raise HTTPException(status_code=403, detail="Not your class")
+
+    att_result = await db.execute(
+        select(ClassAttendance).where(
+            ClassAttendance.live_class_id == class_uuid,
+            ClassAttendance.is_removed == False,  # noqa: E712
+            ClassAttendance.left_at.is_(None),
+        )
+    )
+    attendances = att_result.scalars().all()
+    if not attendances:
+        return []
+
+    student_ids = [a.student_id for a in attendances]
+    users_res = await db.execute(select(User).where(User.id.in_(student_ids)))
+    users_map = {str(u.id): u for u in users_res.scalars().all()}
+
+    out = []
+    for att in attendances:
+        sid = str(att.student_id)
+        user = users_map.get(sid)
+        mic_allowed = has_mic_access(live_class.room_id, sid)
+        out.append({
+            "student_id": sid,
+            "name": user.full_name if user else "Student",
+            "email": user.email if user else "",
+            "is_muted": bool(att.is_muted) and not mic_allowed,
+            "mic_allowed": mic_allowed,
+            "joined_at": att.joined_at.isoformat() if att.joined_at else None,
+        })
+    out.sort(key=lambda x: x["name"].lower())
+    return out
+
+
 @router.post("/{class_id}/students/{student_id}/unmute")
 async def unmute_student(
     class_id: str,
@@ -381,17 +429,67 @@ async def unmute_student(
     current_user: dict = Depends(require_teacher_or_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    class_uuid = parse_uuid(class_id)
+    student_uuid = parse_uuid(student_id)
+    result = await db.execute(select(LiveClass).where(LiveClass.id == class_uuid))
+    live_class = result.scalar_one_or_none()
+    if not live_class:
+        raise HTTPException(status_code=404, detail="Class not found")
+    if not _can_manage_class(current_user, live_class):
+        raise HTTPException(status_code=403, detail="Not your class")
+
     result = await db.execute(
         select(ClassAttendance).where(
-            ClassAttendance.live_class_id == class_id,
-            ClassAttendance.student_id == student_id,
+            ClassAttendance.live_class_id == class_uuid,
+            ClassAttendance.student_id == student_uuid,
+            ClassAttendance.is_removed == False,  # noqa: E712
+            ClassAttendance.left_at.is_(None),
         )
     )
     attendance = result.scalar_one_or_none()
     if not attendance:
         raise HTTPException(status_code=404, detail="Student not in class")
     attendance.is_muted = False
-    return {"message": "Student unmuted"}
+    grant_mic(live_class.room_id, str(student_id))
+    try:
+        await live_class_ws.notify_mic_granted(live_class.room_id, str(student_id))
+    except Exception:
+        pass
+    return {"message": "Student can speak now", "mic_allowed": True}
+
+
+@router.post("/{class_id}/students/{student_id}/mute")
+async def mute_student(
+    class_id: str,
+    student_id: str,
+    current_user: dict = Depends(require_teacher_or_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    class_uuid = parse_uuid(class_id)
+    student_uuid = parse_uuid(student_id)
+    result = await db.execute(select(LiveClass).where(LiveClass.id == class_uuid))
+    live_class = result.scalar_one_or_none()
+    if not live_class:
+        raise HTTPException(status_code=404, detail="Class not found")
+    if not _can_manage_class(current_user, live_class):
+        raise HTTPException(status_code=403, detail="Not your class")
+
+    result = await db.execute(
+        select(ClassAttendance).where(
+            ClassAttendance.live_class_id == class_uuid,
+            ClassAttendance.student_id == student_uuid,
+        )
+    )
+    attendance = result.scalar_one_or_none()
+    if not attendance:
+        raise HTTPException(status_code=404, detail="Student not in class")
+    attendance.is_muted = True
+    revoke_mic(live_class.room_id, str(student_id))
+    try:
+        await live_class_ws.notify_mic_revoked(live_class.room_id, str(student_id))
+    except Exception:
+        pass
+    return {"message": "Student muted", "mic_allowed": False}
 
 
 @router.post("/{class_id}/students/{student_id}/remove")

@@ -68,6 +68,32 @@ def _is_teacher_role(role: str) -> bool:
     return role in ("teacher", "admin")
 
 
+async def notify_mic_granted(room_id: str, student_id: str) -> None:
+    grant_mic(room_id, student_id)
+    await send_to_user(room_id, student_id, {
+        "event": "mic_access_granted",
+        "message": "Your teacher let you speak. Your mic is turning on.",
+    })
+    await broadcast(room_id, {
+        "event": "mic_access_update",
+        "user_id": student_id,
+        "has_mic": True,
+    })
+
+
+async def notify_mic_revoked(room_id: str, student_id: str) -> None:
+    revoke_mic(room_id, student_id)
+    await send_to_user(room_id, student_id, {
+        "event": "mic_access_revoked",
+        "message": "Your teacher muted you.",
+    })
+    await broadcast(room_id, {
+        "event": "mic_access_update",
+        "user_id": student_id,
+        "has_mic": False,
+    })
+
+
 async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, role: str):
     await connect(room_id, websocket, user_id, role)
     await broadcast(room_id, {"event": "user_joined", "user_id": user_id, "role": role}, exclude=websocket)

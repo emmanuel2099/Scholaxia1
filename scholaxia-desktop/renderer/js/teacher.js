@@ -197,6 +197,91 @@ async function teacherEnterClassroom(classId, title, subject, endTime) {
   }
 }
 
+var liveStudentsClassId = null;
+var liveStudentsPollTimer = null;
+
+function closeLiveStudentsModal() {
+  var modal = document.getElementById("live-students-modal");
+  if (modal) modal.classList.add("hidden");
+  liveStudentsClassId = null;
+  if (liveStudentsPollTimer) {
+    clearInterval(liveStudentsPollTimer);
+    liveStudentsPollTimer = null;
+  }
+}
+
+async function openLiveStudentsModal(classId, title) {
+  liveStudentsClassId = classId;
+  var modal = document.getElementById("live-students-modal");
+  var titleEl = document.getElementById("live-students-title");
+  if (titleEl) titleEl.textContent = title || "Live class";
+  if (modal) modal.classList.remove("hidden");
+  await loadLiveClassStudents();
+  if (liveStudentsPollTimer) clearInterval(liveStudentsPollTimer);
+  liveStudentsPollTimer = setInterval(function () {
+    if (liveStudentsClassId) loadLiveClassStudents(true);
+  }, 12000);
+}
+
+async function loadLiveClassStudents(quiet) {
+  var el = document.getElementById("live-students-list");
+  if (!el || !liveStudentsClassId) return;
+  if (!quiet) el.innerHTML = '<div class="loading">Loading students…</div>';
+  try {
+    var rows = await teacherApi("/api/v1/live-classes/" + liveStudentsClassId + "/students");
+    if (!rows || !rows.length) {
+      el.innerHTML = '<div class="empty-state">No students in class yet. They appear here after they tap Join on Live Class.</div>';
+      return;
+    }
+    el.innerHTML = rows.map(function (s) {
+      var safeId = String(s.student_id).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+      var safeName = escHtml(s.name || "Student");
+      var status = s.mic_allowed
+        ? '<span class="badge live">Can speak</span>'
+        : '<span class="badge muted">Muted</span>';
+      var btn = s.mic_allowed
+        ? '<button type="button" class="btn-sm danger" onclick="teacherRevokeStudentMic(\'' + safeId + '\')">Mute</button>'
+        : '<button type="button" class="btn-sm primary" onclick="teacherAllowStudentMic(\'' + safeId + '\')">Allow mic</button>';
+      return '<div class="live-student-row">' +
+        '<div><strong>' + safeName + '</strong><br><span class="muted">' + status + '</span></div>' +
+        '<div class="actions">' + btn + '</div></div>';
+    }).join("");
+  } catch (e) {
+    if (!quiet) el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + '</div>';
+  }
+}
+
+async function teacherAllowStudentMic(studentId) {
+  if (!liveStudentsClassId || !studentId) return;
+  try {
+    await teacherApi("/api/v1/live-classes/" + liveStudentsClassId + "/students/" + studentId + "/unmute", {
+      method: "POST",
+    });
+    await loadLiveClassStudents(true);
+    alert("Student can now unmute and speak in the live class.");
+  } catch (e) {
+    alert(e.message || "Could not allow mic.");
+  }
+}
+
+async function teacherRevokeStudentMic(studentId) {
+  if (!liveStudentsClassId || !studentId) return;
+  try {
+    await teacherApi("/api/v1/live-classes/" + liveStudentsClassId + "/students/" + studentId + "/mute", {
+      method: "POST",
+    });
+    await loadLiveClassStudents(true);
+  } catch (e) {
+    alert(e.message || "Could not mute student.");
+  }
+}
+
+window.openLiveStudentsModal = openLiveStudentsModal;
+window.closeLiveStudentsModal = closeLiveStudentsModal;
+window.teacherAllowStudentMic = teacherAllowStudentMic;
+window.teacherRevokeStudentMic = teacherRevokeStudentMic;
+window.loadLiveClassStudents = function () { return loadLiveClassStudents(false); };
+
 async function loadTeacherLive() {
   var el = document.getElementById("live-table");
   if (!el) return;
@@ -216,6 +301,7 @@ async function loadTeacherLive() {
         var actions = "";
         if (c.is_live) {
           actions += '<button type="button" class="btn-sm" data-action="enter" data-id="' + escHtml(c.id) + '" data-title="' + escHtml(c.title) + '" data-subject="' + escHtml(c.subject) + '" data-end="' + escHtml(c.end_time || "") + '">Enter</button> ';
+          actions += '<button type="button" class="btn-sm primary" data-action="mics" data-id="' + escHtml(c.id) + '" data-title="' + escHtml(c.title) + '">Allow student mics</button> ';
           actions += '<button type="button" class="btn-sm danger" data-action="end" data-id="' + escHtml(c.id) + '">End</button>';
         } else {
           actions += '<button type="button" class="btn-sm" data-action="start" data-id="' + escHtml(c.id) + '">Start</button> ';
@@ -1077,6 +1163,8 @@ function bindTeacherUI() {
       else if (btn.dataset.action === "end") teacherEndClass(id);
       else if (btn.dataset.action === "enter") {
         teacherEnterClassroom(id, btn.dataset.title, btn.dataset.subject, btn.dataset.end);
+      } else if (btn.dataset.action === "mics") {
+        openLiveStudentsModal(id, btn.dataset.title);
       }
     });
   }

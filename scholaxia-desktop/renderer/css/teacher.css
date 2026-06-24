@@ -607,3 +607,10 @@
 .voice-status { margin-top: 8px; font-size: 0.82rem; color: #f87171; }
 .voice-preview { margin-top: 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .voice-preview audio { flex: 1; min-width: 180px; }
+
+.live-students-list { display: flex; flex-direction: column; gap: 10px; max-height: 360px; overflow-y: auto; margin: 12px 0 16px; }
+.live-student-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 14px; border: 1px solid #d4e8da; border-radius: 10px; background: #f8fcf9;
+}
+.live-student-row .muted { font-size: 0.82rem; color: #6b8f7a; }

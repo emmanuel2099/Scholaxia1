@@ -363,6 +363,21 @@
   </div>
 </div>
 
+<div id="live-students-modal" class="teacher-modal hidden">
+  <div class="teacher-modal-box">
+    <div class="teacher-modal-head">
+      <h3 id="live-students-title">Student microphones</h3>
+      <button type="button" class="modal-close" onclick="closeLiveStudentsModal()" aria-label="Close">&times;</button>
+    </div>
+    <p class="page-desc">Students join muted. Tap <strong>Allow mic</strong> so they can speak in the live class.</p>
+    <div id="live-students-list" class="live-students-list"><div class="loading">Loading students…</div></div>
+    <div class="form-row">
+      <button type="button" class="btn-secondary" onclick="closeLiveStudentsModal()">Close</button>
+      <button type="button" class="btn-sm" onclick="loadLiveClassStudents()">Refresh</button>
+    </div>
+  </div>
+</div>
+
 <script src="js/api.js"></script>
 <script src="js/teacher-api.js"></script>
 <script src="js/voice-recorder.js"></script>

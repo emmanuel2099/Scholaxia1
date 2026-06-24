@@ -105,11 +105,18 @@ function ingestCommentItems(commentsByPost, items, nameKey) {
     if (!parsed || !parsed.text) return;
     var parentId = parsed.parentId;
     if (!commentsByPost[parentId]) commentsByPost[parentId] = [];
+    var cid = String(item.id || "");
+    if (cid && commentsByPost[parentId].some(function (c) { return c.id === cid; })) return;
     commentsByPost[parentId].push({
-      id: item.id || "",
+      id: cid,
       author_name: item[nameKey] || item.author_name || "Student",
       content: parsed.text,
-      created_at: item.created_at,
+      created_at: item.created_at || new Date().toISOString(),
+    });
+  });
+  Object.keys(commentsByPost).forEach(function (pid) {
+    commentsByPost[pid].sort(function (a, b) {
+      return new Date(a.created_at) - new Date(b.created_at);
     });
   });
 }
@@ -351,6 +358,31 @@ function initCommunityCreate() {
   if (input) input.focus();
 }
 
+function appendCommentToPosts(posts, parentId, comment) {
+  var pid = normalizePostId(parentId);
+  return (posts || []).map(function (p) {
+    if (normalizePostId(p.id) !== pid) return p;
+    var existing = p.comments || [];
+    if (comment.id && existing.some(function (c) { return c.id === comment.id; })) return p;
+    return Object.assign({}, p, { comments: existing.concat([comment]) });
+  });
+}
+
+async function refreshCommunityComments(posts) {
+  var base = posts || (loadCommunityCache() || {}).posts || [];
+  if (!base.length) return base;
+  try {
+    await ensureCommunityChannel();
+    var commentsByPost = await fetchPostComments();
+    var merged = attachComments(base, commentsByPost);
+    saveCommunityCache(merged);
+    if (communityActiveTab === "feed") renderCommunityPosts(merged);
+    return merged;
+  } catch (e) {
+    return base;
+  }
+}
+
 async function loadCommunity(newPost) {
   if (communityActiveTab === "announcements") {
     return loadCommunityAnnouncements();
@@ -382,7 +414,10 @@ async function loadCommunity(newPost) {
     saveCommunityCache(posts);
     renderCommunityPosts(posts);
   } catch (e) {
-    if (showingCache) return;
+    if (showingCache) {
+      try { await refreshCommunityComments(cached && cached.posts); } catch (e2) { /* keep cache */ }
+      return;
+    }
     if (newPost) {
       renderCommunityPosts([newPost]);
       saveCommunityCache([newPost]);
@@ -496,8 +531,10 @@ async function submitCommunityComment(postId, domId) {
     return;
   }
   var parentId = normalizePostId(postId);
+  var replyBtn = input.parentElement && input.parentElement.querySelector(".btn-comment");
+  if (replyBtn) { replyBtn.disabled = true; replyBtn.textContent = "Sending…"; }
   try {
-    await api("/api/v1/community/posts", {
+    var created = await api("/api/v1/community/posts", {
       method: "POST",
       body: JSON.stringify({
         channel_id: communityChannelId,
@@ -506,10 +543,22 @@ async function submitCommunityComment(postId, domId) {
     });
     input.value = "";
     var box = document.getElementById("comment-box-" + (domId || postId));
-    if (box) box.classList.remove("open");
-    await loadCommunity();
+    if (box) box.classList.add("open");
+    var comment = {
+      id: created.id || "",
+      author_name: created.author_name || getUser().name || "Student",
+      content: text,
+      created_at: created.created_at || new Date().toISOString(),
+    };
+    var cachedPosts = (loadCommunityCache() || {}).posts || [];
+    var updated = appendCommentToPosts(cachedPosts, parentId, comment);
+    saveCommunityCache(updated);
+    renderCommunityPosts(updated);
+    refreshCommunityComments(updated).catch(function () { /* background sync */ });
   } catch (e) {
     alert(e.message || "Could not post comment.");
+  } finally {
+    if (replyBtn) { replyBtn.disabled = false; replyBtn.textContent = "Reply"; }
   }
 }
 

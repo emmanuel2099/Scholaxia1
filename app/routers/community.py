@@ -210,7 +210,9 @@ async def send_message(
         comment_match = POST_COMMENT_RE.match(payload.content or "")
         if comment_match:
             post_id = comment_match.group(1)
-            post_res = await db.execute(select(CommunityPost).where(CommunityPost.id == post_id))
+            post_res = await db.execute(
+                select(CommunityPost).where(CommunityPost.id == parse_uuid(post_id))
+            )
             post = post_res.scalar_one_or_none()
             if post and str(post.author_id) != current_user["sub"]:
                 await send_user_notification(
@@ -501,6 +503,7 @@ async def get_messages(
     result = await db.execute(query)
     msgs = result.scalars().all()
     msgs = list(reversed(msgs))  # return oldest-first for display
+    msgs = [m for m in msgs if not POST_COMMENT_RE.match(m.content or "")]
 
     # Fetch sender names in one query
     sender_ids = list({str(m.sender_id) for m in msgs})

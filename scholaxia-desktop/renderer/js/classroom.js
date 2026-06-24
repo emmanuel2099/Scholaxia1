@@ -445,19 +445,10 @@ async function grantStudentMic(userId) {
   var classId = liveSession.class_id || liveSession.classId;
   try {
     await api("/api/v1/live-classes/" + classId + "/students/" + userId + "/unmute", { method: "POST" });
-    if (liveSocket && liveSocket.readyState === WebSocket.OPEN) {
-      liveSocket.send(JSON.stringify({ event: "grant_mic", target_user_id: userId }));
-    }
     removeRaisedHand(userId);
     addChatMessage("", item.name + " can speak now — mic allowed.", true);
   } catch (e) {
-    if (liveSocket && liveSocket.readyState === WebSocket.OPEN) {
-      liveSocket.send(JSON.stringify({ event: "grant_mic", target_user_id: userId }));
-      removeRaisedHand(userId);
-      addChatMessage("", item.name + " can speak now.", true);
-    } else {
-      addChatMessage("", "Could not allow mic: " + e.message, true);
-    }
+    addChatMessage("", "Could not allow mic: " + e.message, true);
   }
 }
 
