@@ -105,11 +105,19 @@ function getAuthToken() {
 }
 
 function loadLiveSession() {
+  if (typeof loadLiveSessionData === "function") return loadLiveSessionData();
   try {
-    return JSON.parse(localStorage.getItem("live_session") || "null");
+    var raw = localStorage.getItem("live_session") || sessionStorage.getItem("live_session");
+    return JSON.parse(raw || "null");
   } catch (e) {
     return null;
   }
+}
+
+function saveLiveSession(sess) {
+  if (typeof persistLiveSession === "function") persistLiveSession(sess);
+  else localStorage.setItem("live_session", JSON.stringify(sess));
+  window.liveSession = sess;
 }
 
 function isTeacherRole() {
@@ -1163,13 +1171,49 @@ function restoreLocalCameraPreview() {
   updateMediaButton(document.getElementById("btn-cam"), true);
 }
 
+function parseClassEndTime(iso) {
+  if (typeof parseUtcIso === "function") return parseUtcIso(iso);
+  if (!iso) return null;
+  var s = String(iso).trim();
+  if (!/[zZ]|[+-]\d{2}:?\d{2}$/.test(s)) s += "Z";
+  var d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+async function syncLiveSessionFromServer() {
+  if (!liveSession) return;
+  var classId = liveSession.class_id || liveSession.classId;
+  if (!classId || typeof api !== "function") return;
+  try {
+    var detail = await api("/api/v1/live-classes/" + classId);
+    if (!detail) return;
+    if (detail.room_id) liveSession.room_id = detail.room_id;
+    if (detail.is_live === false) {
+      handleClassEnded("This class has ended.");
+      return;
+    }
+    if (detail.end_time) {
+      var endAt = parseClassEndTime(detail.end_time);
+      if (endAt && endAt.getTime() > Date.now()) {
+        liveSession.end_time = detail.end_time;
+      } else if (detail.is_live) {
+        liveSession.end_time = null;
+      }
+    } else {
+      liveSession.end_time = null;
+    }
+    saveLiveSession(liveSession);
+  } catch (e) { /* keep local session */ }
+}
+
 function scheduleClassAutoEnd() {
   if (!liveSession || !liveSession.end_time) return;
-  var endMs = new Date(liveSession.end_time).getTime() - Date.now();
+  var endAt = parseClassEndTime(liveSession.end_time);
+  if (!endAt) return;
+  var endMs = endAt.getTime() - Date.now();
   if (classAutoEndTimer) clearTimeout(classAutoEndTimer);
   if (endMs <= 0) {
     if (isTeacherRole()) autoEndClassSession();
-    else handleClassEnded("Class time is over.");
     return;
   }
   classAutoEndTimer = setTimeout(function () {
@@ -1235,7 +1279,8 @@ async function leaveClassroom() {
   if (liveSocket) {
     try { liveSocket.close(); } catch (e) { /* ignore */ }
   }
-  localStorage.removeItem("live_session");
+  if (typeof clearLiveSession === "function") clearLiveSession();
+  else localStorage.removeItem("live_session");
   if (liveSession && (liveSession.role === "teacher" || liveSession.role === "admin")) {
     window.location.href = localStorage.getItem("sia_teacher_token") ? "teacher.html" : "admin.html";
   } else {
@@ -1255,13 +1300,14 @@ window.onload = function () {
     }
     if (!liveSession.livekit_url) liveSession.livekit_url = "";
   }
-  window.studentMicAllowed = studentMicAllowed;
+  window.liveSession = liveSession;
   window.board = board;
   if (!liveSession || !liveSession.room_id) {
     window.location.href = "app.html";
     return;
   }
 
+  window.studentMicAllowed = studentMicAllowed;
   document.getElementById("cr-title").textContent = liveSession.title || "Live Class";
   document.getElementById("cr-meta").textContent =
     (liveSession.subject || "Subject") + " · " + (liveSession.teacher_name || liveSession.role || "Class");
@@ -1278,18 +1324,21 @@ window.onload = function () {
     showStudentTools(true);
   }
   connectChat();
-  scheduleClassAutoEnd();
-  if (isTeacherRole()) {
-    var startClassId = liveSession.class_id || liveSession.classId;
-    if (startClassId) {
-      api("/api/v1/live-classes/" + startClassId + "/start", { method: "POST" })
-        .then(function () {
-          addChatMessage("", "Students can now see this class on Live Class and tap Join.", true);
-        })
-        .catch(function () { /* already live or network */ });
+  (async function () {
+    await syncLiveSessionFromServer();
+    scheduleClassAutoEnd();
+    if (isTeacherRole()) {
+      var startClassId = liveSession.class_id || liveSession.classId;
+      if (startClassId) {
+        api("/api/v1/live-classes/" + startClassId + "/start", { method: "POST" })
+          .then(function () {
+            addChatMessage("", "Students can now see this class on Live Class and tap Join.", true);
+          })
+          .catch(function () { /* already live or network */ });
+      }
     }
-  }
-  if (typeof initLiveVideo === "function") {
-    initLiveVideo();
-  }
+    if (typeof initLiveVideo === "function") {
+      initLiveVideo();
+    }
+  })();
 };

@@ -1,6 +1,8 @@
 const { app, BrowserWindow, shell, screen } = require("electron");
 const path = require("path");
+const { startDesktopServer, stopDesktopServer } = require("./desktop-server");
 let mainWindow;
+let appBaseUrl = "";
 
 function getWindowSize() {
   const display = screen.getPrimaryDisplay();
@@ -32,7 +34,9 @@ function createWindow() {
     fullscreenable: true,
   });
 
-  mainWindow.loadFile(path.join(__dirname, "renderer", "app.html"));
+  const startUrl = appBaseUrl ? `${appBaseUrl}/app.html` : path.join(__dirname, "renderer", "app.html");
+  if (appBaseUrl) mainWindow.loadURL(startUrl);
+  else mainWindow.loadFile(startUrl);
   if (size.width >= screen.getPrimaryDisplay().workAreaSize.width * 0.95) {
     mainWindow.maximize();
   }
@@ -43,11 +47,21 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  try {
+    appBaseUrl = await startDesktopServer();
+  } catch (err) {
+    console.error("Desktop server failed, falling back to file://", err);
+    appBaseUrl = "";
+  }
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+});
+
+app.on("before-quit", () => {
+  stopDesktopServer();
 });
 
 app.on("window-all-closed", () => {

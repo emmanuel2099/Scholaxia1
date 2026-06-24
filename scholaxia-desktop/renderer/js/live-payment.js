@@ -163,7 +163,11 @@ async function completeJoinClass(classId, card) {
   if (!classId) throw new Error("Class not found.");
   var data = await api("/api/v1/live-classes/" + classId + "/join", { method: "POST" });
   if (!data) throw new Error("Could not join class.");
-  localStorage.setItem("live_session", JSON.stringify({
+  var endTime = data.end_time || (card && card.dataset && card.dataset.end) || null;
+  if (typeof normalizeLiveEndTime === "function") {
+    endTime = normalizeLiveEndTime(endTime, data.is_live !== false);
+  }
+  var sess = {
     class_id: classId,
     classId: classId,
     room_id: data.room_id,
@@ -175,8 +179,11 @@ async function completeJoinClass(classId, card) {
     subject: data.subject || (card && card.dataset && card.dataset.subject) || "",
     teacher_name: (card && card.dataset && card.dataset.teacher) || "",
     role: "student",
-    end_time: data.end_time || (card && card.dataset && card.dataset.end) || null,
-  }));
+    end_time: endTime,
+  };
+  if (!sess.room_id) throw new Error("Could not join — missing class room. Refresh and try again.");
+  if (typeof persistLiveSession === "function") persistLiveSession(sess);
+  else localStorage.setItem("live_session", JSON.stringify(sess));
   window.location.href = "classroom.html";
 }
 

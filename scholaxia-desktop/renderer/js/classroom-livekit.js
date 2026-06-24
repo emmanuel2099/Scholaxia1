@@ -78,7 +78,8 @@
       }
       if (status && status.livekit_url && liveSession && !liveSession.livekit_url) {
         liveSession.livekit_url = status.livekit_url;
-        localStorage.setItem("live_session", JSON.stringify(liveSession));
+        if (typeof persistLiveSession === "function") persistLiveSession(liveSession);
+        else localStorage.setItem("live_session", JSON.stringify(liveSession));
       }
       return true;
     } catch (e) {
@@ -107,7 +108,8 @@
       liveSession.identity = data.identity || liveSession.identity;
       liveSession.channel_id = data.channel_id || liveSession.channel_id;
       if (data.end_time) liveSession.end_time = data.end_time;
-      localStorage.setItem("live_session", JSON.stringify(liveSession));
+      if (typeof persistLiveSession === "function") persistLiveSession(liveSession);
+      else localStorage.setItem("live_session", JSON.stringify(liveSession));
       window.liveSession = liveSession;
       return hasValidLiveKitToken(liveSession.livekit_token, liveSession.livekit_url);
     } catch (e) {

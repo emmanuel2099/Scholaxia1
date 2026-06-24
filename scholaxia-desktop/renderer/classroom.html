@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; script-src-attr 'unsafe-inline'; connect-src 'self' https://scholaxia1.onrender.com wss://scholaxia1.onrender.com http://127.0.0.1:* wss://scholaxia-neyu04kd.livekit.cloud https://scholaxia-neyu04kd.livekit.cloud wss://*.livekit.cloud https://*.livekit.cloud; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self' blob: https: wss:" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; script-src-attr 'unsafe-inline'; connect-src 'self' https://scholaxia1.onrender.com wss://scholaxia1.onrender.com http://127.0.0.1:* wss://scholaxia-neyu04kd.livekit.cloud https://scholaxia-neyu04kd.livekit.cloud wss://*.livekit.cloud https://*.livekit.cloud; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self' blob: https: wss:; worker-src 'self' blob:;" />
   <title>Live Classroom — Scholaxia</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/classroom.css" />
@@ -106,7 +106,8 @@
 
 <script src="js/api.js"></script>
 <script src="js/saved-live.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2.9.3/dist/livekit-client.umd.js"></script>
 <script src="js/classroom-livekit.js"></script>
-<script src="js/classroom.js?v=livekit-1"></script>
+<script src="js/classroom.js"></script>
 </body>
 </html>

@@ -55,6 +55,7 @@
     },
     "files": [
       "main.js",
+      "desktop-server.js",
       "preload.js",
       "renderer/**/*",
       "!renderer/admin.html",

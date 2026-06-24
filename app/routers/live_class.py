@@ -237,6 +237,8 @@ async def start_class(
     now = naive_utc_now()
     if live_class.start_time and live_class.start_time > now:
         live_class.start_time = now
+    if live_class.end_time and live_class.end_time <= now:
+        live_class.end_time = now + timedelta(hours=2)
 
     if not was_live:
         await send_subject_notification(
@@ -312,6 +314,7 @@ async def join_class(
             **payload,
             "title": live_class.title,
             "subject": live_class.subject,
+            "is_live": live_class.is_live,
             "end_time": live_class.end_time.isoformat() if live_class.end_time else None,
         }
 
@@ -338,6 +341,7 @@ async def join_class(
         "subject": live_class.subject,
         **payload,
         "is_muted": True,
+        "is_live": live_class.is_live,
         "end_time": live_class.end_time.isoformat() if live_class.end_time else None,
     }
 

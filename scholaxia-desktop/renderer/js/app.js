@@ -727,6 +727,11 @@ function showPage(page) {
   refreshPage();
 }
 
+if (typeof window !== "undefined") {
+  window.showPage = showPage;
+  window.handleAuthButton = handleAuthButton;
+}
+
 function refreshPage() {
   if (currentPage === "dashboard") loadDashboard();
   else if (currentPage === "live") loadLive();

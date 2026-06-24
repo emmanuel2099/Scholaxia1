@@ -62,6 +62,79 @@ function clearSession() {
   });
 }
 
+function parseUtcIso(iso) {
+  if (!iso) return null;
+  var s = String(iso).trim();
+  if (!s) return null;
+  if (!/[zZ]|[+-]\d{2}:?\d{2}$/.test(s)) s += "Z";
+  var d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function normalizeLiveEndTime(endTime, isLive) {
+  if (!endTime) return null;
+  var endAt = parseUtcIso(endTime);
+  if (!endAt) return null;
+  if (endAt.getTime() <= Date.now() && isLive !== false) return null;
+  return endTime;
+}
+
+function persistLiveSession(sess) {
+  if (!sess) return;
+  var json = JSON.stringify(sess);
+  localStorage.setItem("live_session", json);
+  sessionStorage.setItem("live_session", json);
+}
+
+function loadLiveSessionData() {
+  try {
+    var raw = localStorage.getItem("live_session") || sessionStorage.getItem("live_session");
+    return JSON.parse(raw || "null");
+  } catch (e) {
+    return null;
+  }
+}
+
+function clearLiveSession() {
+  localStorage.removeItem("live_session");
+  sessionStorage.removeItem("live_session");
+}
+
+function isClassroomPage() {
+  try {
+    var path = window.location.pathname || "";
+    var href = window.location.href || "";
+    return /classroom\.html/i.test(path) || /classroom\.html/i.test(href);
+  } catch (e) {
+    return false;
+  }
+}
+
+function handleApiUnauthorized() {
+  var hadSession = !!localStorage.getItem("sia_token");
+  clearSession();
+  if (!hadSession) return;
+  if (isClassroomPage()) {
+    clearLiveSession();
+    alert("Your session expired. Please sign in again.");
+    window.location.href = "index.html";
+    return;
+  }
+  if (typeof goToLogin === "function") {
+    goToLogin(sessionStorage.getItem("sia_current_page"));
+  } else {
+    window.location.href = "index.html";
+  }
+}
+
+if (typeof window !== "undefined") {
+  window.parseUtcIso = parseUtcIso;
+  window.normalizeLiveEndTime = normalizeLiveEndTime;
+  window.persistLiveSession = persistLiveSession;
+  window.loadLiveSessionData = loadLiveSessionData;
+  window.clearLiveSession = clearLiveSession;
+}
+
 function fetchTimeout(ms) {
   if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) {
     return AbortSignal.timeout(ms);
@@ -100,13 +173,7 @@ async function api(path, options) {
   }
   var data = await res.json().catch(function () { return {}; });
   if (res.status === 401) {
-    var hadSession = !!localStorage.getItem("sia_token");
-    clearSession();
-    if (hadSession && typeof goToLogin === "function") {
-      goToLogin(sessionStorage.getItem("sia_current_page"));
-    } else if (hadSession) {
-      window.location.href = "index.html";
-    }
+    handleApiUnauthorized();
     return null;
   }
   if (!res.ok) throw new Error(formatApiError(data.detail) || "Request failed (" + res.status + ")");
@@ -132,13 +199,7 @@ async function apiUpload(path, file) {
   }
   var data = await res.json().catch(function () { return {}; });
   if (res.status === 401) {
-    var hadSession = !!localStorage.getItem("sia_token");
-    clearSession();
-    if (hadSession && typeof goToLogin === "function") {
-      goToLogin(sessionStorage.getItem("sia_current_page"));
-    } else if (hadSession) {
-      window.location.href = "index.html";
-    }
+    handleApiUnauthorized();
     return null;
   }
   if (!res.ok) throw new Error(formatApiError(data.detail) || "Upload failed (" + res.status + ")");
