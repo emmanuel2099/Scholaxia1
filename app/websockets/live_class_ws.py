@@ -15,6 +15,8 @@ from app.services.live_class_room import (
     has_whiteboard_access,
     grant_mic,
     revoke_mic,
+    grant_camera,
+    revoke_camera,
     cleanup_room,
 )
 
@@ -91,6 +93,32 @@ async def notify_mic_revoked(room_id: str, student_id: str) -> None:
         "event": "mic_access_update",
         "user_id": student_id,
         "has_mic": False,
+    })
+
+
+async def notify_camera_granted(room_id: str, student_id: str) -> None:
+    grant_camera(room_id, student_id)
+    await send_to_user(room_id, student_id, {
+        "event": "camera_access_granted",
+        "message": "Your teacher let you turn on your camera.",
+    })
+    await broadcast(room_id, {
+        "event": "camera_access_update",
+        "user_id": student_id,
+        "has_camera": True,
+    })
+
+
+async def notify_camera_revoked(room_id: str, student_id: str) -> None:
+    revoke_camera(room_id, student_id)
+    await send_to_user(room_id, student_id, {
+        "event": "camera_access_revoked",
+        "message": "Your teacher turned off your camera access.",
+    })
+    await broadcast(room_id, {
+        "event": "camera_access_update",
+        "user_id": student_id,
+        "has_camera": False,
     })
 
 

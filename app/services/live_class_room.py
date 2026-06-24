@@ -3,6 +3,7 @@ from typing import Dict, Set
 
 whiteboard_access: Dict[str, Set[str]] = {}
 mic_access: Dict[str, Set[str]] = {}
+camera_access: Dict[str, Set[str]] = {}
 
 
 def grant_whiteboard(room_id: str, user_id: str) -> None:
@@ -29,6 +30,23 @@ def has_mic_access(room_id: str, user_id: str) -> bool:
     return user_id in mic_access.get(room_id, set())
 
 
+def grant_camera(room_id: str, user_id: str) -> None:
+    camera_access.setdefault(room_id, set()).add(user_id)
+
+
+def revoke_camera(room_id: str, user_id: str) -> None:
+    camera_access.get(room_id, set()).discard(user_id)
+
+
+def has_camera_access(room_id: str, user_id: str) -> bool:
+    return user_id in camera_access.get(room_id, set())
+
+
+def has_publish_access(room_id: str, user_id: str) -> bool:
+    return has_mic_access(room_id, user_id) or has_camera_access(room_id, user_id)
+
+
 def cleanup_room(room_id: str) -> None:
     whiteboard_access.pop(room_id, None)
     mic_access.pop(room_id, None)
+    camera_access.pop(room_id, None)

@@ -155,6 +155,17 @@ body {
   background: #1e4d32; color: #fff; font-size: 0.78rem; cursor: pointer; white-space: nowrap;
 }
 .raise-hand-item button:hover { background: #2d6b45; }
+.class-students-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.class-students-head h3 { margin: 0; }
+.class-student-item { flex-direction: column; align-items: stretch; gap: 8px; }
+.class-student-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.class-student-actions button { font-size: 0.72rem; padding: 4px 8px; }
+.remote-audio-wrap { position: absolute; width: 0; height: 0; overflow: hidden; }
+.audio-unlock-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 14px; background: #3d2e00; color: #fde68a; border-bottom: 1px solid #92400e;
+}
+.audio-unlock-banner.hidden { display: none; }
 .remote-user.screen-share video,
 .video-remote.screen-active .remote-user video {
   object-fit: contain !important;

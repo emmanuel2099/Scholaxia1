@@ -158,6 +158,7 @@ function scrollToLivePlans() {
 }
 
 window.loadLivePlans = loadLivePlans;
+window.fetchLivePlansFromApi = fetchLivePlansFromApi;
 window.scrollToLivePlans = scrollToLivePlans;
 window.readPlansCache = readPlansCache;
 window.clearPlansCache = clearPlansCache;

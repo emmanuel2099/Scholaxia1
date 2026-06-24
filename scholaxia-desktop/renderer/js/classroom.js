@@ -3,6 +3,9 @@ var liveSocket = null;
 var localPreviewStream = null;
 var studentMicAllowed = false;
 window.studentMicAllowed = false;
+var studentCameraAllowed = false;
+window.studentCameraAllowed = false;
+var classStudentsPollTimer = null;
 var micMonitorTimer = null;
 var micMonitorCtx = null;
 var selfHearAudio = null;
@@ -273,13 +276,29 @@ async function stopLiveSaveAndStore(showNotice) {
 }
 
 function setVideoControlsEnabled(enabled) {
-  var ids = ["btn-mic", "btn-cam"];
-  if (isTeacherRole()) ids.push("btn-share");
-  ids.forEach(function (id) {
-    var btn = document.getElementById(id);
-    if (!btn) return;
-    btn.disabled = !enabled;
-  });
+  var micBtn = document.getElementById("btn-mic");
+  var camBtn = document.getElementById("btn-cam");
+  var shareBtn = document.getElementById("btn-share");
+  if (isTeacherRole()) {
+    [micBtn, camBtn, shareBtn].forEach(function (btn) {
+      if (btn) btn.disabled = !enabled;
+    });
+    return;
+  }
+  if (micBtn) micBtn.disabled = !(enabled && window.studentMicAllowed);
+  if (camBtn) camBtn.disabled = !(enabled && window.studentCameraAllowed);
+}
+
+function showAudioUnlockBanner() {
+  var bar = document.getElementById("audio-unlock-banner");
+  if (!bar || !bar.classList.contains("hidden")) return;
+  bar.classList.remove("hidden");
+}
+
+function unlockClassAudio() {
+  var bar = document.getElementById("audio-unlock-banner");
+  if (bar) bar.classList.add("hidden");
+  if (typeof ensureRoomAudioPlayback === "function") ensureRoomAudioPlayback();
 }
 
 function updateMediaButton(btn, on) {
@@ -455,10 +474,98 @@ async function grantStudentMic(userId) {
     await api("/api/v1/live-classes/" + classId + "/students/" + userId + "/unmute", { method: "POST" });
     removeRaisedHand(userId);
     addChatMessage("", item.name + " can speak now — mic allowed.", true);
+    loadClassroomStudents(true);
   } catch (e) {
     addChatMessage("", "Could not allow mic: " + e.message, true);
   }
 }
+
+async function revokeStudentMic(userId) {
+  if (!isTeacherRole() || !userId) return;
+  var classId = liveSession.class_id || liveSession.classId;
+  try {
+    await api("/api/v1/live-classes/" + classId + "/students/" + userId + "/mute", { method: "POST" });
+    addChatMessage("", "Student microphone muted.", true);
+    loadClassroomStudents(true);
+  } catch (e) {
+    addChatMessage("", "Could not mute student: " + e.message, true);
+  }
+}
+
+async function grantStudentCamera(userId) {
+  if (!isTeacherRole() || !userId) return;
+  var classId = liveSession.class_id || liveSession.classId;
+  try {
+    await api("/api/v1/live-classes/" + classId + "/students/" + userId + "/allow-camera", { method: "POST" });
+    addChatMessage("", "Student can turn on camera now.", true);
+    loadClassroomStudents(true);
+  } catch (e) {
+    addChatMessage("", "Could not allow camera: " + e.message, true);
+  }
+}
+
+async function revokeStudentCamera(userId) {
+  if (!isTeacherRole() || !userId) return;
+  var classId = liveSession.class_id || liveSession.classId;
+  try {
+    await api("/api/v1/live-classes/" + classId + "/students/" + userId + "/revoke-camera", { method: "POST" });
+    addChatMessage("", "Student camera access removed.", true);
+    loadClassroomStudents(true);
+  } catch (e) {
+    addChatMessage("", "Could not revoke camera: " + e.message, true);
+  }
+}
+
+function renderClassroomStudents(students) {
+  var list = document.getElementById("class-students-list");
+  if (!list || !isTeacherRole()) return;
+  if (!students || !students.length) {
+    list.innerHTML = '<p class="raise-hand-empty">No students in class yet.</p>';
+    return;
+  }
+  list.innerHTML = students.map(function (s) {
+    var safeId = String(s.student_id || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    var micBtn = s.mic_allowed
+      ? '<button type="button" onclick="revokeStudentMic(\'' + safeId + '\')">Mute</button>'
+      : '<button type="button" onclick="grantStudentMic(\'' + safeId + '\')">Allow mic</button>';
+    var camBtn = s.camera_allowed
+      ? '<button type="button" onclick="revokeStudentCamera(\'' + safeId + '\')">Revoke cam</button>'
+      : '<button type="button" onclick="grantStudentCamera(\'' + safeId + '\')">Allow cam</button>';
+    return '<div class="raise-hand-item class-student-item">' +
+      '<span>' + escHtml(s.name || "Student") + '</span>' +
+      '<div class="class-student-actions">' + micBtn + camBtn + "</div></div>";
+  }).join("");
+}
+
+async function loadClassroomStudents(quiet) {
+  if (!isTeacherRole() || !liveSession) return;
+  var classId = liveSession.class_id || liveSession.classId;
+  if (!classId) return;
+  var list = document.getElementById("class-students-list");
+  if (!quiet && list) list.innerHTML = '<p class="raise-hand-empty">Loading students…</p>';
+  try {
+    var students = await api("/api/v1/live-classes/" + classId + "/students") || [];
+    renderClassroomStudents(students);
+  } catch (e) {
+    if (list) list.innerHTML = '<p class="raise-hand-empty">Could not load students.</p>';
+  }
+}
+
+function startClassroomStudentsPoll() {
+  if (!isTeacherRole()) return;
+  if (classStudentsPollTimer) clearInterval(classStudentsPollTimer);
+  loadClassroomStudents(true);
+  classStudentsPollTimer = setInterval(function () {
+    loadClassroomStudents(true);
+  }, 12000);
+}
+
+window.grantStudentMic = grantStudentMic;
+window.revokeStudentMic = revokeStudentMic;
+window.grantStudentCamera = grantStudentCamera;
+window.revokeStudentCamera = revokeStudentCamera;
+window.loadClassroomStudents = loadClassroomStudents;
+window.unlockClassAudio = unlockClassAudio;
 
 function withTimeout(promise, ms, message) {
   return Promise.race([
@@ -1056,6 +1163,11 @@ function connectChat() {
       } else if (msg.event === "mic_access_revoked") {
         disableStudentMic();
         addChatMessage("", msg.message || "Your mic was turned off by the teacher.", true);
+      } else if (msg.event === "camera_access_granted") {
+        if (typeof enableStudentCamera === "function") enableStudentCamera();
+      } else if (msg.event === "camera_access_revoked") {
+        if (typeof disableStudentCamera === "function") disableStudentCamera();
+        addChatMessage("", msg.message || "Your camera access was removed by the teacher.", true);
       } else if (msg.event === "whiteboard") {
         handleBoardMessage(msg);
       } else if (msg.event === "whiteboard_access_granted") {
@@ -1253,6 +1365,10 @@ async function autoEndClassSession() {
 window.toggleSaveLive = toggleSaveLive;
 
 async function leaveClassroom() {
+  if (classStudentsPollTimer) {
+    clearInterval(classStudentsPollTimer);
+    classStudentsPollTimer = null;
+  }
   if (liveSaveWaitTimer) {
     clearInterval(liveSaveWaitTimer);
     liveSaveWaitTimer = null;
@@ -1318,10 +1434,17 @@ window.onload = function () {
     showHostTools(true);
     var rhPanel = document.getElementById("raise-hand-panel");
     if (rhPanel) rhPanel.classList.remove("hidden");
+    var stPanel = document.getElementById("class-students-panel");
+    if (stPanel) stPanel.classList.remove("hidden");
     var audBadge = document.getElementById("audience-badge");
     if (audBadge) audBadge.classList.remove("hidden");
+    startClassroomStudentsPoll();
   } else {
     showStudentTools(true);
+    document.body.addEventListener("click", function unlockOnce() {
+      unlockClassAudio();
+      document.body.removeEventListener("click", unlockOnce);
+    }, { once: true });
   }
   connectChat();
   (async function () {

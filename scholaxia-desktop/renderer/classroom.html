@@ -12,6 +12,11 @@
 <body>
 
 <div class="classroom-shell">
+  <div id="audio-unlock-banner" class="audio-unlock-banner hidden" role="alert">
+    <strong>Tap to hear audio</strong>
+    <button type="button" class="btn-sm" onclick="unlockClassAudio()">Enable sound</button>
+  </div>
+
   <div id="livekit-setup-banner" class="livekit-setup-banner hidden" role="alert">
     <strong>Live video not connected.</strong>
     <span id="livekit-setup-msg">Students cannot see your camera or screen until LiveKit is configured on the server.</span>
@@ -88,6 +93,15 @@
     </section>
 
     <aside class="chat-panel">
+      <div id="class-students-panel" class="raise-hand-panel host-only hidden">
+        <div class="class-students-head">
+          <h3>Students in class</h3>
+          <button type="button" class="btn-sm" onclick="loadClassroomStudents()">Refresh</button>
+        </div>
+        <div id="class-students-list" class="raise-hand-list">
+          <p class="raise-hand-empty">No students in class yet.</p>
+        </div>
+      </div>
       <div id="raise-hand-panel" class="raise-hand-panel host-only hidden">
         <h3>Raised hands</h3>
         <div id="raise-hand-list" class="raise-hand-list">

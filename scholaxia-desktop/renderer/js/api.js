@@ -17,7 +17,7 @@ function isStudentLoggedIn() {
   return !!localStorage.getItem("sia_token");
 }
 
-var PUBLIC_APP_PAGES = ["dashboard", "school-portal", "marketplace"];
+var PUBLIC_APP_PAGES = ["dashboard", "school-portal", "marketplace", "study-materials"];
 
 function isPagePublic(page) {
   return PUBLIC_APP_PAGES.indexOf(page) >= 0;

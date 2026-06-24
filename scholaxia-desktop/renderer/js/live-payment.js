@@ -208,19 +208,27 @@ async function joinClassWithPayment(btn) {
     }
     var access = await api("/api/v1/payments/live-class/" + encodeURIComponent(classId) + "/access");
     if (!access || !access.paid) {
-      if (typeof scrollToLivePlans === "function") scrollToLivePlans();
-      if (typeof loadLivePlans === "function") loadLivePlans(classId, false);
-      alert("Choose a monthly plan below, then pay once to join this class.");
-      return;
+      var plansData = typeof fetchLivePlansFromApi === "function"
+        ? await fetchLivePlansFromApi()
+        : await api("/api/v1/payments/live-class/plans");
+      var planId = (plansData && plansData.suggested_plan_ids && plansData.suggested_plan_ids[0])
+        || (plansData && plansData.plans && plansData.plans[0] && plansData.plans[0].id);
+      if (!planId) {
+        alert("No subscription plan is available right now. Open Subscription in the menu or contact support.");
+        return;
+      }
+      var payResult = await payForLivePlan(planId, classId, card);
+      if (payResult && payResult.redirecting) return;
+      if (!(payResult && payResult.paid)) return;
     }
     await completeJoinClass(classId, card);
   } catch (e) {
     var msg = e.message || "Could not join class.";
     if (msg.toLowerCase().indexOf("plan") >= 0 || msg.indexOf("402") >= 0) {
-      if (typeof scrollToLivePlans === "function") scrollToLivePlans();
-      if (typeof loadLivePlans === "function") loadLivePlans(classId, false);
+      alert("You need an active subscription to join. Open Subscription in the menu to choose a plan.");
+    } else {
+      alert(msg);
     }
-    alert(msg);
   } finally {
     _livePayBusy = false;
     setJoinButtonBusy(card, false);

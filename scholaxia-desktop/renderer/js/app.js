@@ -4,9 +4,10 @@ const PAGE_TITLES = {
   school: "Scholaxia Exam",
   "school-portal": "School Exam",
   marketplace: "Scholaxia Marketplace",
-  skills: "Scholaxia Skills Training",
+  skills: "Subscription",
   cbt: "CBT Practice",
-  library: "Study Materials",
+  "study-materials": "Study Materials",
+  library: "Library",
   "saved-lives": "Saved Lives",
   sia: "Ask Sia",
   community: "Community",
@@ -737,8 +738,12 @@ function refreshPage() {
   else if (currentPage === "live") loadLive();
   else if (currentPage === "school") loadSchoolExams();
   else if (currentPage === "school-portal") { /* static */ }
+  else if (currentPage === "study-materials") { /* embedded past questions */ }
   else if (currentPage === "marketplace") { /* embedded store */ }
-  else if (currentPage === "skills") loadSkillsTraining();
+  else if (currentPage === "skills") {
+    if (typeof loadLivePlans === "function") loadLivePlans(null, true);
+    loadSkillsTraining();
+  }
   else if (currentPage === "cbt") loadCbtExams();
   else if (currentPage === "library") loadLibrary();
   else if (currentPage === "saved-lives") loadSavedLivesPage();
@@ -834,14 +839,9 @@ function showLiveClassToast(session) {
 async function loadLive(quiet) {
   var hadLiveCache = paintLiveFromCache();
 
-  if (!quiet) {
-    if (typeof loadLivePlans === "function") {
-      loadLivePlans(null, !!(typeof readPlansCache === "function" && readPlansCache()));
-    }
-    if (!hadLiveCache) {
-      document.getElementById("live-grid").innerHTML = `<div class="loading">Loading…</div>`;
-      document.getElementById("upcoming-grid").innerHTML = `<div class="loading">Loading…</div>`;
-    }
+  if (!quiet && !hadLiveCache) {
+    document.getElementById("live-grid").innerHTML = `<div class="loading">Loading…</div>`;
+    document.getElementById("upcoming-grid").innerHTML = `<div class="loading">Loading…</div>`;
   }
 
   try {

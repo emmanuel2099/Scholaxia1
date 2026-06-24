@@ -38,7 +38,7 @@
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-9.5z"/></svg></span>
           <span class="nav-label">Home</span>
         </button>
-        <button type="button" class="nav-item topnav-btn" data-page="library" onclick="showPage('library')">
+        <button type="button" class="nav-item topnav-btn" data-page="study-materials" onclick="showPage('study-materials')">
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15z"/></svg></span>
           <span class="nav-label">Study Materials</span>
         </button>
@@ -60,7 +60,11 @@
         </button>
         <button type="button" class="nav-item topnav-btn" data-page="skills" onclick="showPage('skills')">
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 14l9-5-9-5-9 5 9 5z"/><path d="M12 14l6.16-3.422A12.083 12.083 0 0 1 21 13.5c0 2.5-4 4.5-9 4.5s-9-2-9-4.5c0-1.042.564-2.02 1.58-2.922L12 14z"/></svg></span>
-          <span class="nav-label">Skills</span>
+          <span class="nav-label">Subscription</span>
+        </button>
+        <button type="button" class="nav-item topnav-btn" data-page="library" onclick="showPage('library')">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15z"/></svg></span>
+          <span class="nav-label">Library</span>
         </button>
         <button type="button" class="nav-item topnav-btn" data-page="marketplace" onclick="showPage('marketplace')">
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="20" r="1"/><circle cx="17" cy="20" r="1"/><path d="M2 4h2l2 12h12l2-8H6"/></svg></span>
@@ -87,9 +91,9 @@
       <div class="sidebar-promo-wrap">
         <div class="sidebar-promo-badge" aria-hidden="true">&#128274;</div>
         <div class="sidebar-promo">
-          <p class="sidebar-promo-title">Skills Training</p>
-          <p class="sidebar-promo-text">Web design, mobile apps, cyber security &amp; more — live classes with flexible payment.</p>
-          <button type="button" class="sidebar-promo-btn" onclick="showPage('skills')">Explore programs &rarr;</button>
+          <p class="sidebar-promo-title">Subscription</p>
+          <p class="sidebar-promo-text">Live class plans, skills programs, and monthly access — all in one place.</p>
+          <button type="button" class="sidebar-promo-btn" onclick="showPage('skills')">View subscriptions &rarr;</button>
         </div>
       </div>
     </aside>
@@ -244,9 +248,9 @@
           <span>Teacher tests &amp; scores</span>
         </button>
         <button type="button" class="dash-action-card" onclick="showPage('skills')">
-          <span class="dash-action-icon">&#127891;</span>
-          <strong>Skills Training</strong>
-          <span>Vocational programs</span>
+          <span class="dash-action-icon">&#128179;</span>
+          <strong>Subscription</strong>
+          <span>Plans &amp; programs</span>
         </button>
         <button type="button" class="dash-action-card" onclick="showPage('sia')">
           <span class="dash-action-icon">&#10024;</span>
@@ -262,23 +266,11 @@
 
     <section id="page-live" class="page">
 
-      <div class="info-banner">Scholaxia <strong>One-on-One Live Class Plans</strong> — pay monthly (not per class). Choose your level below, then tap <strong>Join Class</strong> on any live session.</div>
+      <div class="info-banner">Join a live class when your teacher is online. If you have not paid yet, tap <strong>Join Class</strong> and you will be taken to payment, then straight into the class.</div>
 
-      <div id="live-plan-status" class="live-plan-status-wrap"></div>
-
-      <div id="live-plans-section" class="live-plans-section">
-        <div class="section-header">
-          <h2>Monthly Plans</h2>
-        </div>
-        <div id="live-plans-grid" class="live-plans-grid"><div class="loading">Loading plans…</div></div>
-      </div>
-
-      <div class="section-header" style="margin-top:32px">
-
+      <div class="section-header">
         <h2>Live Now</h2>
-
         <span id="live-count" class="badge">0</span>
-
       </div>
 
       <div id="live-grid" class="card-grid"><div class="loading">Loading live classes…</div></div>
@@ -383,15 +375,27 @@
 
     <section id="page-skills" class="page">
       <div class="skills-hero">
-        <h2>Scholaxia Skills Training</h2>
-        <p>Professional vocational programs with <strong>live classes</strong>, hands-on projects, and mentor support. Build real-world skills employers and clients pay for.</p>
+        <h2>Subscription</h2>
+        <p>Choose a <strong>live class plan</strong> and explore <strong>skills programs</strong>. Pay monthly once, then join live classes from the Live Class tab.</p>
         <div class="skills-payment-banner">
           <span>&#128179;</span>
           <div>
-            <strong>Payment plan — 2 installments only</strong>
-            <p>Pay half when you enroll and the balance at the midpoint of your program. No extra fees beyond the listed tuition.</p>
+            <strong>Live class plans</strong>
+            <p>One monthly payment unlocks live video classes. Tap Join Class on any live session — if you have not paid, payment opens first.</p>
           </div>
         </div>
+      </div>
+
+      <div id="live-plan-status" class="live-plan-status-wrap"></div>
+      <div id="live-plans-section" class="live-plans-section">
+        <div class="section-header">
+          <h2>Live Class Plans</h2>
+        </div>
+        <div id="live-plans-grid" class="live-plans-grid"><div class="loading">Loading plans…</div></div>
+      </div>
+
+      <div class="section-header" style="margin-top:32px">
+        <h2>Skills Programs</h2>
       </div>
       <div id="skills-programs" class="skills-programs"><div class="loading">Loading programs…</div></div>
     </section>
@@ -557,10 +561,28 @@
 
     <!-- Profile -->
 
+    <section id="page-study-materials" class="page">
+      <div class="portal-embed-wrap">
+        <div class="portal-embed-head portal-embed-head-slim">
+          <span class="portal-pill">Past Questions</span>
+          <p>JAMB, WAEC &amp; NECO past questions — select subjects, pay, and download PDFs.</p>
+        </div>
+        <iframe
+          id="study-materials-frame"
+          class="portal-embed-frame"
+          title="Scholaxia Past Questions"
+          src="https://www.scholaxiacbtexam.blog/past-questions"
+          loading="lazy"
+          referrerpolicy="no-referrer-when-downgrade"
+          allow="fullscreen; payment"
+        ></iframe>
+      </div>
+    </section>
+
     <section id="page-library" class="page">
       <div class="page-intro">
         <h2>Library</h2>
-        <p class="page-desc">Books and notes from Scholaxia and your teachers. Paid materials unlock after Flutterwave payment.</p>
+        <p class="page-desc">Books added by Scholaxia admin. Free books open instantly; paid books unlock after payment.</p>
       </div>
       <div id="library-stats" class="materials-stats"></div>
       <div id="library-list" class="materials-grid"><div class="loading">Loading library…</div></div>

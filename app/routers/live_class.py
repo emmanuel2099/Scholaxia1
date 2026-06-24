@@ -13,7 +13,15 @@ from app.core.config import settings
 from app.models.live_class import LiveClass, ClassAttendance, LiveSessionRequest, LiveSessionRequestStatus
 from app.models.user import StudentProfile, User
 from app.core.subjects import subject_matches
-from app.services.live_class_room import has_mic_access, grant_mic, revoke_mic
+from app.services.live_class_room import (
+    has_mic_access,
+    has_camera_access,
+    has_publish_access,
+    grant_mic,
+    revoke_mic,
+    grant_camera,
+    revoke_camera,
+)
 from app.websockets import live_class_ws
 from app.services.live_class_access import get_live_access_info, parse_uuid, consume_live_session
 from app.services.notification_service import send_subject_notification
@@ -308,7 +316,7 @@ async def join_class(
             live_class.room_id,
             current_user["sub"],
             current_user.get("email") or "student",
-            can_publish=has_mic_access(live_class.room_id, current_user["sub"]),
+            can_publish=has_publish_access(live_class.room_id, current_user["sub"]),
         )
         return {
             **payload,
@@ -362,7 +370,7 @@ async def get_livekit_token(
         str(live_class.teacher_id) == current_user["sub"]
         or current_user.get("role") == "admin"
     )
-    can_publish = is_teacher or has_mic_access(live_class.room_id, current_user["sub"])
+    can_publish = is_teacher or has_publish_access(live_class.room_id, current_user["sub"])
     display = current_user.get("email") or current_user.get("sub") or "user"
     payload = _livekit_token_payload(
         live_class.room_id,
@@ -414,12 +422,14 @@ async def list_class_students(
         sid = str(att.student_id)
         user = users_map.get(sid)
         mic_allowed = has_mic_access(live_class.room_id, sid)
+        camera_allowed = has_camera_access(live_class.room_id, sid)
         out.append({
             "student_id": sid,
             "name": user.full_name if user else "Student",
             "email": user.email if user else "",
             "is_muted": bool(att.is_muted) and not mic_allowed,
             "mic_allowed": mic_allowed,
+            "camera_allowed": camera_allowed,
             "joined_at": att.joined_at.isoformat() if att.joined_at else None,
         })
     out.sort(key=lambda x: x["name"].lower())
@@ -494,6 +504,65 @@ async def mute_student(
     except Exception:
         pass
     return {"message": "Student muted", "mic_allowed": False}
+
+
+@router.post("/{class_id}/students/{student_id}/allow-camera")
+async def allow_student_camera(
+    class_id: str,
+    student_id: str,
+    current_user: dict = Depends(require_teacher_or_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    class_uuid = parse_uuid(class_id)
+    student_uuid = parse_uuid(student_id)
+    result = await db.execute(select(LiveClass).where(LiveClass.id == class_uuid))
+    live_class = result.scalar_one_or_none()
+    if not live_class:
+        raise HTTPException(status_code=404, detail="Class not found")
+    if not _can_manage_class(current_user, live_class):
+        raise HTTPException(status_code=403, detail="Not your class")
+
+    result = await db.execute(
+        select(ClassAttendance).where(
+            ClassAttendance.live_class_id == class_uuid,
+            ClassAttendance.student_id == student_uuid,
+            ClassAttendance.is_removed == False,  # noqa: E712
+            ClassAttendance.left_at.is_(None),
+        )
+    )
+    attendance = result.scalar_one_or_none()
+    if not attendance:
+        raise HTTPException(status_code=404, detail="Student not in class")
+    grant_camera(live_class.room_id, str(student_id))
+    try:
+        await live_class_ws.notify_camera_granted(live_class.room_id, str(student_id))
+    except Exception:
+        pass
+    return {"message": "Student can turn on camera", "camera_allowed": True}
+
+
+@router.post("/{class_id}/students/{student_id}/revoke-camera")
+async def revoke_student_camera(
+    class_id: str,
+    student_id: str,
+    current_user: dict = Depends(require_teacher_or_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    class_uuid = parse_uuid(class_id)
+    student_uuid = parse_uuid(student_id)
+    result = await db.execute(select(LiveClass).where(LiveClass.id == class_uuid))
+    live_class = result.scalar_one_or_none()
+    if not live_class:
+        raise HTTPException(status_code=404, detail="Class not found")
+    if not _can_manage_class(current_user, live_class):
+        raise HTTPException(status_code=403, detail="Not your class")
+
+    revoke_camera(live_class.room_id, str(student_id))
+    try:
+        await live_class_ws.notify_camera_revoked(live_class.room_id, str(student_id))
+    except Exception:
+        pass
+    return {"message": "Student camera access removed", "camera_allowed": False}
 
 
 @router.post("/{class_id}/students/{student_id}/remove")
