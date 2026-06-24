@@ -1,0 +1,370 @@
+import 'package:flutter/material.dart';
+import '../../api/api_service.dart';
+import '../../theme/app_theme.dart';
+import '../student/student_shell.dart';
+import '../teacher/teacher_shell.dart';
+import 'exam_subject_setup_screen.dart';
+import 'register_screen.dart';
+import 'role_select_screen.dart';
+
+class LoginScreen extends StatefulWidget {
+  final AccountRole? accountRole;
+
+  const LoginScreen({super.key, this.accountRole});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  final _emailCtrl = TextEditingController();
+  final _passCtrl  = TextEditingController();
+  bool _obscure = true;
+  bool _loading = false;
+  final _api = ApiService();
+
+  @override
+  void dispose() {
+    _emailCtrl.dispose();
+    _passCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _login() async {
+    final email = _emailCtrl.text.trim();
+    final pass  = _passCtrl.text;
+    if (email.isEmpty || pass.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter your email and password.')));
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      final auth = await _api.login(email: email, password: pass);
+      if (!mounted) return;
+
+      if (!_roleMatches(auth.role)) {
+        await _api.clearTokens();
+        if (!mounted) return;
+        final expected = _expectedRoleLabel();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'That account is not a $expected account. Pick the correct type on the previous screen.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      if (auth.role == 'teacher') {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const TeacherShell()),
+          (_) => false,
+        );
+      } else {
+        final complete = await _api.isSetupComplete();
+        if (!mounted) return;
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (_) => auth.role == 'kind'
+                ? const StudentShell()
+                : (complete
+                    ? const StudentShell()
+                    : const ExamSubjectSetupScreen()),
+          ),
+          (_) => false,
+        );
+        if (auth.role != 'kind' && complete) _api.ensureStudentProfile();
+      }
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message), backgroundColor: Colors.red));
+    } catch (e) {
+      if (!mounted) return;
+      final err = e.toString().toLowerCase();
+      final message = err.contains('failed to fetch') || err.contains('clientexception')
+          ? 'Could not reach scholaxia1.onrender.com. The server may be waking up — wait 30 seconds and try again.'
+          : 'Something went wrong. Please try again.';
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  bool _roleMatches(String role) {
+    final pick = widget.accountRole;
+    if (pick == null) return true;
+    switch (pick) {
+      case AccountRole.teacher:
+        return role == 'teacher';
+      case AccountRole.kind:
+        return role == 'kind';
+      case AccountRole.student:
+        return role == 'student';
+    }
+  }
+
+  String _expectedRoleLabel() {
+    switch (widget.accountRole) {
+      case AccountRole.teacher:
+        return 'Teacher';
+      case AccountRole.kind:
+        return 'Kid';
+      case AccountRole.student:
+      case null:
+        return 'Student';
+    }
+  }
+
+  String get _title {
+    switch (widget.accountRole) {
+      case AccountRole.teacher:
+        return 'Teacher Login';
+      case AccountRole.kind:
+        return 'Kid Login';
+      case AccountRole.student:
+      case null:
+        return 'Welcome Back';
+    }
+  }
+
+  String get _subtitle {
+    switch (widget.accountRole) {
+      case AccountRole.teacher:
+        return 'Sign in to manage classes, grading, and notices.';
+      case AccountRole.kind:
+        return 'Sign in to your kid learner account.';
+      case AccountRole.student:
+      case null:
+        return 'Enter your credentials to access your\npersonalized learning dashboard.';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final btnFg = context.isDark ? AppColors.background : Colors.white;
+
+    return Scaffold(
+      backgroundColor: context.bgColor,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const SizedBox(height: 48),
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: context.isDark ? context.surfColor : const Color(0xFF1A1A1A),
+                  shape: BoxShape.circle,
+                  border: context.isDark
+                      ? Border.all(color: context.borderColor)
+                      : null,
+                ),
+                child: Icon(Icons.school_rounded,
+                    color: context.isDark ? context.accentColor : Colors.white,
+                    size: 36),
+              ),
+              const SizedBox(height: 24),
+              Text(_title,
+                  style: TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.bold,
+                      color: context.textColor)),
+              const SizedBox(height: 8),
+              Text(
+                _subtitle,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 14, color: context.greyColor, height: 1.5),
+              ),
+              const SizedBox(height: 32),
+              _label(context, 'EMAIL ADDRESS'),
+              const SizedBox(height: 6),
+              _field(
+                context,
+                controller: _emailCtrl,
+                hint: 'name@example.com',
+                icon: Icons.mail_outline,
+                type: TextInputType.emailAddress,
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _label(context, 'PASSWORD'),
+                  GestureDetector(
+                    onTap: () {},
+                    child: Text('Forgot Password?',
+                        style: TextStyle(
+                            color: context.accentColor,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              _field(
+                context,
+                controller: _passCtrl,
+                hint: '••••••••',
+                icon: Icons.lock_outline,
+                obscure: _obscure,
+                suffix: GestureDetector(
+                  onTap: () => setState(() => _obscure = !_obscure),
+                  child: Icon(
+                    _obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                    color: context.greyLColor,
+                    size: 20,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 28),
+              SizedBox(
+                width: double.infinity,
+                height: 54,
+                child: ElevatedButton(
+                  onPressed: _loading ? null : _login,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: context.accentColor,
+                    foregroundColor: btnFg,
+                    disabledBackgroundColor: context.greyColor.withOpacity(0.3),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                    elevation: 0,
+                  ),
+                  child: _loading
+                      ? SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: btnFg))
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text('Log In',
+                                style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: btnFg)),
+                            const SizedBox(width: 8),
+                            Icon(Icons.arrow_forward_rounded, size: 18, color: btnFg),
+                          ],
+                        ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Row(children: [
+                Expanded(child: Divider(color: context.borderColor)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text('OR CONTINUE WITH',
+                      style: TextStyle(
+                          color: context.greyLColor,
+                          fontSize: 11,
+                          letterSpacing: 1)),
+                ),
+                Expanded(child: Divider(color: context.borderColor)),
+              ]),
+              const SizedBox(height: 12),
+              Text('SECURE AI-POWERED EDUCATION',
+                  style: TextStyle(
+                      color: context.greyLColor,
+                      fontSize: 11,
+                      letterSpacing: 1)),
+              const SizedBox(height: 32),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => const RoleSelectScreen()),
+                    ),
+                    child: Text('Change account type',
+                        style: TextStyle(
+                            color: context.accentColor,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600)),
+                  ),
+                ],
+              ),
+              if (widget.accountRole == null ||
+                  widget.accountRole == AccountRole.student) ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text("Don't have an account yet? ",
+                        style:
+                            TextStyle(color: context.greyColor, fontSize: 14)),
+                    GestureDetector(
+                      onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const RegisterScreen())),
+                      child: Text('Create Account',
+                          style: TextStyle(
+                              color: context.accentColor,
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 32),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _label(BuildContext context, String text) => Align(
+        alignment: Alignment.centerLeft,
+        child: Text(text,
+            style: TextStyle(
+                color: context.textColor,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.5)),
+      );
+
+  Widget _field(
+    BuildContext context, {
+    required TextEditingController controller,
+    required String hint,
+    required IconData icon,
+    TextInputType type = TextInputType.text,
+    bool obscure = false,
+    Widget? suffix,
+  }) =>
+      Container(
+        decoration: BoxDecoration(
+          color: context.surfColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: context.borderColor),
+        ),
+        child: TextField(
+          controller: controller,
+          keyboardType: type,
+          obscureText: obscure,
+          style: TextStyle(color: context.textColor, fontSize: 15),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: TextStyle(color: context.greyLColor),
+            prefixIcon: Icon(icon, color: context.greyLColor, size: 20),
+            suffixIcon: suffix,
+            border: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(vertical: 16),
+          ),
+        ),
+      );
+}

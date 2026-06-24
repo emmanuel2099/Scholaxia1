@@ -23,6 +23,8 @@
 <body>
 
 <div id="app-splash" class="app-splash" aria-hidden="false">
+  <div class="app-splash-bg" aria-hidden="true"></div>
+  <div class="app-splash-overlay" aria-hidden="true"></div>
   <div class="app-splash-inner">
     <img src="assets/logo.png" alt="" class="app-splash-logo" />
     <h1 class="app-splash-title">Scholaxia</h1>
@@ -131,7 +133,7 @@
     </header>
 
     <div id="notif-ring-bar" class="notif-ring-bar hidden">
-      <span>&#128276; Live class alert — your teacher is live for your subject!</span>
+      <span>&#128276; Live class alert — your teacher is live! Tap to join.</span>
       <button type="button" class="btn-sm" onclick="stopNotificationRing()">Stop sound</button>
       <button type="button" class="btn-sm primary" onclick="showPage('live')">Go to Live Class</button>
     </div>

@@ -232,11 +232,31 @@ function goToSubject(index) {
 }
 
 window.onload = async () => {
-  const splashMinMs = 1200;
+  const splashMinMs = 1400;
   const splashStarted = Date.now();
-  const hideSplash = function () {
+
+  function shouldShowSplash() {
+    try {
+      if (sessionStorage.getItem("sia_skip_splash") === "1") {
+        sessionStorage.removeItem("sia_skip_splash");
+        return false;
+      }
+      if (isStudentLoggedIn()) return false;
+    } catch (e) { /* ignore */ }
+    return true;
+  }
+
+  const hideSplash = function (immediate) {
     const splash = document.getElementById("app-splash");
     if (!splash || splash.classList.contains("app-splash-hide")) return;
+    if (!shouldShowSplash() || immediate) {
+      splash.classList.add("app-splash-hide");
+      splash.setAttribute("aria-hidden", "true");
+      setTimeout(function () {
+        if (splash.parentNode) splash.parentNode.removeChild(splash);
+      }, immediate ? 0 : 500);
+      return;
+    }
     const wait = Math.max(0, splashMinMs - (Date.now() - splashStarted));
     setTimeout(function () {
       splash.classList.add("app-splash-hide");
@@ -246,6 +266,10 @@ window.onload = async () => {
       }, 500);
     }, wait);
   };
+
+  if (!shouldShowSplash()) {
+    hideSplash(true);
+  }
 
   window.addEventListener("beforeunload", (e) => {
     if (isCbtExamActive()) {

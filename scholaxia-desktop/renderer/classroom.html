@@ -96,8 +96,12 @@
       <div id="class-students-panel" class="raise-hand-panel host-only hidden">
         <div class="class-students-head">
           <h3>Students in class</h3>
-          <button type="button" class="btn-sm" onclick="loadClassroomStudents()">Refresh</button>
+          <div class="class-students-tools">
+            <button type="button" class="btn-sm primary" id="btn-give-access-all" onclick="giveAccessToWaitingStudents()" title="Allow mic and camera for students who raised their hand">Give access</button>
+            <button type="button" class="btn-sm" onclick="loadClassroomStudents()">Refresh</button>
+          </div>
         </div>
+        <p class="class-students-hint">When a student joins, tap <strong>Give access</strong> so they can use mic and camera.</p>
         <div id="class-students-list" class="raise-hand-list">
           <p class="raise-hand-empty">No students in class yet.</p>
         </div>

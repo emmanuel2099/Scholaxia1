@@ -157,9 +157,28 @@ body {
 .raise-hand-item button:hover { background: #2d6b45; }
 .class-students-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .class-students-head h3 { margin: 0; }
+.class-students-tools { display: flex; gap: 6px; flex-wrap: wrap; }
+.class-students-hint {
+  font-size: 0.75rem;
+  color: #9ca89f;
+  margin: 0 0 10px;
+  line-height: 1.4;
+}
 .class-student-item { flex-direction: column; align-items: stretch; gap: 8px; }
 .class-student-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .class-student-actions button { font-size: 0.72rem; padding: 4px 8px; }
+.btn-give-access {
+  background: #1a5c3a !important;
+  border-color: #2d9b83 !important;
+  color: #fff !important;
+  font-weight: 700;
+}
+.access-granted-badge {
+  font-size: 0.72rem;
+  color: #6ee7a0;
+  font-weight: 600;
+  padding: 4px 8px;
+}
 .remote-audio-wrap { position: absolute; width: 0; height: 0; overflow: hidden; }
 .audio-unlock-banner {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;

@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from typing import Literal
 
 from app.core.deps import require_teacher
-from app.ai.prompt_builder import build_teacher_prompt, TEACHER_TASK_PROFILES
+from app.ai.prompt_builder import build_teacher_prompt, TEACHER_TASK_PROFILES, _is_casual_greeting
 from app.ai.model_backend import run_inference
 from app.ai.safety_filter import sanitize_output
 
@@ -46,6 +46,16 @@ async def teacher_ask_ai(
         raise HTTPException(
             status_code=400,
             detail=f"Invalid task. Choose from: {VALID_TASKS}",
+        )
+
+    if payload.task == "general" and _is_casual_greeting(payload.details):
+        return TeacherAIResponse(
+            result=(
+                "Hello! I'm your Scholaxia teaching assistant. "
+                "What would you like help with — a lesson idea, assignment, quiz, grading, or something else?"
+            ),
+            task=payload.task,
+            subject=payload.subject,
         )
 
     prompt = build_teacher_prompt(

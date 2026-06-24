@@ -72,28 +72,36 @@
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       if (audioCtx.state === "suspended") audioCtx.resume();
 
-      function beep() {
+      function playPhoneRingBurst() {
         if (!liveClassActive) {
           stopRing();
           return;
         }
-        var osc = audioCtx.createOscillator();
-        var gain = audioCtx.createGain();
-        osc.type = "sine";
-        osc.frequency.value = 880;
-        gain.gain.value = 0.12;
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start();
-        setTimeout(function () {
-          osc.stop();
-          osc.disconnect();
-          gain.disconnect();
-        }, 280);
+        var t0 = audioCtx.currentTime;
+        var ringPattern = [
+          { start: 0, dur: 0.4 },
+          { start: 0.6, dur: 0.4 },
+        ];
+        ringPattern.forEach(function (p) {
+          [440, 480].forEach(function (freq, i) {
+            var osc = audioCtx.createOscillator();
+            var gain = audioCtx.createGain();
+            osc.type = "sine";
+            osc.frequency.value = freq;
+            gain.gain.setValueAtTime(0, t0 + p.start);
+            gain.gain.linearRampToValueAtTime(0.14, t0 + p.start + 0.02);
+            gain.gain.setValueAtTime(0.14, t0 + p.start + p.dur - 0.02);
+            gain.gain.linearRampToValueAtTime(0, t0 + p.start + p.dur);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start(t0 + p.start);
+            osc.stop(t0 + p.start + p.dur + 0.01);
+          });
+        });
       }
 
-      beep();
-      ringTimer = setInterval(beep, 900);
+      playPhoneRingBurst();
+      ringTimer = setInterval(playPhoneRingBurst, 2800);
       var bar = document.getElementById("notif-ring-bar");
       if (bar) bar.classList.remove("hidden");
     } catch (e) {

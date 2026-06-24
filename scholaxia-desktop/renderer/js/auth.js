@@ -139,6 +139,7 @@ async function routeAfterAuth(accessToken, role, email, nameOverride) {
   }
   var ret = sessionStorage.getItem("sia_login_return");
   sessionStorage.removeItem("sia_login_return");
+  try { sessionStorage.setItem("sia_skip_splash", "1"); } catch (e) { /* ignore */ }
   if (ret) {
     window.location.href = "app.html?open=" + encodeURIComponent(ret);
   } else {

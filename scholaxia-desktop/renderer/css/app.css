@@ -2330,9 +2330,24 @@ body.exam-lock-active .main-content-topnav {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #1a5c3a 0%, #228b52 50%, #2d9b83 100%);
   color: #fff;
   transition: opacity 0.45s ease, visibility 0.45s ease;
+}
+.app-splash-bg {
+  position: absolute;
+  inset: 0;
+  background: url("../assets/intro-bg.png") center/cover no-repeat;
+  background-color: #0a1410;
+}
+.app-splash-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    rgba(0, 0, 0, 0.82) 0%,
+    rgba(0, 0, 0, 0.72) 45%,
+    rgba(26, 92, 58, 0.55) 100%
+  );
 }
 .app-splash.app-splash-hide {
   opacity: 0;
@@ -2340,6 +2355,8 @@ body.exam-lock-active .main-content-topnav {
   pointer-events: none;
 }
 .app-splash-inner {
+  position: relative;
+  z-index: 2;
   text-align: center;
   padding: 32px;
 }

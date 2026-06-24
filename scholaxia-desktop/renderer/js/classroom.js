@@ -451,7 +451,8 @@ function renderRaisedHands() {
     var name = escHtml(item.name || "Student");
     var safeId = id.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
     return '<div class="raise-hand-item"><span>&#9995; ' + name + '</span>' +
-      '<button type="button" onclick="grantStudentMic(\'' + safeId + '\')">Allow mic</button></div>';
+      '<button type="button" class="btn-give-access" onclick="grantStudentAccess(' +
+      JSON.stringify(id) + ',' + JSON.stringify(item.name || "Student") + ')">Give access</button></div>';
   }).join("");
 }
 
@@ -464,6 +465,39 @@ function addRaisedHand(userId, name) {
 function removeRaisedHand(userId) {
   delete raisedHands[userId];
   renderRaisedHands();
+}
+
+async function grantStudentAccess(userId, studentName) {
+  if (!isTeacherRole() || !userId) return;
+  var classId = liveSession.class_id || liveSession.classId;
+  var name = studentName || (raisedHands[userId] && raisedHands[userId].name) || "Student";
+  try {
+    await api("/api/v1/live-classes/" + classId + "/students/" + userId + "/unmute", { method: "POST" });
+    await api("/api/v1/live-classes/" + classId + "/students/" + userId + "/allow-camera", { method: "POST" });
+    removeRaisedHand(userId);
+    addChatMessage("", name + " can now use mic and camera.", true);
+    loadClassroomStudents(true);
+  } catch (e) {
+    addChatMessage("", "Could not give access: " + e.message, true);
+  }
+}
+
+async function giveAccessToWaitingStudents() {
+  if (!isTeacherRole()) return;
+  var ids = Object.keys(raisedHands);
+  if (!ids.length) {
+    var list = document.getElementById("class-students-list");
+    var students = list ? list.querySelectorAll(".btn-give-access") : [];
+    if (!students.length) {
+      addChatMessage("", "No students waiting — they appear here when they join or raise a hand.", true);
+      return;
+    }
+    students[0].click();
+    return;
+  }
+  for (var i = 0; i < ids.length; i++) {
+    await grantStudentAccess(ids[i]);
+  }
 }
 
 async function grantStudentMic(userId) {
@@ -525,15 +559,20 @@ function renderClassroomStudents(students) {
   }
   list.innerHTML = students.map(function (s) {
     var safeId = String(s.student_id || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    var hasFullAccess = s.mic_allowed && s.camera_allowed;
+    var accessBtn = hasFullAccess
+      ? '<span class="access-granted-badge">Access granted</span>'
+      : '<button type="button" class="btn-give-access" onclick="grantStudentAccess(' +
+        JSON.stringify(s.student_id) + ',' + JSON.stringify(s.name || "Student") + ')">Give access</button>';
     var micBtn = s.mic_allowed
       ? '<button type="button" onclick="revokeStudentMic(\'' + safeId + '\')">Mute</button>'
-      : '<button type="button" onclick="grantStudentMic(\'' + safeId + '\')">Allow mic</button>';
+      : '<button type="button" onclick="grantStudentMic(\'' + safeId + '\')">Mic</button>';
     var camBtn = s.camera_allowed
       ? '<button type="button" onclick="revokeStudentCamera(\'' + safeId + '\')">Revoke cam</button>'
-      : '<button type="button" onclick="grantStudentCamera(\'' + safeId + '\')">Allow cam</button>';
+      : '<button type="button" onclick="grantStudentCamera(\'' + safeId + '\')">Cam</button>';
     return '<div class="raise-hand-item class-student-item">' +
       '<span>' + escHtml(s.name || "Student") + '</span>' +
-      '<div class="class-student-actions">' + micBtn + camBtn + "</div></div>";
+      '<div class="class-student-actions">' + accessBtn + micBtn + camBtn + "</div></div>";
   }).join("");
 }
 
@@ -561,6 +600,8 @@ function startClassroomStudentsPoll() {
 }
 
 window.grantStudentMic = grantStudentMic;
+window.grantStudentAccess = grantStudentAccess;
+window.giveAccessToWaitingStudents = giveAccessToWaitingStudents;
 window.revokeStudentMic = revokeStudentMic;
 window.grantStudentCamera = grantStudentCamera;
 window.revokeStudentCamera = revokeStudentCamera;

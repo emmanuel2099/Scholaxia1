@@ -1356,12 +1356,32 @@ TEACHER_TASK_PROFILES = {
     "quiz": "Create exam-quality CBT questions with correct answers, mark allocations, and brief explanations. Mix difficulty levels.",
     "grading": "Suggest fair, consistent grading criteria with clear mark allocations for each level of response.",
     "analytics": "Interpret student performance data, identify patterns, and suggest specific, actionable teaching interventions.",
-    "general": "Assist with any professional teaching task with the quality of an experienced educator.",
+    "general": (
+        "You are in a casual chat with a teacher. Reply naturally and briefly. "
+        "For greetings or small talk (e.g. hi, hello, thanks), respond with a short friendly message "
+        "and ask what they need — do NOT generate lesson plans, assignments, quizzes, or long documents "
+        "unless they explicitly ask for one."
+    ),
 }
+
+
+def _is_casual_greeting(details: str) -> bool:
+    t = details.strip().lower().rstrip("!.?")
+    return t in {
+        "hi", "hello", "hey", "hola", "good morning", "good afternoon",
+        "good evening", "gm", "sup", "yo",
+    }
 
 
 def build_teacher_prompt(task: str, subject: str, education_level: str, details: str) -> str:
     instruction = TEACHER_TASK_PROFILES.get(task, TEACHER_TASK_PROFILES["general"])
+    if task == "general":
+        closing = (
+            "Reply conversationally. Match the length of the teacher's message. "
+            "Only produce structured teaching content when they clearly request it."
+        )
+    else:
+        closing = "Provide a professional, detailed, immediately usable response."
     return f"""{TEACHER_SYSTEM_PROMPT}
 
 Subject: {subject}
@@ -1370,5 +1390,5 @@ Task: {instruction}
 
 Teacher's request: {details}
 
-Provide a professional, detailed, immediately usable response.
+{closing}
 """
