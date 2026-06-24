@@ -50,6 +50,7 @@
       <button class="nav-btn" data-page="teachers" onclick="showAdminPage('teachers')">&#128104;&#8205;&#127979; Teachers</button>
       <button class="nav-btn" data-page="kind" onclick="showAdminPage('kind')">&#128118; Kind (Kids)</button>
       <button class="nav-btn" data-page="requests" onclick="showAdminPage('requests')">&#128172; Session Requests</button>
+      <button class="nav-btn" data-page="live-subs" onclick="showAdminPage('live-subs')">&#127909; Live Subscriptions</button>
       <button class="nav-btn" data-page="cbt" onclick="showAdminPage('cbt')">&#128221; CBT Exams</button>
       <button class="nav-btn" data-page="recommendations" onclick="showAdminPage('recommendations')">&#128218; Recommendations</button>
       <button class="nav-btn" data-page="community" onclick="showAdminPage('community')">&#128172; Community</button>
@@ -115,7 +116,14 @@
 
     <section id="page-requests" class="admin-page">
       <div class="page-head"><h2>Student → Teacher Requests</h2><button class="btn-sm" onclick="loadRequests()">Refresh</button></div>
+      <p class="page-desc" style="margin:0 0 12px;color:#666;font-size:0.9rem">Students request a class here. Assign each request to a teacher — they will see the student under <strong>My Students</strong>.</p>
       <div id="requests-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+    </section>
+
+    <section id="page-live-subs" class="admin-page">
+      <div class="page-head"><h2>Live Subscriptions</h2><button class="btn-sm" onclick="loadLiveSubscriptions()">Refresh</button></div>
+      <p class="page-desc" style="margin:0 0 12px;color:#666;font-size:0.9rem">Students who paid for live class access — plan, sessions left, and expiry.</p>
+      <div id="live-subs-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
     </section>
 
     <section id="page-cbt" class="admin-page">

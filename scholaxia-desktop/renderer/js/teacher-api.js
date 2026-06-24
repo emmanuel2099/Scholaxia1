@@ -66,8 +66,10 @@ async function teacherApi(path, options) {
   }
   if (!res.ok) {
     var detail = data.detail;
-    if (Array.isArray(detail)) detail = detail.map(function (d) { return d.msg || d; }).join(", ");
-    throw new Error(detail || data.message || "Request failed");
+    if (typeof detail === "string") { /* keep */ }
+    else if (Array.isArray(detail)) detail = detail.map(function (d) { return d.msg || d; }).join(", ");
+    else if (detail && typeof detail === "object") detail = detail.msg || detail.message || JSON.stringify(detail);
+    throw new Error(detail || data.message || "Request failed (HTTP " + res.status + ")");
   }
   return data;
 }

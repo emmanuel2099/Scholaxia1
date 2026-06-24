@@ -8,10 +8,10 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 from app.core.database import get_db
 from app.core.datetime_utils import naive_utc_now, to_naive_utc
-from app.core.deps import require_teacher, require_teacher_or_admin, require_student, get_current_user
+from app.core.deps import require_teacher, require_teacher_or_admin, require_student, get_current_user, require_admin
 from app.core.config import settings
 from app.models.live_class import LiveClass, ClassAttendance, LiveSessionRequest, LiveSessionRequestStatus
-from app.models.user import StudentProfile, User
+from app.models.user import StudentProfile, User, UserRole
 from app.core.subjects import subject_matches
 from app.services.live_class_room import (
     has_mic_access,
@@ -24,7 +24,7 @@ from app.services.live_class_room import (
 )
 from app.websockets import live_class_ws
 from app.services.live_class_access import get_live_access_info, parse_uuid, consume_live_session
-from app.services.notification_service import send_subject_notification
+from app.services.notification_service import send_subject_notification, send_user_notification, send_admins_notification
 
 router = APIRouter(prefix="/live-classes", tags=["Live Classes"])
 
@@ -135,6 +135,44 @@ def _class_is_active(live_class: LiveClass, now: datetime) -> bool:
     return False
 
 
+async def _notify_assigned_students_for_class(
+    db: AsyncSession, teacher_id: str, live_class: LiveClass
+) -> None:
+    """Notify students admin assigned to this teacher when their class goes live."""
+    try:
+        tid = parse_uuid(teacher_id)
+    except ValueError:
+        return
+    result = await db.execute(
+        select(LiveSessionRequest).where(
+            LiveSessionRequest.assigned_teacher_id == tid,
+            LiveSessionRequest.status.in_([
+                LiveSessionRequestStatus.approved,
+                LiveSessionRequestStatus.scheduled,
+            ]),
+        )
+    )
+    notified = set()
+    for req in result.scalars().all():
+        if not subject_matches(live_class.subject, [req.subject]):
+            continue
+        sid = str(req.student_id)
+        if sid in notified:
+            continue
+        notified.add(sid)
+        try:
+            await send_user_notification(
+                db,
+                sid,
+                "Your teacher is live now",
+                f"«{live_class.title}» ({live_class.subject}) — join from Live Class.",
+                "live_class",
+                {"class_id": str(live_class.id), "room_id": live_class.room_id},
+            )
+        except Exception:
+            pass
+
+
 class CreateClassRequest(BaseModel):
     subject: str
     title: str
@@ -197,6 +235,7 @@ async def create_class(
                 notification_type="live_class",
                 data={"class_id": str(live_class.id), "room_id": live_class.room_id},
             )
+            await _notify_assigned_students_for_class(db, current_user["sub"], live_class)
         else:
             when = start.strftime("%d %b %Y at %I:%M %p")
             await send_subject_notification(
@@ -257,6 +296,7 @@ async def start_class(
             notification_type="live_class",
             data={"class_id": str(live_class.id), "room_id": live_class.room_id},
         )
+        await _notify_assigned_students_for_class(db, str(live_class.teacher_id), live_class)
     return {"message": "Class started", "room_id": live_class.room_id, "is_live": True}
 
 
@@ -695,7 +735,15 @@ class UpdateSessionRequest(BaseModel):
     linked_class_id: Optional[str] = None
 
 
-def _request_dict(req: LiveSessionRequest, student_name: str = None) -> dict:
+class AssignSessionRequest(BaseModel):
+    teacher_id: str
+
+
+def _request_dict(
+    req: LiveSessionRequest,
+    student_name: str = None,
+    teacher_name: str = None,
+) -> dict:
     return {
         "id": str(req.id),
         "student_id": str(req.student_id),
@@ -705,6 +753,8 @@ def _request_dict(req: LiveSessionRequest, student_name: str = None) -> dict:
         "message": req.message,
         "preferred_time": req.preferred_time,
         "status": req.status.value if hasattr(req.status, "value") else req.status,
+        "assigned_teacher_id": str(req.assigned_teacher_id) if req.assigned_teacher_id else None,
+        "assigned_teacher_name": teacher_name,
         "linked_class_id": str(req.linked_class_id) if req.linked_class_id else None,
         "created_at": req.created_at,
         "reviewed_at": req.reviewed_at,
@@ -727,7 +777,23 @@ async def create_session_request(
     )
     db.add(req)
     await db.flush()
-    return _request_dict(req)
+
+    student_res = await db.execute(select(User).where(User.id == req.student_id))
+    student = student_res.scalar_one_or_none()
+    student_label = student.full_name if student else "A student"
+    try:
+        await send_admins_notification(
+            db,
+            "New live class request",
+            f"{student_label} requested help with {req.subject}"
+            + (f" — {req.topic}" if req.topic else ""),
+            "live_class_request",
+            {"request_id": str(req.id), "subject": req.subject},
+        )
+    except Exception:
+        pass
+
+    return _request_dict(req, student.full_name if student else None)
 
 
 @router.get("/requests/mine")
@@ -752,12 +818,18 @@ async def list_session_requests(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Teachers and admins view pending live session requests."""
+    """Teachers see assigned requests; admins see all."""
     role = current_user.get("role")
     if role not in ("teacher", "admin"):
         raise HTTPException(status_code=403, detail="Teachers and admins only")
 
     query = select(LiveSessionRequest).order_by(LiveSessionRequest.created_at.desc()).limit(limit)
+    if role == "teacher":
+        try:
+            tid = parse_uuid(current_user["sub"])
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid user id")
+        query = query.where(LiveSessionRequest.assigned_teacher_id == tid)
     if status:
         query = query.where(LiveSessionRequest.status == status)
     if subject:
@@ -767,10 +839,81 @@ async def list_session_requests(
     requests = result.scalars().all()
 
     student_ids = list({str(r.student_id) for r in requests})
-    users_res = await db.execute(select(User).where(User.id.in_(student_ids)))
-    names_map = {str(u.id): u.full_name for u in users_res.scalars().all()}
+    teacher_ids = list({str(r.assigned_teacher_id) for r in requests if r.assigned_teacher_id})
+    user_ids = list(set(student_ids + teacher_ids))
+    users_res = await db.execute(select(User).where(User.id.in_(user_ids))) if user_ids else None
+    names_map = {}
+    if users_res:
+        names_map = {str(u.id): u.full_name for u in users_res.scalars().all()}
 
-    return [_request_dict(r, names_map.get(str(r.student_id))) for r in requests]
+    return [
+        _request_dict(
+            r,
+            names_map.get(str(r.student_id)),
+            names_map.get(str(r.assigned_teacher_id)) if r.assigned_teacher_id else None,
+        )
+        for r in requests
+    ]
+
+
+@router.post("/requests/{request_id}/assign")
+async def assign_session_request(
+    request_id: str,
+    payload: AssignSessionRequest,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin assigns a student session request to a teacher."""
+    result = await db.execute(select(LiveSessionRequest).where(LiveSessionRequest.id == request_id))
+    req = result.scalar_one_or_none()
+    if not req:
+        raise HTTPException(status_code=404, detail="Request not found")
+
+    try:
+        teacher_uuid = parse_uuid(payload.teacher_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid teacher id")
+
+    teacher_res = await db.execute(
+        select(User).where(User.id == teacher_uuid, User.role == UserRole.teacher)
+    )
+    teacher = teacher_res.scalar_one_or_none()
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+
+    req.assigned_teacher_id = teacher_uuid
+    req.status = LiveSessionRequestStatus.approved
+    req.reviewed_by = current_user["sub"]
+    req.reviewed_at = naive_utc_now()
+    await db.flush()
+
+    student_res = await db.execute(select(User).where(User.id == req.student_id))
+    student = student_res.scalar_one_or_none()
+    student_name = student.full_name if student else "Student"
+
+    try:
+        await send_user_notification(
+            db,
+            str(teacher.id),
+            "New student assigned to you",
+            f"{student_name} — {req.subject}"
+            + (f" ({req.topic})" if req.topic else "")
+            + ". Open My Students to host their class.",
+            "live_class_request",
+            {"request_id": str(req.id), "student_id": str(req.student_id), "subject": req.subject},
+        )
+        await send_user_notification(
+            db,
+            str(req.student_id),
+            "Teacher assigned",
+            f"{teacher.full_name} will host your {req.subject} session. You'll be notified when they go live.",
+            "live_class_request",
+            {"request_id": str(req.id), "teacher_id": str(teacher.id)},
+        )
+    except Exception:
+        pass
+
+    return _request_dict(req, student_name, teacher.full_name)
 
 
 @router.patch("/requests/{request_id}")
@@ -780,7 +923,7 @@ async def update_session_request(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Teacher or admin updates request status (approve, schedule, dismiss)."""
+    """Admin updates request status. Teachers cannot approve unassigned requests."""
     role = current_user.get("role")
     if role not in ("teacher", "admin"):
         raise HTTPException(status_code=403, detail="Teachers and admins only")
@@ -789,6 +932,12 @@ async def update_session_request(
     req = result.scalar_one_or_none()
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
+
+    if role == "teacher":
+        if not req.assigned_teacher_id or str(req.assigned_teacher_id) != current_user["sub"]:
+            raise HTTPException(status_code=403, detail="Not assigned to you")
+        if payload.status in (LiveSessionRequestStatus.approved, LiveSessionRequestStatus.dismissed):
+            raise HTTPException(status_code=403, detail="Only admin can approve or dismiss requests")
 
     req.status = payload.status
     req.reviewed_by = current_user["sub"]
@@ -799,7 +948,12 @@ async def update_session_request(
 
     student_res = await db.execute(select(User).where(User.id == req.student_id))
     student = student_res.scalar_one_or_none()
-    return _request_dict(req, student.full_name if student else None)
+    teacher_name = None
+    if req.assigned_teacher_id:
+        t_res = await db.execute(select(User).where(User.id == req.assigned_teacher_id))
+        t = t_res.scalar_one_or_none()
+        teacher_name = t.full_name if t else None
+    return _request_dict(req, student.full_name if student else None, teacher_name)
 
 
 @router.get("/{class_id}")

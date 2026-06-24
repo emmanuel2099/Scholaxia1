@@ -69,6 +69,13 @@
   padding: 20px; margin-bottom: 24px;
 }
 .host-card h3 { margin: 0 0 16px; font-size: 1rem; }
+.host-card .error-msg {
+  min-height: 1.2em;
+  color: #c62828;
+  font-size: 0.88rem;
+  font-weight: 600;
+  margin-top: 10px;
+}
 .form-grid {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 12px; margin-bottom: 16px;

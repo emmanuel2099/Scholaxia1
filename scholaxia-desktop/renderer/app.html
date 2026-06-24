@@ -22,7 +22,14 @@
 
 <body>
 
-
+<div id="app-splash" class="app-splash" aria-hidden="false">
+  <div class="app-splash-inner">
+    <img src="assets/logo.png" alt="" class="app-splash-logo" />
+    <h1 class="app-splash-title">Scholaxia</h1>
+    <p class="app-splash-tagline">Learn smarter. Live better.</p>
+    <div class="app-splash-loader" aria-hidden="true"></div>
+  </div>
+</div>
 
 <div class="app-shell app-shell-sidebar">
 
@@ -237,22 +244,22 @@
 
       <h3 class="dash-section-title">Quick Actions</h3>
       <div class="dash-actions-grid">
-        <button type="button" class="dash-action-card" onclick="showPage('live')">
+        <button type="button" class="dash-action-card dash-action-live" data-dash-page="live" onclick="quickDashAction('live')">
           <span class="dash-action-icon">&#127909;</span>
           <strong>Live Class</strong>
           <span>Join a lesson now</span>
         </button>
-        <button type="button" class="dash-action-card" onclick="showPage('school')">
+        <button type="button" class="dash-action-card dash-action-school" data-dash-page="school" onclick="quickDashAction('school')">
           <span class="dash-action-icon">&#128221;</span>
           <strong>Scholaxia Exam</strong>
           <span>Teacher tests &amp; scores</span>
         </button>
-        <button type="button" class="dash-action-card" onclick="showPage('skills')">
+        <button type="button" class="dash-action-card dash-action-subscription" data-dash-page="skills" onclick="quickDashAction('skills')">
           <span class="dash-action-icon">&#128179;</span>
           <strong>Subscription</strong>
           <span>Plans &amp; programs</span>
         </button>
-        <button type="button" class="dash-action-card" onclick="showPage('sia')">
+        <button type="button" class="dash-action-card dash-action-sia" data-dash-page="sia" onclick="quickDashAction('sia')">
           <span class="dash-action-icon">&#10024;</span>
           <strong>Ask Sia</strong>
           <span>AI study assistant</span>

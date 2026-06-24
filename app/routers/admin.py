@@ -518,6 +518,76 @@ async def list_students(
     return out
 
 
+class LiveSubscriptionAdminResponse(BaseModel):
+    id: str
+    email: str
+    full_name: str
+    plan_id: Optional[str] = None
+    plan_name: Optional[str] = None
+    paid: bool = False
+    sessions_left: int = 0
+    sessions_used: int = 0
+    expires_at: Optional[datetime] = None
+    last_payment_at: Optional[datetime] = None
+    last_payment_amount: Optional[float] = None
+
+
+@router.get("/live-subscriptions", response_model=list[LiveSubscriptionAdminResponse])
+async def list_live_subscriptions(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Students with live class plan / payment access for admin review."""
+    from app.services.live_class_access import get_live_access_info
+    from app.models.payment import Payment, PaymentStatus
+
+    result = await db.execute(
+        select(User, StudentProfile)
+        .outerjoin(StudentProfile, StudentProfile.user_id == User.id)
+        .where(User.role == UserRole.student, User.is_active == True)  # noqa: E712
+        .order_by(User.created_at.desc())
+    )
+    rows = result.all()
+    out = []
+    for user, profile in rows:
+        access = await get_live_access_info(db, str(user.id))
+        active = access.get("active_plan") or {}
+        last_pay_at = None
+        last_pay_amt = None
+        if access.get("paid"):
+            pay_res = await db.execute(
+                select(Payment)
+                .where(
+                    Payment.student_id == user.id,
+                    Payment.status == PaymentStatus.success,
+                )
+                .order_by(Payment.created_at.desc())
+                .limit(1)
+            )
+            last_pay = pay_res.scalar_one_or_none()
+            if last_pay:
+                last_pay_at = last_pay.created_at
+                last_pay_amt = float(last_pay.amount) if last_pay.amount is not None else None
+
+        if not access.get("paid") and not (profile and profile.live_plan_id):
+            continue
+
+        out.append(LiveSubscriptionAdminResponse(
+            id=str(user.id),
+            email=user.email,
+            full_name=user.full_name,
+            plan_id=active.get("plan_id") or (profile.live_plan_id if profile else None),
+            plan_name=active.get("plan_name"),
+            paid=bool(access.get("paid")),
+            sessions_left=int(access.get("sessions_left") or 0),
+            sessions_used=int(active.get("sessions_used") or 0),
+            expires_at=access.get("valid_until"),
+            last_payment_at=last_pay_at,
+            last_payment_amount=last_pay_amt,
+        ))
+    return out
+
+
 @router.delete("/students/{student_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_student(
     student_id: str,

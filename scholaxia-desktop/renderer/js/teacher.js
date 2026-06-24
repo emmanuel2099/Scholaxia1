@@ -2,6 +2,9 @@ var currentTeacherPage = "live";
 var teacherVoiceRecorder = null;
 
 window.onload = function () {
+  bindTeacherUI();
+  setDefaultScheduleDate();
+
   if (!getTeacherToken()) {
     document.getElementById("auth-screen").classList.remove("hidden");
     document.getElementById("app-screen").classList.add("hidden");
@@ -102,12 +105,19 @@ function showTeacherPage(page) {
   var btn = document.querySelector('.topnav-btn[data-page="' + page + '"]');
   if (btn) btn.classList.add("active");
   if (page === "live") loadTeacherLive();
-  else if (page === "requests") loadTeacherRequests();
+  else if (page === "students") loadTeacherStudents();
   else if (page === "materials") loadTeacherMaterials();
   else if (page === "curriculum") loadTeacherCurriculum();
   else if (page === "exams") loadTeacherExams();
   else if (page === "community") loadTeacherCommunity();
   else if (page === "ai") initTeacherAI();
+}
+
+function parseScheduleDateTime(date, time) {
+  if (!date || !time) return null;
+  var d = new Date(date + "T" + time);
+  if (isNaN(d.getTime())) return null;
+  return d;
 }
 
 function getSchedulePayload(goLiveNow) {
@@ -128,31 +138,73 @@ function getSchedulePayload(goLiveNow) {
 
   if (!goLiveNow) {
     if (!date || !startTime) throw new Error("Pick a date and start time to schedule");
-    body.start_time = new Date(date + "T" + startTime).toISOString();
-    if (endTime) body.end_time = new Date(date + "T" + endTime).toISOString();
+    var startDt = parseScheduleDateTime(date, startTime);
+    if (!startDt) throw new Error("Invalid date or start time");
+    body.start_time = startDt.toISOString();
+    if (endTime) {
+      var endDt = parseScheduleDateTime(date, endTime);
+      if (!endDt) throw new Error("Invalid end time");
+      if (endDt <= startDt) throw new Error("End time must be after start time");
+      body.end_time = endDt.toISOString();
+    }
   } else if (endTime && date) {
-    body.end_time = new Date(date + "T" + endTime).toISOString();
+    var liveEnd = parseScheduleDateTime(date, endTime);
+    var now = new Date();
+    if (liveEnd && liveEnd > now) {
+      body.end_time = liveEnd.toISOString();
+    }
   }
   return body;
 }
 
+function setHostButtonsBusy(busy, goLiveNow) {
+  var scheduleBtn = document.getElementById("host-schedule-btn");
+  var liveBtn = document.getElementById("host-live-btn");
+  if (scheduleBtn) {
+    scheduleBtn.disabled = !!busy;
+    if (!busy) scheduleBtn.textContent = "Schedule class";
+    else if (!goLiveNow) scheduleBtn.textContent = "Scheduling…";
+  }
+  if (liveBtn) {
+    liveBtn.disabled = !!busy;
+    if (!busy) liveBtn.textContent = "Go live now";
+    else if (goLiveNow) liveBtn.textContent = "Going live…";
+  }
+}
+
 async function teacherHostClass(goLiveNow) {
   var err = document.getElementById("host-error");
-  err.textContent = "";
+  if (err) err.textContent = "";
+  setHostButtonsBusy(true, goLiveNow);
   try {
     var body = getSchedulePayload(goLiveNow);
-    var created = await teacherApi("/api/v1/live-classes/", { method: "POST", body: JSON.stringify(body) });
-    document.getElementById("host-title").value = "";
-    loadTeacherLive();
-    if (goLiveNow && created && created.id) {
-      if (confirm("Class is live! Students with " + body.subject + " were notified. Open classroom?")) {
+    var created = await teacherApi("/api/v1/live-classes/", {
+      method: "POST",
+      body: JSON.stringify(body),
+      timeout: 120000,
+    });
+    if (!created) {
+      throw new Error("Could not create class. Please sign in again.");
+    }
+    var titleInput = document.getElementById("host-title");
+    if (titleInput) titleInput.value = "";
+    await loadTeacherLive();
+    if (goLiveNow && created.id) {
+      if (confirm("Class is live! Assigned students and students with " + body.subject + " were notified. Open classroom?")) {
         teacherEnterClassroom(created.id, body.title, body.subject, created.end_time);
       }
     } else {
       alert("Class scheduled. Students with this subject will see it under Upcoming.");
     }
   } catch (e) {
-    err.textContent = e.message;
+    var msg = (e && e.message) ? e.message : "Could not host class. Try again.";
+    if (err) {
+      err.textContent = msg;
+      err.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+    alert(msg);
+  } finally {
+    setHostButtonsBusy(false, goLiveNow);
   }
 }
 
@@ -316,48 +368,47 @@ async function loadTeacherLive() {
   }
 }
 
-async function loadTeacherRequests() {
-  var el = document.getElementById("requests-table");
+async function loadTeacherStudents() {
+  var el = document.getElementById("students-table");
   if (!el) return;
   el.innerHTML = '<div class="loading">Loading…</div>';
   try {
-    var rows = await teacherApi("/api/v1/live-classes/requests");
+    var rows = await teacherApi("/api/v1/live-classes/requests?status=approved");
     if (!rows || !rows.length) {
-      el.innerHTML = '<div class="empty-state-premium"><div class="empty-icon">&#128172;</div><h3>No session requests</h3><p>When students request a live session, they will appear here.</p></div>';
+      rows = await teacherApi("/api/v1/live-classes/requests");
+    }
+    if (!rows || !rows.length) {
+      el.innerHTML = '<div class="empty-state-premium"><div class="empty-icon">&#128101;</div><h3>No students yet</h3><p>When admin assigns a student to you, they will appear here.</p></div>';
       return;
     }
-    el.innerHTML = '<table class="data-table"><thead><tr><th>Student</th><th>Subject</th><th>Topic</th><th>When</th><th>Status</th><th></th></tr></thead><tbody>' +
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Student</th><th>Subject</th><th>Topic</th><th>Preferred time</th><th>Status</th><th></th></tr></thead><tbody>' +
       rows.map(function (r) {
-        var status = String(r.status || "pending");
-        var badgeClass = status === "approved" ? "approved" : (status === "dismissed" ? "muted" : "pending");
-        var actions = "";
-        if (status === "pending") {
-          actions =
-            '<button type="button" class="btn-sm primary" data-action="approve-request" data-id="' + escHtml(r.id) + '">Approve</button> ' +
-            '<button type="button" class="btn-sm danger" data-action="dismiss-request" data-id="' + escHtml(r.id) + '">Dismiss</button>';
-        }
-        return "<tr><td>" + escHtml(r.student_name || "Student") + "</td><td>" + escHtml(r.subject) + "</td>" +
-          "<td>" + escHtml(r.topic || r.message || "—") + "</td><td>" + formatDateTime(r.preferred_time || r.created_at) + "</td>" +
-          '<td><span class="badge ' + badgeClass + '">' + escHtml(status) + "</span></td>" +
-          '<td class="actions">' + actions + "</td></tr>";
+        var status = String(r.status || "approved");
+        var subj = escHtml(r.subject);
+        var topic = escHtml(r.topic || r.message || "Live session");
+        var hostBtn =
+          '<button type="button" class="btn-sm primary" onclick="teacherHostForStudent(' +
+          JSON.stringify(r.subject) + ',' + JSON.stringify(r.topic || r.message || "Live session") + ')">Host class</button>';
+        return "<tr><td>" + escHtml(r.student_name || "Student") + "</td><td>" + subj + "</td>" +
+          "<td>" + topic + "</td><td>" + formatDateTime(r.preferred_time || r.created_at) + "</td>" +
+          '<td><span class="badge approved">' + escHtml(status) + "</span></td>" +
+          '<td class="actions">' + hostBtn + "</td></tr>";
       }).join("") + "</tbody></table>";
   } catch (e) {
-    el.innerHTML = '<div class="empty-state-premium"><div class="empty-icon">&#9888;</div><h3>Could not load requests</h3><p>' + escHtml(e.message) + '</p><button type="button" class="btn-action" id="requests-retry-btn">Try again</button></div>';
-    var retry = document.getElementById("requests-retry-btn");
-    if (retry) retry.addEventListener("click", loadTeacherRequests);
+    el.innerHTML = '<div class="empty-state-premium"><div class="empty-icon">&#9888;</div><h3>Could not load students</h3><p>' + escHtml(e.message) + '</p><button type="button" class="btn-action" id="students-retry-btn">Try again</button></div>';
+    var retry = document.getElementById("students-retry-btn");
+    if (retry) retry.addEventListener("click", loadTeacherStudents);
   }
 }
 
-async function updateTeacherRequest(id, status) {
-  try {
-    await teacherApi("/api/v1/live-classes/requests/" + id, {
-      method: "PATCH",
-      body: JSON.stringify({ status: status }),
-    });
-    loadTeacherRequests();
-  } catch (e) {
-    alert(e.message);
-  }
+function teacherHostForStudent(subject, topic) {
+  showTeacherPage("live");
+  var subEl = document.getElementById("host-subject");
+  var titleEl = document.getElementById("host-title");
+  if (subEl && subject) subEl.value = subject;
+  if (titleEl && topic) titleEl.value = topic;
+  var liveSection = document.getElementById("page-live");
+  if (liveSection) liveSection.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function materialTypeIcon(type) {
@@ -1122,6 +1173,9 @@ function initTeacherVoiceRecorder() {
 }
 
 function bindTeacherUI() {
+  if (window._teacherUIBound) return;
+  window._teacherUIBound = true;
+
   var loginForm = document.getElementById("teacher-login-form");
   if (loginForm) loginForm.addEventListener("submit", teacherLogin);
 
@@ -1217,18 +1271,8 @@ function bindTeacherUI() {
   if (texamTemplate) texamTemplate.addEventListener("click", downloadTeacherExamTemplate);
   var texamPublish = document.getElementById("texam-publish-btn");
   if (texamPublish) texamPublish.addEventListener("click", publishTeacherExam);
-  var reqRefresh = document.getElementById("requests-refresh-btn");
-  if (reqRefresh) reqRefresh.addEventListener("click", loadTeacherRequests);
-
-  var reqTable = document.getElementById("requests-table");
-  if (reqTable) {
-    reqTable.addEventListener("click", function (ev) {
-      var btn = ev.target.closest("[data-action]");
-      if (!btn) return;
-      if (btn.dataset.action === "approve-request") updateTeacherRequest(btn.dataset.id, "approved");
-      else if (btn.dataset.action === "dismiss-request") updateTeacherRequest(btn.dataset.id, "dismissed");
-    });
-  }
+  var studentsRefresh = document.getElementById("students-refresh-btn");
+  if (studentsRefresh) studentsRefresh.addEventListener("click", loadTeacherStudents);
 
   var announceSend = document.getElementById("teacher-announce-send");
   if (announceSend) announceSend.addEventListener("click", sendTeacherAnnouncement);
@@ -1244,7 +1288,8 @@ window.teacherLogout = teacherLogout;
 window.showTeacherPage = showTeacherPage;
 window.loadTeacherLive = loadTeacherLive;
 window.loadTeacherMaterials = loadTeacherMaterials;
-window.loadTeacherRequests = loadTeacherRequests;
+window.loadTeacherStudents = loadTeacherStudents;
+window.teacherHostForStudent = teacherHostForStudent;
 window.openMaterialModal = openMaterialModal;
 window.closeMaterialModal = closeMaterialModal;
 window.toggleMaterialInputs = toggleMaterialInputs;
@@ -1258,7 +1303,6 @@ window.removeCurriculumWeek = removeCurriculumWeek;
 window.persistCurriculumFromDom = persistCurriculumFromDom;
 window.loadTeacherExams = loadTeacherExams;
 window.publishTeacherExam = publishTeacherExam;
-window.updateTeacherRequest = updateTeacherRequest;
 window.teacherHostClass = teacherHostClass;
 window.teacherStartClass = teacherStartClass;
 window.teacherEndClass = teacherEndClass;

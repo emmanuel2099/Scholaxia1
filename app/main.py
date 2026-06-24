@@ -75,6 +75,9 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS live_plan_sessions_used INTEGER NOT NULL DEFAULT 0"
         ))
         await conn.execute(text(
+            "ALTER TABLE live_session_requests ADD COLUMN IF NOT EXISTS assigned_teacher_id UUID NULL"
+        ))
+        await conn.execute(text(
             "ALTER TABLE books ADD COLUMN IF NOT EXISTS is_free BOOLEAN NOT NULL DEFAULT TRUE"
         ))
         await conn.execute(text(

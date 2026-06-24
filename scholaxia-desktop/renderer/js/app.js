@@ -232,6 +232,21 @@ function goToSubject(index) {
 }
 
 window.onload = async () => {
+  const splashMinMs = 1200;
+  const splashStarted = Date.now();
+  const hideSplash = function () {
+    const splash = document.getElementById("app-splash");
+    if (!splash || splash.classList.contains("app-splash-hide")) return;
+    const wait = Math.max(0, splashMinMs - (Date.now() - splashStarted));
+    setTimeout(function () {
+      splash.classList.add("app-splash-hide");
+      splash.setAttribute("aria-hidden", "true");
+      setTimeout(function () {
+        if (splash.parentNode) splash.parentNode.removeChild(splash);
+      }, 500);
+    }, wait);
+  };
+
   window.addEventListener("beforeunload", (e) => {
     if (isCbtExamActive()) {
       e.preventDefault();
@@ -295,6 +310,7 @@ window.onload = async () => {
     startLivePolling();
     if (typeof prefetchCommunityFeed === "function") prefetchCommunityFeed();
   }
+  hideSplash();
 };
 
 function showCbtLoadingOverlay(message) {
@@ -502,6 +518,19 @@ function updateSidebarToggleBtn(btn, collapsed) {
   btn.title = collapsed ? "Show menu" : "Hide menu";
 }
 
+function syncDashActionCards(page) {
+  var quickPages = ["live", "school", "skills", "sia"];
+  document.querySelectorAll(".dash-action-card[data-dash-page]").forEach(function (btn) {
+    var pg = btn.getAttribute("data-dash-page");
+    btn.classList.toggle("active", page === pg && quickPages.indexOf(page) >= 0);
+  });
+}
+
+function quickDashAction(page) {
+  syncDashActionCards(page);
+  showPage(page);
+}
+
 function applyGuestNavLocks() {
   var guest = !isStudentLoggedIn();
   document.querySelectorAll(".topnav-btn[data-page]").forEach(function (btn) {
@@ -609,7 +638,7 @@ function getGreeting() {
   return "Good evening";
 }
 
-async function loadDashboard() {
+async function loadDashboard(force) {
   const titleEl = document.getElementById("dash-greeting-title");
   const subEl = document.getElementById("dash-greeting-sub");
   if (!isStudentLoggedIn()) {
@@ -668,8 +697,11 @@ async function loadDashboard() {
   if (statSubs) statSubs.textContent = String(subCount);
 
   try {
+    if (force && isStudentLoggedIn()) {
+      await syncStudentProfile();
+    }
     const [liveRaw, examData] = await Promise.all([
-      api("/api/v1/live-classes/?status=live").catch(function () { return []; }),
+      api("/api/v1/live-classes/?status=live&_=" + Date.now()).catch(function () { return []; }),
       api("/api/v1/cbt/exams/for-me").catch(function () { return null; }),
     ]);
     const liveEl = document.getElementById("dash-stat-live");
@@ -725,37 +757,55 @@ function showPage(page) {
   const fab = document.getElementById("community-fab");
   if (fab) fab.style.display = page === "community" && isStudentLoggedIn() ? "flex" : "none";
   applyGuestNavLocks();
+  syncDashActionCards(page === "dashboard" ? "" : page);
   refreshPage();
 }
 
 if (typeof window !== "undefined") {
   window.showPage = showPage;
   window.handleAuthButton = handleAuthButton;
+  window.quickDashAction = quickDashAction;
 }
 
 function refreshPage() {
-  if (currentPage === "dashboard") loadDashboard();
-  else if (currentPage === "live") loadLive();
-  else if (currentPage === "school") loadSchoolExams();
-  else if (currentPage === "school-portal") { /* static */ }
-  else if (currentPage === "study-materials") { /* embedded past questions */ }
-  else if (currentPage === "marketplace") { /* embedded store */ }
+  var refreshBtn = document.querySelector(".btn-refresh");
+  if (refreshBtn) refreshBtn.classList.add("is-refreshing");
+
+  _liveSessionsCache = { live: [], upcoming: [], at: 0 };
+  knownLiveClassIds = new Set();
+  try { sessionStorage.removeItem("sia_live_plans_cache"); } catch (e) { /* ignore */ }
+
+  var done = function () {
+    if (refreshBtn) refreshBtn.classList.remove("is-refreshing");
+  };
+
+  if (currentPage === "dashboard") {
+    loadDashboard(true).then(done).catch(done);
+  } else if (currentPage === "live") {
+    loadLive(false).then(done).catch(done);
+  } else if (currentPage === "school") { loadSchoolExams(); done(); }
+  else if (currentPage === "school-portal") { /* static */ done(); }
+  else if (currentPage === "study-materials") { /* embedded past questions */ done(); }
+  else if (currentPage === "marketplace") { /* embedded store */ done(); }
   else if (currentPage === "skills") {
     if (typeof loadLivePlans === "function") loadLivePlans(null, true);
     loadSkillsTraining();
+    done();
   }
-  else if (currentPage === "cbt") loadCbtExams();
-  else if (currentPage === "library") loadLibrary();
-  else if (currentPage === "saved-lives") loadSavedLivesPage();
-  else if (currentPage === "sia") loadSia();
+  else if (currentPage === "cbt") { loadCbtExams(); done(); }
+  else if (currentPage === "library") { loadLibrary(); done(); }
+  else if (currentPage === "saved-lives") { loadSavedLivesPage(); done(); }
+  else if (currentPage === "sia") { loadSia(); done(); }
   else if (currentPage === "community") {
     var pending = communityPendingPost;
     communityPendingPost = null;
     loadCommunity(pending);
+    done();
   }
-  else if (currentPage === "community-create") initCommunityCreate();
-  else if (currentPage === "notifications") loadNotifications();
-  else if (currentPage === "profile") loadProfile();
+  else if (currentPage === "community-create") { initCommunityCreate(); done(); }
+  else if (currentPage === "notifications") { loadNotifications(); done(); }
+  else if (currentPage === "profile") { loadProfile(); done(); }
+  else { done(); }
 }
 
 /* ── Live Class ── */
@@ -1651,3 +1701,4 @@ window.nextQuestion = nextQuestion;
 window.selectAnswer = selectAnswer;
 window.showCbtExamView = showCbtExamView;
 window.showCbtListView = showCbtListView;
+window.refreshPage = refreshPage;

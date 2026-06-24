@@ -111,6 +111,7 @@ function showAdminPage(page) {
   else if (page === "teachers") loadTeachers();
   else if (page === "kind") loadKind();
   else if (page === "requests") loadRequests();
+  else if (page === "live-subs") loadLiveSubscriptions();
   else if (page === "cbt") { initCbtBuilder(); loadCbt(); }
   else if (page === "recommendations") loadRecommendations();
   else if (page === "community") loadCommunityPosts();
@@ -434,20 +435,86 @@ async function loadRequests() {
   el.innerHTML = '<div class="loading">Loading…</div>';
   try {
     var rows = await adminApi("/api/v1/live-classes/requests?limit=50");
+    var teachers = await adminApi("/api/v1/admin/teachers") || [];
     if (!rows) return;
     if (!rows.length) { el.innerHTML = '<div class="empty-state">No session requests.</div>'; return; }
-    el.innerHTML = '<table class="data-table"><thead><tr><th>Student</th><th>Subject</th><th>Topic</th><th>Status</th><th></th></tr></thead><tbody>' +
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Student</th><th>Subject</th><th>Topic</th><th>Status</th><th>Teacher</th><th></th></tr></thead><tbody>' +
       rows.map(function (r) {
+        var teacherCell = "—";
+        if (r.assigned_teacher_name) {
+          teacherCell = escHtml(r.assigned_teacher_name);
+        } else if (r.status === "pending") {
+          var opts = teachers.map(function (t) {
+            return '<option value="' + escHtml(t.id) + '">' + escHtml(t.full_name) + '</option>';
+          }).join("");
+          teacherCell = '<select class="assign-teacher-select" id="assign-teach-' + escHtml(r.id) + '"><option value="">Choose teacher…</option>' + opts + '</select>';
+        }
+        var actions = "";
+        if (r.status === "pending") {
+          actions =
+            '<button class="btn-sm" onclick="assignRequest(\'' + r.id + '\')">Assign</button> ' +
+            '<button class="btn-sm secondary" onclick="updateRequest(\'' + r.id + '\',\'dismissed\')">Dismiss</button>';
+        } else if (r.assigned_teacher_name) {
+          actions = '<span class="badge ok">Assigned</span>';
+        }
         return '<tr><td>' + escHtml(r.student_name || r.student_id) + '</td>' +
           '<td>' + escHtml(r.subject) + '</td><td>' + escHtml(r.topic || r.message || "—") + '</td>' +
           '<td><span class="badge muted">' + escHtml(r.status) + '</span></td>' +
-          '<td class="actions">' +
-          (r.status === "pending" ? '<button class="btn-sm" onclick="updateRequest(\'' + r.id + '\',\'approved\')">Approve</button>' +
-            '<button class="btn-sm secondary" onclick="updateRequest(\'' + r.id + '\',\'dismissed\')">Dismiss</button>' : "") +
-          '</td></tr>';
+          '<td>' + teacherCell + '</td>' +
+          '<td class="actions">' + actions + '</td></tr>';
       }).join("") + '</tbody></table>';
   } catch (e) {
     el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + '</div>';
+  }
+}
+
+async function assignRequest(id) {
+  var sel = document.getElementById("assign-teach-" + id);
+  if (!sel || !sel.value) { alert("Choose a teacher first."); return; }
+  try {
+    await adminApi("/api/v1/live-classes/requests/" + id + "/assign", {
+      method: "POST",
+      body: JSON.stringify({ teacher_id: sel.value }),
+    });
+    loadRequests();
+    refreshDashboardStats();
+  } catch (e) { alert(e.message); }
+}
+
+async function loadLiveSubscriptions() {
+  var el = document.getElementById("live-subs-table");
+  if (!el) return;
+  el.innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    var rows = await adminApi("/api/v1/admin/live-subscriptions");
+    if (!rows) return;
+    if (!rows.length) {
+      el.innerHTML = '<div class="empty-state">No paid live subscriptions yet.</div>';
+      return;
+    }
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Student</th><th>Email</th><th>Plan</th><th>Paid</th><th>Sessions left</th><th>Expires</th><th>Last payment</th></tr></thead><tbody>' +
+      rows.map(function (r) {
+        var exp = r.expires_at ? formatAdminDate(r.expires_at) : "—";
+        var paid = r.last_payment_at
+          ? formatAdminDate(r.last_payment_at) + (r.last_payment_amount != null ? " · ₦" + r.last_payment_amount : "")
+          : "—";
+        return '<tr><td>' + escHtml(r.full_name) + '</td><td>' + escHtml(r.email) + '</td>' +
+          '<td>' + escHtml(r.plan_name || r.plan_id || "—") + '</td>' +
+          '<td><span class="badge ' + (r.paid ? "ok" : "muted") + '">' + (r.paid ? "Yes" : "No") + '</span></td>' +
+          '<td>' + escHtml(String(r.sessions_left)) + ' / used ' + escHtml(String(r.sessions_used)) + '</td>' +
+          '<td>' + escHtml(exp) + '</td><td>' + escHtml(paid) + '</td></tr>';
+      }).join("") + '</tbody></table>';
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + '</div>';
+  }
+}
+
+function formatAdminDate(iso) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  } catch (e) {
+    return String(iso);
   }
 }
 

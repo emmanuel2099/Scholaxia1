@@ -42,7 +42,7 @@
       <button type="button" class="topnav-btn" data-page="materials"><span class="nav-ico">&#128218;</span> Study Materials</button>
       <button type="button" class="topnav-btn" data-page="curriculum"><span class="nav-ico">&#128197;</span> Curriculum</button>
       <button type="button" class="topnav-btn" data-page="exams"><span class="nav-ico">&#128221;</span> Scholaxia Exam</button>
-      <button type="button" class="topnav-btn" data-page="requests"><span class="nav-ico">&#128172;</span> Requests</button>
+      <button type="button" class="topnav-btn" data-page="students"><span class="nav-ico">&#128101;</span> My Students</button>
       <button type="button" class="topnav-btn" data-page="community"><span class="nav-ico">&#128227;</span> Community</button>
       <button type="button" class="topnav-btn" data-page="ai"><span class="nav-ico">&#129302;</span> Teacher AI</button>
     </nav>
@@ -69,10 +69,10 @@
           <label><span>Duration (min)</span><input type="number" id="host-duration" value="60" min="15" max="180" /></label>
         </div>
         <div class="form-row">
-          <button type="button" class="btn-action" id="host-schedule-btn">Schedule class</button>
-          <button type="button" class="btn-action primary" id="host-live-btn">Go live now</button>
+          <button type="button" class="btn-action" id="host-schedule-btn" onclick="teacherHostClass(false)">Schedule class</button>
+          <button type="button" class="btn-action primary" id="host-live-btn" onclick="teacherHostClass(true)">Go live now</button>
         </div>
-        <p id="host-error" class="error-msg"></p>
+        <p id="host-error" class="error-msg" role="alert"></p>
       </div>
 
       <div class="page-head">
@@ -197,15 +197,15 @@
       </div>
     </section>
 
-    <section id="page-requests" class="teacher-page">
+    <section id="page-students" class="teacher-page">
       <div class="teacher-page-head">
         <div>
-          <h2>Session Requests</h2>
-          <p class="page-desc">Students asking for one-on-one help on a subject.</p>
+          <h2>My Students</h2>
+          <p class="page-desc">Students assigned to you by admin. Host a live class for their subject — they will get a notification when you go live.</p>
         </div>
-        <button type="button" class="btn-sm" id="requests-refresh-btn">Refresh</button>
+        <button type="button" class="btn-sm" id="students-refresh-btn">Refresh</button>
       </div>
-      <div id="requests-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+      <div id="students-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
     </section>
 
     <section id="page-community" class="teacher-page">

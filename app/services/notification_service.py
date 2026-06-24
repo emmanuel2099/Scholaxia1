@@ -98,6 +98,37 @@ async def send_all_teachers_notification(
     await _send_push_to_users(db, teacher_ids, title, body, data or {})
 
 
+async def send_admins_notification(
+    db: AsyncSession,
+    title: str,
+    body: str,
+    notification_type: str,
+    data: dict = None,
+):
+    """Notify every admin (in-app + push)."""
+    result = await db.execute(select(User).where(User.role == UserRole.admin))
+    admins = result.scalars().all()
+    admin_ids = [str(a.id) for a in admins]
+    if not admin_ids:
+        return
+
+    try:
+        ntype = NotificationType(notification_type)
+    except ValueError:
+        ntype = NotificationType.announcement
+
+    for admin_id in admin_ids:
+        db.add(Notification(
+            user_id=admin_id,
+            type=ntype,
+            title=title,
+            body=body,
+            data=json.dumps(data or {}),
+        ))
+    await db.flush()
+    await _send_push_to_users(db, admin_ids, title, body, data or {})
+
+
 async def send_channel_members_notification(
     db: AsyncSession,
     channel_id: str,
