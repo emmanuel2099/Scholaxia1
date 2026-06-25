@@ -43,7 +43,6 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
       final live = (results[2] as List).cast<dynamic>();
       final upcoming = (results[3] as List).cast<dynamic>();
       final pending = results[4] as List;
-      final materials = results[5] as List;
 
       final today = DateTime.now();
       final schedule = <Map<String, dynamic>>[];
@@ -54,7 +53,9 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
         if (start == null) continue;
         try {
           final dt = DateTime.parse(start).toLocal();
-          if (dt.year == today.year && dt.month == today.month && dt.day == today.day) {
+          if (dt.year == today.year &&
+              dt.month == today.month &&
+              dt.day == today.day) {
             schedule.add(m);
           }
         } catch (_) {
@@ -69,7 +70,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
           _liveCount = live.length;
           _upcomingCount = upcoming.length;
           _pendingGrading = pending.length;
-          _materialCount = materials.length;
+          _materialCount = (results[5] as List).length;
           _todayClasses = schedule;
           _loading = false;
         });
@@ -79,7 +80,8 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
       if (mounted) {
         setState(() {
           _loading = false;
-          _loadError = e is ApiException ? e.message : 'Could not load dashboard.';
+          _loadError =
+              e is ApiException ? e.message : 'Could not load dashboard.';
         });
       }
     }
@@ -88,14 +90,15 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final firstName = _teacherName.split(' ').first;
+    final accent = context.accentColor;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.bgColor,
       body: SafeArea(
         child: RefreshIndicator(
-          color: AppColors.yellow,
+          color: accent,
           onRefresh: _load,
           child: _loading
-              ? const Center(child: CircularProgressIndicator(color: AppColors.yellow))
+              ? Center(child: CircularProgressIndicator(color: accent))
               : SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -110,15 +113,16 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                       ),
                       const SizedBox(height: 20),
                       Text('${TeacherUtils.greeting()},',
-                          style: const TextStyle(color: AppColors.greyLight, fontSize: 14)),
+                          style: TextStyle(
+                              color: context.greyLColor, fontSize: 14)),
                       RichText(
                         text: TextSpan(
-                          style: const TextStyle(
-                              fontSize: 26, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.bold,
+                              color: context.textColor),
                           children: [
-                            TextSpan(
-                                text: firstName,
-                                style: const TextStyle(color: AppColors.yellow)),
+                            TextSpan(text: firstName, style: TextStyle(color: accent)),
                           ],
                         ),
                       ),
@@ -130,16 +134,21 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                           decoration: BoxDecoration(
                             color: Colors.red.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: Colors.red.withOpacity(0.3)),
+                            border:
+                                Border.all(color: Colors.red.withOpacity(0.3)),
                           ),
                           child: Text(_loadError!,
-                              style: const TextStyle(color: Colors.red, fontSize: 12)),
+                              style: const TextStyle(
+                                  color: Colors.red, fontSize: 12)),
                         ),
                       ],
                       const SizedBox(height: 6),
                       Text(
                         'You have $_liveCount live, $_upcomingCount upcoming classes and $_pendingGrading pending submissions.',
-                        style: const TextStyle(color: AppColors.grey, fontSize: 13, height: 1.5),
+                        style: TextStyle(
+                            color: context.greyColor,
+                            fontSize: 13,
+                            height: 1.5),
                       ),
                       const SizedBox(height: 20),
                       Row(
@@ -149,7 +158,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                                   value: '$_liveCount',
                                   label: 'Live Now',
                                   icon: Icons.videocam_outlined,
-                                  color: AppColors.yellow)),
+                                  color: accent)),
                           const SizedBox(width: 10),
                           Expanded(
                               child: _StatCard(
@@ -167,17 +176,17 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                         ],
                       ),
                       const SizedBox(height: 24),
-                      const Text("Today's Schedule",
+                      Text("Today's Schedule",
                           style: TextStyle(
-                              color: AppColors.white,
+                              color: context.textColor,
                               fontSize: 17,
                               fontWeight: FontWeight.bold)),
                       const SizedBox(height: 12),
                       if (_todayClasses.isEmpty)
-                        const Text('No classes scheduled for today.',
-                            style: TextStyle(color: AppColors.grey))
+                        Text('No classes scheduled for today.',
+                            style: TextStyle(color: context.greyColor))
                       else
-                        ..._todayClasses.map(_scheduleItem),
+                        ..._todayClasses.map((c) => _scheduleItem(context, c)),
                       const SizedBox(height: 100),
                     ],
                   ),
@@ -187,20 +196,21 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     );
   }
 
-  Widget _scheduleItem(Map<String, dynamic> c) {
-    final subject = c['subject']?.toString() ?? c['title']?.toString() ?? 'Class';
+  Widget _scheduleItem(BuildContext context, Map<String, dynamic> c) {
+    final subject =
+        c['subject']?.toString() ?? c['title']?.toString() ?? 'Class';
     final isLive = c['is_live'] == true;
-    final color = TeacherUtils.subjectColor(subject);
+    final color = TeacherUtils.subjectColor(subject, context);
     final time = TeacherUtils.formatDateTime(c['start_time']);
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: AppColors.cardBg,
+          color: context.cardColor,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-              color: isLive ? color.withOpacity(0.4) : const Color(0xFF2A2A2A)),
+              color: isLive ? color.withOpacity(0.4) : context.borderColor),
         ),
         child: Row(
           children: [
@@ -216,25 +226,26 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(subject,
-                      style: const TextStyle(
-                          color: AppColors.white,
+                      style: TextStyle(
+                          color: context.textColor,
                           fontSize: 14,
                           fontWeight: FontWeight.w600)),
                   Text(time,
-                      style: const TextStyle(color: AppColors.grey, fontSize: 12)),
+                      style: TextStyle(
+                          color: context.greyColor, fontSize: 12)),
                 ],
               ),
             ),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: (isLive ? color : AppColors.grey).withOpacity(0.15),
+                color: (isLive ? color : context.greyColor).withOpacity(0.15),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
                 isLive ? 'Live' : 'Upcoming',
                 style: TextStyle(
-                    color: isLive ? color : AppColors.grey,
+                    color: isLive ? color : context.greyColor,
                     fontSize: 11,
                     fontWeight: FontWeight.bold),
               ),
@@ -262,9 +273,9 @@ class _StatCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.cardBg,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF2A2A2A)),
+        border: Border.all(color: context.borderColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -274,7 +285,8 @@ class _StatCard extends StatelessWidget {
           Text(value,
               style: TextStyle(
                   color: color, fontSize: 22, fontWeight: FontWeight.bold)),
-          Text(label, style: const TextStyle(color: AppColors.grey, fontSize: 11)),
+          Text(label,
+              style: TextStyle(color: context.greyColor, fontSize: 11)),
         ],
       ),
     );

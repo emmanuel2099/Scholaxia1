@@ -31,14 +31,12 @@ class _SiaScreenState extends State<SiaScreen> {
       _inputCtrl.clear();
       _loading = true;
     });
-    _scrollToBottom();
     try {
       final r = await _api.siaAsk(question: text, subject: _subject);
       if (mounted) setState(() {
         _messages.add(_Msg(isAi: true, text: r.sia, time: _now()));
         _loading = false;
       });
-      _scrollToBottom();
     } on ApiException catch (e) {
       if (mounted) setState(() {
         _messages.add(_Msg(isAi: true, text: 'Sorry, I ran into an issue: ${e.message}', time: _now()));
@@ -50,15 +48,6 @@ class _SiaScreenState extends State<SiaScreen> {
         _loading = false;
       });
     }
-  }
-
-  void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollCtrl.hasClients) {
-        _scrollCtrl.animateTo(_scrollCtrl.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
-      }
-    });
   }
 
   String _now() {

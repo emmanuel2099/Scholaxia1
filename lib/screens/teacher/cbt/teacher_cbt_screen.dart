@@ -71,7 +71,7 @@ class _TeacherCbtScreenState extends State<TeacherCbtScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.surface,
+      backgroundColor: context.headerColor,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (_) => _CreateExamSheet(api: _api, onCreated: _load),
@@ -80,12 +80,13 @@ class _TeacherCbtScreenState extends State<TeacherCbtScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final accent = context.accentColor;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.bgColor,
       floatingActionButton: _selectedTab == 'My Exams'
           ? FloatingActionButton.extended(
               onPressed: _showCreateExamSheet,
-              backgroundColor: AppColors.yellow,
+              backgroundColor: accent,
               foregroundColor: Colors.black,
               icon: const Icon(Icons.add),
               label: const Text('New Exam',
@@ -111,15 +112,15 @@ class _TeacherCbtScreenState extends State<TeacherCbtScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Scholaxia Exams',
+                  Text('Scholaxia Exams',
                       style: TextStyle(
-                          color: AppColors.white,
+                          color: context.textColor,
                           fontSize: 22,
                           fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
-                  const Text(
+                  Text(
                       'Create school exams and review student scores.',
-                      style: TextStyle(color: AppColors.grey, fontSize: 13)),
+                      style: TextStyle(color: context.greyColor, fontSize: 13)),
                   const SizedBox(height: 16),
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
@@ -136,12 +137,12 @@ class _TeacherCbtScreenState extends State<TeacherCbtScreen> {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 18, vertical: 9),
                             decoration: BoxDecoration(
-                              color: sel ? AppColors.yellow : AppColors.surfaceLight,
+                              color: sel ? accent : context.surfColor,
                               borderRadius: BorderRadius.circular(20),
                             ),
                             child: Text(t,
                                 style: TextStyle(
-                                    color: sel ? Colors.black : AppColors.greyLight,
+                                    color: sel ? Colors.black : context.greyLColor,
                                     fontSize: 13,
                                     fontWeight: sel
                                         ? FontWeight.bold
@@ -157,8 +158,8 @@ class _TeacherCbtScreenState extends State<TeacherCbtScreen> {
             const SizedBox(height: 8),
             Expanded(
               child: _loading
-                  ? const Center(
-                      child: CircularProgressIndicator(color: AppColors.yellow))
+                  ? Center(
+                      child: CircularProgressIndicator(color: accent))
                   : _selectedTab == 'My Exams'
                       ? _examList()
                       : _resultsView(),
@@ -172,15 +173,15 @@ class _TeacherCbtScreenState extends State<TeacherCbtScreen> {
   Widget _examList() {
     if (_exams.isEmpty) {
       return RefreshIndicator(
-        color: AppColors.yellow,
+        color: context.accentColor,
         onRefresh: _load,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          children: const [
-            SizedBox(height: 80),
+          children: [
+            const SizedBox(height: 80),
             Center(
               child: Text('No school exams yet. Tap New Exam to create one.',
-                  style: TextStyle(color: AppColors.grey),
+                  style: TextStyle(color: context.greyColor),
                   textAlign: TextAlign.center),
             ),
           ],
@@ -188,7 +189,7 @@ class _TeacherCbtScreenState extends State<TeacherCbtScreen> {
       );
     }
     return RefreshIndicator(
-      color: AppColors.yellow,
+      color: context.accentColor,
       onRefresh: _load,
       child: ListView.separated(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -198,20 +199,20 @@ class _TeacherCbtScreenState extends State<TeacherCbtScreen> {
         itemBuilder: (_, i) {
           final e = _exams[i];
           final subject = e['subject']?.toString() ?? '';
-          final color = TeacherUtils.subjectColor(subject);
+          final color = TeacherUtils.subjectColor(subject, context);
           return Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: AppColors.cardBg,
+              color: context.cardColor,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFF2A2A2A)),
+              border: Border.all(color: context.borderColor),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(e['title']?.toString() ?? 'Exam',
-                    style: const TextStyle(
-                        color: AppColors.white,
+                    style: TextStyle(
+                        color: context.textColor,
                         fontSize: 15,
                         fontWeight: FontWeight.bold)),
                 Text(subject,
@@ -219,17 +220,17 @@ class _TeacherCbtScreenState extends State<TeacherCbtScreen> {
                 const SizedBox(height: 8),
                 Row(
                   children: [
-                    const Icon(Icons.timer_outlined,
-                        color: AppColors.grey, size: 14),
+                    Icon(Icons.timer_outlined,
+                        color: context.greyColor, size: 14),
                     const SizedBox(width: 4),
                     Text('${e['duration_minutes'] ?? '—'} mins',
-                        style: const TextStyle(color: AppColors.grey, fontSize: 12)),
+                        style: TextStyle(color: context.greyColor, fontSize: 12)),
                     const SizedBox(width: 12),
-                    const Icon(Icons.quiz_outlined,
-                        color: AppColors.grey, size: 14),
+                    Icon(Icons.quiz_outlined,
+                        color: context.greyColor, size: 14),
                     const SizedBox(width: 4),
                     Text('${e['total_questions'] ?? '—'} questions',
-                        style: const TextStyle(color: AppColors.grey, fontSize: 12)),
+                        style: TextStyle(color: context.greyColor, fontSize: 12)),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -239,8 +240,8 @@ class _TeacherCbtScreenState extends State<TeacherCbtScreen> {
                     _loadResults(e['id']?.toString() ?? '');
                   },
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.yellow,
-                    side: const BorderSide(color: AppColors.yellow),
+                    foregroundColor: context.accentColor,
+                    side: BorderSide(color: context.accentColor),
                   ),
                   child: const Text('View Results'),
                 ),
@@ -254,21 +255,21 @@ class _TeacherCbtScreenState extends State<TeacherCbtScreen> {
 
   Widget _resultsView() {
     if (_loadingResults) {
-      return const Center(child: CircularProgressIndicator(color: AppColors.yellow));
+      return Center(child: CircularProgressIndicator(color: context.accentColor));
     }
     if (_selectedResults == null) {
       return ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          const Text('Select an exam from My Exams to view results.',
-              style: TextStyle(color: AppColors.grey)),
+          Text('Select an exam from My Exams to view results.',
+              style: TextStyle(color: context.greyColor)),
           const SizedBox(height: 16),
           ..._exams.map((e) => ListTile(
                 title: Text(e['title']?.toString() ?? 'Exam',
-                    style: const TextStyle(color: AppColors.white)),
+                    style: TextStyle(color: context.textColor)),
                 subtitle: Text(e['subject']?.toString() ?? '',
-                    style: const TextStyle(color: AppColors.grey)),
-                trailing: const Icon(Icons.chevron_right, color: AppColors.yellow),
+                    style: TextStyle(color: context.greyColor)),
+                trailing: Icon(Icons.chevron_right, color: context.accentColor),
                 onTap: () => _loadResults(e['id']?.toString() ?? ''),
               )),
         ],
@@ -281,16 +282,16 @@ class _TeacherCbtScreenState extends State<TeacherCbtScreen> {
       padding: const EdgeInsets.all(20),
       children: [
         Text(title,
-            style: const TextStyle(
-                color: AppColors.white,
+            style: TextStyle(
+                color: context.textColor,
                 fontSize: 17,
                 fontWeight: FontWeight.bold)),
         Text('${rows.length} submission(s)',
-            style: const TextStyle(color: AppColors.grey, fontSize: 12)),
+            style: TextStyle(color: context.greyColor, fontSize: 12)),
         const SizedBox(height: 16),
         if (rows.isEmpty)
-          const Text('No students have submitted yet.',
-              style: TextStyle(color: AppColors.grey))
+          Text('No students have submitted yet.',
+              style: TextStyle(color: context.greyColor))
         else
           ...rows.map((r) {
             if (r is! Map) return const SizedBox.shrink();
@@ -298,21 +299,21 @@ class _TeacherCbtScreenState extends State<TeacherCbtScreen> {
               margin: const EdgeInsets.only(bottom: 10),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppColors.cardBg,
+                color: context.cardColor,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF2A2A2A)),
+                border: Border.all(color: context.borderColor),
               ),
               child: Row(
                 children: [
                   Expanded(
                     child: Text(r['student_name']?.toString() ?? 'Student',
-                        style: const TextStyle(
-                            color: AppColors.white,
+                        style: TextStyle(
+                            color: context.textColor,
                             fontWeight: FontWeight.w600)),
                   ),
                   Text('${r['percentage'] ?? r['score'] ?? 0}%',
-                      style: const TextStyle(
-                          color: AppColors.yellow, fontWeight: FontWeight.bold)),
+                      style: TextStyle(
+                          color: context.accentColor, fontWeight: FontWeight.bold)),
                 ],
               ),
             );
@@ -420,9 +421,9 @@ class _CreateExamSheetState extends State<_CreateExamSheet> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Create School Exam',
+            Text('Create School Exam',
                 style: TextStyle(
-                    color: AppColors.white,
+                    color: context.textColor,
                     fontSize: 18,
                     fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
@@ -442,7 +443,7 @@ class _CreateExamSheetState extends State<_CreateExamSheet> {
               child: ElevatedButton(
                 onPressed: _loading ? null : _submit,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.yellow,
+                  backgroundColor: context.accentColor,
                   foregroundColor: Colors.black,
                 ),
                 child: _loading
@@ -464,12 +465,12 @@ class _CreateExamSheetState extends State<_CreateExamSheet> {
   Widget _field(TextEditingController ctrl, String hint) {
     return TextField(
       controller: ctrl,
-      style: const TextStyle(color: AppColors.white),
+      style: TextStyle(color: context.textColor),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(color: AppColors.grey),
+        hintStyle: TextStyle(color: context.greyColor),
         filled: true,
-        fillColor: AppColors.surfaceLight,
+        fillColor: context.surfColor,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,

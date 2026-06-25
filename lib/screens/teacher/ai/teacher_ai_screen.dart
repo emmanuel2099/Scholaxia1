@@ -56,7 +56,6 @@ class _TeacherAiScreenState extends State<TeacherAiScreen> {
       _loading = true;
     });
     _inputCtrl.clear();
-    _scrollToEnd();
 
     final greeting = _casualGreetingReply(text);
     if (greeting != null) {
@@ -66,7 +65,6 @@ class _TeacherAiScreenState extends State<TeacherAiScreen> {
           _loading = false;
         });
       }
-      _scrollToEnd();
       return;
     }
 
@@ -87,20 +85,7 @@ class _TeacherAiScreenState extends State<TeacherAiScreen> {
       }
     } finally {
       if (mounted) setState(() => _loading = false);
-      _scrollToEnd();
     }
-  }
-
-  void _scrollToEnd() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollCtrl.hasClients) {
-        _scrollCtrl.animateTo(
-          _scrollCtrl.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOut,
-        );
-      }
-    });
   }
 
   String? _casualGreetingReply(String text) {
@@ -118,8 +103,9 @@ class _TeacherAiScreenState extends State<TeacherAiScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final accent = context.accentColor;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.bgColor,
       body: SafeArea(
         child: Column(
           children: [
@@ -132,19 +118,19 @@ class _TeacherAiScreenState extends State<TeacherAiScreen> {
                 onUnreadChanged: (n) => setState(() => _unread = n),
               ),
             ),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('Teacher AI',
                       style: TextStyle(
-                          color: AppColors.white,
+                          color: context.textColor,
                           fontSize: 22,
                           fontWeight: FontWeight.bold)),
-                  SizedBox(height: 4),
+                  const SizedBox(height: 4),
                   Text('Ask anything about teaching, classes, or your students.',
-                      style: TextStyle(color: AppColors.grey, fontSize: 13)),
+                      style: TextStyle(color: context.greyColor, fontSize: 13)),
                 ],
               ),
             ),
@@ -157,7 +143,7 @@ class _TeacherAiScreenState extends State<TeacherAiScreen> {
                         child: Text(
                           'Type a question below to start chatting with Teacher AI.',
                           textAlign: TextAlign.center,
-                          style: TextStyle(color: AppColors.grey, fontSize: 14),
+                          style: TextStyle(color: context.greyColor, fontSize: 14),
                         ),
                       ),
                     )
@@ -166,32 +152,32 @@ class _TeacherAiScreenState extends State<TeacherAiScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 20, vertical: 8),
                       itemCount: _messages.length,
-                      itemBuilder: (_, i) => _bubble(_messages[i]),
+                      itemBuilder: (_, i) => _bubble(context, _messages[i]),
                     ),
             ),
             if (_loading)
-              const Padding(
-                padding: EdgeInsets.all(8),
+              Padding(
+                padding: const EdgeInsets.all(8),
                 child: CircularProgressIndicator(
-                    color: AppColors.yellow, strokeWidth: 2),
+                    color: accent, strokeWidth: 2),
               ),
             Container(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-              decoration: const BoxDecoration(
-                color: AppColors.cardBg,
-                border: Border(top: BorderSide(color: Color(0xFF2A2A2A))),
+              decoration: BoxDecoration(
+                color: context.headerColor,
+                border: Border(top: BorderSide(color: context.borderColor)),
               ),
               child: Row(
                 children: [
                   Expanded(
                     child: TextField(
                       controller: _inputCtrl,
-                      style: const TextStyle(color: AppColors.white),
+                      style: TextStyle(color: context.textColor),
                       decoration: InputDecoration(
                         hintText: 'Ask Teacher AI...',
-                        hintStyle: const TextStyle(color: AppColors.grey),
+                        hintStyle: TextStyle(color: context.greyLColor),
                         filled: true,
-                        fillColor: AppColors.surfaceLight,
+                        fillColor: context.surfColor,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(24),
                           borderSide: BorderSide.none,
@@ -210,12 +196,13 @@ class _TeacherAiScreenState extends State<TeacherAiScreen> {
                       height: 42,
                       decoration: BoxDecoration(
                         color: _loading
-                            ? AppColors.yellow.withOpacity(0.5)
-                            : AppColors.yellow,
+                            ? accent.withOpacity(0.5)
+                            : accent,
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.send_rounded,
-                          color: Colors.black, size: 20),
+                      child: Icon(Icons.send_rounded,
+                          color: context.isDark ? Colors.black : Colors.white,
+                          size: 20),
                     ),
                   ),
                 ],
@@ -227,8 +214,9 @@ class _TeacherAiScreenState extends State<TeacherAiScreen> {
     );
   }
 
-  Widget _bubble(_AiMsg msg) {
+  Widget _bubble(BuildContext context, _AiMsg msg) {
     final isUser = msg.role == 'user';
+    final accent = context.accentColor;
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -236,18 +224,18 @@ class _TeacherAiScreenState extends State<TeacherAiScreen> {
         padding: const EdgeInsets.all(12),
         constraints: const BoxConstraints(maxWidth: 320),
         decoration: BoxDecoration(
-          color: isUser ? AppColors.yellow.withOpacity(0.15) : AppColors.cardBg,
+          color: isUser ? accent.withOpacity(0.15) : context.cardColor,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: isUser
-                ? AppColors.yellow.withOpacity(0.4)
-                : const Color(0xFF2A2A2A),
+                ? accent.withOpacity(0.4)
+                : context.borderColor,
           ),
         ),
         child: Text(
           msg.text,
           style: TextStyle(
-            color: isUser ? AppColors.white : AppColors.greyLight,
+            color: isUser ? context.textColor : context.greyLColor,
             fontSize: 13,
             height: 1.45,
           ),

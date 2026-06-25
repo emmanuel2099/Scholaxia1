@@ -1,10 +1,11 @@
 @echo off
-title Build Scholaxia Windows Installer
+title Build Scholaxia Student Windows Installer
 cd /d "%~dp0"
 
 echo.
-echo Building Scholaxia STUDENT app for Windows...
-echo Admin and teacher portals are NOT included in this installer.
+echo Building Scholaxia STUDENT installer for Windows...
+echo Output: dist\Scholaxia-Student-Setup-*.exe
+echo Admin and teacher portals are NOT included.
 echo.
 
 if exist "D:\node.exe" (
@@ -24,7 +25,7 @@ if not exist "node_modules\electron-builder" (
   )
 )
 
-call npm run build:all
+call npm run build:installer
 if errorlevel 1 (
   echo Build failed.
   pause
@@ -32,9 +33,10 @@ if errorlevel 1 (
 )
 
 echo.
-echo Done! Send these files to your friend:
-echo   dist\Scholaxia Student Setup *.exe   ^(installer^)
-echo   dist\Scholaxia-Portable.exe            ^(no install needed^)
-echo   INSTALL-FOR-FRIEND.txt                 ^(instructions^)
+echo Done! Share ONLY this file with students:
+echo   dist\Scholaxia-Student-Setup-*.exe
+echo.
+echo Also send INSTALL-FOR-FRIEND.txt with install instructions.
+echo Do NOT share win-unpacked folder or START.bat.
 echo.
 pause

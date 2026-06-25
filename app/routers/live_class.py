@@ -1,5 +1,7 @@
 import uuid
 import hashlib
+import json
+import secrets
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, and_
@@ -10,7 +12,8 @@ from app.core.database import get_db
 from app.core.datetime_utils import naive_utc_now, to_naive_utc
 from app.core.deps import require_teacher, require_teacher_or_admin, require_student, get_current_user, require_admin
 from app.core.config import settings
-from app.models.live_class import LiveClass, ClassAttendance, LiveSessionRequest, LiveSessionRequestStatus
+from app.models.live_class import LiveClass, ClassAttendance, LiveSessionRequest, LiveSessionRequestStatus, LiveClassVisibility
+from app.models.school_group import SchoolGroup
 from app.models.user import StudentProfile, User, UserRole
 from app.core.subjects import subject_matches
 from app.services.live_class_room import (
@@ -24,7 +27,7 @@ from app.services.live_class_room import (
 )
 from app.websockets import live_class_ws
 from app.services.live_class_access import get_live_access_info, parse_uuid, consume_live_session
-from app.services.notification_service import send_subject_notification, send_user_notification, send_admins_notification
+from app.services.notification_service import send_subject_notification, send_user_notification, send_admins_notification, send_all_students_notification
 
 router = APIRouter(prefix="/live-classes", tags=["Live Classes"])
 
@@ -135,6 +138,136 @@ def _class_is_active(live_class: LiveClass, now: datetime) -> bool:
     return False
 
 
+def _parse_id_list(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+        return [str(x) for x in data] if isinstance(data, list) else []
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+
+def _class_visibility(live_class: LiveClass) -> str:
+    return (live_class.visibility or LiveClassVisibility.subject.value).lower()
+
+
+async def _student_can_access_class(
+    db: AsyncSession,
+    student_id: str,
+    live_class: LiveClass,
+    profile: StudentProfile | None,
+) -> tuple[bool, str]:
+    vis = _class_visibility(live_class)
+    if vis == LiveClassVisibility.public.value:
+        return True, ""
+    if vis == LiveClassVisibility.private.value:
+        invited = _parse_id_list(live_class.invited_student_ids)
+        if student_id in invited:
+            return True, ""
+        return False, "This is a private class. You were not invited."
+    if vis == LiveClassVisibility.school_group.value:
+        if not live_class.school_group_id:
+            return False, "School group not configured for this class."
+        group_res = await db.execute(
+            select(SchoolGroup).where(SchoolGroup.id == live_class.school_group_id)
+        )
+        group = group_res.scalar_one_or_none()
+        if not group:
+            return False, "School group not found."
+        if student_id in group.member_ids():
+            return True, ""
+        return False, "This class is only for students in the school group."
+    subjects = list(profile.selected_subjects or []) if profile else []
+    if not subjects:
+        return False, "Add your subjects in profile setup to join live classes."
+    if not subject_matches(live_class.subject, subjects):
+        return False, "This live class is not for one of your selected subjects."
+    return True, ""
+
+
+async def _notify_for_class(
+    db: AsyncSession,
+    live_class: LiveClass,
+    *,
+    live_now: bool,
+    start: datetime | None = None,
+    end: datetime | None = None,
+) -> None:
+    vis = _class_visibility(live_class)
+    data = {
+        "class_id": str(live_class.id),
+        "room_id": live_class.room_id,
+        "join_code": live_class.join_code,
+        "visibility": vis,
+    }
+    try:
+        if vis == LiveClassVisibility.public.value:
+            if live_now:
+                await send_all_students_notification(
+                    db,
+                    "Live class starting now",
+                    f"«{live_class.title}» is live on Scholaxia. Open Live Class to join.",
+                    "live_class",
+                    data,
+                )
+            else:
+                when = (start or live_class.start_time).strftime("%d %b %Y at %I:%M %p")
+                await send_all_students_notification(
+                    db,
+                    "Upcoming platform live class",
+                    f"«{live_class.title}» is scheduled for {when}.",
+                    "live_class",
+                    {**data, "start_time": (start or live_class.start_time).isoformat()},
+                )
+        elif vis == LiveClassVisibility.private.value:
+            title = "Private live class starting now" if live_now else "Private live class scheduled"
+            body_live = f"«{live_class.title}» — your teacher invited you. Join from Live Class."
+            body_up = f"«{live_class.title}» is scheduled. Only invited students can join."
+            for sid in _parse_id_list(live_class.invited_student_ids):
+                await send_user_notification(db, sid, title, body_live if live_now else body_up, "live_class", data)
+        elif vis == LiveClassVisibility.school_group.value and live_class.school_group_id:
+            group_res = await db.execute(
+                select(SchoolGroup).where(SchoolGroup.id == live_class.school_group_id)
+            )
+            group = group_res.scalar_one_or_none()
+            if group:
+                title = f"{group.school_name} — class is live" if live_now else f"{group.name} — upcoming class"
+                body = (
+                    f"«{live_class.title}» is live in {group.name}."
+                    if live_now
+                    else f"«{live_class.title}» scheduled for {group.name}."
+                )
+                for sid in group.member_ids():
+                    await send_user_notification(db, sid, title, body, "live_class", data)
+        else:
+            if live_now:
+                await send_subject_notification(
+                    db=db,
+                    subject=live_class.subject,
+                    title="Live class starting now",
+                    body=f"Your {live_class.subject} class «{live_class.title}» is live now. Join from Live Class.",
+                    notification_type="live_class",
+                    data=data,
+                )
+            else:
+                when = (start or live_class.start_time).strftime("%d %b %Y at %I:%M %p")
+                await send_subject_notification(
+                    db=db,
+                    subject=live_class.subject,
+                    title=f"Upcoming {live_class.subject} class",
+                    body=f"«{live_class.title}» is scheduled for {when}.",
+                    notification_type="live_class_upcoming",
+                    data={
+                        **data,
+                        "start_time": (start or live_class.start_time).isoformat(),
+                        "end_time": end.isoformat() if end else None,
+                    },
+                )
+    except Exception:
+        pass
+
+
 async def _notify_assigned_students_for_class(
     db: AsyncSession, teacher_id: str, live_class: LiveClass
 ) -> None:
@@ -181,6 +314,9 @@ class CreateClassRequest(BaseModel):
     end_time: Optional[datetime] = None
     duration_minutes: Optional[int] = 60
     go_live_now: bool = False
+    visibility: Optional[str] = "public"
+    invited_student_ids: Optional[list[str]] = None
+    school_group_id: Optional[str] = None
 
 
 class ClassResponse(BaseModel):
@@ -191,6 +327,9 @@ class ClassResponse(BaseModel):
     start_time: datetime
     is_live: bool
     room_id: str
+    visibility: str = "public"
+    join_code: Optional[str] = None
+    school_group_id: Optional[str] = None
 
 
 @router.post("/", response_model=ClassResponse)
@@ -200,8 +339,25 @@ async def create_class(
     db: AsyncSession = Depends(get_db),
 ):
     room_id = f"room-{uuid.uuid4().hex[:12]}"
+    join_code = f"SX-{secrets.token_hex(4).upper()}"
     now = naive_utc_now()
     duration = max(15, min(payload.duration_minutes or 60, 180))
+
+    vis = (payload.visibility or LiveClassVisibility.public.value).lower()
+    if vis not in {v.value for v in LiveClassVisibility}:
+        vis = LiveClassVisibility.public.value
+    if vis == LiveClassVisibility.private.value and not (payload.invited_student_ids or []):
+        raise HTTPException(status_code=400, detail="Select at least one student for a private class.")
+    if vis == LiveClassVisibility.school_group.value and not payload.school_group_id:
+        raise HTTPException(status_code=400, detail="Select a school group for this class.")
+
+    school_group_uuid = None
+    if vis == LiveClassVisibility.school_group.value:
+        school_group_uuid = parse_uuid(payload.school_group_id)
+        group_res = await db.execute(select(SchoolGroup).where(SchoolGroup.id == school_group_uuid))
+        group = group_res.scalar_one_or_none()
+        if not group or str(group.teacher_id) != current_user["sub"]:
+            raise HTTPException(status_code=403, detail="Invalid school group")
 
     if payload.go_live_now:
         start = now
@@ -220,37 +376,19 @@ async def create_class(
         start_time=start,
         end_time=end,
         room_id=room_id,
+        join_code=join_code,
+        visibility=vis,
+        invited_student_ids=json.dumps(payload.invited_student_ids or []) if vis == LiveClassVisibility.private.value else None,
+        school_group_id=school_group_uuid,
         is_live=is_live,
     )
     db.add(live_class)
     await db.flush()
 
     try:
+        await _notify_for_class(db, live_class, live_now=is_live, start=start, end=end)
         if is_live:
-            await send_subject_notification(
-                db=db,
-                subject=live_class.subject,
-                title="Live class starting now",
-                body=f"Your {live_class.subject} class «{live_class.title}» is live now. Join from Live Class.",
-                notification_type="live_class",
-                data={"class_id": str(live_class.id), "room_id": live_class.room_id},
-            )
             await _notify_assigned_students_for_class(db, current_user["sub"], live_class)
-        else:
-            when = start.strftime("%d %b %Y at %I:%M %p")
-            await send_subject_notification(
-                db=db,
-                subject=live_class.subject,
-                title=f"Upcoming {live_class.subject} class",
-                body=f"«{live_class.title}» is scheduled for {when}. Open Live Class to see upcoming sessions.",
-                notification_type="live_class_upcoming",
-                data={
-                    "class_id": str(live_class.id),
-                    "room_id": live_class.room_id,
-                    "start_time": start.isoformat(),
-                    "end_time": end.isoformat() if end else None,
-                },
-            )
     except Exception:
         pass
 
@@ -262,6 +400,9 @@ async def create_class(
         start_time=live_class.start_time,
         is_live=live_class.is_live,
         room_id=live_class.room_id,
+        visibility=live_class.visibility,
+        join_code=live_class.join_code,
+        school_group_id=str(live_class.school_group_id) if live_class.school_group_id else None,
     )
 
 
@@ -288,16 +429,9 @@ async def start_class(
         live_class.end_time = now + timedelta(hours=2)
 
     if not was_live:
-        await send_subject_notification(
-            db=db,
-            subject=live_class.subject,
-            title="Live class starting now",
-            body=f"Your {live_class.subject} live class is starting now.",
-            notification_type="live_class",
-            data={"class_id": str(live_class.id), "room_id": live_class.room_id},
-        )
+        await _notify_for_class(db, live_class, live_now=True)
         await _notify_assigned_students_for_class(db, str(live_class.teacher_id), live_class)
-    return {"message": "Class started", "room_id": live_class.room_id, "is_live": True}
+    return {"message": "Class started", "room_id": live_class.room_id, "is_live": True, "join_code": live_class.join_code}
 
 
 @router.post("/{class_id}/join")
@@ -316,17 +450,11 @@ async def join_class(
         select(StudentProfile).where(StudentProfile.user_id == current_user["sub"])
     )
     profile = prof_res.scalar_one_or_none()
-    subjects = list(profile.selected_subjects or []) if profile else []
-    if not subjects:
-        raise HTTPException(
-            status_code=400,
-            detail="Add your subjects in profile setup to join live classes.",
-        )
-    if not subject_matches(live_class.subject, subjects):
-        raise HTTPException(
-            status_code=403,
-            detail="This live class is not for one of your selected subjects.",
-        )
+    can_access, detail = await _student_can_access_class(
+        db, current_user["sub"], live_class, profile
+    )
+    if not can_access:
+        raise HTTPException(status_code=403, detail=detail)
 
     if not live_class.is_live:
         live_class.is_live = True
@@ -474,6 +602,49 @@ async def list_class_students(
         })
     out.sort(key=lambda x: x["name"].lower())
     return out
+
+
+@router.get("/{class_id}/attendance")
+async def class_attendance(
+    class_id: str,
+    current_user: dict = Depends(require_teacher_or_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Attendance log for a class (join times, leave times)."""
+    class_uuid = parse_uuid(class_id)
+    result = await db.execute(select(LiveClass).where(LiveClass.id == class_uuid))
+    live_class = result.scalar_one_or_none()
+    if not live_class:
+        raise HTTPException(status_code=404, detail="Class not found")
+    if not _can_manage_class(current_user, live_class):
+        raise HTTPException(status_code=403, detail="Not your class")
+
+    att_result = await db.execute(
+        select(ClassAttendance).where(ClassAttendance.live_class_id == class_uuid)
+        .order_by(ClassAttendance.joined_at.asc())
+    )
+    attendances = att_result.scalars().all()
+    student_ids = [a.student_id for a in attendances]
+    users_map: dict[str, User] = {}
+    if student_ids:
+        users_res = await db.execute(select(User).where(User.id.in_(student_ids)))
+        users_map = {str(u.id): u for u in users_res.scalars().all()}
+
+    return {
+        "class_id": str(live_class.id),
+        "title": live_class.title,
+        "total_joined": len(attendances),
+        "records": [
+            {
+                "student_id": str(att.student_id),
+                "name": users_map.get(str(att.student_id)).full_name if users_map.get(str(att.student_id)) else "Student",
+                "joined_at": att.joined_at.isoformat() if att.joined_at else None,
+                "left_at": att.left_at.isoformat() if att.left_at else None,
+                "is_removed": bool(att.is_removed),
+            }
+            for att in attendances
+        ],
+    }
 
 
 @router.post("/{class_id}/students/{student_id}/unmute")
@@ -682,17 +853,18 @@ async def list_live_classes(
     result = await db.execute(query)
     classes = result.scalars().all()
 
-    # Students: only classes matching profile subjects (e.g. Maths → Mathematics live)
+    # Students: filter by visibility / access rules
     if role == "student":
         prof_res = await db.execute(
             select(StudentProfile).where(StudentProfile.user_id == current_user["sub"])
         )
         profile = prof_res.scalar_one_or_none()
-        subjects = list(profile.selected_subjects or []) if profile else []
-        if subjects:
-            classes = [c for c in classes if subject_matches(c.subject, subjects)]
-        else:
-            classes = []
+        visible = []
+        for c in classes:
+            ok, _ = await _student_can_access_class(db, current_user["sub"], c, profile)
+            if ok:
+                visible.append(c)
+        classes = visible
 
     # Fetch teacher names
     teacher_ids = list({str(c.teacher_id) for c in classes})
@@ -716,6 +888,9 @@ async def list_live_classes(
             "room_id": c.room_id,
             "recording_url": c.recording_url,
             "created_at": c.created_at,
+            "visibility": c.visibility or LiveClassVisibility.subject.value,
+            "join_code": c.join_code,
+            "school_group_id": str(c.school_group_id) if c.school_group_id else None,
         }
         for c in classes
     ]

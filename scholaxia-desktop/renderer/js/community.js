@@ -208,7 +208,7 @@ function renderCommunityPosts(posts, targetEl) {
         '</div></div>';
     }).join("");
     var commentsBlock = commentsHtml
-      ? '<div class="post-comments">' + commentsHtml + '</div>'
+      ? '<div class="post-comments" id="post-comments-' + escHtml(domId) + '">' + commentsHtml + '</div>'
       : "";
     var bodyHtml = body
       ? '<p class="post-body">' + escHtml(body) + '</p>'
@@ -506,13 +506,18 @@ async function submitCommunityPost() {
 
 function toggleCommentBox(domId, interactId) {
   var box = document.getElementById("comment-box-" + domId);
+  var list = document.getElementById("post-comments-" + domId);
   if (!box) return;
   var wasOpen = box.classList.contains("open");
   document.querySelectorAll(".comment-compose.open").forEach(function (el) {
     el.classList.remove("open");
   });
+  document.querySelectorAll(".post-comments.open").forEach(function (el) {
+    el.classList.remove("open");
+  });
   if (!wasOpen) {
     box.classList.add("open");
+    if (list) list.classList.add("open");
     var input = document.getElementById("comment-input-" + domId);
     if (input) input.focus();
   }
@@ -544,6 +549,8 @@ async function submitCommunityComment(postId, domId) {
     input.value = "";
     var box = document.getElementById("comment-box-" + (domId || postId));
     if (box) box.classList.add("open");
+    var list = document.getElementById("post-comments-" + (domId || postId));
+    if (list) list.classList.add("open");
     var comment = {
       id: created.id || "",
       author_name: created.author_name || getUser().name || "Student",

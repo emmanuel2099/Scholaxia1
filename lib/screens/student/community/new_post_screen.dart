@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../api/api_service.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/post_attachment_picker.dart';
+import '../../../widgets/voice_note_recorder.dart';
 
 class NewPostScreen extends StatefulWidget {
   final List<String> channels;
@@ -22,6 +23,8 @@ class _NewPostScreenState extends State<NewPostScreen> {
   String? _attachedFileType;
   String? _attachedFileName;
   bool _uploading = false;
+  List<int>? _voiceBytes;
+  String? _voiceFilename;
 
   @override
   void initState() {
@@ -81,22 +84,30 @@ class _NewPostScreenState extends State<NewPostScreen> {
 
   Future<void> _post() async {
     final text = _textCtrl.text.trim();
-    if (text.isEmpty && _attachedFileUrl == null) {
+    if (text.isEmpty && _attachedFileUrl == null && _voiceBytes == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Write something or attach a photo first.')),
+        const SnackBar(
+            content: Text('Write something, attach a photo, or record voice.')),
       );
       return;
     }
 
     setState(() => _posting = true);
     try {
+      String? mediaUrl = _attachedFileUrl;
+      String? mediaType = _attachedFileType;
+      if (_voiceBytes != null && _voiceFilename != null) {
+        final res = await _api.communityUpload(_voiceBytes!, _voiceFilename!);
+        mediaUrl = res['file_url'] as String?;
+        mediaType = 'audio';
+      }
       final post = await _api.createPost(
         channelId: _channelId,
-        content: text,
+        content: text.isEmpty ? 'Voice note' : text,
         isAnonymous: false,
         visibility: 'everyone',
-        mediaUrl: _attachedFileUrl,
-        mediaType: _attachedFileType,
+        mediaUrl: mediaUrl,
+        mediaType: mediaType,
       );
       if (!mounted) return;
       Navigator.pop(context, post);
@@ -349,6 +360,21 @@ class _NewPostScreenState extends State<NewPostScreen> {
                   Text('Photo', style: TextStyle(color: context.textColor, fontSize: 11)),
                 ],
               ),
+            ),
+            const SizedBox(height: 16),
+            VoiceNoteRecorder(
+              onRecorded: (bytes, name) {
+                setState(() {
+                  _voiceBytes = bytes;
+                  _voiceFilename = name;
+                  _attachedFileUrl = null;
+                  _attachedFileType = null;
+                });
+              },
+              onCleared: () => setState(() {
+                _voiceBytes = null;
+                _voiceFilename = null;
+              }),
             ),
             const SizedBox(height: 32),
           ],

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../api/api_service.dart';
+import '../../../services/community_badge.dart';
 import '../../../theme/app_theme.dart';
+import '../../../widgets/voice_note_player.dart';
 import 'new_post_screen.dart';
 import 'join_channel_screen.dart';
 import 'post_comments_sheet.dart';
@@ -35,10 +37,14 @@ class _CommunityScreenState extends State<CommunityScreen>
     _tabCtrl.addListener(() {
       if (!_tabCtrl.indexIsChanging && _tabCtrl.index != _tabIndex) {
         setState(() => _tabIndex = _tabCtrl.index);
-        if (_tabCtrl.index == 1) _loadAnnouncements();
+        if (_tabCtrl.index == 1) {
+          _loadAnnouncements();
+          clearCommunityBadge(_api);
+        }
       }
     });
     _loadChannels();
+    refreshCommunityBadge(_api);
   }
 
   @override
@@ -78,7 +84,11 @@ class _CommunityScreenState extends State<CommunityScreen>
     setState(() => _loadingPosts = true);
     try {
       final data = await _api.listPosts(channelId: _generalChannelId);
-      if (mounted) setState(() { _posts = data; _loadingPosts = false; });
+      final filtered = data.where((p) {
+        if (p is! Map) return false;
+        return !isCommentPost(Map<String, dynamic>.from(p));
+      }).toList();
+      if (mounted) setState(() { _posts = filtered; _loadingPosts = false; });
       await _loadCommentCounts();
     } catch (_) {
       if (mounted) {
@@ -134,9 +144,9 @@ class _CommunityScreenState extends State<CommunityScreen>
   Future<void> _loadCommentCounts() async {
     if (_generalChannelId.isEmpty) return;
     try {
-      final messages = await _api.getMessages(channelId: _generalChannelId);
+      final comments = await _api.listAllPostComments(channelId: _generalChannelId);
       final counts = <String, int>{};
-      for (final m in messages) {
+      for (final m in comments) {
         if (m is! Map) continue;
         final content = m['content']?.toString() ?? '';
         final match = RegExp(r'^@post:([^\s]+)').firstMatch(content);
@@ -291,6 +301,9 @@ class _CommunityScreenState extends State<CommunityScreen>
         postId: postId,
         channelId: _generalChannelId,
         postAuthor: author,
+        onCountChanged: (count) {
+          if (mounted) setState(() => _commentCounts[postId] = count);
+        },
       ),
     ).then((_) => _loadCommentCounts());
   }
@@ -431,6 +444,8 @@ class _CommunityScreenState extends State<CommunityScreen>
     final likedByMe = post['liked_by_me'] as bool? ?? false;
     final postId = post['id'] as String? ?? '';
     final commentCount = _commentCounts[postId] ?? post['comment_count'] as int? ?? 0;
+    final mediaUrl = post['media_url']?.toString() ?? '';
+    final mediaType = post['media_type']?.toString() ?? '';
     final initial = authorName.isNotEmpty ? authorName[0].toUpperCase() : 'U';
     return Container(
       padding: const EdgeInsets.all(14),
@@ -456,11 +471,15 @@ class _CommunityScreenState extends State<CommunityScreen>
             ]),
             Text(_formatTime(createdAt), style: TextStyle(color: context.greyColor, fontSize: 11)),
           ])),
-          Icon(Icons.more_vert, color: context.greyColor, size: 18),
         ]),
-        if (content.isNotEmpty) ...[
+        if (content.isNotEmpty &&
+            !content.startsWith('@post:')) ...[
           const SizedBox(height: 10),
           Text(content, style: TextStyle(color: context.textColor, fontSize: 13, height: 1.5)),
+        ],
+        if (mediaUrl.isNotEmpty && mediaType == 'audio') ...[
+          const SizedBox(height: 10),
+          VoiceNotePlayer(mediaUrl: mediaUrl),
         ],
         const SizedBox(height: 10),
         Row(children: [
@@ -481,10 +500,16 @@ class _CommunityScreenState extends State<CommunityScreen>
           GestureDetector(
             onTap: () => _openComments(context, post),
             child: Row(children: [
-              Icon(Icons.chat_bubble_outline, color: context.greyColor, size: 15),
+              Icon(Icons.chat_bubble_outline,
+                  color: commentCount > 0 ? context.accentColor : context.greyColor,
+                  size: 15),
               const SizedBox(width: 4),
-              Text(commentCount > 0 ? 'Comment ($commentCount)' : 'Comment',
-                  style: TextStyle(color: context.greyColor, fontSize: 12)),
+              Text(commentCount > 0 ? '$commentCount' : 'Comment',
+                  style: TextStyle(
+                      color: commentCount > 0 ? context.accentColor : context.greyColor,
+                      fontSize: 12,
+                      fontWeight:
+                          commentCount > 0 ? FontWeight.w600 : FontWeight.normal)),
             ]),
           ),
         ]),
@@ -588,6 +613,8 @@ class _CommunityScreenState extends State<CommunityScreen>
     final content = post['content']?.toString() ?? '';
     final createdAt = post['created_at']?.toString() ?? '';
     final channelName = post['channel_name']?.toString() ?? '';
+    final mediaUrl = post['media_url']?.toString() ?? '';
+    final mediaType = post['media_type']?.toString() ?? '';
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -632,6 +659,10 @@ class _CommunityScreenState extends State<CommunityScreen>
           if (content.isNotEmpty) ...[
             const SizedBox(height: 10),
             Text(content, style: TextStyle(color: context.textColor, fontSize: 13, height: 1.5)),
+          ],
+          if (mediaUrl.isNotEmpty && mediaType == 'audio') ...[
+            const SizedBox(height: 10),
+            VoiceNotePlayer(mediaUrl: mediaUrl, label: 'Voice announcement'),
           ],
         ],
       ),

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import '../../services/firebase_push_service.dart';
 import '../../api/api_service.dart';
 import '../auth/exam_subject_setup_screen.dart';
 import '../auth/role_select_screen.dart';
 import '../onboarding/onboarding_screen.dart';
+import '../kind/kind_shell.dart';
 import '../student/student_shell.dart';
 import '../teacher/teacher_shell.dart';
 
@@ -56,7 +58,7 @@ class _SplashScreenState extends State<SplashScreen>
         if (role == 'teacher') {
           dest = const TeacherShell();
         } else if (role == 'kind') {
-          dest = const StudentShell();
+          dest = const KindShell();
         } else {
           final complete = await api.isSetupComplete();
           dest = complete ? const StudentShell() : const ExamSubjectSetupScreen();
@@ -68,9 +70,10 @@ class _SplashScreenState extends State<SplashScreen>
           transitionDuration: const Duration(milliseconds: 500),
         ));
 
-        if (role != 'teacher') {
+        if (role == 'student') {
           api.ensureStudentProfile();
         }
+        FirebasePushService.instance.registerAfterLogin();
       } else {
         final seenOnboarding = await api.hasSeenOnboarding();
         if (!mounted) return;

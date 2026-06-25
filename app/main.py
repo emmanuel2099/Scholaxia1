@@ -15,6 +15,7 @@ from app.routers import performance
 from app.routers import home
 from app.routers import kind
 from app.routers import profiles
+from app.routers import school_groups
 from app.websockets.live_class_ws import live_class_endpoint
 
 
@@ -88,6 +89,30 @@ async def lifespan(app: FastAPI):
         ))
         await conn.execute(text(
             """
+            CREATE TABLE IF NOT EXISTS school_groups (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                teacher_id UUID NOT NULL REFERENCES users(id),
+                school_name VARCHAR(200) NOT NULL,
+                name VARCHAR(200) NOT NULL,
+                student_ids TEXT NOT NULL DEFAULT '[]',
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+            """
+        ))
+        await conn.execute(text(
+            "ALTER TABLE live_classes ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) NOT NULL DEFAULT 'subject'"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE live_classes ADD COLUMN IF NOT EXISTS join_code VARCHAR(32) NULL"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE live_classes ADD COLUMN IF NOT EXISTS invited_student_ids TEXT NULL"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE live_classes ADD COLUMN IF NOT EXISTS school_group_id UUID NULL"
+        ))
+        await conn.execute(text(
+            """
             CREATE TABLE IF NOT EXISTS kind_profiles (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 user_id UUID UNIQUE NOT NULL REFERENCES users(id),
@@ -137,6 +162,7 @@ app.include_router(auth.router, prefix="/api/v1")
 app.include_router(students.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
 app.include_router(live_class.router, prefix="/api/v1")
+app.include_router(school_groups.router, prefix="/api/v1")
 app.include_router(cbt.router, prefix="/api/v1")
 app.include_router(community.router, prefix="/api/v1")
 app.include_router(ai_tutor.router, prefix="/api/v1")

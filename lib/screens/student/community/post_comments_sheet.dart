@@ -6,12 +6,14 @@ class PostCommentsSheet extends StatefulWidget {
   final String postId;
   final String channelId;
   final String postAuthor;
+  final void Function(int count)? onCountChanged;
 
   const PostCommentsSheet({
     super.key,
     required this.postId,
     required this.channelId,
     required this.postAuthor,
+    this.onCountChanged,
   });
 
   @override
@@ -43,7 +45,13 @@ class _PostCommentsSheetState extends State<PostCommentsSheet> {
       postId: widget.postId,
       channelId: widget.channelId,
     );
-    if (mounted) setState(() { _comments = data; _loading = false; });
+    if (mounted) {
+      setState(() {
+        _comments = data;
+        _loading = false;
+      });
+      widget.onCountChanged?.call(data.length);
+    }
   }
 
   Future<void> _send() async {
@@ -70,12 +78,14 @@ class _PostCommentsSheetState extends State<PostCommentsSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final btnFg = context.isDark ? AppColors.background : Colors.white;
+    final accent = context.accentColor;
+    final sendFg = context.isDark ? AppColors.background : Colors.white;
 
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
-        constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
+        constraints:
+            BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -94,18 +104,22 @@ class _PostCommentsSheetState extends State<PostCommentsSheet> {
             const SizedBox(height: 16),
             Text('Comments',
                 style: TextStyle(
-                    color: context.textColor, fontSize: 17, fontWeight: FontWeight.bold)),
+                    color: context.textColor,
+                    fontSize: 17,
+                    fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
             Text('On ${widget.postAuthor}\'s post',
                 style: TextStyle(color: context.greyColor, fontSize: 12)),
             const SizedBox(height: 16),
             Flexible(
               child: _loading
-                  ? Center(child: CircularProgressIndicator(color: context.accentColor))
+                  ? Center(
+                      child: CircularProgressIndicator(color: accent))
                   : _comments.isEmpty
                       ? Center(
                           child: Text('No comments yet. Be the first!',
-                              style: TextStyle(color: context.greyColor, fontSize: 13)),
+                              style: TextStyle(
+                                  color: context.greyColor, fontSize: 13)),
                         )
                       : ListView.separated(
                           shrinkWrap: true,
@@ -118,17 +132,18 @@ class _PostCommentsSheetState extends State<PostCommentsSheet> {
                                 'Student';
                             final raw = c['content'] as String? ?? '';
                             final text = _api.parseCommentText(raw);
-                            final initial =
-                                author.isNotEmpty ? author[0].toUpperCase() : '?';
+                            final initial = author.isNotEmpty
+                                ? author[0].toUpperCase()
+                                : '?';
                             return Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 CircleAvatar(
                                   radius: 16,
-                                  backgroundColor: context.accentColor.withOpacity(0.15),
+                                  backgroundColor: accent.withOpacity(0.15),
                                   child: Text(initial,
                                       style: TextStyle(
-                                          color: context.accentColor,
+                                          color: accent,
                                           fontSize: 12,
                                           fontWeight: FontWeight.bold)),
                                 ),
@@ -139,10 +154,12 @@ class _PostCommentsSheetState extends State<PostCommentsSheet> {
                                     decoration: BoxDecoration(
                                       color: context.surfColor,
                                       borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(color: context.borderColor),
+                                      border: Border.all(
+                                          color: context.borderColor),
                                     ),
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(author,
                                             style: TextStyle(
@@ -165,54 +182,51 @@ class _PostCommentsSheetState extends State<PostCommentsSheet> {
                         ),
             ),
             const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _ctrl,
-                    style: TextStyle(color: context.textColor, fontSize: 14),
-                    decoration: InputDecoration(
-                      hintText: 'Write a comment...',
-                      hintStyle: TextStyle(color: context.greyColor),
-                      filled: true,
-                      fillColor: context.surfColor,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: context.borderColor),
+            TextField(
+              controller: _ctrl,
+              style: TextStyle(color: context.textColor, fontSize: 14),
+              textInputAction: TextInputAction.send,
+              autocorrect: true,
+              enableSuggestions: false,
+              onSubmitted: (_) => _send(),
+              decoration: InputDecoration(
+                hintText: 'Write a comment...',
+                hintStyle: TextStyle(color: context.greyColor),
+                filled: true,
+                fillColor: context.surfColor,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: context.borderColor),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: context.borderColor),
+                ),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                suffixIcon: Padding(
+                  padding: const EdgeInsets.only(right: 4),
+                  child: Material(
+                    color: accent,
+                    borderRadius: BorderRadius.circular(10),
+                    child: InkWell(
+                      onTap: _sending ? null : _send,
+                      borderRadius: BorderRadius.circular(10),
+                      child: SizedBox(
+                        width: 40,
+                        height: 40,
+                        child: _sending
+                            ? Padding(
+                                padding: const EdgeInsets.all(10),
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: sendFg),
+                              )
+                            : Icon(Icons.send_rounded, color: sendFg, size: 20),
                       ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide(color: context.borderColor),
-                      ),
-                      contentPadding:
-                          const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     ),
-                    onSubmitted: (_) => _send(),
                   ),
                 ),
-                const SizedBox(width: 8),
-                SizedBox(
-                  height: 44,
-                  width: 44,
-                  child: ElevatedButton(
-                    onPressed: _sending ? null : _send,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: context.accentColor,
-                      foregroundColor: btnFg,
-                      padding: EdgeInsets.zero,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
-                    ),
-                    child: _sending
-                        ? SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: btnFg))
-                        : Icon(Icons.send_rounded, size: 18, color: btnFg),
-                  ),
-                ),
-              ],
+              ),
             ),
           ],
         ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
+import '../kind/kind_shared.dart';
 import 'login_screen.dart';
 
 enum AccountRole { student, teacher, kind }
@@ -17,40 +18,49 @@ class RoleSelectScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: context.bgColor,
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: MediaQuery.of(context).size.height -
+                  MediaQuery.of(context).padding.top -
+                  MediaQuery.of(context).padding.bottom,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
               const SizedBox(height: 32),
-              const Text(
+              Text(
                 'Who is signing in?',
                 style: TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFF111827),
+                  color: context.textColor,
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
+              Text(
                 'Choose your account type to continue to login.',
-                style: TextStyle(fontSize: 14, color: Color(0xFF6B7280), height: 1.4),
+                style: TextStyle(
+                    fontSize: 14, color: context.greyColor, height: 1.4),
               ),
               const SizedBox(height: 28),
               _RoleCard(
                 icon: Icons.school_outlined,
                 title: 'Student',
-                subtitle: 'JAMB, WAEC, NECO prep, live classes, and CBT practice.',
-                color: AppColorsLight.yellow,
+                subtitle:
+                    'JAMB, WAEC, NECO prep, live classes, and CBT practice.',
+                color: context.accentColor,
                 onTap: () => _openLogin(context, AccountRole.student),
               ),
               const SizedBox(height: 12),
               _RoleCard(
                 icon: Icons.person_outline,
                 title: 'Teacher',
-                subtitle: 'Host live classes, grade work, post notices, and use Teacher AI.',
+                subtitle:
+                    'Host live classes, grade work, and use Teacher AI. Login only — admin creates accounts.',
                 color: const Color(0xFF22C55E),
                 onTap: () => _openLogin(context, AccountRole.teacher),
               ),
@@ -58,16 +68,17 @@ class RoleSelectScreen extends StatelessWidget {
               _RoleCard(
                 icon: Icons.child_care_outlined,
                 title: 'Kid',
-                subtitle: 'Young learners (ages 3–12) with kid-safe AI tutoring.',
-                color: const Color(0xFF6C63FF),
+                subtitle:
+                    'Young learners (ages 3–12) with kid-safe AI tutoring.',
+                color: KidColors.accent,
                 onTap: () => _openLogin(context, AccountRole.kind),
               ),
-              const Spacer(),
-              const Center(
+              const SizedBox(height: 32),
+              Center(
                 child: Text(
                   'Use the email and password for the account type you selected.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 12, color: Color(0xFF9CA3AF)),
+                  style: TextStyle(fontSize: 12, color: context.greyLColor),
                 ),
               ),
               const SizedBox(height: 24),
@@ -75,6 +86,7 @@ class RoleSelectScreen extends StatelessWidget {
           ),
         ),
       ),
+    ),
     );
   }
 }
@@ -97,7 +109,7 @@ class _RoleCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color(0xFFF9FAFB),
+      color: context.cardColor,
       borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
@@ -106,7 +118,7 @@ class _RoleCard extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFE5E7EB)),
+            border: Border.all(color: context.borderColor),
           ),
           child: Row(
             children: [
@@ -125,15 +137,15 @@ class _RoleCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(title,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
-                            color: Color(0xFF111827))),
+                            color: context.textColor)),
                     const SizedBox(height: 4),
                     Text(subtitle,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 12,
-                            color: Color(0xFF6B7280),
+                            color: context.greyColor,
                             height: 1.35)),
                   ],
                 ),

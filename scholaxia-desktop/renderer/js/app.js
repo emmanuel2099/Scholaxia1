@@ -2,11 +2,15 @@ const PAGE_TITLES = {
   dashboard: "Home",
   live: "Live Class",
   school: "Scholaxia Exam",
-  "school-portal": "School Exam",
+  "school-portal": "External School Exam",
   marketplace: "Scholaxia Marketplace",
-  skills: "Subscription",
+  skills: "Skills Training",
+  subscription: "Subscription",
   cbt: "CBT Practice",
   "study-materials": "Study Materials",
+  "past-questions": "Past Questions",
+  about: "About Scholaxia",
+  contact: "Contact",
   library: "Library",
   "saved-lives": "Saved Lives",
   sia: "Ask Sia",
@@ -543,7 +547,7 @@ function updateSidebarToggleBtn(btn, collapsed) {
 }
 
 function syncDashActionCards(page) {
-  var quickPages = ["live", "school", "skills", "sia"];
+  var quickPages = ["live", "school", "subscription", "skills", "sia"];
   document.querySelectorAll(".dash-action-card[data-dash-page]").forEach(function (btn) {
     var pg = btn.getAttribute("data-dash-page");
     btn.classList.toggle("active", page === pg && quickPages.indexOf(page) >= 0);
@@ -667,7 +671,7 @@ async function loadDashboard(force) {
   const subEl = document.getElementById("dash-greeting-sub");
   if (!isStudentLoggedIn()) {
     if (titleEl) titleEl.textContent = getGreeting() + ", welcome";
-    if (subEl) subEl.textContent = "Browse School Exam and Marketplace — sign in for CBT, Live Class, Community, and more.";
+    if (subEl) subEl.textContent = "Browse External School Exam and Marketplace — sign in for CBT, Live Class, Community, and more.";
     const statSubs = document.getElementById("dash-stat-subjects");
     const liveEl = document.getElementById("dash-stat-live");
     const examsEl = document.getElementById("dash-stat-exams");
@@ -684,6 +688,7 @@ async function loadDashboard(force) {
     if (progressFill) progressFill.style.width = "0%";
     const progressText = document.getElementById("dash-progress-text");
     if (progressText) progressText.textContent = "Sign in to track progress";
+    if (typeof renderHomeSkillsPreview === "function") renderHomeSkillsPreview();
     return;
   }
   const user = getUser();
@@ -735,7 +740,31 @@ async function loadDashboard(force) {
       const count = examData && examData.school_exams ? examData.school_exams.length : 0;
       examsEl.textContent = String(count);
     }
+    renderDashboardLive(liveRaw || []);
   } catch (e) { /* stats optional */ }
+
+  if (typeof renderHomeSkillsPreview === "function") renderHomeSkillsPreview();
+}
+
+function renderDashboardLive(sessions) {
+  var wrap = document.getElementById("dash-platform-live");
+  var grid = document.getElementById("dash-live-grid");
+  if (!wrap || !grid) return;
+  var live = (sessions || []).filter(function (s) { return s.is_live; });
+  if (!live.length) {
+    wrap.classList.add("hidden");
+    return;
+  }
+  wrap.classList.remove("hidden");
+  grid.innerHTML = live.map(function (s) {
+    return '<article class="dash-live-card">' +
+      '<span class="live-pill">LIVE</span>' +
+      '<span class="live-vis-pill">' + escHtml(liveVisibilityLabel(s.visibility)) + "</span>" +
+      "<h4>" + escHtml(s.title) + "</h4>" +
+      '<p class="meta">' + escHtml(s.subject) + " · " + escHtml(s.teacher_name || "Teacher") + "</p>" +
+      '<button type="button" class="btn-join dash-live-join" data-id="' + escHtml(s.id) + '" data-title="' + escHtml(s.title) + '" data-subject="' + escHtml(s.subject) + '" data-teacher="' + escHtml(s.teacher_name || "") + '">Join Live Class</button>' +
+      "</article>";
+  }).join("");
 }
 
 function bindExamLockListeners() {
@@ -809,10 +838,16 @@ function refreshPage() {
     loadLive(false).then(done).catch(done);
   } else if (currentPage === "school") { loadSchoolExams(); done(); }
   else if (currentPage === "school-portal") { /* static */ done(); }
-  else if (currentPage === "study-materials") { /* embedded past questions */ done(); }
+  else if (currentPage === "study-materials") { /* embedded buy materials */ done(); }
+  else if (currentPage === "past-questions") { /* embedded past questions */ done(); }
+  else if (currentPage === "about") { done(); }
+  else if (currentPage === "contact") { initAppContactForm(); done(); }
   else if (currentPage === "marketplace") { /* embedded store */ done(); }
-  else if (currentPage === "skills") {
+  else if (currentPage === "subscription") {
     if (typeof loadLivePlans === "function") loadLivePlans(null, true);
+    done();
+  }
+  else if (currentPage === "skills") {
     loadSkillsTraining();
     done();
   }
@@ -859,11 +894,7 @@ function getStudentSubjects() {
 }
 
 function filterSessionsBySubjects(sessions) {
-  var subjects = getStudentSubjects();
-  if (!subjects.length) return [];
-  return (sessions || []).filter(function (s) {
-    return sessionMatchesSubjects(s, subjects);
-  });
+  return sessions || [];
 }
 
 function sessionMatchesSubjects(session, subjects) {
@@ -958,12 +989,19 @@ async function loadLive(quiet) {
   }
 }
 
+function liveVisibilityLabel(v) {
+  if (v === "public") return "Platform";
+  if (v === "private") return "Private";
+  if (v === "school_group") return "School";
+  return "Subject";
+}
+
 function renderLiveEmpty(el) {
   el.innerHTML = `
     <div class="live-empty-state">
       <div class="live-empty-icon" aria-hidden="true">&#127909;</div>
-      <h3>Nothing live for your subjects</h3>
-      <p>When a teacher goes live in one of your profile subjects, you'll see a <strong>Join Class</strong> button here.</p>
+      <h3>No live classes right now</h3>
+      <p>When a teacher starts a <strong>public platform class</strong>, a <strong>private</strong> session for you, or a <strong>school group</strong> class, it will appear here with a Join button.</p>
       <button type="button" class="btn-action live-empty-refresh" onclick="refreshPage()">Check again</button>
     </div>`;
 }
@@ -984,12 +1022,14 @@ function renderLive(sessions) {
   }
   el.innerHTML = sessions.map((s) => {
     const badge = s.is_live ? "LIVE" : "STARTING";
+    const vis = s.visibility ? '<span class="live-vis-pill">' + escHtml(liveVisibilityLabel(s.visibility)) + "</span>" : "";
     return `
     <div class="card">
       <div class="live-pill">${badge}</div>
+      ${vis}
       <h3>${escHtml(s.title)}</h3>
       <p class="meta">${escHtml(s.subject)} · ${escHtml(s.teacher_name)}</p>
-      <button type="button" class="btn-join" data-id="${escHtml(s.id)}" data-title="${escHtml(s.title)}" data-subject="${escHtml(s.subject)}" data-teacher="${escHtml(s.teacher_name)}">Join Class</button>
+      <button type="button" class="btn-join" data-id="${escHtml(s.id)}" data-title="${escHtml(s.title)}" data-subject="${escHtml(s.subject)}" data-teacher="${escHtml(s.teacher_name)}">Join Live Class</button>
     </div>
   `;
   }).join("");
@@ -1057,7 +1097,7 @@ async function submitSessionRequest() {
   }
 }
 
-/* ── School Exam ── */
+/* ── External School Exam ── */
 
 async function loadSchoolExams() {
   document.getElementById("school-grid").innerHTML = `<div class="loading">Loading…</div>`;
@@ -1101,7 +1141,7 @@ function openSchoolExam(examId, needsCamera) {
       cameraStream = stream;
       document.getElementById("camera-preview").srcObject = stream;
     })
-    .catch(() => alert("Camera access is required for school exams."));
+    .catch(() => alert("Camera access is required for external school exams."));
 }
 
 function closeCameraModal() {
@@ -1717,6 +1757,20 @@ async function saveSetup() {
 window.beginExam = beginExam;
 window.closeExam = closeExam;
 window.submitExam = submitExam;
+
+function initAppContactForm() {
+  var form = document.getElementById("app-contact-form");
+  if (!form || form.dataset.bound === "1") return;
+  form.dataset.bound = "1";
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var ok = document.getElementById("app-contact-success");
+    if (ok) ok.classList.remove("hidden");
+    form.reset();
+    setTimeout(function () { if (ok) ok.classList.add("hidden"); }, 5000);
+  });
+}
+window.initAppContactForm = initAppContactForm;
 window.goToQuestion = goToQuestion;
 window.goToSubject = goToSubject;
 window.startWithSubject = startWithSubject;

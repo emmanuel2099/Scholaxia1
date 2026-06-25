@@ -72,19 +72,20 @@ class _TeacherTopBarState extends State<TeacherTopBar> {
 
   @override
   Widget build(BuildContext context) {
+    final accent = context.accentColor;
     final initial = (widget.teacherName ?? 'T').trim().isNotEmpty
         ? widget.teacherName!.trim()[0].toUpperCase()
         : 'T';
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Row(
+        Row(
           children: [
-            Icon(Icons.auto_awesome, color: AppColors.yellow, size: 18),
-            SizedBox(width: 6),
+            Icon(Icons.auto_awesome, color: accent, size: 18),
+            const SizedBox(width: 6),
             Text('Scholaxia',
                 style: TextStyle(
-                    color: AppColors.yellow,
+                    color: accent,
                     fontSize: 20,
                     fontWeight: FontWeight.bold)),
           ],
@@ -96,8 +97,8 @@ class _TeacherTopBarState extends State<TeacherTopBar> {
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  const Icon(Icons.notifications_outlined,
-                      color: AppColors.white, size: 24),
+                  Icon(Icons.notifications_outlined,
+                      color: context.textColor, size: 24),
                   if (_unread > 0)
                     Positioned(
                       right: -2,
@@ -105,8 +106,8 @@ class _TeacherTopBarState extends State<TeacherTopBar> {
                       child: Container(
                         width: 8,
                         height: 8,
-                        decoration: const BoxDecoration(
-                          color: AppColors.yellow,
+                        decoration: BoxDecoration(
+                          color: accent,
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -124,10 +125,10 @@ class _TeacherTopBarState extends State<TeacherTopBar> {
                       ),
               child: CircleAvatar(
                 radius: 18,
-                backgroundColor: AppColors.surfaceLight,
+                backgroundColor: context.surfColor,
                 child: Text(initial,
-                    style: const TextStyle(
-                        color: AppColors.yellow, fontWeight: FontWeight.bold)),
+                    style: TextStyle(
+                        color: accent, fontWeight: FontWeight.bold)),
               ),
             ),
           ],
@@ -175,9 +176,9 @@ class TeacherUtils {
     }
   }
 
-  static Color subjectColor(String subject) {
+  static Color subjectColor(String subject, [BuildContext? context]) {
     final colors = [
-      AppColors.yellow,
+      context?.accentColor ?? AppColors.yellow,
       const Color(0xFF6C63FF),
       const Color(0xFF00C896),
       const Color(0xFFFF6B6B),

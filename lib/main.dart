@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'screens/splash/splash_screen.dart';
+import 'services/firebase_push_service.dart';
+import 'services/local_notification_service.dart';
 import 'theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await themeNotifier.load();
+  await LocalNotificationService.instance.init();
+  await FirebasePushService.instance.init();
   runApp(const ScholaxiaApp());
 }
 

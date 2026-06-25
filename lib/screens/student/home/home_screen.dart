@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../api/api_service.dart';
+import '../../../services/live_class_ring_service.dart';
 import '../../../theme/app_theme.dart';
 import '../cbt/cbt_screen.dart';
 import '../classes/classes_screen.dart';
@@ -149,6 +150,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     setState(() => _joiningClassId = classId);
     try {
+      LiveClassRingService.instance.stop();
       await _api.joinLiveClass(classId);
       final userId = await _api.getUserId() ?? 'student';
       if (!mounted) return;

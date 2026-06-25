@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "685796212734",
+    "project_id": "scholaxia1",
+    "storage_bucket": "scholaxia1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:685796212734:android:d465453af5807f3fef4aaf",
+        "android_client_info": {
+          "package_name": "com.scholaxia.scholaxia"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBQNMn_WAd1_aaJz27Lxwf35nG1PzisYsA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

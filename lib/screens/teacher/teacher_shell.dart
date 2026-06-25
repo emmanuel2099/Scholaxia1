@@ -31,13 +31,15 @@ class _TeacherShellState extends State<TeacherShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.bgColor,
       body: IndexedStack(index: _currentIndex, children: _screens),
-      bottomNavigationBar: _buildBottomNav(),
+      bottomNavigationBar: _buildBottomNav(context),
     );
   }
 
-  Widget _buildBottomNav() {
+  Widget _buildBottomNav(BuildContext context) {
+    final accent = context.accentColor;
+    final muted = context.greyColor;
     final items = [
       _NavItem(icon: Icons.grid_view_rounded, label: 'Dashboard'),
       _NavItem(icon: Icons.school_outlined, label: 'Classes'),
@@ -50,9 +52,9 @@ class _TeacherShellState extends State<TeacherShell> {
 
     return Container(
       height: 68,
-      decoration: const BoxDecoration(
-        color: AppColors.cardBg,
-        border: Border(top: BorderSide(color: Color(0xFF2A2A2A))),
+      decoration: BoxDecoration(
+        color: context.headerColor,
+        border: Border(top: BorderSide(color: context.borderColor)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -70,18 +72,18 @@ class _TeacherShellState extends State<TeacherShell> {
                     padding: const EdgeInsets.all(6),
                     decoration: BoxDecoration(
                       color: isActive
-                          ? AppColors.yellow.withOpacity(0.15)
+                          ? accent.withOpacity(0.15)
                           : Colors.transparent,
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Icon(items[i].icon,
-                        color: isActive ? AppColors.yellow : AppColors.grey,
+                        color: isActive ? accent : muted,
                         size: 20),
                   ),
                   const SizedBox(height: 2),
                   Text(items[i].label,
                       style: TextStyle(
-                          color: isActive ? AppColors.yellow : AppColors.grey,
+                          color: isActive ? accent : muted,
                           fontSize: 9),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis),

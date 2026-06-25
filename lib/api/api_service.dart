@@ -123,6 +123,12 @@ class ApiService {
     return uri.replace(queryParameters: query);
   }
 
+  String resolveMediaUrl(String? url) {
+    if (url == null || url.isEmpty) return '';
+    if (url.startsWith('http')) return url;
+    return _uri(url.startsWith('/') ? url : '/$url').toString();
+  }
+
   Map<String, String> _jsonHeaders() => {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
@@ -216,6 +222,93 @@ class ApiService {
         AuthResponse.fromJson(Map<String, dynamic>.from(_parse(res) as Map));
     await _saveAuth(auth);
     return auth;
+  }
+
+  Future<AuthResponse> kindSignup({
+    required String email,
+    required String password,
+    required String fullName,
+    String ageGroup = '6-8',
+    String? gradeLevel,
+    String? parentEmail,
+  }) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.kindSignup),
+      headers: _jsonHeaders(),
+      body: jsonEncode({
+        'email': email,
+        'password': password,
+        'full_name': fullName,
+        'age_group': ageGroup,
+        if (gradeLevel != null && gradeLevel.isNotEmpty)
+          'grade_level': gradeLevel,
+        if (parentEmail != null && parentEmail.isNotEmpty)
+          'parent_email': parentEmail,
+      }),
+    );
+    final auth =
+        AuthResponse.fromJson(Map<String, dynamic>.from(_parse(res) as Map));
+    await _saveAuth(auth);
+    return auth;
+  }
+
+  // ── Kind (young learners) ──────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getKindMe() async {
+    final res = await http.get(
+      _uri(ApiEndpoints.kindMe),
+      headers: await _authHeaders(),
+    );
+    return _parseMap(res);
+  }
+
+  Future<List<String>> kindSubjects() async {
+    final res = await http.get(_uri(ApiEndpoints.kindSubjects));
+    final data = _parseMap(res);
+    final raw = data['subjects'];
+    if (raw is List) return raw.map((e) => e.toString()).toList();
+    return ['General', 'Math', 'English', 'Science'];
+  }
+
+  Future<String> kindSiaChat({
+    required String question,
+    String subject = 'General',
+  }) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.kindSiaChat),
+      headers: await _authHeaders(),
+      body: jsonEncode({'question': question, 'subject': subject}),
+    );
+    return _parseMap(res)['sia_kind']?.toString() ?? 'No reply.';
+  }
+
+  Future<String> kindSiaLearn({
+    required String topic,
+    String subject = 'General',
+  }) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.kindSiaLearn),
+      headers: await _authHeaders(),
+      body: jsonEncode({'topic': topic, 'subject': subject}),
+    );
+    return _parseMap(res)['sia_kind']?.toString() ?? 'No lesson.';
+  }
+
+  Future<String> kindSiaQuiz({
+    required String topic,
+    String subject = 'General',
+    int numQuestions = 5,
+  }) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.kindSiaQuiz),
+      headers: await _authHeaders(),
+      body: jsonEncode({
+        'topic': topic,
+        'subject': subject,
+        'num_questions': numQuestions,
+      }),
+    );
+    return _parseMap(res)['sia_kind']?.toString() ?? 'No quiz.';
   }
 
   // ── Students ───────────────────────────────────────────────────────────────
@@ -656,6 +749,20 @@ class ApiService {
     int limit = 200,
     int offset = 0,
   }) async {
+    final all = await listAllPostComments(channelId: channelId, limit: limit);
+    final prefix = '@post:$postId';
+    return all.where((item) {
+      if (item is! Map) return false;
+      final content = item['content']?.toString() ?? '';
+      return content.startsWith('$prefix ') || content == prefix;
+    }).toList();
+  }
+
+  Future<List<dynamic>> listAllPostComments({
+    required String channelId,
+    int limit = 300,
+    int offset = 0,
+  }) async {
     final res = await http.get(
       _uri(ApiEndpoints.communityPostComments, {
         'channel_id': channelId,
@@ -664,13 +771,7 @@ class ApiService {
       }),
       headers: await _authHeaders(),
     );
-    final all = _parseList(res);
-    final prefix = '@post:$postId';
-    return all.where((item) {
-      if (item is! Map) return false;
-      final content = item['content']?.toString() ?? '';
-      return content.startsWith('$prefix ') || content == prefix;
-    }).toList();
+    return _parseList(res);
   }
 
   Future<Map<String, dynamic>> addPostComment({
@@ -939,6 +1040,33 @@ class ApiService {
     } catch (_) {
       return 0;
     }
+  }
+
+  Future<int> unreadCommunityCount() async {
+    try {
+      final items = await notifications();
+      return items.where((n) {
+        if (n is! Map || n['is_read'] == true) return false;
+        final t = (n['type']?.toString() ?? '').toLowerCase();
+        return t.contains('announcement') ||
+            t.contains('community') ||
+            t.contains('mention');
+      }).length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  Future<void> registerDeviceToken({
+    required String token,
+    required String platform,
+  }) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.notificationsDeviceToken),
+      headers: await _authHeaders(),
+      body: jsonEncode({'token': token, 'platform': platform}),
+    );
+    _parse(res);
   }
 
   // ── Home ────────────────────────────────────────────────────────────────────

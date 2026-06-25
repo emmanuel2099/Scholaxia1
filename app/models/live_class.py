@@ -14,6 +14,14 @@ class LiveSessionRequestStatus(str, enum.Enum):
     dismissed = "dismissed"
 
 
+class LiveClassVisibility(str, enum.Enum):
+    """How a live class is discovered and who may join."""
+    subject = "subject"          # legacy: subject-matched students
+    public = "public"            # platform-wide — all students
+    private = "private"          # invited students only
+    school_group = "school_group"  # members of a school group only
+
+
 class LiveClass(Base):
     __tablename__ = "live_classes"
 
@@ -27,7 +35,11 @@ class LiveClass(Base):
     is_live: Mapped[bool] = mapped_column(Boolean, default=False)
     is_recording_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     recording_url: Mapped[str] = mapped_column(String(500), nullable=True)
-    room_id: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)  # WebRTC room
+    room_id: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    visibility: Mapped[str] = mapped_column(String(20), default=LiveClassVisibility.subject.value, nullable=False)
+    join_code: Mapped[str] = mapped_column(String(32), unique=True, nullable=True, index=True)
+    invited_student_ids: Mapped[str] = mapped_column(Text, nullable=True)
+    school_group_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("school_groups.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     attendances: Mapped[list["ClassAttendance"]] = relationship("ClassAttendance", back_populates="live_class")

@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import '../../../api/api_service.dart';
 import '../../../theme/app_theme.dart';
 import '../../auth/exam_subject_setup_screen.dart';
-import '../../auth/login_screen.dart';
+import '../../auth/role_select_screen.dart';
+import '../../kind/kind_shell.dart';
 import '../notifications/notifications_screen.dart';
 import 'about_scholaxia_screen.dart';
 
@@ -27,10 +28,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _load() async {
     try {
+      final role = await _api.getRole();
+      if (role == 'kind') {
+        if (!mounted) return;
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const KindShell()),
+          (_) => false,
+        );
+        return;
+      }
       final p = await _api.getStudentProfile();
       if (mounted) setState(() { _profile = p; _loading = false; _error = null; });
     } catch (e) {
-      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+      if (mounted) {
+        final msg = e is ApiException ? e.message : e.toString();
+        if (msg.toLowerCase().contains('students only') ||
+            msg.toLowerCase().contains('kind')) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => const KindShell()),
+            (_) => false,
+          );
+          return;
+        }
+        setState(() { _error = msg; _loading = false; });
+      }
     }
   }
 
@@ -39,7 +62,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        MaterialPageRoute(builder: (_) => const RoleSelectScreen()),
         (_) => false);
   }
 
@@ -87,16 +110,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
             child: const Text('Retry'),
           ),
+          const SizedBox(height: 12),
+          OutlinedButton(
+            onPressed: _logout,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.red,
+              side: const BorderSide(color: Colors.red),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Log out'),
+          ),
           if (isAuthError) ...[
-            const SizedBox(height: 12),
-            TextButton(
-              onPressed: () async {
-                await _api.clearTokens();
-                if (!mounted) return;
-                Navigator.pushAndRemoveUntil(context,
-                    MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false);
-              },
-              child: Text('Log out', style: TextStyle(color: context.greyColor)),
+            const SizedBox(height: 8),
+            Text(
+              'Or log out and sign in again.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: context.greyColor, fontSize: 12),
             ),
           ],
         ]),

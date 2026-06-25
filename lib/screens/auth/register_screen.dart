@@ -1,12 +1,15 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import '../../api/api_service.dart';
 import '../../theme/app_theme.dart';
 import '../teacher/teacher_shell.dart';
 import 'exam_subject_setup_screen.dart';
 import 'login_screen.dart';
+import 'role_select_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({super.key});
+  final AccountRole? accountRole;
+
+  const RegisterScreen({super.key, this.accountRole});
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
@@ -217,8 +220,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   Text('Already have an account? ',
                       style: TextStyle(color: context.greyColor, fontSize: 13)),
                   GestureDetector(
-                    onTap: () => Navigator.pushReplacement(context,
-                        MaterialPageRoute(builder: (_) => const LoginScreen())),
+                    onTap: () => Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => LoginScreen(
+                          accountRole:
+                              widget.accountRole ?? AccountRole.student,
+                        ),
+                      ),
+                    ),
                     child: Text('Log In',
                         style: TextStyle(
                             color: context.accentColor,

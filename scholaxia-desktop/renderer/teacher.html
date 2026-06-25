@@ -60,6 +60,24 @@
 
       <div class="host-card">
         <h3>Host a class</h3>
+        <div class="host-visibility-row">
+          <span class="host-visibility-label">Class type</span>
+          <label class="host-vis-option"><input type="radio" name="host-visibility" value="public" checked onchange="onHostVisibilityChange()" /> Public — all students on Scholaxia</label>
+          <label class="host-vis-option"><input type="radio" name="host-visibility" value="private" onchange="onHostVisibilityChange()" /> Private — selected students only</label>
+          <label class="host-vis-option"><input type="radio" name="host-visibility" value="school_group" onchange="onHostVisibilityChange()" /> School group — your class/community</label>
+        </div>
+        <div id="host-private-wrap" class="host-extra-panel hidden">
+          <label><span>Invite students</span>
+            <select id="host-invited-students" multiple size="5"></select>
+          </label>
+          <p class="host-hint">Hold Ctrl to select multiple assigned students.</p>
+        </div>
+        <div id="host-school-wrap" class="host-extra-panel hidden">
+          <label><span>School group</span>
+            <select id="host-school-group"><option value="">Loading groups…</option></select>
+          </label>
+          <p class="host-hint"><a href="#" onclick="showTeacherPage('students'); return false;">Manage school groups</a> from Students tab.</p>
+        </div>
         <div class="form-grid">
           <label><span>Title</span><input type="text" id="host-title" placeholder="e.g. Algebra — Quadratic equations" /></label>
           <label><span>Subject</span><input type="text" id="host-subject" placeholder="e.g. Mathematics" /></label>
@@ -72,7 +90,22 @@
           <button type="button" class="btn-action" id="host-schedule-btn" onclick="teacherHostClass(false)">Schedule class</button>
           <button type="button" class="btn-action primary" id="host-live-btn" onclick="teacherHostClass(true)">Go live now</button>
         </div>
+        <p id="host-link-hint" class="host-hint hidden">After creating, each class gets a unique join code shown in your class list.</p>
         <p id="host-error" class="error-msg" role="alert"></p>
+      </div>
+
+      <div class="host-card" id="school-groups-card">
+        <h3>School groups</h3>
+        <p class="page-desc">Create groups for your school (e.g. SS1 Science). School live classes notify only students in the group.</p>
+        <div class="form-grid school-group-form">
+          <label><span>School name</span><input type="text" id="sg-school" placeholder="e.g. ABC Secondary School" /></label>
+          <label><span>Group name</span><input type="text" id="sg-name" placeholder="e.g. SS1 Science" /></label>
+        </div>
+        <label><span>Add students (from your assigned list)</span>
+          <select id="sg-students" multiple size="4"></select>
+        </label>
+        <button type="button" class="btn-action" onclick="createSchoolGroup()">Create group</button>
+        <div id="school-groups-list" class="school-groups-list"></div>
       </div>
 
       <div class="page-head">

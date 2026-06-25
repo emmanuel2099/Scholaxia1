@@ -6,9 +6,9 @@
   "scripts": {
     "start": "electron .",
     "start:admin": "electron . --admin",
-    "build": "electron-builder --win --x64",
+    "build": "electron-builder --win nsis --x64",
     "build:portable": "electron-builder --win portable --x64",
-    "build:all": "electron-builder --win nsis portable --x64"
+    "build:installer": "electron-builder --win nsis --x64"
   },
   "author": "Scholaxia",
   "license": "MIT",
@@ -30,28 +30,24 @@
           "arch": [
             "x64"
           ]
-        },
-        {
-          "target": "portable",
-          "arch": [
-            "x64"
-          ]
         }
       ],
       "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": false,
+      "perMachine": false,
       "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Scholaxia Student",
+      "runAfterFinish": true,
+      "artifactName": "Scholaxia-Student-Setup-${version}.${ext}",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
       "include": "build/installer.nsh"
-    },
-    "portable": {
-      "artifactName": "Scholaxia-Portable.exe"
     },
     "files": [
       "main.js",

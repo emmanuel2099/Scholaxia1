@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../api/api_service.dart';
+import '../../services/firebase_push_service.dart';
 import '../../theme/app_theme.dart';
+import '../kind/kind_shell.dart';
 import '../student/student_shell.dart';
 import '../teacher/teacher_shell.dart';
 import 'exam_subject_setup_screen.dart';
+import 'kid_register_screen.dart';
 import 'register_screen.dart';
 import 'role_select_screen.dart';
 
@@ -70,7 +73,7 @@ class _LoginScreenState extends State<LoginScreen> {
           context,
           MaterialPageRoute(
             builder: (_) => auth.role == 'kind'
-                ? const StudentShell()
+                ? const KindShell()
                 : (complete
                     ? const StudentShell()
                     : const ExamSubjectSetupScreen()),
@@ -79,6 +82,7 @@ class _LoginScreenState extends State<LoginScreen> {
         );
         if (auth.role != 'kind' && complete) _api.ensureStudentProfile();
       }
+      FirebasePushService.instance.registerAfterLogin();
     } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -136,7 +140,7 @@ class _LoginScreenState extends State<LoginScreen> {
   String get _subtitle {
     switch (widget.accountRole) {
       case AccountRole.teacher:
-        return 'Sign in to manage classes, grading, and notices.';
+        return 'Sign in with the email and password from your school admin.';
       case AccountRole.kind:
         return 'Sign in to your kid learner account.';
       case AccountRole.student:
@@ -298,7 +302,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 ],
               ),
               if (widget.accountRole == null ||
-                  widget.accountRole == AccountRole.student) ...[
+                  widget.accountRole == AccountRole.student ||
+                  widget.accountRole == AccountRole.kind) ...[
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -306,10 +311,24 @@ class _LoginScreenState extends State<LoginScreen> {
                         style:
                             TextStyle(color: context.greyColor, fontSize: 14)),
                     GestureDetector(
-                      onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (_) => const RegisterScreen())),
+                      onTap: () {
+                        if (widget.accountRole == AccountRole.kind) {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const KidRegisterScreen()),
+                          );
+                        } else {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => RegisterScreen(
+                                accountRole: widget.accountRole,
+                              ),
+                            ),
+                          );
+                        }
+                      },
                       child: Text('Create Account',
                           style: TextStyle(
                               color: context.accentColor,

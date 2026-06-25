@@ -69,6 +69,58 @@
   padding: 20px; margin-bottom: 24px;
 }
 .host-card h3 { margin: 0 0 16px; font-size: 1rem; }
+.host-visibility-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  background: #eef8f1;
+  border-radius: 10px;
+  border: 1px solid #c8e6d0;
+}
+.host-visibility-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #1a4d32;
+}
+.host-vis-option {
+  font-size: 0.88rem;
+  color: #2d4a38;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.host-extra-panel {
+  margin-bottom: 14px;
+  padding: 12px;
+  background: #f8fcfa;
+  border: 1px dashed #b8d4c4;
+  border-radius: 10px;
+}
+.host-extra-panel select[multiple] {
+  width: 100%;
+  min-height: 100px;
+}
+.host-hint { font-size: 0.78rem; color: #6b7c74; margin-top: 8px; }
+.school-groups-list { margin-top: 12px; display: flex; flex-direction: column; gap: 8px; }
+.school-group-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid #d4e8dc;
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+.join-code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.82rem;
+  background: #eef8f1;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
 .host-card .error-msg {
   min-height: 1.2em;
   color: #c62828;

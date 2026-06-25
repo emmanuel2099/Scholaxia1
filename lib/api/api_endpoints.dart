@@ -8,6 +8,12 @@ class ApiEndpoints {
 
   // Auth
   static const String studentSignup = '$_v1/auth/student/signup';
+  static const String kindSignup = '$_v1/auth/kind/signup';
+  static const String kindMe = '$_v1/kind/me';
+  static const String kindSubjects = '$_v1/kind/subjects';
+  static const String kindSiaChat = '$_v1/kind/sia/chat';
+  static const String kindSiaLearn = '$_v1/kind/sia/learn';
+  static const String kindSiaQuiz = '$_v1/kind/sia/quiz';
   static const String login = '$_v1/auth/login';
 
   // Students
@@ -131,4 +137,5 @@ class ApiEndpoints {
   // Notifications
   static const String notifications = '$_v1/notifications/';
   static const String notificationsReadAll = '$_v1/notifications/read-all';
+  static const String notificationsDeviceToken = '$_v1/notifications/device-token';
 }

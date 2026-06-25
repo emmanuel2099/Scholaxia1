@@ -72,7 +72,7 @@ class _TeacherGradingScreenState extends State<TeacherGradingScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.surface,
+      backgroundColor: context.headerColor,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (ctx) => Padding(
@@ -87,19 +87,19 @@ class _TeacherGradingScreenState extends State<TeacherGradingScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text('Grade ${sub.studentName}',
-                style: const TextStyle(
-                    color: AppColors.white,
+                style: TextStyle(
+                    color: ctx.textColor,
                     fontSize: 17,
                     fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             TextField(
               controller: scoreCtrl,
-              style: const TextStyle(color: AppColors.white),
+              style: TextStyle(color: ctx.textColor),
               decoration: InputDecoration(
                 hintText: 'Score (e.g. 85/100 or B+)',
-                hintStyle: const TextStyle(color: AppColors.grey),
+                hintStyle: TextStyle(color: ctx.greyColor),
                 filled: true,
-                fillColor: AppColors.surfaceLight,
+                fillColor: ctx.surfColor,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -110,12 +110,12 @@ class _TeacherGradingScreenState extends State<TeacherGradingScreen> {
             TextField(
               controller: feedbackCtrl,
               maxLines: 3,
-              style: const TextStyle(color: AppColors.white),
+              style: TextStyle(color: ctx.textColor),
               decoration: InputDecoration(
                 hintText: 'Feedback for the student...',
-                hintStyle: const TextStyle(color: AppColors.grey),
+                hintStyle: TextStyle(color: ctx.greyColor),
                 filled: true,
-                fillColor: AppColors.surfaceLight,
+                fillColor: ctx.surfColor,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -154,7 +154,7 @@ class _TeacherGradingScreenState extends State<TeacherGradingScreen> {
                   }
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.yellow,
+                  backgroundColor: ctx.accentColor,
                   foregroundColor: Colors.black,
                 ),
                 child: const Text('Post Result',
@@ -169,8 +169,9 @@ class _TeacherGradingScreenState extends State<TeacherGradingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final accent = context.accentColor;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.bgColor,
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -190,14 +191,14 @@ class _TeacherGradingScreenState extends State<TeacherGradingScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Grading',
+                  Text('Grading',
                       style: TextStyle(
-                          color: AppColors.white,
+                          color: context.textColor,
                           fontSize: 22,
                           fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
-                  const Text('Review and grade student assignment submissions.',
-                      style: TextStyle(color: AppColors.grey, fontSize: 13)),
+                  Text('Review and grade student assignment submissions.',
+                      style: TextStyle(color: context.greyColor, fontSize: 13)),
                   const SizedBox(height: 16),
                   Row(
                     children: [
@@ -216,19 +217,19 @@ class _TeacherGradingScreenState extends State<TeacherGradingScreen> {
             const SizedBox(height: 8),
             Expanded(
               child: _loading
-                  ? const Center(
-                      child: CircularProgressIndicator(color: AppColors.yellow))
+                  ? Center(
+                      child: CircularProgressIndicator(color: accent))
                   : RefreshIndicator(
-                      color: AppColors.yellow,
+                      color: accent,
                       onRefresh: _load,
                       child: _submissions.isEmpty
                           ? ListView(
                               physics: const AlwaysScrollableScrollPhysics(),
-                              children: const [
-                                SizedBox(height: 80),
+                              children: [
+                                const SizedBox(height: 80),
                                 Center(
                                   child: Text('No pending submissions.',
-                                      style: TextStyle(color: AppColors.grey)),
+                                      style: TextStyle(color: context.greyColor)),
                                 ),
                               ],
                             )
@@ -278,7 +279,7 @@ class _SummaryChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.cardBg,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: color.withOpacity(0.3)),
       ),
@@ -287,7 +288,7 @@ class _SummaryChip extends StatelessWidget {
           Text(value,
               style: TextStyle(
                   color: color, fontSize: 22, fontWeight: FontWeight.bold)),
-          Text(label, style: const TextStyle(color: AppColors.grey, fontSize: 11)),
+          Text(label, style: TextStyle(color: context.greyColor, fontSize: 11)),
         ],
       ),
     );
@@ -304,20 +305,20 @@ class _SubmissionCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.cardBg,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF2A2A2A)),
+        border: Border.all(color: context.borderColor),
       ),
       child: Row(
         children: [
           CircleAvatar(
-            backgroundColor: AppColors.yellow.withOpacity(0.15),
+            backgroundColor: context.accentColor.withOpacity(0.15),
             child: Text(
               submission.studentName.isNotEmpty
                   ? submission.studentName[0].toUpperCase()
                   : 'S',
-              style: const TextStyle(
-                  color: AppColors.yellow, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                  color: context.accentColor, fontWeight: FontWeight.bold),
             ),
           ),
           const SizedBox(width: 12),
@@ -326,23 +327,23 @@ class _SubmissionCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(submission.studentName,
-                    style: const TextStyle(
-                        color: AppColors.white,
+                    style: TextStyle(
+                        color: context.textColor,
                         fontSize: 14,
                         fontWeight: FontWeight.w600)),
                 Text(submission.caption,
-                    style: const TextStyle(color: AppColors.grey, fontSize: 12),
+                    style: TextStyle(color: context.greyColor, fontSize: 12),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis),
                 Text('${submission.fileType} · ${submission.submittedAt}',
-                    style: const TextStyle(color: AppColors.grey, fontSize: 11)),
+                    style: TextStyle(color: context.greyColor, fontSize: 11)),
               ],
             ),
           ),
           ElevatedButton(
             onPressed: onGrade,
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.yellow,
+              backgroundColor: context.accentColor,
               foregroundColor: Colors.black,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             ),

@@ -51,6 +51,10 @@
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15z"/></svg></span>
           <span class="nav-label">Study Materials</span>
         </button>
+        <button type="button" class="nav-item topnav-btn" data-page="past-questions" onclick="showPage('past-questions')">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg></span>
+          <span class="nav-label">Past Questions</span>
+        </button>
         <button type="button" class="nav-item topnav-btn" data-page="cbt" onclick="showPage('cbt')">
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 14h6M9 18h4"/></svg></span>
           <span class="nav-label">CBT Practice</span>
@@ -65,11 +69,15 @@
         </button>
         <button type="button" class="nav-item topnav-btn" data-page="school-portal" onclick="showPage('school-portal')">
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10l8-6 8 6v10"/><path d="M9 20v-6h6v6"/></svg></span>
-          <span class="nav-label">School Exam</span>
+          <span class="nav-label">External School Exam</span>
+        </button>
+        <button type="button" class="nav-item topnav-btn" data-page="subscription" onclick="showPage('subscription')">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg></span>
+          <span class="nav-label">Subscription</span>
         </button>
         <button type="button" class="nav-item topnav-btn" data-page="skills" onclick="showPage('skills')">
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 14l9-5-9-5-9 5 9 5z"/><path d="M12 14l6.16-3.422A12.083 12.083 0 0 1 21 13.5c0 2.5-4 4.5-9 4.5s-9-2-9-4.5c0-1.042.564-2.02 1.58-2.922L12 14z"/></svg></span>
-          <span class="nav-label">Subscription</span>
+          <span class="nav-label">Skills</span>
         </button>
         <button type="button" class="nav-item topnav-btn" data-page="library" onclick="showPage('library')">
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15z"/></svg></span>
@@ -91,6 +99,14 @@
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M10 9l5 3-5 3V9z"/></svg></span>
           <span class="nav-label">Saved</span>
         </button>
+        <button type="button" class="nav-item topnav-btn" data-page="about" onclick="showPage('about')">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></span>
+          <span class="nav-label">About</span>
+        </button>
+        <button type="button" class="nav-item topnav-btn" data-page="contact" onclick="showPage('contact')">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v16H4z"/><path d="M22 6l-10 7L2 6"/></svg></span>
+          <span class="nav-label">Contact</span>
+        </button>
         <button type="button" class="nav-item topnav-btn" data-page="profile" onclick="showPage('profile')">
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-6 8-6s8 2 8 6"/></svg></span>
           <span class="nav-label">Profile</span>
@@ -102,7 +118,7 @@
         <div class="sidebar-promo">
           <p class="sidebar-promo-title">Subscription</p>
           <p class="sidebar-promo-text">Live class plans, skills programs, and monthly access — all in one place.</p>
-          <button type="button" class="sidebar-promo-btn" onclick="showPage('skills')">View subscriptions &rarr;</button>
+          <button type="button" class="sidebar-promo-btn" onclick="showPage('subscription')">View subscriptions &rarr;</button>
         </div>
       </div>
     </aside>
@@ -244,6 +260,12 @@
         </div>
       </div>
 
+      <div id="dash-platform-live" class="dash-platform-live hidden">
+        <h3 class="dash-section-title">Platform Live Classes</h3>
+        <p class="section-sub">Public classes from teachers across Scholaxia — join directly from your dashboard.</p>
+        <div id="dash-live-grid" class="dash-live-grid"></div>
+      </div>
+
       <h3 class="dash-section-title">Quick Actions</h3>
       <div class="dash-actions-grid">
         <button type="button" class="dash-action-card dash-action-live" data-dash-page="live" onclick="quickDashAction('live')">
@@ -256,16 +278,27 @@
           <strong>Scholaxia Exam</strong>
           <span>Teacher tests &amp; scores</span>
         </button>
-        <button type="button" class="dash-action-card dash-action-subscription" data-dash-page="skills" onclick="quickDashAction('skills')">
+        <button type="button" class="dash-action-card dash-action-subscription" data-dash-page="subscription" onclick="quickDashAction('subscription')">
           <span class="dash-action-icon">&#128179;</span>
           <strong>Subscription</strong>
-          <span>Plans &amp; programs</span>
+          <span>Live class plans</span>
+        </button>
+        <button type="button" class="dash-action-card dash-action-skills" data-dash-page="skills" onclick="quickDashAction('skills')">
+          <span class="dash-action-icon">&#127891;</span>
+          <strong>Skills</strong>
+          <span>Training programs</span>
         </button>
         <button type="button" class="dash-action-card dash-action-sia" data-dash-page="sia" onclick="quickDashAction('sia')">
           <span class="dash-action-icon">&#10024;</span>
           <strong>Ask Sia</strong>
           <span>AI study assistant</span>
         </button>
+      </div>
+
+      <div class="dash-skills-section">
+        <h3 class="dash-section-title">Skills Training</h3>
+        <p class="section-sub">Web design, mobile apps, graphics, cyber security, data analysis and more — enroll from home or open the Skills tab for full details.</p>
+        <div id="dash-skills-preview" class="dash-skills-grid"></div>
       </div>
     </section>
 
@@ -275,7 +308,7 @@
 
     <section id="page-live" class="page">
 
-      <div class="info-banner">Join a live class when your teacher is online. If you have not paid yet, tap <strong>Join Class</strong> and you will be taken to payment, then straight into the class.</div>
+      <div class="info-banner">Join live classes from your dashboard or here. <strong>Public</strong> classes are open to all students. <strong>Private</strong> and <strong>School</strong> classes appear only if you are invited or in the group.</div>
 
       <div class="section-header">
         <h2>Live Now</h2>
@@ -380,12 +413,12 @@
 
 
 
-    <!-- Scholaxia Skills Training -->
+    <!-- Subscription — live class plans -->
 
-    <section id="page-skills" class="page">
+    <section id="page-subscription" class="page">
       <div class="skills-hero">
         <h2>Subscription</h2>
-        <p>Choose a <strong>live class plan</strong> and explore <strong>skills programs</strong>. Pay monthly once, then join live classes from the Live Class tab.</p>
+        <p>Choose a <strong>live class plan</strong>. Pay monthly once, then join live classes from the Live Class tab.</p>
         <div class="skills-payment-banner">
           <span>&#128179;</span>
           <div>
@@ -402,9 +435,14 @@
         </div>
         <div id="live-plans-grid" class="live-plans-grid"><div class="loading">Loading plans…</div></div>
       </div>
+    </section>
 
-      <div class="section-header" style="margin-top:32px">
-        <h2>Skills Programs</h2>
+    <!-- Scholaxia Skills Training -->
+
+    <section id="page-skills" class="page">
+      <div class="skills-hero">
+        <h2>Skills Training</h2>
+        <p>Web design, mobile apps, graphics, cyber security, data analysis and more — enroll in live skills programs with flexible installment plans.</p>
       </div>
       <div id="skills-programs" class="skills-programs"><div class="loading">Loading programs…</div></div>
     </section>
@@ -498,6 +536,16 @@
         <button type="button" class="community-tab" id="community-tab-announcements" onclick="showCommunityTab('announcements')">Announcements</button>
       </div>
 
+      <div class="community-social-bar" aria-label="Scholaxia social links">
+        <span>Follow Scholaxia:</span>
+        <a href="https://www.scholaxiacbtexam.blog" target="_blank" rel="noopener noreferrer">Website</a>
+        <a href="https://facebook.com" target="_blank" rel="noopener noreferrer">Facebook</a>
+        <a href="https://instagram.com" target="_blank" rel="noopener noreferrer">Instagram</a>
+        <a href="https://x.com" target="_blank" rel="noopener noreferrer">X</a>
+        <a href="https://youtube.com" target="_blank" rel="noopener noreferrer">YouTube</a>
+        <span class="community-social-hint">Tap &#128172; on a post to view comments</span>
+      </div>
+
       <div id="community-feed" class="community-feed"><div class="loading">Loading posts…</div></div>
       <div id="community-announcements" class="community-feed hidden"><div class="loading">Loading announcements…</div></div>
 
@@ -573,11 +621,29 @@
     <section id="page-study-materials" class="page">
       <div class="portal-embed-wrap">
         <div class="portal-embed-head portal-embed-head-slim">
+          <span class="portal-pill">Study Materials</span>
+          <p>Buy comprehensive study materials for JAMB, WAEC, NECO and all subjects.</p>
+        </div>
+        <iframe
+          id="study-materials-frame"
+          class="portal-embed-frame"
+          title="Scholaxia Study Materials"
+          src="https://www.scholaxiacbtexam.blog/buy-materials"
+          loading="lazy"
+          referrerpolicy="no-referrer-when-downgrade"
+          allow="fullscreen; payment"
+        ></iframe>
+      </div>
+    </section>
+
+    <section id="page-past-questions" class="page">
+      <div class="portal-embed-wrap">
+        <div class="portal-embed-head portal-embed-head-slim">
           <span class="portal-pill">Past Questions</span>
           <p>JAMB, WAEC &amp; NECO past questions — select subjects, pay, and download PDFs.</p>
         </div>
         <iframe
-          id="study-materials-frame"
+          id="past-questions-frame"
           class="portal-embed-frame"
           title="Scholaxia Past Questions"
           src="https://www.scholaxiacbtexam.blog/past-questions"
@@ -586,6 +652,47 @@
           allow="fullscreen; payment"
         ></iframe>
       </div>
+    </section>
+
+    <section id="page-about" class="page about-contact-page">
+      <h2>About Scholaxia</h2>
+      <p>Scholaxia is your complete student hub — CBT practice, live classes, teacher exams, skills training, library, marketplace, and a vibrant learning community.</p>
+      <div class="about-blocks">
+        <div class="about-block">
+          <h3>Everything you need in one app</h3>
+          <p>Library materials, saved live recordings, Sia AI tutor, Scholaxia Marketplace for books, and external school exams through our CBT portal.</p>
+        </div>
+        <div class="about-block">
+          <h3>Built for real students, real results</h3>
+          <p>Whether you are preparing for UTME, practising past questions, learning a vocational skill, or joining a live lesson before an exam, Scholaxia keeps you focused.</p>
+        </div>
+        <div class="about-block">
+          <h3>Start free, grow at your pace</h3>
+          <p>Create your free account, set up your exam profile, pick your subjects, and explore live classes, CBT practice and skills programs whenever you are ready.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="page-contact" class="page about-contact-page">
+      <h2>Contact Scholaxia</h2>
+      <p>Questions about exams, subscriptions, or skills programs? Send us a message and we will get back to you.</p>
+      <div class="about-block" style="margin-top:16px">
+        <p><strong>Email:</strong> support@scholaxia.com</p>
+        <p><strong>Office:</strong> Scholaxia Education Hub, Lagos, Nigeria</p>
+      </div>
+      <form id="app-contact-form" class="app-contact-form">
+        <label>Your Name *
+          <input type="text" id="app-contact-name" placeholder="Your full name" required />
+        </label>
+        <label>Email Address *
+          <input type="email" id="app-contact-email" placeholder="you@email.com" required />
+        </label>
+        <label>Message *
+          <textarea id="app-contact-message" rows="4" placeholder="How can we help you?" required></textarea>
+        </label>
+        <p id="app-contact-success" class="app-contact-success hidden">Thank you! Your message has been sent. We will get back to you soon.</p>
+        <button type="submit" class="btn-action btn-post">Send message</button>
+      </form>
     </section>
 
     <section id="page-library" class="page">
@@ -702,7 +809,7 @@
 
 
 
-<!-- Camera modal for school exams -->
+<!-- Camera modal for external school exams -->
 
 <div id="camera-modal" class="modal hidden">
 
@@ -710,7 +817,7 @@
 
     <h3>&#128248; Camera Required</h3>
 
-    <p>This school exam requires proctoring. Allow camera access to continue.</p>
+    <p>This external school exam requires proctoring. Allow camera access to continue.</p>
 
     <video id="camera-preview" autoplay muted playsinline></video>
 

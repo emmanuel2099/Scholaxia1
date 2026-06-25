@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../api/api_service.dart';
 import '../../../theme/app_theme.dart';
+import '../../../widgets/theme_toggle_tile.dart';
 import '../teacher_shared.dart';
 
 class TeacherProfileScreen extends StatefulWidget {
@@ -56,27 +57,25 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
   Widget build(BuildContext context) {
     if (widget.embeddedInShell) {
       return Scaffold(
-        backgroundColor: AppColors.background,
-        body: SafeArea(child: _buildBody(showTopBar: true)),
+        backgroundColor: context.bgColor,
+        body: SafeArea(child: _buildBody(context, showTopBar: true)),
       );
     }
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.bgColor,
       appBar: AppBar(
-        backgroundColor: AppColors.cardBg,
-        foregroundColor: AppColors.white,
         title: const Text('My Profile',
             style: TextStyle(fontWeight: FontWeight.bold)),
       ),
-      body: _buildBody(showTopBar: false),
+      body: _buildBody(context, showTopBar: false),
     );
   }
 
-  Widget _buildBody({required bool showTopBar}) {
+  Widget _buildBody(BuildContext context, {required bool showTopBar}) {
     if (_loading) {
-      return const Center(
-        child: CircularProgressIndicator(color: AppColors.yellow),
+      return Center(
+        child: CircularProgressIndicator(color: context.accentColor),
       );
     }
 
@@ -91,14 +90,10 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
               const SizedBox(height: 12),
               Text(_error!,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: AppColors.grey)),
+                  style: TextStyle(color: context.greyColor)),
               const SizedBox(height: 16),
               ElevatedButton(
                 onPressed: _load,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.yellow,
-                  foregroundColor: Colors.black,
-                ),
                 child: const Text('Retry'),
               ),
             ],
@@ -113,7 +108,7 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
     final approved = _profile?['is_approved'] == true;
 
     return RefreshIndicator(
-      color: AppColors.yellow,
+      color: context.accentColor,
       onRefresh: _load,
       child: ListView(
         padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -127,66 +122,66 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
               unreadCount: _unread,
             ),
             const SizedBox(height: 20),
-            const Text('My Profile',
+            Text('My Profile',
                 style: TextStyle(
-                    color: AppColors.white,
+                    color: context.textColor,
                     fontSize: 22,
                     fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
-            const Text('Your account details.',
-                style: TextStyle(color: AppColors.grey, fontSize: 13)),
+            Text('Your account details.',
+                style: TextStyle(color: context.greyColor, fontSize: 13)),
             const SizedBox(height: 20),
           ] else
             const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: AppColors.cardBg,
+              color: context.cardColor,
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFF2A2A2A)),
+              border: Border.all(color: context.borderColor),
             ),
             child: Column(
               children: [
                 CircleAvatar(
                   radius: 36,
-                  backgroundColor: AppColors.yellow.withOpacity(0.15),
+                  backgroundColor: context.accentColor.withOpacity(0.15),
                   child: Text(
                     name.isNotEmpty ? name[0].toUpperCase() : 'T',
-                    style: const TextStyle(
-                        color: AppColors.yellow,
+                    style: TextStyle(
+                        color: context.accentColor,
                         fontSize: 28,
                         fontWeight: FontWeight.bold),
                   ),
                 ),
                 const SizedBox(height: 14),
                 Text(name,
-                    style: const TextStyle(
-                        color: AppColors.white,
+                    style: TextStyle(
+                        color: context.textColor,
                         fontSize: 20,
                         fontWeight: FontWeight.bold)),
                 if (email.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Text(email,
-                      style: const TextStyle(color: AppColors.grey, fontSize: 13)),
+                      style: TextStyle(color: context.greyColor, fontSize: 13)),
                 ],
                 if (joined.isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Text('Joined $joined',
-                      style: const TextStyle(color: AppColors.grey, fontSize: 12)),
+                      style: TextStyle(color: context.greyColor, fontSize: 12)),
                 ],
                 const SizedBox(height: 12),
                 Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: (approved ? AppColors.yellow : AppColors.grey)
+                    color: (approved ? context.accentColor : context.greyColor)
                         .withOpacity(0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     approved ? 'Approved teacher' : 'Pending approval',
                     style: TextStyle(
-                      color: approved ? AppColors.yellow : AppColors.grey,
+                      color: approved ? context.accentColor : context.greyColor,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
@@ -195,6 +190,8 @@ class _TeacherProfileScreenState extends State<TeacherProfileScreen> {
               ],
             ),
           ),
+          const SizedBox(height: 20),
+          const ThemeToggleTile(),
           const SizedBox(height: 24),
           SizedBox(
             width: double.infinity,

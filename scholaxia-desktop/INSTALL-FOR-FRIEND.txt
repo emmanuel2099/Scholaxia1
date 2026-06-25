@@ -1,45 +1,47 @@
-SCHOLAXIA STUDENT — INSTALL ON WINDOWS OR TABLET
-=================================================
+SCHOLAXIA STUDENT — INSTALL ON WINDOWS
+======================================
 
-You received the Scholaxia Student app for Windows PC or Windows tablet.
+You received the Scholaxia Student app for Windows PC or tablet.
+
+IMPORTANT — USE THE INSTALLER FILE
+----------------------------------
+Install with this file ONLY:
+
+  Scholaxia-Student-Setup-1.0.0.exe
+
+Do NOT use:
+- Scholaxia Student.exe inside a "win-unpacked" folder (runs without installing)
+- START.bat or BUILD-INSTALLER.bat (for developers only)
+- Any file named "Portable" (no install, not for sharing)
 
 WHAT YOU NEED
 -------------
-- Windows 10 or Windows 11
-- Internet connection (Wi‑Fi or mobile data)
+- Windows 10 or Windows 11 (64-bit)
+- Internet connection
 - About 300 MB free disk space
 
-OPTION A — INSTALLER (recommended)
-----------------------------------
-1. Close Scholaxia Student if it is open (check the taskbar and Task Manager)
-2. Double-click: Scholaxia Student Setup.exe
-2. If Windows asks "Do you want to allow this app?", click Yes
-3. Follow the install steps → Finish
-4. Open Scholaxia Student from Desktop or Start menu
+INSTALL STEPS
+-------------
+1. Close Scholaxia Student if it is already open (taskbar / Task Manager)
+2. Double-click: Scholaxia-Student-Setup-1.0.0.exe
+3. If Windows SmartScreen appears, click "More info" then "Run anyway"
+4. Follow the setup wizard → choose install folder → Finish
+5. Open Scholaxia Student from Desktop or Start menu
 
-OPTION B — PORTABLE (no install)
---------------------------------
-1. Copy Scholaxia-Portable.exe to a folder (e.g. Desktop\Scholaxia)
-2. Double-click Scholaxia-Portable.exe
+The installer adds shortcuts and an entry in Settings → Apps so you can uninstall later.
 
 FIRST TIME USE
 --------------
-1. Open Scholaxia Student
+1. Open Scholaxia Student from Desktop or Start menu
 2. Sign up or log in with your student account
-3. Use Live Class, CBT, Ask Sia, Community, and Library
-
-TABLET TIPS
------------
-- Works on Windows tablets (Surface, Lenovo, etc.)
-- Tap the menu button (☰) if the sidebar is hidden
-- Allow camera and microphone when joining live class
+3. Use Live Class, CBT, Skills, Ask Sia, Community, and Library
 
 TROUBLESHOOTING
 ---------------
-- App won't open: Right-click → Run as administrator once
-- Login fails: Check internet; server may be waking up (wait 30 sec, retry)
-- Camera/mic: Settings → Privacy → allow Camera and Microphone for Scholaxia
+- App opened but never installed: you ran the wrong file. Use Scholaxia-Student-Setup-*.exe
+- App won't open: Right-click shortcut → Run as administrator once
+- Login fails: check internet; wait 30 seconds and retry
 
 Teachers and admins use separate Scholaxia apps — not included in this student package.
 
-Support: contact the person who sent you this app.
+Support: contact the person who sent you this installer.

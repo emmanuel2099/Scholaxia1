@@ -5,7 +5,7 @@ var SKILLS_PROGRAMS = [
     title: "Web Design",
     subtitle: "Frontend & Backend",
     duration: "6 months",
-    fee: 250000,
+    fee: 400000,
     keywords: ["web", "html", "css", "javascript", "frontend", "backend", "react", "node"],
     phases: [
       { name: "Frontend Development", duration: "3 months", topics: ["HTML5 & semantic markup", "CSS3, Flexbox & Grid", "JavaScript fundamentals", "Responsive design", "UI/UX basics", "React or Vue introduction"] },
@@ -164,6 +164,21 @@ function renderSkillLiveClasses(skill, sessions) {
   }).join("") + '</div>';
 }
 
+function renderHomeSkillsPreview() {
+  var el = document.getElementById("dash-skills-preview");
+  if (!el || typeof SKILLS_PROGRAMS === "undefined") return;
+  el.innerHTML = SKILLS_PROGRAMS.slice(0, 4).map(function (skill) {
+    return '<article class="dash-skill-card">' +
+      '<span class="dash-skill-icon" aria-hidden="true">' + skill.icon + '</span>' +
+      '<div><h4>' + escHtml(skill.title) + '</h4>' +
+      '<p>' + escHtml(skill.subtitle) + ' · ' + escHtml(skill.duration) + '</p>' +
+      '<strong class="dash-skill-fee">' + formatNaira(skill.fee) + '</strong></div>' +
+      '<button type="button" class="dash-skill-btn" onclick="openSkillEnrollment(\'' + skill.id + '\')">Enroll</button>' +
+      '</article>';
+  }).join("") +
+    '<button type="button" class="dash-skills-all" onclick="showPage(\'skills\')">View all skills programs &rarr;</button>';
+}
+
 function renderSkillCard(skill, sessions, expanded) {
   var isOpen = expanded === skill.id;
   var phasesHtml = (skill.phases || []).map(function (ph) {
@@ -306,3 +321,4 @@ window.closeSkillEnrollment = closeSkillEnrollment;
 window.submitSkillEnrollment = submitSkillEnrollment;
 window.showSkillEnrollInfo = showSkillEnrollInfo;
 window.loadSkillsTraining = loadSkillsTraining;
+window.renderHomeSkillsPreview = renderHomeSkillsPreview;

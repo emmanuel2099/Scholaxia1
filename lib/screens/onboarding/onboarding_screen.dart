@@ -65,7 +65,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: context.bgColor,
       body: Column(
         children: [
           Expanded(
@@ -90,8 +90,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   height: 6,
                   decoration: BoxDecoration(
                     color: i == _page
-                        ? AppColorsLight.yellow
-                        : const Color(0xFFD1D5DB),
+                        ? context.accentColor
+                        : context.borderColor,
                     borderRadius: BorderRadius.circular(3),
                   ),
                 ),
@@ -109,8 +109,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                   child: ElevatedButton(
                     onPressed: _next,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColorsLight.yellow,
-                      foregroundColor: Colors.white,
+                      backgroundColor: context.accentColor,
+                      foregroundColor:
+                          context.isDark ? AppColors.background : Colors.white,
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14)),
                       elevation: 0,
@@ -130,8 +131,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: _pages[_page].isLast
-                          ? const Color(0xFF9CA3AF)
-                          : const Color(0xFF6B7280),
+                          ? context.greyLColor
+                          : context.greyColor,
                       fontSize: 13,
                     ),
                   ),
@@ -186,10 +187,10 @@ class _PageContent extends StatelessWidget {
                   page.image,
                   fit: BoxFit.cover,
                   errorBuilder: (_, __, ___) => Container(
-                    color: const Color(0xFFE5E7EB),
-                    child: const Center(
+                    color: context.surfColor,
+                    child: Center(
                       child: Icon(Icons.image_outlined,
-                          size: 60, color: Color(0xFF9CA3AF)),
+                          size: 60, color: context.greyLColor),
                     ),
                   ),
                 ),
@@ -203,19 +204,19 @@ class _PageContent extends StatelessWidget {
                   children: [
                     Text(
                       page.title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 26,
                         fontWeight: FontWeight.w900,
-                        color: Color(0xFF111827),
+                        color: context.textColor,
                         height: 1.2,
                       ),
                     ),
                     const SizedBox(height: 10),
                     Text(
                       page.subtitle,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
-                        color: Color(0xFF6B7280),
+                        color: context.greyColor,
                         height: 1.5,
                       ),
                     ),

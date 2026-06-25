@@ -74,7 +74,7 @@ class _TeacherClassesScreenState extends State<TeacherClassesScreen>
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.surface,
+      backgroundColor: context.headerColor,
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (_) => _CreateClassSheet(
@@ -89,11 +89,12 @@ class _TeacherClassesScreenState extends State<TeacherClassesScreen>
 
   @override
   Widget build(BuildContext context) {
+    final accent = context.accentColor;
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: context.bgColor,
       floatingActionButton: FloatingActionButton(
         onPressed: _showCreateClassSheet,
-        backgroundColor: AppColors.yellow,
+        backgroundColor: accent,
         child: const Icon(Icons.add, color: Colors.black),
       ),
       body: SafeArea(
@@ -110,19 +111,19 @@ class _TeacherClassesScreenState extends State<TeacherClassesScreen>
               ),
             ),
             const SizedBox(height: 20),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('My Classes',
                       style: TextStyle(
-                          color: AppColors.white,
+                          color: context.textColor,
                           fontSize: 22,
                           fontWeight: FontWeight.bold)),
-                  SizedBox(height: 4),
+                  const SizedBox(height: 4),
                   Text('Manage your live classes and sessions.',
-                      style: TextStyle(color: AppColors.grey, fontSize: 13)),
+                      style: TextStyle(color: context.greyColor, fontSize: 13)),
                 ],
               ),
             ),
@@ -130,7 +131,7 @@ class _TeacherClassesScreenState extends State<TeacherClassesScreen>
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 20),
               decoration: BoxDecoration(
-                color: AppColors.surfaceLight,
+                color: context.surfColor,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: TabBar(
@@ -138,12 +139,12 @@ class _TeacherClassesScreenState extends State<TeacherClassesScreen>
                 isScrollable: true,
                 tabAlignment: TabAlignment.start,
                 indicator: BoxDecoration(
-                  color: AppColors.yellow,
+                  color: accent,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 indicatorSize: TabBarIndicatorSize.tab,
                 labelColor: Colors.black,
-                unselectedLabelColor: AppColors.grey,
+                unselectedLabelColor: context.greyColor,
                 dividerColor: Colors.transparent,
                 tabs: [
                   Tab(text: 'Live (${_live.length})'),
@@ -156,10 +157,10 @@ class _TeacherClassesScreenState extends State<TeacherClassesScreen>
             const SizedBox(height: 4),
             Expanded(
               child: _loading
-                  ? const Center(
-                      child: CircularProgressIndicator(color: AppColors.yellow))
+                  ? Center(
+                      child: CircularProgressIndicator(color: accent))
                   : RefreshIndicator(
-                      color: AppColors.yellow,
+                      color: accent,
                       onRefresh: _load,
                       child: TabBarView(
                         controller: _tabController,
@@ -184,7 +185,7 @@ class _TeacherClassesScreenState extends State<TeacherClassesScreen>
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
           const SizedBox(height: 80),
-          Center(child: Text(empty, style: const TextStyle(color: AppColors.grey))),
+          Center(child: Text(empty, style: TextStyle(color: context.greyColor))),
         ],
       );
     }
@@ -202,23 +203,23 @@ class _TeacherClassesScreenState extends State<TeacherClassesScreen>
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
-        children: const [
-          SizedBox(height: 40),
-          Icon(Icons.people_outline, color: AppColors.grey, size: 48),
-          SizedBox(height: 12),
+        children: [
+          const SizedBox(height: 40),
+          Icon(Icons.people_outline, color: context.greyColor, size: 48),
+          const SizedBox(height: 12),
           Text(
             'No students assigned yet',
             textAlign: TextAlign.center,
             style: TextStyle(
-                color: AppColors.white,
+                color: context.textColor,
                 fontSize: 16,
                 fontWeight: FontWeight.w600),
           ),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Text(
             'When admin assigns a student to you, they appear here so you can host a live class for them.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: AppColors.grey, fontSize: 13, height: 1.4),
+            style: TextStyle(color: context.greyColor, fontSize: 13, height: 1.4),
           ),
         ],
       );
@@ -238,13 +239,13 @@ class _TeacherClassesScreenState extends State<TeacherClassesScreen>
         final status = s['status']?.toString() ?? 'approved';
         final time = TeacherUtils.formatDateTime(
             s['preferred_time'] ?? s['created_at']);
-        final color = TeacherUtils.subjectColor(subject);
+        final color = TeacherUtils.subjectColor(subject, context);
         return Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: AppColors.cardBg,
+            color: context.cardColor,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFF2A2A2A)),
+            border: Border.all(color: context.borderColor),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -265,8 +266,8 @@ class _TeacherClassesScreenState extends State<TeacherClassesScreen>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(name,
-                            style: const TextStyle(
-                                color: AppColors.white,
+                            style: TextStyle(
+                                color: context.textColor,
                                 fontSize: 15,
                                 fontWeight: FontWeight.bold)),
                         Text(subject,
@@ -278,13 +279,13 @@ class _TeacherClassesScreenState extends State<TeacherClassesScreen>
                     padding:
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: AppColors.yellow.withOpacity(0.12),
+                      color: context.accentColor.withOpacity(0.12),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
                       status,
-                      style: const TextStyle(
-                          color: AppColors.yellow,
+                      style: TextStyle(
+                          color: context.accentColor,
                           fontSize: 10,
                           fontWeight: FontWeight.bold),
                     ),
@@ -293,13 +294,13 @@ class _TeacherClassesScreenState extends State<TeacherClassesScreen>
               ),
               const SizedBox(height: 8),
               Text(topic,
-                  style: const TextStyle(color: AppColors.grey, fontSize: 12)),
+                  style: TextStyle(color: context.greyColor, fontSize: 12)),
               if (time.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(time,
                       style:
-                          const TextStyle(color: AppColors.grey, fontSize: 11)),
+                          TextStyle(color: context.greyColor, fontSize: 11)),
                 ),
               const SizedBox(height: 14),
               SizedBox(
@@ -311,7 +312,7 @@ class _TeacherClassesScreenState extends State<TeacherClassesScreen>
                     goLiveNow: true,
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.yellow,
+                    backgroundColor: context.accentColor,
                     foregroundColor: Colors.black,
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8)),
@@ -382,11 +383,11 @@ class _ClassCard extends StatelessWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: AppColors.cardBg,
-        title: const Text('End class?', style: TextStyle(color: AppColors.white)),
-        content: const Text(
+        backgroundColor: ctx.cardColor,
+        title: Text('End class?', style: TextStyle(color: ctx.textColor)),
+        content: Text(
           'This will stop the live session for all students.',
-          style: TextStyle(color: AppColors.grey),
+          style: TextStyle(color: ctx.greyColor),
         ),
         actions: [
           TextButton(
@@ -418,15 +419,15 @@ class _ClassCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = TeacherUtils.subjectColor(_subject);
+    final color = TeacherUtils.subjectColor(_subject, context);
     final time = TeacherUtils.formatDateTime(data['start_time']);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.cardBg,
+        color: context.cardColor,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
-            color: _isLive ? color.withOpacity(0.4) : const Color(0xFF2A2A2A)),
+            color: _isLive ? color.withOpacity(0.4) : context.borderColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -448,12 +449,12 @@ class _ClassCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(_title,
-                        style: const TextStyle(
-                            color: AppColors.white,
+                        style: TextStyle(
+                            color: context.textColor,
                             fontSize: 15,
                             fontWeight: FontWeight.bold)),
                     Text(_subject,
-                        style: const TextStyle(color: AppColors.grey, fontSize: 12)),
+                        style: TextStyle(color: context.greyColor, fontSize: 12)),
                   ],
                 ),
               ),
@@ -475,10 +476,10 @@ class _ClassCard extends StatelessWidget {
           const SizedBox(height: 10),
           Row(
             children: [
-              const Icon(Icons.schedule_outlined, color: AppColors.grey, size: 13),
+              Icon(Icons.schedule_outlined, color: context.greyColor, size: 13),
               const SizedBox(width: 4),
               Text(time,
-                  style: const TextStyle(color: AppColors.grey, fontSize: 12)),
+                  style: TextStyle(color: context.greyColor, fontSize: 12)),
             ],
           ),
           const SizedBox(height: 14),
@@ -669,9 +670,9 @@ class _CreateClassSheetState extends State<_CreateClassSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Schedule Live Class',
+          Text('Schedule Live Class',
               style: TextStyle(
-                  color: AppColors.white,
+                  color: context.textColor,
                   fontSize: 18,
                   fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
@@ -681,22 +682,22 @@ class _CreateClassSheetState extends State<_CreateClassSheet> {
           const SizedBox(height: 12),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Go live now',
-                style: TextStyle(color: AppColors.white, fontSize: 14)),
-            subtitle: const Text('Start immediately and open the classroom',
-                style: TextStyle(color: AppColors.grey, fontSize: 12)),
+            title: Text('Go live now',
+                style: TextStyle(color: context.textColor, fontSize: 14)),
+            subtitle: Text('Start immediately and open the classroom',
+                style: TextStyle(color: context.greyColor, fontSize: 12)),
             value: _goLiveNow,
-            activeThumbColor: AppColors.yellow,
+            activeThumbColor: context.accentColor,
             onChanged: (v) => setState(() => _goLiveNow = v),
           ),
           if (!_goLiveNow)
             ListTile(
             contentPadding: EdgeInsets.zero,
-            title: const Text('Start time',
-                style: TextStyle(color: AppColors.grey, fontSize: 12)),
+            title: Text('Start time',
+                style: TextStyle(color: context.greyColor, fontSize: 12)),
             subtitle: Text(TeacherUtils.formatDateTime(_start.toIso8601String()),
-                style: const TextStyle(color: AppColors.white)),
-            trailing: const Icon(Icons.calendar_today, color: AppColors.yellow),
+                style: TextStyle(color: context.textColor)),
+            trailing: Icon(Icons.calendar_today, color: context.accentColor),
             onTap: () async {
               final date = await showDatePicker(
                 context: context,
@@ -722,7 +723,7 @@ class _CreateClassSheetState extends State<_CreateClassSheet> {
             child: ElevatedButton(
               onPressed: _loading ? null : _submit,
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.yellow,
+                backgroundColor: context.accentColor,
                 foregroundColor: Colors.black,
               ),
               child: _loading
@@ -745,12 +746,12 @@ class _CreateClassSheetState extends State<_CreateClassSheet> {
   Widget _field(TextEditingController ctrl, String hint) {
     return TextField(
       controller: ctrl,
-      style: const TextStyle(color: AppColors.white),
+      style: TextStyle(color: context.textColor),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(color: AppColors.grey),
+        hintStyle: TextStyle(color: context.greyColor),
         filled: true,
-        fillColor: AppColors.surfaceLight,
+        fillColor: context.surfColor,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,

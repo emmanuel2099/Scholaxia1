@@ -104,7 +104,12 @@ function showTeacherPage(page) {
   if (pg) pg.classList.add("active");
   var btn = document.querySelector('.topnav-btn[data-page="' + page + '"]');
   if (btn) btn.classList.add("active");
-  if (page === "live") loadTeacherLive();
+  if (page === "live") {
+    loadTeacherLive();
+    loadHostStudentPickers();
+    loadSchoolGroupsForHost();
+    renderSchoolGroupsList();
+  }
   else if (page === "students") loadTeacherStudents();
   else if (page === "materials") loadTeacherMaterials();
   else if (page === "curriculum") loadTeacherCurriculum();
@@ -129,12 +134,28 @@ function getSchedulePayload(goLiveNow) {
   var duration = parseInt(document.getElementById("host-duration").value, 10) || 60;
   if (!title || !subject) throw new Error("Title and subject are required");
 
+  var visEl = document.querySelector('input[name="host-visibility"]:checked');
+  var visibility = visEl ? visEl.value : "public";
+
   var body = {
     title: title,
     subject: subject,
     duration_minutes: duration,
     go_live_now: goLiveNow,
+    visibility: visibility,
   };
+
+  if (visibility === "private") {
+    var sel = document.getElementById("host-invited-students");
+    var invited = sel ? Array.from(sel.selectedOptions).map(function (o) { return o.value; }) : [];
+    if (!invited.length) throw new Error("Select at least one student for a private class.");
+    body.invited_student_ids = invited;
+  }
+  if (visibility === "school_group") {
+    var gid = document.getElementById("host-school-group").value;
+    if (!gid) throw new Error("Select a school group.");
+    body.school_group_id = gid;
+  }
 
   if (!goLiveNow) {
     if (!date || !startTime) throw new Error("Pick a date and start time to schedule");
@@ -190,11 +211,22 @@ async function teacherHostClass(goLiveNow) {
     if (titleInput) titleInput.value = "";
     await loadTeacherLive();
     if (goLiveNow && created.id) {
-      if (confirm("Class is live! Assigned students and students with " + body.subject + " were notified. Open classroom?")) {
+      var visMsg = body.visibility === "public"
+        ? "All students on Scholaxia were notified."
+        : body.visibility === "private"
+          ? "Invited students were notified."
+          : "Students in your school group were notified.";
+      var linkMsg = created.join_code ? " Join code: " + created.join_code + "." : "";
+      if (confirm("Class is live! " + visMsg + linkMsg + " Open classroom?")) {
         teacherEnterClassroom(created.id, body.title, body.subject, created.end_time);
       }
     } else {
-      alert("Class scheduled. Students with this subject will see it under Upcoming.");
+      var schedMsg = body.visibility === "public"
+        ? "All students will see this on their dashboard when it goes live."
+        : body.visibility === "private"
+          ? "Only invited students will see this class."
+          : "Only your school group will see this class.";
+      alert("Class scheduled. " + schedMsg);
     }
   } catch (e) {
     var msg = (e && e.message) ? e.message : "Could not host class. Try again.";
@@ -334,6 +366,104 @@ window.teacherAllowStudentMic = teacherAllowStudentMic;
 window.teacherRevokeStudentMic = teacherRevokeStudentMic;
 window.loadLiveClassStudents = function () { return loadLiveClassStudents(false); };
 
+function visibilityLabel(v) {
+  if (v === "public") return "Public";
+  if (v === "private") return "Private";
+  if (v === "school_group") return "School";
+  return "Subject";
+}
+
+function onHostVisibilityChange() {
+  var visEl = document.querySelector('input[name="host-visibility"]:checked');
+  var vis = visEl ? visEl.value : "public";
+  var priv = document.getElementById("host-private-wrap");
+  var school = document.getElementById("host-school-wrap");
+  if (priv) priv.classList.toggle("hidden", vis !== "private");
+  if (school) school.classList.toggle("hidden", vis !== "school_group");
+}
+
+async function loadHostStudentPickers() {
+  var privSel = document.getElementById("host-invited-students");
+  var sgSel = document.getElementById("sg-students");
+  if (!privSel && !sgSel) return;
+  try {
+    var rows = await teacherApi("/api/v1/live-classes/requests?status=approved");
+    if (!rows || !rows.length) rows = await teacherApi("/api/v1/live-classes/requests");
+    var students = (rows || []).filter(function (r) { return r.student_id; });
+    var seen = {};
+    var options = students.filter(function (r) {
+      if (seen[r.student_id]) return false;
+      seen[r.student_id] = true;
+      return true;
+    }).map(function (r) {
+      return '<option value="' + escHtml(r.student_id) + '">' + escHtml(r.student_name || r.topic || "Student") + "</option>";
+    }).join("");
+    if (privSel) privSel.innerHTML = options || '<option disabled>No assigned students yet</option>';
+    if (sgSel) sgSel.innerHTML = options || '<option disabled>No assigned students yet</option>';
+  } catch (e) {
+    if (privSel) privSel.innerHTML = '<option disabled>Could not load students</option>';
+  }
+  onHostVisibilityChange();
+}
+
+async function loadSchoolGroupsForHost() {
+  var sel = document.getElementById("host-school-group");
+  if (!sel) return;
+  try {
+    var groups = await teacherApi("/api/v1/school-groups/mine") || [];
+    sel.innerHTML = '<option value="">Select a group</option>' + groups.map(function (g) {
+      return '<option value="' + escHtml(g.id) + '">' + escHtml(g.school_name) + " — " + escHtml(g.name) + " (" + g.member_count + ")</option>";
+    }).join("");
+  } catch (e) {
+    sel.innerHTML = '<option value="">No groups yet</option>';
+  }
+}
+
+async function renderSchoolGroupsList() {
+  var el = document.getElementById("school-groups-list");
+  if (!el) return;
+  try {
+    var groups = await teacherApi("/api/v1/school-groups/mine") || [];
+    if (!groups.length) {
+      el.innerHTML = '<p class="host-hint">No school groups yet. Create one above.</p>';
+      return;
+    }
+    el.innerHTML = groups.map(function (g) {
+      return '<div class="school-group-item"><strong>' + escHtml(g.school_name) + " — " + escHtml(g.name) + '</strong><span>' +
+        g.member_count + " student(s)</span></div>";
+    }).join("");
+  } catch (e) {
+    el.innerHTML = "";
+  }
+}
+
+async function createSchoolGroup() {
+  var school = document.getElementById("sg-school").value.trim();
+  var name = document.getElementById("sg-name").value.trim();
+  var sel = document.getElementById("sg-students");
+  var ids = sel ? Array.from(sel.selectedOptions).map(function (o) { return o.value; }) : [];
+  if (!school || !name) {
+    alert("Enter school name and group name.");
+    return;
+  }
+  try {
+    await teacherApi("/api/v1/school-groups/", {
+      method: "POST",
+      body: JSON.stringify({ school_name: school, name: name, student_ids: ids }),
+    });
+    document.getElementById("sg-school").value = "";
+    document.getElementById("sg-name").value = "";
+    await loadSchoolGroupsForHost();
+    await renderSchoolGroupsList();
+    alert("School group created.");
+  } catch (e) {
+    alert(e.message || "Could not create group.");
+  }
+}
+
+window.onHostVisibilityChange = onHostVisibilityChange;
+window.createSchoolGroup = createSchoolGroup;
+
 async function loadTeacherLive() {
   var el = document.getElementById("live-table");
   if (!el) return;
@@ -347,20 +477,22 @@ async function loadTeacherLive() {
       el.innerHTML = '<div class="empty-state">No classes yet. Schedule or go live above.</div>';
       return;
     }
-    el.innerHTML = '<table class="data-table"><thead><tr><th>Title</th><th>Subject</th><th>Schedule</th><th>End</th><th>Status</th><th></th></tr></thead><tbody>' +
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Title</th><th>Type</th><th>Subject</th><th>Join code</th><th>Schedule</th><th>Status</th><th></th></tr></thead><tbody>' +
       rows.map(function (c) {
         var badge = c.is_live ? '<span class="badge live">LIVE</span>' : '<span class="badge muted">Scheduled</span>';
+        var vis = '<span class="badge">' + visibilityLabel(c.visibility) + "</span>";
+        var code = c.join_code ? '<code class="join-code">' + escHtml(c.join_code) + "</code>" : "—";
         var actions = "";
         if (c.is_live) {
           actions += '<button type="button" class="btn-sm" data-action="enter" data-id="' + escHtml(c.id) + '" data-title="' + escHtml(c.title) + '" data-subject="' + escHtml(c.subject) + '" data-end="' + escHtml(c.end_time || "") + '">Enter</button> ';
-          actions += '<button type="button" class="btn-sm primary" data-action="mics" data-id="' + escHtml(c.id) + '" data-title="' + escHtml(c.title) + '">Allow student mics</button> ';
+          actions += '<button type="button" class="btn-sm primary" data-action="mics" data-id="' + escHtml(c.id) + '" data-title="' + escHtml(c.title) + '">Students</button> ';
           actions += '<button type="button" class="btn-sm danger" data-action="end" data-id="' + escHtml(c.id) + '">End</button>';
         } else {
           actions += '<button type="button" class="btn-sm" data-action="start" data-id="' + escHtml(c.id) + '">Start</button> ';
           actions += '<button type="button" class="btn-sm" data-action="enter" data-id="' + escHtml(c.id) + '" data-title="' + escHtml(c.title) + '" data-subject="' + escHtml(c.subject) + '" data-end="' + escHtml(c.end_time || "") + '">Enter</button>';
         }
-        return "<tr><td>" + escHtml(c.title) + "</td><td>" + escHtml(c.subject) + "</td>" +
-          "<td>" + formatDateTime(c.start_time) + "</td><td>" + formatDateTime(c.end_time) + "</td>" +
+        return "<tr><td>" + escHtml(c.title) + "</td><td>" + vis + "</td><td>" + escHtml(c.subject) + "</td><td>" + code + "</td>" +
+          "<td>" + formatDateTime(c.start_time) + "</td>" +
           "<td>" + badge + "</td><td class=\"actions\">" + actions + "</td></tr>";
       }).join("") + "</tbody></table>";
   } catch (e) {
