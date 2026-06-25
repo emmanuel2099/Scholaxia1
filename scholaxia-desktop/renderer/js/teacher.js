@@ -216,7 +216,9 @@ async function teacherHostClass(goLiveNow) {
         : body.visibility === "private"
           ? "Invited students were notified."
           : "Students in your school group were notified.";
-      var linkMsg = created.join_code ? " Join code: " + created.join_code + "." : "";
+      var linkMsg = created.join_code
+        ? " Share code " + created.join_code + " — students paste it on Live Class → Join."
+        : "";
       if (confirm("Class is live! " + visMsg + linkMsg + " Open classroom?")) {
         teacherEnterClassroom(created.id, body.title, body.subject, created.end_time);
       }
@@ -366,6 +368,32 @@ window.teacherAllowStudentMic = teacherAllowStudentMic;
 window.teacherRevokeStudentMic = teacherRevokeStudentMic;
 window.loadLiveClassStudents = function () { return loadLiveClassStudents(false); };
 
+function teacherShareText(joinCode, title) {
+  var code = String(joinCode || "").toUpperCase();
+  var lines = [
+    "Join my Scholaxia live class" + (title ? ": " + title : ""),
+    "",
+    "Class code: " + code,
+    "",
+    "1. Open Scholaxia Student app",
+    "2. Go to Live Class",
+    "3. Paste the code and tap Join class",
+  ];
+  return lines.join("\n");
+}
+
+async function teacherCopyJoinShare(joinCode, title) {
+  var text = teacherShareText(joinCode, title);
+  try {
+    await navigator.clipboard.writeText(text);
+    alert("Join instructions copied! Students paste the code on Live Class (like Google Meet).");
+  } catch (e) {
+    prompt("Copy and share with students:", text);
+  }
+}
+
+window.teacherCopyJoinShare = teacherCopyJoinShare;
+
 function visibilityLabel(v) {
   if (v === "public") return "Public";
   if (v === "private") return "Private";
@@ -481,7 +509,10 @@ async function loadTeacherLive() {
       rows.map(function (c) {
         var badge = c.is_live ? '<span class="badge live">LIVE</span>' : '<span class="badge muted">Scheduled</span>';
         var vis = '<span class="badge">' + visibilityLabel(c.visibility) + "</span>";
-        var code = c.join_code ? '<code class="join-code">' + escHtml(c.join_code) + "</code>" : "—";
+        var codeCell = c.join_code
+          ? '<code class="join-code">' + escHtml(c.join_code) + '</code> ' +
+            '<button type="button" class="btn-sm" data-action="copy-link" data-code="' + escHtml(c.join_code) + '" data-title="' + escHtml(c.title) + '">Copy invite</button>'
+          : "—";
         var actions = "";
         if (c.is_live) {
           actions += '<button type="button" class="btn-sm" data-action="enter" data-id="' + escHtml(c.id) + '" data-title="' + escHtml(c.title) + '" data-subject="' + escHtml(c.subject) + '" data-end="' + escHtml(c.end_time || "") + '">Enter</button> ';
@@ -491,7 +522,7 @@ async function loadTeacherLive() {
           actions += '<button type="button" class="btn-sm" data-action="start" data-id="' + escHtml(c.id) + '">Start</button> ';
           actions += '<button type="button" class="btn-sm" data-action="enter" data-id="' + escHtml(c.id) + '" data-title="' + escHtml(c.title) + '" data-subject="' + escHtml(c.subject) + '" data-end="' + escHtml(c.end_time || "") + '">Enter</button>';
         }
-        return "<tr><td>" + escHtml(c.title) + "</td><td>" + vis + "</td><td>" + escHtml(c.subject) + "</td><td>" + code + "</td>" +
+        return "<tr><td>" + escHtml(c.title) + "</td><td>" + vis + "</td><td>" + escHtml(c.subject) + "</td><td>" + codeCell + "</td>" +
           "<td>" + formatDateTime(c.start_time) + "</td>" +
           "<td>" + badge + "</td><td class=\"actions\">" + actions + "</td></tr>";
       }).join("") + "</tbody></table>";
@@ -1349,8 +1380,11 @@ function bindTeacherUI() {
       else if (btn.dataset.action === "end") teacherEndClass(id);
       else if (btn.dataset.action === "enter") {
         teacherEnterClassroom(id, btn.dataset.title, btn.dataset.subject, btn.dataset.end);
-      } else if (btn.dataset.action === "mics") {
+      }       else if (btn.dataset.action === "mics") {
         openLiveStudentsModal(id, btn.dataset.title);
+      } else if (btn.dataset.action === "copy-link") {
+        ev.stopPropagation();
+        teacherCopyJoinShare(btn.dataset.code, btn.dataset.title);
       }
     });
   }

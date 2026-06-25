@@ -310,6 +310,16 @@
 
       <div class="info-banner">Join live classes from your dashboard or here. <strong>Public</strong> classes are open to all students. <strong>Private</strong> and <strong>School</strong> classes appear only if you are invited or in the group.</div>
 
+      <div class="join-code-box">
+        <h3>Have a class link or code?</h3>
+        <p class="section-sub">Paste the code from your teacher (like Google Meet) to join directly.</p>
+        <div class="join-code-row">
+          <input type="text" id="join-code-input" placeholder="SX-XXXXXXXX or paste class link" autocomplete="off" />
+          <button type="button" class="btn-action" id="join-code-btn">Join class</button>
+        </div>
+        <p id="join-code-error" class="error-msg"></p>
+      </div>
+
       <div class="section-header">
         <h2>Live Now</h2>
         <span id="live-count" class="badge">0</span>
@@ -882,6 +892,7 @@
 <script src="js/skills.js"></script>
 
 <script src="js/live-plans.js"></script>
+<script src="js/join-flow.js"></script>
 <script src="js/live-payment.js"></script>
 <script src="js/library.js"></script>
 <script src="js/saved-live.js"></script>

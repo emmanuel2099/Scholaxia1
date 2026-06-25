@@ -1556,6 +1556,30 @@ body:has(.app-shell-topnav) { overflow: auto; height: auto; }
   box-shadow: 0 4px 20px rgba(26, 77, 50, 0.06);
 }
 
+.join-code-box {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(168, 213, 184, 0.5);
+  border-radius: 16px;
+  padding: 20px 22px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 20px rgba(26, 77, 50, 0.05);
+}
+.join-code-box h3 { font-size: 1rem; margin-bottom: 4px; }
+.join-code-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+.join-code-row input {
+  flex: 1;
+  min-width: 180px;
+  padding: 12px 14px;
+  border: 1px solid #d8e0dc;
+  border-radius: 10px;
+  font-size: 0.95rem;
+}
+
 .request-box {
   background: rgba(255, 255, 255, 0.8);
   backdrop-filter: blur(12px);

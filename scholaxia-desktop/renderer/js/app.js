@@ -285,8 +285,20 @@ window.onload = async () => {
   initSidebarToggle();
   bindExamLockListeners();
   bindCbtGridClicks();
+  bindJoinCodeBox();
 
   const loggedIn = isStudentLoggedIn();
+
+  var urlParams = new URLSearchParams(window.location.search);
+  var joinClassParam = urlParams.get("join") || urlParams.get("class");
+  var joinCodeParam = urlParams.get("code");
+  if (joinClassParam || joinCodeParam) {
+    if (typeof redirectToJoinLanding === "function") {
+      redirectToJoinLanding({ class_id: joinClassParam || "", code: joinCodeParam || "" });
+      return;
+    }
+  }
+
   if (loggedIn) {
     await syncStudentProfile();
     loadSubjects();
@@ -295,7 +307,6 @@ window.onload = async () => {
     }
   }
 
-  var urlParams = new URLSearchParams(window.location.search);
   var openPage = urlParams.get("open");
   var openLive = urlParams.get("live") === "1";
   if (openLive || urlParams.get("paid") === "1") {
@@ -1060,6 +1071,25 @@ function renderUpcoming(sessions) {
 
 async function joinClass(btn) {
   return joinClassWithPayment(btn);
+}
+
+function bindJoinCodeBox() {
+  var input = document.getElementById("join-code-input");
+  var btn = document.getElementById("join-code-btn");
+  var err = document.getElementById("join-code-error");
+  if (!input || !btn || btn.dataset.bound) return;
+  btn.dataset.bound = "1";
+  btn.addEventListener("click", function () {
+    if (typeof handleJoinCodeInput === "function") {
+      handleJoinCodeInput(input, err);
+    }
+  });
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      btn.click();
+    }
+  });
 }
 
 async function loadMyRequests() {

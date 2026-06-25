@@ -15,6 +15,18 @@ function initAuthPage() {
   }
 
   if (getToken()) {
+    var joinParams = new URLSearchParams(window.location.search);
+    var joinClass = joinParams.get("class") || joinParams.get("join");
+    var joinCode = joinParams.get("code");
+    if (joinClass || joinCode) {
+      redirectToJoinLanding({ class_id: joinClass || "", code: joinCode || "" });
+      return;
+    }
+    var pending = typeof consumePendingJoin === "function" ? consumePendingJoin() : null;
+    if (pending && (pending.class_id || pending.code)) {
+      redirectToJoinLanding(pending);
+      return;
+    }
     window.location.href = "app.html";
     return;
   }
@@ -40,7 +52,19 @@ function initAuthPage() {
 
   var params = new URLSearchParams(window.location.search);
   var ret = params.get("return");
-  if (ret) {
+  var joinClass = params.get("class") || params.get("join");
+  var joinCode = params.get("code");
+  if (joinClass || joinCode) {
+    if (typeof savePendingJoin === "function") {
+      savePendingJoin({ class_id: joinClass || "", code: joinCode || "" });
+    } else {
+      sessionStorage.setItem("sia_pending_join", JSON.stringify({
+        class_id: joinClass || null,
+        code: joinCode || null,
+      }));
+    }
+    setTimeout(function () { scrollToAuth("login"); }, 400);
+  } else if (ret) {
     sessionStorage.setItem("sia_login_return", ret);
     setTimeout(function () { scrollToAuth("login"); }, 400);
   }
@@ -140,6 +164,27 @@ async function routeAfterAuth(accessToken, role, email, nameOverride) {
   var ret = sessionStorage.getItem("sia_login_return");
   sessionStorage.removeItem("sia_login_return");
   try { sessionStorage.setItem("sia_skip_splash", "1"); } catch (e) { /* ignore */ }
+
+  var pending = typeof consumePendingJoin === "function" ? consumePendingJoin() : null;
+  if (!pending) {
+    try {
+      var raw = sessionStorage.getItem("sia_pending_join");
+      sessionStorage.removeItem("sia_pending_join");
+      if (raw) pending = JSON.parse(raw);
+    } catch (e) { /* ignore */ }
+  }
+  if (pending && (pending.class_id || pending.code)) {
+    if (typeof redirectToJoinLanding === "function") {
+      redirectToJoinLanding(pending);
+    } else {
+      var q = pending.code
+        ? "code=" + encodeURIComponent(pending.code)
+        : "class=" + encodeURIComponent(pending.class_id);
+      window.location.href = "join.html?" + q;
+    }
+    return;
+  }
+
   if (ret) {
     window.location.href = "app.html?open=" + encodeURIComponent(ret);
   } else {

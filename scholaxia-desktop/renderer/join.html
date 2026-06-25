@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://checkout.flutterwave.com; script-src-attr 'unsafe-inline'; connect-src https://scholaxia1.onrender.com wss://scholaxia1.onrender.com http://127.0.0.1:*; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; frame-src https://checkout.flutterwave.com" />
+  <title>Join class — Scholaxia</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/auth.css" />
+  <link rel="stylesheet" href="css/join.css" />
+</head>
+<body class="join-page">
+
+  <div class="join-shell">
+    <header class="join-header">
+      <img src="assets/logo.png" alt="" class="join-logo" />
+      <strong>Scholaxia Live</strong>
+    </header>
+
+    <main class="join-card" id="join-card">
+      <div class="join-loading" id="join-loading">
+        <div class="join-spinner"></div>
+        <p>Loading class…</p>
+      </div>
+
+      <div class="join-ready hidden" id="join-ready">
+        <div class="join-live-pill hidden" id="join-live-pill">LIVE</div>
+        <h1 id="join-title">Live class</h1>
+        <p class="join-meta" id="join-meta">Subject · Teacher</p>
+        <p class="join-code-label">Class code: <code id="join-code-display">—</code></p>
+        <p class="join-hint" id="join-hint">Your teacher invited you to this session.</p>
+
+        <div class="join-actions">
+          <button type="button" class="join-btn-primary" id="join-now-btn">Join now</button>
+          <button type="button" class="join-btn-ghost hidden" id="join-login-btn">Sign in to join</button>
+        </div>
+        <p class="join-error" id="join-error"></p>
+        <a href="app.html" class="join-back">← Back to dashboard</a>
+      </div>
+
+      <div class="join-error-state hidden" id="join-not-found">
+        <h2>Class not found</h2>
+        <p id="join-not-found-msg">Check the link or code from your teacher and try again.</p>
+        <a href="app.html?open=live" class="join-btn-ghost">Open Live Class</a>
+      </div>
+    </main>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/live-plans.js"></script>
+  <script src="js/live-payment.js"></script>
+  <script src="js/join-flow.js"></script>
+  <script src="js/join-page.js"></script>
+</body>
+</html>

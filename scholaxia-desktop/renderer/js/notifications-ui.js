@@ -196,7 +196,21 @@
   function notifAction(n) {
     stopRing();
     var t = String(n.type || "").toLowerCase();
+    var data = {};
+    try {
+      data = n.data ? (typeof n.data === "string" ? JSON.parse(n.data) : n.data) : {};
+    } catch (e) { /* ignore */ }
+
     if (t.indexOf("live") >= 0 && isLiveNotif(n)) {
+      var classId = data.class_id || data.classId;
+      if (classId && typeof joinClassWithPayment === "function") {
+        joinClassWithPayment(String(classId));
+        return;
+      }
+      if (data.join_code && typeof redirectToJoinLanding === "function") {
+        redirectToJoinLanding({ code: data.join_code });
+        return;
+      }
       if (typeof showPage === "function") showPage("live");
       return;
     }
@@ -235,7 +249,7 @@
         "<p>" + escHtml(n.body || "") + "</p>" +
         '<span class="notif-time">' + escHtml(formatNotifTime(n.created_at)) + "</span>" +
         "</div>" +
-        (live && liveClassActive ? '<button type="button" class="btn-sm primary notif-open-btn">Join</button>' : "") +
+        (live && liveClassActive ? '<button type="button" class="btn-sm primary notif-open-btn">Join class</button>' : "") +
         "</article>"
       );
     }).join("");

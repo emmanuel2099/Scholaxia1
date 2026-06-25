@@ -2,7 +2,7 @@ import uuid
 import hashlib
 import json
 import secrets
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, and_
 from pydantic import BaseModel
@@ -52,6 +52,69 @@ async def livekit_video_status(current_user: dict = Depends(get_current_user)):
 async def agora_video_status(current_user: dict = Depends(get_current_user)):
     """Deprecated alias — use /livekit/status."""
     return await livekit_video_status(current_user)
+
+
+@router.get("/join-preview")
+async def join_preview(
+    code: Optional[str] = Query(None, description="Meet-style join code, e.g. SX-A1B2C3D4"),
+    class_id: Optional[str] = Query(None, description="Live class UUID"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Public preview for shareable join links (no login required)."""
+    token = (code or class_id or "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="Provide a join code or class id")
+
+    live_class = None
+    if class_id:
+        try:
+            cid = parse_uuid(class_id)
+        except ValueError:
+            raise HTTPException(status_code=404, detail="Class not found")
+        result = await db.execute(select(LiveClass).where(LiveClass.id == cid))
+        live_class = result.scalar_one_or_none()
+    else:
+        normalized = token.upper()
+        result = await db.execute(select(LiveClass).where(LiveClass.join_code == normalized))
+        live_class = result.scalar_one_or_none()
+        if not live_class:
+            try:
+                cid = parse_uuid(token)
+                result = await db.execute(select(LiveClass).where(LiveClass.id == cid))
+                live_class = result.scalar_one_or_none()
+            except ValueError:
+                pass
+
+    if not live_class:
+        raise HTTPException(status_code=404, detail="Class not found. Check the link or code from your teacher.")
+
+    if not live_class.join_code:
+        live_class.join_code = f"SX-{secrets.token_hex(4).upper()}"
+        await db.flush()
+
+    teacher_name = "Teacher"
+    try:
+        user_res = await db.execute(select(User).where(User.id == live_class.teacher_id))
+        teacher = user_res.scalar_one_or_none()
+        if teacher and teacher.full_name:
+            teacher_name = teacher.full_name
+    except Exception:
+        pass
+
+    now = naive_utc_now()
+    joinable = _class_is_active(live_class, now)
+    return {
+        "id": str(live_class.id),
+        "title": live_class.title,
+        "subject": live_class.subject,
+        "teacher_name": teacher_name,
+        "is_live": bool(live_class.is_live),
+        "is_joinable": joinable,
+        "join_code": live_class.join_code,
+        "visibility": live_class.visibility or LiveClassVisibility.subject.value,
+        "start_time": live_class.start_time.isoformat() if live_class.start_time else None,
+        "end_time": live_class.end_time.isoformat() if live_class.end_time else None,
+    }
 
 
 # ── LiveKit token helper ────────────────────────────────────────────────────────
@@ -207,7 +270,7 @@ async def _notify_for_class(
                 await send_all_students_notification(
                     db,
                     "Live class starting now",
-                    f"«{live_class.title}» is live on Scholaxia. Open Live Class to join.",
+                    f"«{live_class.title}» is live. Code: {live_class.join_code} — tap Join in Live Class.",
                     "live_class",
                     data,
                 )
@@ -222,7 +285,7 @@ async def _notify_for_class(
                 )
         elif vis == LiveClassVisibility.private.value:
             title = "Private live class starting now" if live_now else "Private live class scheduled"
-            body_live = f"«{live_class.title}» — your teacher invited you. Join from Live Class."
+            body_live = f"«{live_class.title}» — invited you. Code: {live_class.join_code}. Tap Join in the app."
             body_up = f"«{live_class.title}» is scheduled. Only invited students can join."
             for sid in _parse_id_list(live_class.invited_student_ids):
                 await send_user_notification(db, sid, title, body_live if live_now else body_up, "live_class", data)
@@ -234,7 +297,7 @@ async def _notify_for_class(
             if group:
                 title = f"{group.school_name} — class is live" if live_now else f"{group.name} — upcoming class"
                 body = (
-                    f"«{live_class.title}» is live in {group.name}."
+                    f"«{live_class.title}» is live in {group.name}. Code: {live_class.join_code}."
                     if live_now
                     else f"«{live_class.title}» scheduled for {group.name}."
                 )
@@ -246,7 +309,7 @@ async def _notify_for_class(
                     db=db,
                     subject=live_class.subject,
                     title="Live class starting now",
-                    body=f"Your {live_class.subject} class «{live_class.title}» is live now. Join from Live Class.",
+                    body=f"Your {live_class.subject} class «{live_class.title}» is live. Code: {live_class.join_code}.",
                     notification_type="live_class",
                     data=data,
                 )
