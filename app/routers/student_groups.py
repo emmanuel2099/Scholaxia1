@@ -7,7 +7,8 @@ from pydantic import BaseModel
 from typing import Optional
 
 from app.core.database import get_db
-from app.core.deps import require_student, parse_uuid
+from app.core.deps import require_student
+from app.services.live_class_access import parse_uuid
 from app.models.student_group import (
     StudentGroup,
     StudentGroupMember,
