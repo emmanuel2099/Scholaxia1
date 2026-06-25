@@ -17,6 +17,8 @@
     <button type="button" class="btn-sm" onclick="unlockClassAudio()">Enable sound</button>
   </div>
 
+  <div id="classroom-toast" class="classroom-toast hidden" role="status" aria-live="polite"></div>
+
   <div id="livekit-setup-banner" class="livekit-setup-banner hidden" role="alert">
     <strong>Live video not connected.</strong>
     <span id="livekit-setup-msg">Students cannot see your camera or screen until LiveKit is configured on the server.</span>
@@ -43,6 +45,11 @@
         <h2>Participants <span id="participants-count">(0)</span></h2>
         <p id="participants-teacher-line" class="participants-sub">Teacher: —</p>
         <p id="participants-students-line" class="participants-sub">Students online: 0</p>
+      </div>
+      <div id="student-self-panel" class="student-self-panel student-only hidden">
+        <p class="student-self-title">Your camera</p>
+        <div id="student-self-video" class="student-self-video"></div>
+        <p id="student-self-status" class="student-self-status">Camera is on</p>
       </div>
       <div id="participants-list" class="participants-list">
         <p class="participants-empty">Waiting for participants…</p>
@@ -75,6 +82,8 @@
                 <option value="chemistry">Chemistry</option>
                 <option value="english">English</option>
                 <option value="igbo">Igbo</option>
+                <option value="yoruba">Yoruba</option>
+                <option value="hausa">Hausa</option>
               </select>
               <button type="button" id="btn-board-type" class="vc-btn sm active" onclick="setBoardTool('type')">Type</button>
               <button type="button" id="btn-board-draw" class="vc-btn sm" onclick="setBoardTool('draw')">Draw</button>

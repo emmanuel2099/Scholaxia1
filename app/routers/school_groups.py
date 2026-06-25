@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.core.database import get_db
-from app.core.deps import require_teacher_or_admin, get_current_user
+from app.core.deps import require_teacher_or_admin, require_student, get_current_user
 from app.models.school_group import SchoolGroup
 from app.models.user import User
 
@@ -103,6 +103,33 @@ async def update_school_group(
     return _group_dict(group)
 
 
+@router.get("/student/mine")
+async def list_student_school_groups(
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """School groups this student was added to by their school/teacher (no self-join)."""
+    sid = str(current_user["sub"])
+    result = await db.execute(select(SchoolGroup).order_by(SchoolGroup.created_at.desc()))
+    groups = [g for g in result.scalars().all() if sid in g.member_ids()]
+    teacher_ids = list({str(g.teacher_id) for g in groups})
+    teachers: dict[str, str] = {}
+    if teacher_ids:
+        tr = await db.execute(select(User).where(User.id.in_(teacher_ids)))
+        teachers = {str(u.id): u.full_name for u in tr.scalars().all()}
+    return [
+        {
+            "id": str(g.id),
+            "school_name": g.school_name,
+            "name": g.name,
+            "teacher_name": teachers.get(str(g.teacher_id), "Teacher"),
+            "type": "school",
+            "member_count": len(g.member_ids()),
+        }
+        for g in groups
+    ]
+
+
 @router.get("/{group_id}")
 async def get_school_group(
     group_id: str,
@@ -125,3 +152,4 @@ async def get_school_group(
         users_res = await db.execute(select(User).where(User.id.in_(ids)))
         names = {str(u.id): u.full_name for u in users_res.scalars().all()}
     return _group_dict(group, names)
+

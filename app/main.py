@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
 from contextlib import asynccontextmanager
 
+import app.models  # noqa: F401 — register models with Base.metadata
 from app.core.config import settings
 from app.core.database import engine, Base, AsyncSessionLocal, get_db
 from app.core.redis import init_redis, close_redis
@@ -15,7 +16,7 @@ from app.routers import performance
 from app.routers import home
 from app.routers import kind
 from app.routers import profiles
-from app.routers import school_groups
+from app.routers import school_groups, student_groups
 from app.websockets.live_class_ws import live_class_endpoint
 
 
@@ -163,6 +164,7 @@ app.include_router(students.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
 app.include_router(live_class.router, prefix="/api/v1")
 app.include_router(school_groups.router, prefix="/api/v1")
+app.include_router(student_groups.router, prefix="/api/v1")
 app.include_router(cbt.router, prefix="/api/v1")
 app.include_router(community.router, prefix="/api/v1")
 app.include_router(ai_tutor.router, prefix="/api/v1")

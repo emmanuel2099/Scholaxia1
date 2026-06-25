@@ -202,12 +202,8 @@
     } catch (e) { /* ignore */ }
 
     if (t.indexOf("live") >= 0 && isLiveNotif(n)) {
-      var classId = data.class_id || data.classId;
-      if (classId && typeof joinClassWithPayment === "function") {
-        joinClassWithPayment(String(classId));
-        return;
-      }
-      if (typeof showPage === "function") showPage("live");
+      if (typeof showPage === "function") showPage("access-code");
+      if (typeof loadAccessCodes === "function") loadAccessCodes();
       return;
     }
     if (t.indexOf("cbt") >= 0 || t.indexOf("exam") >= 0) {
@@ -218,8 +214,7 @@
       if (typeof showPage === "function") showPage("community");
       return;
     }
-    if (typeof showPage === "function") showPage("live");
-  }
+    if (typeof showPage === "function") showPage("access-code");
 
   function renderNotificationsList() {
     var el = document.getElementById("notifications-list");

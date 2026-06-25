@@ -62,6 +62,72 @@ body {
   min-height: 0;
   background: #050a08;
 }
+.classroom-toast {
+  position: fixed;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  background: #166534;
+  color: #ecfdf5;
+  border: 1px solid #22c55e;
+  border-radius: 12px;
+  padding: 14px 22px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  max-width: min(92vw, 420px);
+  text-align: center;
+}
+.classroom-toast.error {
+  background: #7f1d1d;
+  border-color: #ef4444;
+  color: #fef2f2;
+}
+.classroom-toast.show {
+  animation: toast-pop 0.25s ease-out;
+}
+@keyframes toast-pop {
+  from { opacity: 0; transform: translateX(-50%) translateY(-8px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+.student-self-panel {
+  margin-bottom: 12px;
+  padding: 10px;
+  background: #12261a;
+  border: 1px solid #3d8f5a;
+  border-radius: 12px;
+}
+.student-self-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #8aa896;
+  margin: 0 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.student-self-video {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.student-self-video video,
+.student-self-video .participant-video-el {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.student-self-status {
+  margin: 8px 0 0;
+  font-size: 0.75rem;
+  color: #4ade80;
+  text-align: center;
+}
+
 .participants-panel {
   display: flex;
   flex-direction: column;
@@ -103,8 +169,45 @@ body {
   border-radius: 12px;
   padding: 10px 12px;
   display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.participant-card.camera-on {
+  padding: 0;
+  overflow: hidden;
+}
+.participant-card.camera-on .participant-details {
+  display: none;
+}
+.participant-card:not(.camera-on) .participant-video {
+  display: none !important;
+  height: 0;
+  min-height: 0;
+  aspect-ratio: auto;
+}
+.participant-card:not(.camera-on) .participant-video.hidden {
+  display: none !important;
+}
+.participant-video {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: #000;
+  border-radius: 12px 12px 0 0;
+  overflow: hidden;
+}
+.participant-video-el {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.participant-details-row {
+  display: flex;
   gap: 10px;
   align-items: flex-start;
+}
+.participant-card.camera-on .participant-video {
+  border-radius: 12px;
 }
 .participant-card.raised {
   border-color: #fbbf24;

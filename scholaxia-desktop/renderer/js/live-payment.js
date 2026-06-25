@@ -175,9 +175,12 @@ async function completeJoinClass(classId, card) {
     livekit_token: data.livekit_token,
     livekit_url: data.livekit_url,
     identity: data.identity,
+    teacher_id: data.teacher_id || "",
     title: data.title || (card && card.dataset && card.dataset.title) || "Live Class",
     subject: data.subject || (card && card.dataset && card.dataset.subject) || "",
-    teacher_name: (card && card.dataset && card.dataset.teacher) || "",
+    teacher_name: data.teacher_name || (card && card.dataset && card.dataset.teacher) || "",
+    mic_allowed: !!data.mic_allowed,
+    camera_allowed: !!data.camera_allowed,
     role: "student",
     end_time: endTime,
   };
@@ -186,6 +189,61 @@ async function completeJoinClass(classId, card) {
   else localStorage.setItem("live_session", JSON.stringify(sess));
   window.location.href = "classroom.html";
 }
+
+async function joinClassWithAccessCode(code) {
+  if (_livePayBusy) return;
+  var normalized = String(code || "").trim().toUpperCase();
+  if (!normalized) throw new Error("Enter an access code.");
+  _livePayBusy = true;
+  try {
+    var preview = null;
+    if (typeof fetchJoinPreview === "function") {
+      preview = await fetchJoinPreview({ code: normalized });
+    } else {
+      preview = await api("/api/v1/live-classes/join-preview?code=" + encodeURIComponent(normalized));
+    }
+    if (!preview || !preview.id) throw new Error("Invalid code. Check Access Code tab.");
+    var classId = preview.id;
+    var access = await api("/api/v1/payments/live-class/" + encodeURIComponent(classId) + "/access");
+    if (access && access.requires_payment && !access.can_join) {
+      alert("You need an active subscription for this class. Open Subscription in the menu.");
+      return;
+    }
+    var data = await api("/api/v1/live-classes/join-by-code", {
+      method: "POST",
+      body: JSON.stringify({ code: normalized }),
+    });
+    if (!data) throw new Error("Could not join class.");
+    var endTime = data.end_time || null;
+    if (typeof normalizeLiveEndTime === "function") {
+      endTime = normalizeLiveEndTime(endTime, data.is_live !== false);
+    }
+    var sess = {
+      class_id: classId,
+      classId: classId,
+      room_id: data.room_id,
+      channel_id: data.channel_id,
+      livekit_token: data.livekit_token,
+      livekit_url: data.livekit_url,
+      identity: data.identity,
+      teacher_id: data.teacher_id || "",
+      title: data.title || preview.title || "Live Class",
+      subject: data.subject || preview.subject || "",
+      teacher_name: data.teacher_name || preview.teacher_name || "",
+      mic_allowed: !!data.mic_allowed,
+      camera_allowed: !!data.camera_allowed,
+      role: "student",
+      end_time: endTime,
+    };
+    if (typeof persistLiveSession === "function") persistLiveSession(sess);
+    else localStorage.setItem("live_session", JSON.stringify(sess));
+    window.location.href = "classroom.html";
+  } finally {
+    _livePayBusy = false;
+  }
+}
+
+window.joinClassWithAccessCode = joinClassWithAccessCode;
 
 async function joinClassWithPayment(btn) {
   if (_livePayBusy) return;

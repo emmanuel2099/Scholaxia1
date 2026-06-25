@@ -1580,6 +1580,63 @@ body:has(.app-shell-topnav) { overflow: auto; height: auto; }
   font-size: 0.95rem;
 }
 
+.nav-badge {
+  margin-left: auto;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.topnav-btn { position: relative; }
+.topnav-btn .nav-badge { margin-left: 6px; }
+
+.access-codes-list { display: flex; flex-direction: column; gap: 12px; }
+.access-code-card {
+  background: #fff;
+  border: 1px solid #d8e0dc;
+  border-radius: 14px;
+  padding: 16px 18px;
+}
+.access-code-card-new { border-color: #3d8f5a; box-shadow: 0 0 0 1px rgba(61, 143, 90, 0.25); }
+.access-code-card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.access-code-pill {
+  font-size: 0.68rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e8f5ec;
+  color: #1a4d32;
+}
+.access-code-meta { font-size: 0.85rem; color: #5a7264; margin: 6px 0; }
+.access-code-value {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+.access-code-value code {
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #1a4d32;
+}
+.access-code-used { font-size: 0.78rem; color: #6b8f75; margin-top: 6px; }
+
+.groups-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+.group-card {
+  background: #fff;
+  border: 1px solid #d8e0dc;
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+.group-card-school { border-left: 4px solid #3d8f5a; }
+
 .request-box {
   background: rgba(255, 255, 255, 0.8);
   backdrop-filter: blur(12px);

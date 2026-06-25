@@ -28,6 +28,8 @@ from app.services.live_class_room import (
 from app.websockets import live_class_ws
 from app.services.live_class_access import get_live_access_info, parse_uuid, consume_live_session, live_class_requires_subscription
 from app.services.notification_service import send_subject_notification, send_user_notification, send_admins_notification, send_all_students_notification
+from app.services.access_code_delivery import deliver_access_codes_for_class
+from app.models.live_class_access_code import LiveClassAccessCodeDelivery
 
 router = APIRouter(prefix="/live-classes", tags=["Live Classes"])
 
@@ -115,6 +117,123 @@ async def join_preview(
         "start_time": live_class.start_time.isoformat() if live_class.start_time else None,
         "end_time": live_class.end_time.isoformat() if live_class.end_time else None,
     }
+
+
+class JoinByCodeRequest(BaseModel):
+    code: str
+
+
+@router.get("/access-codes/mine")
+async def my_access_codes(
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """Access codes delivered to this student (Access Code tab)."""
+    sid = parse_uuid(current_user["sub"])
+    result = await db.execute(
+        select(LiveClassAccessCodeDelivery)
+        .where(LiveClassAccessCodeDelivery.student_id == sid)
+        .order_by(LiveClassAccessCodeDelivery.created_at.desc())
+        .limit(100)
+    )
+    rows = result.scalars().all()
+    unread = sum(1 for r in rows if not r.is_read)
+    return {
+        "unread_count": unread,
+        "codes": [
+            {
+                "id": str(r.id),
+                "class_id": str(r.live_class_id),
+                "join_code": r.join_code,
+                "title": r.title,
+                "subject": r.subject,
+                "teacher_name": r.teacher_name,
+                "visibility": r.visibility,
+                "is_read": r.is_read,
+                "is_used": r.is_used,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.post("/access-codes/mark-read")
+async def mark_access_codes_read(
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    sid = parse_uuid(current_user["sub"])
+    result = await db.execute(
+        select(LiveClassAccessCodeDelivery).where(
+            LiveClassAccessCodeDelivery.student_id == sid,
+            LiveClassAccessCodeDelivery.is_read == False,  # noqa: E712
+        )
+    )
+    for row in result.scalars().all():
+        row.is_read = True
+    await db.flush()
+    return {"message": "Marked as read"}
+
+
+@router.post("/join-by-code")
+async def join_class_by_code(
+    payload: JoinByCodeRequest,
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """Join a live class using the unique access code for that class."""
+    normalized = (payload.code or "").strip().upper()
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Enter the access code from your Access Code tab.")
+
+    result = await db.execute(select(LiveClass).where(LiveClass.join_code == normalized))
+    live_class = result.scalar_one_or_none()
+    if not live_class:
+        raise HTTPException(status_code=404, detail="Invalid code. Each class has its own code — check Access Code tab.")
+
+    sid = parse_uuid(current_user["sub"])
+    delivery = await db.execute(
+        select(LiveClassAccessCodeDelivery).where(
+            LiveClassAccessCodeDelivery.student_id == sid,
+            LiveClassAccessCodeDelivery.live_class_id == live_class.id,
+        )
+    )
+    delivery_row = delivery.scalar_one_or_none()
+
+    prof_res = await db.execute(
+        select(StudentProfile).where(StudentProfile.user_id == current_user["sub"])
+    )
+    profile = prof_res.scalar_one_or_none()
+    can_access, detail = await _student_can_access_class(
+        db, current_user["sub"], live_class, profile
+    )
+    if not can_access:
+        raise HTTPException(status_code=403, detail=detail)
+
+    now = naive_utc_now()
+    if not _class_is_active(live_class, now):
+        raise HTTPException(status_code=404, detail="This class is not live yet.")
+
+    if delivery_row:
+        delivery_row.is_read = True
+        delivery_row.is_used = True
+    elif _class_visibility(live_class) == LiveClassVisibility.public.value:
+        db.add(
+            LiveClassAccessCodeDelivery(
+                student_id=sid,
+                live_class_id=live_class.id,
+                join_code=live_class.join_code,
+                title=live_class.title,
+                subject=live_class.subject,
+                teacher_name="Teacher",
+                visibility=_class_visibility(live_class),
+                is_read=True,
+                is_used=True,
+            )
+        )
+
+    return await join_class(str(live_class.id), current_user, db)
 
 
 # ── LiveKit token helper ────────────────────────────────────────────────────────
@@ -265,12 +384,18 @@ async def _notify_for_class(
         "visibility": vis,
     }
     try:
+        teacher_res = await db.execute(select(User).where(User.id == live_class.teacher_id))
+        teacher_user = teacher_res.scalar_one_or_none()
+        teacher_name = teacher_user.full_name if teacher_user else "Teacher"
+        await deliver_access_codes_for_class(
+            db, live_class, teacher_name, live_now=live_now
+        )
         if vis == LiveClassVisibility.public.value:
             if live_now:
                 await send_all_students_notification(
                     db,
                     "Live class starting now",
-                    f"«{live_class.title}» is live — tap Join on your dashboard.",
+                    f"«{live_class.title}» is live — code {live_class.join_code} is in your Access Code tab.",
                     "live_class",
                     data,
                 )
@@ -285,7 +410,7 @@ async def _notify_for_class(
                 )
         elif vis == LiveClassVisibility.private.value:
             title = "Private live class starting now" if live_now else "Private live class scheduled"
-            body_live = f"«{live_class.title}» — your teacher invited you. Tap Join on your dashboard."
+            body_live = f"«{live_class.title}» — code {live_class.join_code} is in your Access Code tab."
             body_up = f"«{live_class.title}» is scheduled. Only invited students can join."
             for sid in _parse_id_list(live_class.invited_student_ids):
                 await send_user_notification(db, sid, title, body_live if live_now else body_up, "live_class", data)
@@ -297,7 +422,7 @@ async def _notify_for_class(
             if group:
                 title = f"{group.school_name} — class is live" if live_now else f"{group.name} — upcoming class"
                 body = (
-                    f"«{live_class.title}» is live in {group.name}. Join from your dashboard."
+                    f"«{live_class.title}» is live — code {live_class.join_code} in Access Code tab."
                     if live_now
                     else f"«{live_class.title}» scheduled for {group.name}."
                 )
@@ -537,6 +662,13 @@ async def join_class(
             )
 
     student_uid = parse_uuid(current_user["sub"])
+    from app.models.user import User
+    teacher_res = await db.execute(select(User).where(User.id == live_class.teacher_id))
+    teacher_user = teacher_res.scalar_one_or_none()
+    teacher_meta = {
+        "teacher_id": str(live_class.teacher_id),
+        "teacher_name": teacher_user.full_name if teacher_user else "Teacher",
+    }
     existing = await db.execute(
         select(ClassAttendance).where(
             ClassAttendance.live_class_id == live_class.id,
@@ -551,12 +683,16 @@ async def join_class(
             current_user.get("email") or "student",
             can_publish=has_publish_access(live_class.room_id, current_user["sub"]),
         )
+        sid = current_user["sub"]
         return {
             **payload,
+            **teacher_meta,
             "title": live_class.title,
             "subject": live_class.subject,
             "is_live": live_class.is_live,
             "end_time": live_class.end_time.isoformat() if live_class.end_time else None,
+            "mic_allowed": has_mic_access(live_class.room_id, sid),
+            "camera_allowed": has_camera_access(live_class.room_id, sid),
         }
 
     if requires_plan:
@@ -576,15 +712,19 @@ async def join_class(
         current_user.get("email") or "student",
         can_publish=False,
     )
+    sid = current_user["sub"]
 
     return {
         "class_id": str(live_class.id),
         "title": live_class.title,
         "subject": live_class.subject,
+        **teacher_meta,
         **payload,
         "is_muted": True,
         "is_live": live_class.is_live,
         "end_time": live_class.end_time.isoformat() if live_class.end_time else None,
+        "mic_allowed": has_mic_access(live_class.room_id, sid),
+        "camera_allowed": has_camera_access(live_class.room_id, sid),
     }
 
 
@@ -612,12 +752,17 @@ async def get_livekit_token(
         display,
         can_publish=can_publish,
     )
+    uid = current_user["sub"]
+    mic_ok = is_teacher or has_mic_access(live_class.room_id, uid)
+    cam_ok = is_teacher or has_camera_access(live_class.room_id, uid)
 
     return {
         **payload,
-        "uid": _user_uid(current_user["sub"]),
+        "uid": _user_uid(uid),
         "end_time": live_class.end_time.isoformat() if live_class.end_time else None,
         "is_live": live_class.is_live,
+        "mic_allowed": mic_ok,
+        "camera_allowed": cam_ok,
     }
 
 

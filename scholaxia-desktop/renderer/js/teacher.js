@@ -220,8 +220,9 @@ async function teacherHostClass(goLiveNow) {
         : body.visibility === "private"
           ? "Invited students were notified."
           : "Students in your school group were notified.";
-      var linkMsg = " Students will see Join on their dashboard automatically.";
-      if (confirm("Class is live! " + visMsg + linkMsg + " Open classroom?")) {
+      var code = created.join_code || "";
+      var codeMsg = code ? " Access code: " + code + " (sent to students' Access Code tab)." : "";
+      if (confirm("Class is live!" + codeMsg + " " + visMsg + " Open classroom?")) {
         teacherEnterClassroom(created.id, body.title, body.subject, created.end_time, true);
       }
     } else {
@@ -276,6 +277,7 @@ async function teacherEnterClassroom(classId, title, subject, endTime, alreadyLi
       livekit_token: token.token,
       livekit_url: token.livekit_url,
       identity: token.identity,
+      teacher_id: token.identity,
       title: title || "Live Class",
       subject: subject || "",
       teacher_name: getTeacherUser().name,
@@ -485,10 +487,11 @@ async function loadTeacherLive() {
       el.innerHTML = '<div class="empty-state">No classes yet. Schedule or go live above.</div>';
       return;
     }
-    el.innerHTML = '<table class="data-table"><thead><tr><th>Title</th><th>Type</th><th>Subject</th><th>Schedule</th><th>Status</th><th></th></tr></thead><tbody>' +
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Title</th><th>Code</th><th>Type</th><th>Subject</th><th>Schedule</th><th>Status</th><th></th></tr></thead><tbody>' +
       rows.map(function (c) {
         var badge = c.is_live ? '<span class="badge live">LIVE</span>' : '<span class="badge muted">Scheduled</span>';
         var vis = '<span class="badge">' + visibilityLabel(c.visibility) + "</span>";
+        var codeCell = c.join_code ? '<code class="join-code">' + escHtml(c.join_code) + "</code>" : "—";
         var actions = "";
         if (c.is_live) {
           actions += '<button type="button" class="btn-sm" data-action="enter" data-id="' + escHtml(c.id) + '" data-title="' + escHtml(c.title) + '" data-subject="' + escHtml(c.subject) + '" data-end="' + escHtml(c.end_time || "") + '">Enter</button> ';
@@ -498,7 +501,7 @@ async function loadTeacherLive() {
           actions += '<button type="button" class="btn-sm" data-action="start" data-id="' + escHtml(c.id) + '">Start</button> ';
           actions += '<button type="button" class="btn-sm" data-action="enter" data-id="' + escHtml(c.id) + '" data-title="' + escHtml(c.title) + '" data-subject="' + escHtml(c.subject) + '" data-end="' + escHtml(c.end_time || "") + '">Enter</button>';
         }
-        return "<tr><td>" + escHtml(c.title) + "</td><td>" + vis + "</td><td>" + escHtml(c.subject) + "</td>" +
+        return "<tr><td>" + escHtml(c.title) + "</td><td>" + codeCell + "</td><td>" + vis + "</td><td>" + escHtml(c.subject) + "</td>" +
           "<td>" + formatDateTime(c.start_time) + "</td>" +
           "<td>" + badge + "</td><td class=\"actions\">" + actions + "</td></tr>";
       }).join("") + "</tbody></table>";

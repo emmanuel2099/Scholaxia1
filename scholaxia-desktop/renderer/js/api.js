@@ -10,6 +10,18 @@ var API_BASE = scholaxiaApiBase();
 if (typeof window !== "undefined") window.API_BASE = API_BASE;
 
 function getToken() {
+  if (typeof isClassroomPage === "function" && isClassroomPage()) {
+    var teacherTok = localStorage.getItem("sia_teacher_token") || "";
+    var adminTok = localStorage.getItem("sia_admin_token") || "";
+    var studentTok = localStorage.getItem("sia_token") || "";
+    try {
+      var sess = typeof loadLiveSessionData === "function" ? loadLiveSessionData() : null;
+      if (sess && (sess.role === "teacher" || sess.role === "admin")) {
+        return teacherTok || adminTok || studentTok;
+      }
+    } catch (e) { /* ignore */ }
+    return studentTok || teacherTok || adminTok;
+  }
   return localStorage.getItem("sia_token") || localStorage.getItem("sia_teacher_token") || localStorage.getItem("sia_admin_token") || "";
 }
 
