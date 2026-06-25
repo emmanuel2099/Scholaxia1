@@ -754,6 +754,15 @@ async function loadDashboard(force) {
   if (typeof renderHomeSkillsPreview === "function") renderHomeSkillsPreview();
 }
 
+function dedupeLiveSessions(sessions) {
+  var seen = {};
+  return (sessions || []).filter(function (s) {
+    if (!s || !s.id || seen[s.id]) return false;
+    seen[s.id] = true;
+    return true;
+  });
+}
+
 function dashLiveBadge(session) {
   if (session.visibility === "private") {
     return '<span class="dash-invite-pill">&#128276; Private invitation</span>';
@@ -768,7 +777,7 @@ function renderDashboardLive(sessions) {
   var wrap = document.getElementById("dash-platform-live");
   var grid = document.getElementById("dash-live-grid");
   if (!wrap || !grid) return;
-  var live = sessions || [];
+  var live = dedupeLiveSessions(sessions || []);
   if (!live.length) {
     wrap.classList.add("hidden");
     return;
@@ -1034,6 +1043,7 @@ function renderUpcomingEmpty(el) {
 }
 
 function renderLive(sessions) {
+  sessions = dedupeLiveSessions(sessions);
   document.getElementById("live-count").textContent = sessions.length;
   const el = document.getElementById("live-grid");
   if (!sessions.length) {

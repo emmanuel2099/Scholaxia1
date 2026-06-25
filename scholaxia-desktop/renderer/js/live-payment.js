@@ -208,6 +208,10 @@ async function joinClassWithPayment(btn) {
     }
     var access = await api("/api/v1/payments/live-class/" + encodeURIComponent(classId) + "/access");
     if (!access || !access.paid) {
+      if (access && access.visibility && access.visibility !== "subject") {
+        await completeJoinClass(classId, card);
+        return;
+      }
       var plansData = typeof fetchLivePlansFromApi === "function"
         ? await fetchLivePlansFromApi()
         : await api("/api/v1/payments/live-class/plans");

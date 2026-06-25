@@ -1611,7 +1611,7 @@ window.onload = function () {
     scheduleClassAutoEnd();
     if (isTeacherRole()) {
       var startClassId = liveSession.class_id || liveSession.classId;
-      if (startClassId) {
+      if (startClassId && !liveSession.already_live) {
         api("/api/v1/live-classes/" + startClassId + "/start", { method: "POST" })
           .then(function () {
             addChatMessage("", "Students can now see this class on Live Class and tap Join.", true);

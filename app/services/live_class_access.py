@@ -14,6 +14,14 @@ from app.core.live_class_plans import get_plan
 from app.models.payment import Payment, PaymentStatus
 from app.models.user import StudentProfile
 
+PLATFORM_VISIBILITIES = frozenset({"public", "private", "school_group"})
+
+
+def live_class_requires_subscription(visibility: str | None) -> bool:
+    """Platform public/private/school classes join free; subject-matched 1-on-1 needs a plan."""
+    vis = (visibility or "subject").lower()
+    return vis not in PLATFORM_VISIBILITIES
+
 
 def parse_uuid(value: str):
     import uuid as uuid_lib

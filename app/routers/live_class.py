@@ -26,7 +26,7 @@ from app.services.live_class_room import (
     revoke_camera,
 )
 from app.websockets import live_class_ws
-from app.services.live_class_access import get_live_access_info, parse_uuid, consume_live_session
+from app.services.live_class_access import get_live_access_info, parse_uuid, consume_live_session, live_class_requires_subscription
 from app.services.notification_service import send_subject_notification, send_user_notification, send_admins_notification, send_all_students_notification
 
 router = APIRouter(prefix="/live-classes", tags=["Live Classes"])
@@ -522,17 +522,19 @@ async def join_class(
     if not live_class.is_live:
         live_class.is_live = True
 
-    access = await get_live_access_info(db, current_user["sub"], class_id)
-    if not access["can_join"]:
-        if access.get("active_plan") and access.get("sessions_left", 0) <= 0:
+    requires_plan = live_class_requires_subscription(live_class.visibility)
+    if requires_plan:
+        access = await get_live_access_info(db, current_user["sub"], class_id)
+        if not access["can_join"]:
+            if access.get("active_plan") and access.get("sessions_left", 0) <= 0:
+                raise HTTPException(
+                    status_code=402,
+                    detail="You have used all live sessions on your plan this month. Upgrade or renew your plan.",
+                )
             raise HTTPException(
                 status_code=402,
-                detail="You have used all live sessions on your plan this month. Upgrade or renew your plan.",
+                detail="Choose a Scholaxia One-on-One Live Class plan before joining.",
             )
-        raise HTTPException(
-            status_code=402,
-            detail="Choose a Scholaxia One-on-One Live Class plan before joining.",
-        )
 
     student_uid = parse_uuid(current_user["sub"])
     existing = await db.execute(
@@ -557,7 +559,8 @@ async def join_class(
             "end_time": live_class.end_time.isoformat() if live_class.end_time else None,
         }
 
-    await consume_live_session(db, current_user["sub"])
+    if requires_plan:
+        await consume_live_session(db, current_user["sub"])
 
     attendance = ClassAttendance(
         live_class_id=live_class.id,

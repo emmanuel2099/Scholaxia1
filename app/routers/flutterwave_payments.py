@@ -31,6 +31,7 @@ from app.services.live_class_access import (
     activate_live_plan,
     get_live_access_info,
     parse_uuid,
+    live_class_requires_subscription,
 )
 
 router = APIRouter(prefix="/payments", tags=["Payments"])
@@ -185,6 +186,24 @@ async def live_class_access(
     current_user: dict = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ):
+    result = await db.execute(select(LiveClass).where(LiveClass.id == class_id))
+    live_class = result.scalar_one_or_none()
+    if not live_class:
+        raise HTTPException(status_code=404, detail="Class not found")
+
+    if not live_class_requires_subscription(live_class.visibility):
+        return {
+            "paid": True,
+            "need_plan": False,
+            "monthly_pass": False,
+            "sessions_left": 0,
+            "active_plan": None,
+            "valid_until": None,
+            "visibility": live_class.visibility,
+            "currency": "NGN",
+            "public_key": settings.FLUTTERWAVE_PUBLIC_KEY,
+        }
+
     access = await get_live_access_info(db, current_user["sub"], class_id)
     valid_until = access.get("valid_until")
     active = access.get("active_plan")

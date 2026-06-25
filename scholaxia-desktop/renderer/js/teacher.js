@@ -193,7 +193,11 @@ function setHostButtonsBusy(busy, goLiveNow) {
   }
 }
 
+var _teacherHostBusy = false;
+
 async function teacherHostClass(goLiveNow) {
+  if (_teacherHostBusy) return;
+  _teacherHostBusy = true;
   var err = document.getElementById("host-error");
   if (err) err.textContent = "";
   setHostButtonsBusy(true, goLiveNow);
@@ -218,7 +222,7 @@ async function teacherHostClass(goLiveNow) {
           : "Students in your school group were notified.";
       var linkMsg = " Students will see Join on their dashboard automatically.";
       if (confirm("Class is live! " + visMsg + linkMsg + " Open classroom?")) {
-        teacherEnterClassroom(created.id, body.title, body.subject, created.end_time);
+        teacherEnterClassroom(created.id, body.title, body.subject, created.end_time, true);
       }
     } else {
       var schedMsg = body.visibility === "public"
@@ -236,6 +240,7 @@ async function teacherHostClass(goLiveNow) {
     }
     alert(msg);
   } finally {
+    _teacherHostBusy = false;
     setHostButtonsBusy(false, goLiveNow);
   }
 }
@@ -256,9 +261,11 @@ async function teacherEndClass(id) {
   } catch (e) { alert(e.message); }
 }
 
-async function teacherEnterClassroom(classId, title, subject, endTime) {
+async function teacherEnterClassroom(classId, title, subject, endTime, alreadyLive) {
   try {
-    await teacherApi("/api/v1/live-classes/" + classId + "/start", { method: "POST" });
+    if (!alreadyLive) {
+      await teacherApi("/api/v1/live-classes/" + classId + "/start", { method: "POST" });
+    }
     var token = await teacherApi("/api/v1/live-classes/" + classId + "/token");
     if (!token) return;
     localStorage.setItem("live_session", JSON.stringify({
@@ -274,6 +281,7 @@ async function teacherEnterClassroom(classId, title, subject, endTime) {
       teacher_name: getTeacherUser().name,
       role: "teacher",
       end_time: endTime || token.end_time || null,
+      already_live: !!alreadyLive,
     }));
     window.location.href = "classroom.html";
   } catch (e) {
