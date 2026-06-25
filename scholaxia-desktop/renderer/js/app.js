@@ -285,26 +285,23 @@ window.onload = async () => {
   initSidebarToggle();
   bindExamLockListeners();
   bindCbtGridClicks();
-  bindJoinCodeBox();
 
   const loggedIn = isStudentLoggedIn();
-
-  var urlParams = new URLSearchParams(window.location.search);
-  var joinClassParam = urlParams.get("join") || urlParams.get("class");
-  var joinCodeParam = urlParams.get("code");
-  if (joinClassParam || joinCodeParam) {
-    if (typeof redirectToJoinLanding === "function") {
-      redirectToJoinLanding({ class_id: joinClassParam || "", code: joinCodeParam || "" });
-      return;
-    }
-  }
-
   if (loggedIn) {
     await syncStudentProfile();
     loadSubjects();
     if (typeof reconcilePendingPlanPayment === "function") {
       await reconcilePendingPlanPayment();
     }
+  }
+
+  var urlParams = new URLSearchParams(window.location.search);
+  var pendingJoinId = urlParams.get("join") || urlParams.get("class");
+  if (loggedIn && pendingJoinId && typeof joinClassWithPayment === "function") {
+    if (window.history && window.history.replaceState) {
+      window.history.replaceState({}, "", "app.html");
+    }
+    setTimeout(function () { joinClassWithPayment(String(pendingJoinId)); }, 600);
   }
 
   var openPage = urlParams.get("open");
@@ -757,11 +754,21 @@ async function loadDashboard(force) {
   if (typeof renderHomeSkillsPreview === "function") renderHomeSkillsPreview();
 }
 
+function dashLiveBadge(session) {
+  if (session.visibility === "private") {
+    return '<span class="dash-invite-pill">&#128276; Private invitation</span>';
+  }
+  if (session.is_live) {
+    return '<span class="live-pill">LIVE NOW</span>';
+  }
+  return '<span class="live-pill starting">STARTING</span>';
+}
+
 function renderDashboardLive(sessions) {
   var wrap = document.getElementById("dash-platform-live");
   var grid = document.getElementById("dash-live-grid");
   if (!wrap || !grid) return;
-  var live = (sessions || []).filter(function (s) { return s.is_live; });
+  var live = sessions || [];
   if (!live.length) {
     wrap.classList.add("hidden");
     return;
@@ -769,11 +776,11 @@ function renderDashboardLive(sessions) {
   wrap.classList.remove("hidden");
   grid.innerHTML = live.map(function (s) {
     return '<article class="dash-live-card">' +
-      '<span class="live-pill">LIVE</span>' +
-      '<span class="live-vis-pill">' + escHtml(liveVisibilityLabel(s.visibility)) + "</span>" +
+      dashLiveBadge(s) +
+      (s.visibility && s.visibility !== "private" ? '<span class="live-vis-pill">' + escHtml(liveVisibilityLabel(s.visibility)) + "</span>" : "") +
       "<h4>" + escHtml(s.title) + "</h4>" +
-      '<p class="meta">' + escHtml(s.subject) + " · " + escHtml(s.teacher_name || "Teacher") + "</p>" +
-      '<button type="button" class="btn-join dash-live-join" data-id="' + escHtml(s.id) + '" data-title="' + escHtml(s.title) + '" data-subject="' + escHtml(s.subject) + '" data-teacher="' + escHtml(s.teacher_name || "") + '">Join Live Class</button>' +
+      '<p class="meta">Teacher: ' + escHtml(s.teacher_name || "Teacher") + " · " + escHtml(s.subject) + "</p>" +
+      '<button type="button" class="btn-join dash-live-join" data-id="' + escHtml(s.id) + '" data-title="' + escHtml(s.title) + '" data-subject="' + escHtml(s.subject) + '" data-teacher="' + escHtml(s.teacher_name || "") + '" data-end="' + escHtml(s.end_time || "") + '">Join Live Class</button>' +
       "</article>";
   }).join("");
 }
@@ -937,7 +944,8 @@ function startLivePolling() {
   if (livePollTimer) return;
   livePollTimer = setInterval(function () {
     if (currentPage === "live") loadLive(true);
-  }, 30000);
+    if (currentPage === "dashboard") loadDashboard(true);
+  }, 20000);
 }
 
 function showLiveClassToast(session) {
@@ -981,6 +989,7 @@ async function loadLive(quiet) {
     cacheLiveSessions(live, upcoming);
     renderLive(live);
     renderUpcoming(upcoming);
+    renderDashboardLive(live);
 
     if (!live.length) {
       if (typeof window.stopNotificationRing === "function") window.stopNotificationRing();
@@ -1032,15 +1041,20 @@ function renderLive(sessions) {
     return;
   }
   el.innerHTML = sessions.map((s) => {
-    const badge = s.is_live ? "LIVE" : "STARTING";
-    const vis = s.visibility ? '<span class="live-vis-pill">' + escHtml(liveVisibilityLabel(s.visibility)) + "</span>" : "";
+    const badge = s.visibility === "private"
+      ? "PRIVATE INVITE"
+      : (s.is_live ? "LIVE NOW" : "STARTING");
+    const badgeClass = s.visibility === "private" ? "dash-invite-pill" : "live-pill";
+    const vis = s.visibility && s.visibility !== "private"
+      ? '<span class="live-vis-pill">' + escHtml(liveVisibilityLabel(s.visibility)) + "</span>"
+      : "";
     return `
     <div class="card">
-      <div class="live-pill">${badge}</div>
+      <div class="${badgeClass}">${badge}</div>
       ${vis}
       <h3>${escHtml(s.title)}</h3>
-      <p class="meta">${escHtml(s.subject)} · ${escHtml(s.teacher_name)}</p>
-      <button type="button" class="btn-join" data-id="${escHtml(s.id)}" data-title="${escHtml(s.title)}" data-subject="${escHtml(s.subject)}" data-teacher="${escHtml(s.teacher_name)}">Join Live Class</button>
+      <p class="meta">Teacher: ${escHtml(s.teacher_name)} · ${escHtml(s.subject)}</p>
+      <button type="button" class="btn-join" data-id="${escHtml(s.id)}" data-title="${escHtml(s.title)}" data-subject="${escHtml(s.subject)}" data-teacher="${escHtml(s.teacher_name)}" data-end="${escHtml(s.end_time || "")}">Join Live Class</button>
     </div>
   `;
   }).join("");
@@ -1071,25 +1085,6 @@ function renderUpcoming(sessions) {
 
 async function joinClass(btn) {
   return joinClassWithPayment(btn);
-}
-
-function bindJoinCodeBox() {
-  var input = document.getElementById("join-code-input");
-  var btn = document.getElementById("join-code-btn");
-  var err = document.getElementById("join-code-error");
-  if (!input || !btn || btn.dataset.bound) return;
-  btn.dataset.bound = "1";
-  btn.addEventListener("click", function () {
-    if (typeof handleJoinCodeInput === "function") {
-      handleJoinCodeInput(input, err);
-    }
-  });
-  input.addEventListener("keydown", function (e) {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      btn.click();
-    }
-  });
 }
 
 async function loadMyRequests() {

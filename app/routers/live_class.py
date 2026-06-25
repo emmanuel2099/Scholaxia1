@@ -270,7 +270,7 @@ async def _notify_for_class(
                 await send_all_students_notification(
                     db,
                     "Live class starting now",
-                    f"«{live_class.title}» is live. Code: {live_class.join_code} — tap Join in Live Class.",
+                    f"«{live_class.title}» is live — tap Join on your dashboard.",
                     "live_class",
                     data,
                 )
@@ -285,7 +285,7 @@ async def _notify_for_class(
                 )
         elif vis == LiveClassVisibility.private.value:
             title = "Private live class starting now" if live_now else "Private live class scheduled"
-            body_live = f"«{live_class.title}» — invited you. Code: {live_class.join_code}. Tap Join in the app."
+            body_live = f"«{live_class.title}» — your teacher invited you. Tap Join on your dashboard."
             body_up = f"«{live_class.title}» is scheduled. Only invited students can join."
             for sid in _parse_id_list(live_class.invited_student_ids):
                 await send_user_notification(db, sid, title, body_live if live_now else body_up, "live_class", data)
@@ -297,7 +297,7 @@ async def _notify_for_class(
             if group:
                 title = f"{group.school_name} — class is live" if live_now else f"{group.name} — upcoming class"
                 body = (
-                    f"«{live_class.title}» is live in {group.name}. Code: {live_class.join_code}."
+                    f"«{live_class.title}» is live in {group.name}. Join from your dashboard."
                     if live_now
                     else f"«{live_class.title}» scheduled for {group.name}."
                 )
@@ -309,7 +309,7 @@ async def _notify_for_class(
                     db=db,
                     subject=live_class.subject,
                     title="Live class starting now",
-                    body=f"Your {live_class.subject} class «{live_class.title}» is live. Code: {live_class.join_code}.",
+                    body=f"Your {live_class.subject} class «{live_class.title}» is live. Join from your dashboard.",
                     notification_type="live_class",
                     data=data,
                 )

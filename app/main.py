@@ -190,8 +190,9 @@ async def live_class_ws(
     room_id: str,
     user_id: str = Query(...),
     role: str = Query(...),
+    display_name: str = Query(""),
 ):
-    await live_class_endpoint(websocket, room_id, user_id, role)
+    await live_class_endpoint(websocket, room_id, user_id, role, display_name or "")
 
 
 @app.get("/health")

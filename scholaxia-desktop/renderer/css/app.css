@@ -2828,6 +2828,23 @@ body.exam-lock-active .main-content-topnav {
 .dash-live-card h4 { margin: 8px 0 4px; color: #1a4d32; }
 .dash-live-join { margin-top: 12px; width: 100%; }
 
+.dash-invite-pill {
+  display: inline-block;
+  background: #fff3e0;
+  color: #e65100;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  margin-bottom: 8px;
+}
+
+.live-pill.starting {
+  background: #fff8e1;
+  color: #f57f17;
+}
+
 .dash-skills-section { margin-top: 28px; }
 .dash-skills-grid {
   display: grid;

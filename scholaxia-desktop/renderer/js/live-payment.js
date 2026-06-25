@@ -252,7 +252,9 @@ function bindLivePageClickHandlers() {
     }
 
     var joinBtn = e.target.closest(".btn-join[data-id]");
-    if (joinBtn && joinBtn.closest("#page-live, #page-subscription, #page-skills")) {
+    if (joinBtn && joinBtn.closest(
+      "#page-live, #page-subscription, #page-skills, #page-dashboard, #dash-platform-live, #notifications-list"
+    )) {
       e.preventDefault();
       e.stopPropagation();
       joinClassWithPayment(joinBtn);

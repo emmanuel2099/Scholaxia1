@@ -207,10 +207,6 @@
         joinClassWithPayment(String(classId));
         return;
       }
-      if (data.join_code && typeof redirectToJoinLanding === "function") {
-        redirectToJoinLanding({ code: data.join_code });
-        return;
-      }
       if (typeof showPage === "function") showPage("live");
       return;
     }

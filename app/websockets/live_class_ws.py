@@ -24,11 +24,16 @@ from app.services.live_class_room import (
 rooms: Dict[str, List[dict]] = {}
 
 
-async def connect(room_id: str, websocket: WebSocket, user_id: str, role: str):
+async def connect(room_id: str, websocket: WebSocket, user_id: str, role: str, display_name: str = ""):
     await websocket.accept()
     if room_id not in rooms:
         rooms[room_id] = []
-    rooms[room_id].append({"ws": websocket, "user_id": user_id, "role": role})
+    rooms[room_id].append({
+        "ws": websocket,
+        "user_id": user_id,
+        "role": role,
+        "display_name": display_name or ("Teacher" if role in ("teacher", "admin") else "Student"),
+    })
 
 
 def disconnect(room_id: str, websocket: WebSocket):
@@ -122,9 +127,15 @@ async def notify_camera_revoked(room_id: str, student_id: str) -> None:
     })
 
 
-async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, role: str):
-    await connect(room_id, websocket, user_id, role)
-    await broadcast(room_id, {"event": "user_joined", "user_id": user_id, "role": role}, exclude=websocket)
+async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, role: str, display_name: str = ""):
+    await connect(room_id, websocket, user_id, role, display_name)
+    name = display_name or ("Teacher" if _is_teacher_role(role) else "Student")
+    await broadcast(room_id, {
+        "event": "user_joined",
+        "user_id": user_id,
+        "role": role,
+        "name": name,
+    }, exclude=websocket)
 
     try:
         while True:

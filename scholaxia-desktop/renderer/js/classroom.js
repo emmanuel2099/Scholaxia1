@@ -1264,8 +1264,11 @@ function connectChat() {
   var payload = parseJwt(getAuthToken());
   var userId = payload.sub || liveSession.user_id || "user";
   var role = isTeacherRole() ? "teacher" : "student";
+  var displayName = localStorage.getItem("sia_name") || (liveSession.teacher_name && isTeacherRole() ? liveSession.teacher_name : "Student");
   var url = API_WS + "/ws/live-class/" + encodeURIComponent(liveSession.room_id)
-    + "?user_id=" + encodeURIComponent(userId) + "&role=" + encodeURIComponent(role);
+    + "?user_id=" + encodeURIComponent(userId)
+    + "&role=" + encodeURIComponent(role)
+    + "&display_name=" + encodeURIComponent(displayName);
 
   liveSocket = new WebSocket(url);
   liveSocket.onopen = function () {
@@ -1285,14 +1288,20 @@ function connectChat() {
       } else if (msg.event === "user_joined") {
         if (msg.role === "student") wsStudentCount++;
         updateAudienceStats();
-        addChatMessage("", "Someone joined the class.", true);
+        var joinedName = msg.name || "Someone";
+        addChatMessage("", joinedName + " joined the class.", true);
         if (isTeacherRole() && msg.role === "student") {
-          setTimeout(syncBoardToRoom, 300);
+          setTimeout(function () {
+            syncBoardToRoom();
+            loadClassroomStudents(true);
+          }, 300);
         }
       } else if (msg.event === "user_left") {
         if (msg.role === "student" && wsStudentCount > 0) wsStudentCount--;
         updateAudienceStats();
-        addChatMessage("", "Someone left the class.", true);
+        var leftName = msg.name || "Someone";
+        addChatMessage("", leftName + " left the class.", true);
+        if (isTeacherRole()) loadClassroomStudents(true);
       } else if (msg.event === "request_board_sync") {
         if (isTeacherRole()) syncBoardToRoom();
       } else if (msg.event === "class_ended") {

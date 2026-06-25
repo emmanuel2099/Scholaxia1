@@ -17,14 +17,13 @@ function initAuthPage() {
   if (getToken()) {
     var joinParams = new URLSearchParams(window.location.search);
     var joinClass = joinParams.get("class") || joinParams.get("join");
-    var joinCode = joinParams.get("code");
-    if (joinClass || joinCode) {
-      redirectToJoinLanding({ class_id: joinClass || "", code: joinCode || "" });
+    if (joinClass) {
+      window.location.href = "app.html?join=" + encodeURIComponent(joinClass);
       return;
     }
     var pending = typeof consumePendingJoin === "function" ? consumePendingJoin() : null;
-    if (pending && (pending.class_id || pending.code)) {
-      redirectToJoinLanding(pending);
+    if (pending && pending.class_id) {
+      window.location.href = "app.html?join=" + encodeURIComponent(pending.class_id);
       return;
     }
     window.location.href = "app.html";
@@ -53,15 +52,11 @@ function initAuthPage() {
   var params = new URLSearchParams(window.location.search);
   var ret = params.get("return");
   var joinClass = params.get("class") || params.get("join");
-  var joinCode = params.get("code");
-  if (joinClass || joinCode) {
+  if (joinClass) {
     if (typeof savePendingJoin === "function") {
-      savePendingJoin({ class_id: joinClass || "", code: joinCode || "" });
+      savePendingJoin({ class_id: joinClass, code: null });
     } else {
-      sessionStorage.setItem("sia_pending_join", JSON.stringify({
-        class_id: joinClass || null,
-        code: joinCode || null,
-      }));
+      sessionStorage.setItem("sia_pending_join", JSON.stringify({ class_id: joinClass, code: null }));
     }
     setTimeout(function () { scrollToAuth("login"); }, 400);
   } else if (ret) {
@@ -173,15 +168,8 @@ async function routeAfterAuth(accessToken, role, email, nameOverride) {
       if (raw) pending = JSON.parse(raw);
     } catch (e) { /* ignore */ }
   }
-  if (pending && (pending.class_id || pending.code)) {
-    if (typeof redirectToJoinLanding === "function") {
-      redirectToJoinLanding(pending);
-    } else {
-      var q = pending.code
-        ? "code=" + encodeURIComponent(pending.code)
-        : "class=" + encodeURIComponent(pending.class_id);
-      window.location.href = "join.html?" + q;
-    }
+  if (pending && pending.class_id) {
+    window.location.href = "app.html?join=" + encodeURIComponent(pending.class_id);
     return;
   }
 
