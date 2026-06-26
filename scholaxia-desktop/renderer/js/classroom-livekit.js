@@ -113,6 +113,7 @@
       if (data.end_time) liveSession.end_time = data.end_time;
       if (data.mic_allowed) liveSession.mic_allowed = true;
       if (data.can_publish) liveSession.can_publish = true;
+      if (data.teacher_id) liveSession.teacher_id = data.teacher_id;
       if (typeof applyStudentMediaPermissions === "function") applyStudentMediaPermissions(data);
       if (typeof persistLiveSession === "function") persistLiveSession(liveSession);
       else localStorage.setItem("live_session", JSON.stringify(liveSession));
@@ -489,6 +490,22 @@
     });
   }
 
+  function isLocalMicPublished() {
+    if (!liveRoom) return false;
+    var c = lk();
+    if (!c) return false;
+    var pub = liveRoom.localParticipant.getTrackPublication(c.Track.Source.Microphone);
+    return !!(pub && pub.track && !pub.isMuted);
+  }
+
+  function isLocalCamPublished() {
+    if (!liveRoom) return false;
+    var c = lk();
+    if (!c) return false;
+    var pub = liveRoom.localParticipant.getTrackPublication(c.Track.Source.Camera);
+    return !!(pub && pub.track && !pub.isMuted);
+  }
+
   function getLocalMicTrack() {
     if (!liveRoom) return null;
     var c = lk();
@@ -519,10 +536,34 @@
       if (typeof updateAudienceStats === "function") updateAudienceStats();
     });
     room.on(c.RoomEvent.TrackUnsubscribed, function (track, publication, participant) {
+      if (track && (track.kind === c.Track.Kind.Audio || track.kind === "audio")) {
+        var pid = participant && participant.identity ? String(participant.identity) : "";
+        remoteAudioEls = remoteAudioEls.filter(function (el) {
+          if (el && pid && el.getAttribute && el.getAttribute("data-participant-id") === pid) {
+            try { el.remove(); } catch (e) { /* ignore */ }
+            return false;
+          }
+          return true;
+        });
+        return;
+      }
       detachRemoteVideo(track, publication, participant);
     });
     room.on(c.RoomEvent.TrackMuted, function (publication, participant) {
+      if (publication && (publication.kind === c.Track.Kind.Audio || publication.kind === "audio")) {
+        if (!participant || participant.isLocal) return;
+        return;
+      }
       handleRemoteCameraMuted(publication, participant);
+    });
+    room.on(c.RoomEvent.TrackUnmuted, function (publication, participant) {
+      if (!publication || !publication.track) return;
+      if (publication.kind === c.Track.Kind.Audio || publication.kind === "audio") {
+        if (!participant || participant.isLocal) return;
+        attachRemoteAudio(publication.track, participant);
+        return;
+      }
+      attachRemoteTrack(publication.track, publication, participant);
     });
     if (c.RoomEvent.TrackUnpublished) {
       room.on(c.RoomEvent.TrackUnpublished, function (publication, participant) {
@@ -553,6 +594,13 @@
       if (typeof updateAudienceStats === "function") updateAudienceStats();
     });
     room.on(c.RoomEvent.LocalTrackPublished, function (publication) {
+      if (publication && (publication.kind === c.Track.Kind.Audio || publication.kind === "audio")) {
+        micOn = true;
+        if (typeof updateMediaButton === "function") {
+          updateMediaButton(document.getElementById("btn-mic"), true);
+        }
+        return;
+      }
       if (!isCameraPublication(publication) || !publication.track) return;
       if (isTeacherRole()) {
         attachLocalCameraPreview();
@@ -609,13 +657,19 @@
   async function transitionHostToLiveBroadcast() {
     var wantCam = camOn || !!window.localPreviewStream;
     var wantMic = true;
-    if (wantCam) await setCam(true);
-    if (wantMic) await setMic(true);
-    if (window.localPreviewStream) {
+    if (typeof clearLocalPreviewStream === "function") {
+      clearLocalPreviewStream();
+    } else if (window.localPreviewStream) {
       window.localPreviewStream.getTracks().forEach(function (t) { t.stop(); });
       window.localPreviewStream = null;
-      if (typeof stopSelfHear === "function") stopSelfHear();
-      if (typeof stopMicMonitor === "function") stopMicMonitor();
+    }
+    if (typeof stopSelfHear === "function") stopSelfHear();
+    if (typeof stopMicMonitor === "function") stopMicMonitor();
+    micOn = false;
+    if (wantMic) await setMic(true);
+    if (wantCam) {
+      camOn = false;
+      await setCam(true);
     }
   }
 
@@ -765,7 +819,7 @@
 
     if (!liveVideoJoined || !liveRoom) return;
     var btn = document.getElementById("btn-mic");
-    if (on === micOn) return;
+    if (on === micOn && isLocalMicPublished() === on) return;
     await liveRoom.localParticipant.setMicrophoneEnabled(on);
     micOn = on;
     if (typeof updateMediaButton === "function") updateMediaButton(btn, on);

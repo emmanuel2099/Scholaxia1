@@ -44,6 +44,7 @@ function goToLogin(returnPage) {
 }
 
 if (typeof window !== "undefined") {
+  window.SCHOLAXIA_MODE = "student";
   window.isStudentLoggedIn = isStudentLoggedIn;
   window.isPagePublic = isPagePublic;
   window.goToLogin = goToLogin;

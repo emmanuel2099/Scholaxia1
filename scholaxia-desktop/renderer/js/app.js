@@ -1809,12 +1809,52 @@ function initAppContactForm() {
   var form = document.getElementById("app-contact-form");
   if (!form || form.dataset.bound === "1") return;
   form.dataset.bound = "1";
+
+  var nameEl = document.getElementById("app-contact-name");
+  var emailEl = document.getElementById("app-contact-email");
+  var topicEl = document.getElementById("app-contact-topic");
+  var topicsWrap = document.getElementById("contact-topics");
+
+  if (typeof getUser === "function") {
+    var user = getUser();
+    if (nameEl && !nameEl.value && user.name && user.name !== "Student") nameEl.value = user.name;
+    if (emailEl && !emailEl.value && user.email) emailEl.value = user.email;
+  }
+
+  if (topicsWrap) {
+    topicsWrap.addEventListener("click", function (e) {
+      var btn = e.target.closest(".contact-topic");
+      if (!btn) return;
+      topicsWrap.querySelectorAll(".contact-topic").forEach(function (b) { b.classList.remove("active"); });
+      btn.classList.add("active");
+      if (topicEl) topicEl.value = btn.getAttribute("data-topic") || "Other";
+    });
+  }
+
   form.addEventListener("submit", function (e) {
     e.preventDefault();
     var ok = document.getElementById("app-contact-success");
+    var topic = topicEl ? topicEl.value : "General";
+    var msg = document.getElementById("app-contact-message");
+    if (msg && msg.value.indexOf("[" + topic + "]") !== 0) {
+      msg.value = "[" + topic + "] " + msg.value.trim();
+    }
     if (ok) ok.classList.remove("hidden");
     form.reset();
-    setTimeout(function () { if (ok) ok.classList.add("hidden"); }, 5000);
+    if (nameEl && typeof getUser === "function") {
+      var u = getUser();
+      if (u.name && u.name !== "Student") nameEl.value = u.name;
+      if (u.email) emailEl.value = u.email;
+    }
+    if (topicsWrap) {
+      topicsWrap.querySelectorAll(".contact-topic").forEach(function (b) { b.classList.remove("active"); });
+      var first = topicsWrap.querySelector(".contact-topic");
+      if (first) {
+        first.classList.add("active");
+        if (topicEl) topicEl.value = first.getAttribute("data-topic") || "Live class";
+      }
+    }
+    setTimeout(function () { if (ok) ok.classList.add("hidden"); }, 6000);
   });
 }
 window.initAppContactForm = initAppContactForm;

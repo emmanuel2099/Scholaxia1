@@ -835,6 +835,7 @@ async def get_livekit_token(
     return {
         **payload,
         "uid": _user_uid(uid),
+        "teacher_id": str(live_class.teacher_id),
         "end_time": live_class.end_time.isoformat() if live_class.end_time else None,
         "is_live": live_class.is_live,
         "mic_allowed": mic_ok,

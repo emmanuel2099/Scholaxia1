@@ -21,7 +21,7 @@ function createWindow() {
     height: size.height,
     minWidth: size.minWidth,
     minHeight: size.minHeight,
-    title: "Scholaxia Student Portal",
+    title: "Scholaxia Student",
     icon: path.join(__dirname, "assets", "logo.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),

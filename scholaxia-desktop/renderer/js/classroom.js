@@ -1665,6 +1665,17 @@ function hideVideoPlaceholder() {
   if (ph) ph.classList.add("hidden");
 }
 
+function clearLocalPreviewStream() {
+  if (localPreviewStream) {
+    localPreviewStream.getTracks().forEach(function (t) { t.stop(); });
+    localPreviewStream = null;
+  }
+  window.localPreviewStream = null;
+  if (typeof stopSelfHear === "function") stopSelfHear();
+  if (typeof stopMicMonitor === "function") stopMicMonitor();
+}
+window.clearLocalPreviewStream = clearLocalPreviewStream;
+
 async function startLocalPreviewOnly() {
   if (!isTeacherRole()) return;
   window.localPreviewStream = localPreviewStream;

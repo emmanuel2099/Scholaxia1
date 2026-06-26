@@ -1,5 +1,5 @@
 @echo off
-title Scholaxia Student Portal
+title Scholaxia Student
 cd /d "%~dp0"
 
 REM Node.js on D: drive
