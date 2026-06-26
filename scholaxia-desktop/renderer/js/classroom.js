@@ -122,6 +122,9 @@ function parseJwt(token) {
 }
 
 function getAuthToken() {
+  if (isTeacherRole()) {
+    return localStorage.getItem("sia_teacher_token") || localStorage.getItem("sia_admin_token") || localStorage.getItem("sia_token") || "";
+  }
   return localStorage.getItem("sia_token") || localStorage.getItem("sia_teacher_token") || localStorage.getItem("sia_admin_token") || "";
 }
 
@@ -563,19 +566,30 @@ function renderRaisedHands() {
     var safeId = id.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
     return '<div class="raise-hand-item"><span>&#9995; ' + name + '</span>' +
       '<button type="button" class="btn-give-access" onclick="grantStudentMic(' +
-      JSON.stringify(id) + ',' + JSON.stringify(item.name || "Student") + ')">Allow mic</button></div>';
+      JSON.stringify(id) + ',' + JSON.stringify(item.name || "Student") + ')">Allow to speak</button></div>';
   }).join("");
 }
 
 function addRaisedHand(userId, name) {
-  if (!userId || isTeacherRole()) return;
+  if (!userId || !isTeacherRole()) return;
   raisedHands[userId] = { name: name || "Student" };
   renderRaisedHands();
+  renderRaisedHandToolbarBadge();
 }
 
 function removeRaisedHand(userId) {
   delete raisedHands[userId];
   renderRaisedHands();
+  renderRaisedHandToolbarBadge();
+}
+
+function renderRaisedHandToolbarBadge() {
+  var btn = document.getElementById("btn-give-access-all");
+  if (!btn || !isTeacherRole()) return;
+  var count = Object.keys(raisedHands).length;
+  btn.textContent = count
+    ? "Allow raised hands to speak (" + count + ")"
+    : "Allow raised hands to speak";
 }
 
 async function grantStudentMic(userId, studentName) {
@@ -585,18 +599,39 @@ async function grantStudentMic(userId, studentName) {
     showClassroomToast("Class session not found. Re-enter the classroom.", true);
     return;
   }
-  var name = studentName || (raisedHands[userId] && raisedHands[userId].name) || "Student";
-  showClassroomToast("Allowing mic for " + name + "…");
+  var uid = String(userId).trim();
+  var name = studentName || (raisedHands[uid] && raisedHands[uid].name) || "Student";
+  showClassroomToast("Allowing " + name + " to speak…");
+  if (liveSocket && liveSocket.readyState === WebSocket.OPEN) {
+    liveSocket.send(JSON.stringify({ event: "grant_mic", target_user_id: uid }));
+  }
   try {
-    await api("/api/v1/live-classes/" + classId + "/students/" + encodeURIComponent(userId) + "/unmute", { method: "POST" });
-    removeRaisedHand(userId);
-    showClassroomToast("Mic access approved — " + name + " can speak");
+    var hostTok = localStorage.getItem("sia_teacher_token") || localStorage.getItem("sia_admin_token") || getAuthToken();
+    await fetch(API_BASE + "/api/v1/live-classes/" + classId + "/students/" + encodeURIComponent(uid) + "/unmute", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + hostTok },
+    }).then(function (res) {
+      return res.json().then(function (data) {
+        if (!res.ok) throw new Error((data && data.detail) || "Could not allow student to speak");
+        return data;
+      });
+    });
+    removeRaisedHand(uid);
+    showClassroomToast("Access approved — " + name + " can speak");
     addChatMessage("", name + " can now use the microphone.", true);
     if (typeof ensureRoomAudioPlayback === "function") ensureRoomAudioPlayback();
     await loadClassroomStudents(true);
   } catch (e) {
-    showClassroomToast("Could not allow mic: " + (e.message || "Try again."), true);
-    addChatMessage("", "Could not allow mic: " + (e.message || "Try again."), true);
+    var msg = e.message || "Try again.";
+    if (liveSocket && liveSocket.readyState === WebSocket.OPEN) {
+      removeRaisedHand(uid);
+      showClassroomToast("Access sent — " + name + " should hear approval shortly");
+      addChatMessage("", name + " was allowed to speak.", true);
+      await loadClassroomStudents(true);
+      return;
+    }
+    showClassroomToast("Could not allow student to speak: " + msg, true);
+    addChatMessage("", "Could not allow student to speak: " + msg, true);
   }
 }
 
@@ -608,17 +643,11 @@ async function giveAccessToWaitingStudents() {
   if (!isTeacherRole()) return;
   var ids = Object.keys(raisedHands);
   if (!ids.length) {
-    var list = document.getElementById("class-students-list");
-    var students = list ? list.querySelectorAll(".btn-give-access") : [];
-    if (!students.length) {
-      addChatMessage("", "No students waiting — they appear here when they join or raise a hand.", true);
-      return;
-    }
-    students[0].click();
+    addChatMessage("", "No raised hands — students tap Raise hand when they want to speak.", true);
     return;
   }
   for (var i = 0; i < ids.length; i++) {
-    await grantStudentAccess(ids[i]);
+    await grantStudentAccess(ids[i], raisedHands[ids[i]] && raisedHands[ids[i]].name);
   }
 }
 
@@ -694,7 +723,7 @@ function renderClassroomStudents(students) {
       hostActions = '<div class="participant-actions">' +
         (micOn
           ? '<button type="button" onclick="revokeStudentMic(\'' + safeId + '\')">Mute</button>'
-          : '<button type="button" onclick="grantStudentMic(' + JSON.stringify(s.student_id) + ',' + JSON.stringify(s.name || "Student") + ')">Allow mic</button>') +
+          : (raised ? '<span class="raised-waiting">✋ Raised — use Raised hands panel</span>' : "")) +
         (camOn
           ? '<button type="button" onclick="revokeStudentCamera(\'' + safeId + '\')">Revoke cam</button>'
           : '<button type="button" onclick="grantStudentCamera(\'' + safeId + '\')">Allow cam</button>') +
@@ -1534,7 +1563,8 @@ function raiseHand() {
     return;
   }
   liveSocket.send(JSON.stringify({ event: "raise_hand", name: getStudentName() }));
-  addChatMessage("", "You raised your hand. Wait for the teacher to allow your mic.", true);
+  addChatMessage("", "You raised your hand. Wait for the teacher to allow you to speak.", true);
+  showClassroomToast("Hand raised — waiting for teacher");
 }
 
 function showVideoPlaceholder(text) {
@@ -1778,6 +1808,7 @@ window.onload = function () {
     showHostTools(true);
     var rhPanel = document.getElementById("raise-hand-panel");
     if (rhPanel) rhPanel.classList.remove("hidden");
+    renderRaisedHandToolbarBadge();
     var audBadge = document.getElementById("audience-badge");
     if (audBadge) audBadge.classList.remove("hidden");
     startClassroomStudentsPoll();

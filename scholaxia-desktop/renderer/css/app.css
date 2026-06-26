@@ -1637,6 +1637,12 @@ body:has(.app-shell-topnav) { overflow: auto; height: auto; }
 }
 .group-card-school { border-left: 4px solid #3d8f5a; }
 
+.raised-waiting {
+  font-size: 0.78rem;
+  color: #b45309;
+  font-weight: 600;
+}
+
 .request-box {
   background: rgba(255, 255, 255, 0.8);
   backdrop-filter: blur(12px);

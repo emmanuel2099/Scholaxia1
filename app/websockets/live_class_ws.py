@@ -63,8 +63,9 @@ async def send_to_user(room_id: str, target_user_id: str, message: dict):
     """Send a message to a specific user in the room."""
     if room_id not in rooms:
         return
+    target = str(target_user_id or "").strip().lower()
     for conn in rooms[room_id]:
-        if conn["user_id"] == target_user_id:
+        if str(conn["user_id"] or "").strip().lower() == target:
             try:
                 await conn["ws"].send_text(json.dumps(message))
             except Exception:

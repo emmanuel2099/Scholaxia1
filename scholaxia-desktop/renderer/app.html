@@ -158,9 +158,9 @@
     </header>
 
     <div id="notif-ring-bar" class="notif-ring-bar hidden">
-      <span>&#128276; Live class alert — your teacher is live! Tap to join.</span>
+      <span>&#128276; Live class ringing — open Access Code to join.</span>
       <button type="button" class="btn-sm" onclick="stopNotificationRing()">Stop sound</button>
-      <button type="button" class="btn-sm primary" onclick="showPage('live')">Go to Live Class</button>
+      <button type="button" class="btn-sm primary" onclick="showPage('access-code'); if(typeof loadAccessCodes==='function') loadAccessCodes();">Open Access Code</button>
     </div>
 
     <main class="main-content main-content-sidebar">

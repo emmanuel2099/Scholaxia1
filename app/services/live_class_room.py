@@ -6,40 +6,44 @@ mic_access: Dict[str, Set[str]] = {}
 camera_access: Dict[str, Set[str]] = {}
 
 
+def _uid(user_id: str) -> str:
+    return str(user_id or "").strip().lower()
+
+
 def grant_whiteboard(room_id: str, user_id: str) -> None:
-    whiteboard_access.setdefault(room_id, set()).add(user_id)
+    whiteboard_access.setdefault(room_id, set()).add(_uid(user_id))
 
 
 def revoke_whiteboard(room_id: str, user_id: str) -> None:
-    whiteboard_access.get(room_id, set()).discard(user_id)
+    whiteboard_access.get(room_id, set()).discard(_uid(user_id))
 
 
 def has_whiteboard_access(room_id: str, user_id: str) -> bool:
-    return user_id in whiteboard_access.get(room_id, set())
+    return _uid(user_id) in whiteboard_access.get(room_id, set())
 
 
 def grant_mic(room_id: str, user_id: str) -> None:
-    mic_access.setdefault(room_id, set()).add(user_id)
+    mic_access.setdefault(room_id, set()).add(_uid(user_id))
 
 
 def revoke_mic(room_id: str, user_id: str) -> None:
-    mic_access.get(room_id, set()).discard(user_id)
+    mic_access.get(room_id, set()).discard(_uid(user_id))
 
 
 def has_mic_access(room_id: str, user_id: str) -> bool:
-    return user_id in mic_access.get(room_id, set())
+    return _uid(user_id) in mic_access.get(room_id, set())
 
 
 def grant_camera(room_id: str, user_id: str) -> None:
-    camera_access.setdefault(room_id, set()).add(user_id)
+    camera_access.setdefault(room_id, set()).add(_uid(user_id))
 
 
 def revoke_camera(room_id: str, user_id: str) -> None:
-    camera_access.get(room_id, set()).discard(user_id)
+    camera_access.get(room_id, set()).discard(_uid(user_id))
 
 
 def has_camera_access(room_id: str, user_id: str) -> bool:
-    return user_id in camera_access.get(room_id, set())
+    return _uid(user_id) in camera_access.get(room_id, set())
 
 
 def has_publish_access(room_id: str, user_id: str) -> bool:

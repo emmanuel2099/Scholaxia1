@@ -66,42 +66,43 @@
   }
 
   function startRing() {
-    if (!liveClassActive) return;
+    var hasUnreadLive = notifications.some(function (n) { return isLiveNotif(n) && !n.is_read; });
+    if (!liveClassActive && !hasUnreadLive) return;
     stopRing(false);
     try {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       if (audioCtx.state === "suspended") audioCtx.resume();
 
-      function playPhoneRingBurst() {
-        if (!liveClassActive) {
+      function playIphoneRingBurst() {
+        if (!liveClassActive && !notifications.some(function (n) { return isLiveNotif(n) && !n.is_read; })) {
           stopRing();
           return;
         }
         var t0 = audioCtx.currentTime;
-        var ringPattern = [
-          { start: 0, dur: 0.4 },
-          { start: 0.6, dur: 0.4 },
+        var segments = [
+          { start: 0, dur: 0.55 },
+          { start: 0.75, dur: 0.55 },
         ];
-        ringPattern.forEach(function (p) {
-          [440, 480].forEach(function (freq, i) {
+        segments.forEach(function (seg) {
+          [698.46, 880.0].forEach(function (freq) {
             var osc = audioCtx.createOscillator();
             var gain = audioCtx.createGain();
             osc.type = "sine";
             osc.frequency.value = freq;
-            gain.gain.setValueAtTime(0, t0 + p.start);
-            gain.gain.linearRampToValueAtTime(0.14, t0 + p.start + 0.02);
-            gain.gain.setValueAtTime(0.14, t0 + p.start + p.dur - 0.02);
-            gain.gain.linearRampToValueAtTime(0, t0 + p.start + p.dur);
+            gain.gain.setValueAtTime(0, t0 + seg.start);
+            gain.gain.linearRampToValueAtTime(0.22, t0 + seg.start + 0.03);
+            gain.gain.setValueAtTime(0.22, t0 + seg.start + seg.dur - 0.04);
+            gain.gain.exponentialRampToValueAtTime(0.001, t0 + seg.start + seg.dur);
             osc.connect(gain);
             gain.connect(audioCtx.destination);
-            osc.start(t0 + p.start);
-            osc.stop(t0 + p.start + p.dur + 0.01);
+            osc.start(t0 + seg.start);
+            osc.stop(t0 + seg.start + seg.dur + 0.02);
           });
         });
       }
 
-      playPhoneRingBurst();
-      ringTimer = setInterval(playPhoneRingBurst, 2800);
+      playIphoneRingBurst();
+      ringTimer = setInterval(playIphoneRingBurst, 3200);
       var bar = document.getElementById("notif-ring-bar");
       if (bar) bar.classList.remove("hidden");
     } catch (e) {
@@ -155,7 +156,10 @@
 
   function onNewNotifications(newOnes) {
     var hasLive = newOnes.some(function (n) { return isLiveNotif(n) && !n.is_read; });
-    if (hasLive && liveClassActive) startRing();
+    if (hasLive) {
+      liveClassActive = true;
+      startRing();
+    }
     updateBadge();
     if (typeof currentPage !== "undefined" && currentPage === "notifications") {
       renderNotificationsList();
@@ -215,6 +219,7 @@
       return;
     }
     if (typeof showPage === "function") showPage("access-code");
+  }
 
   function renderNotificationsList() {
     var el = document.getElementById("notifications-list");
@@ -296,6 +301,9 @@
   function init() {
     bindBell();
     checkStopRingFlag();
+    document.addEventListener("click", function unlockRingAudio() {
+      if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
+    }, { once: true });
     if (typeof isStudentLoggedIn === "function" && !isStudentLoggedIn()) return;
     try {
       var raw = localStorage.getItem("sia_known_notif_ids");
@@ -319,8 +327,9 @@
   window.scholaxiaSyncLiveRing = syncRingWithLiveStatus;
   window.scholaxiaNotifyIncoming = function (payload) {
     fetchNotifications();
-    if (payload && liveClassActive && (payload.type || "").toLowerCase().indexOf("live") >= 0) {
-      if (isLiveNotif(payload)) startRing();
+    if (payload && (payload.type || "").toLowerCase().indexOf("live") >= 0 && isLiveNotif(payload)) {
+      liveClassActive = true;
+      startRing();
     }
   };
 
