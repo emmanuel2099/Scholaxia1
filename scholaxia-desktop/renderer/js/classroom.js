@@ -600,6 +600,42 @@ function renderRaisedHandToolbarBadge() {
     : "Allow raised hands to speak";
 }
 
+function getMyClassroomUserId() {
+  var payload = parseJwt(getAuthToken());
+  return payload.sub || (liveSession && (liveSession.identity || liveSession.user_id)) || "";
+}
+
+function isMicEventForMe(msg) {
+  if (!msg) return false;
+  var mine = String(getMyClassroomUserId() || "").toLowerCase();
+  var target = String(msg.user_id || msg.target_user_id || "").toLowerCase();
+  if (!target) return true;
+  return target === mine;
+}
+
+function formatGrantError(detail) {
+  if (!detail) return "Could not allow student to speak";
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail.map(function (d) { return (d && d.msg) || String(d); }).join(", ");
+  }
+  if (typeof detail === "object" && detail.msg) return detail.msg;
+  try { return JSON.stringify(detail); } catch (e) { return "Request failed"; }
+}
+
+async function classroomHostApi(path, options) {
+  options = options || {};
+  var tok = localStorage.getItem("sia_teacher_token") || localStorage.getItem("sia_admin_token") || getAuthToken();
+  var res = await fetch(API_BASE + path, {
+    method: options.method || "GET",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + tok },
+    body: options.body,
+  });
+  var data = await res.json().catch(function () { return {}; });
+  if (!res.ok) throw new Error(formatGrantError(data.detail) || "Request failed (" + res.status + ")");
+  return data;
+}
+
 async function grantStudentMic(userId, studentName) {
   if (!isTeacherRole() || !userId) return;
   var classId = liveSession.class_id || liveSession.classId;
@@ -610,37 +646,30 @@ async function grantStudentMic(userId, studentName) {
   var uid = String(userId).trim();
   var name = studentName || (raisedHands[uid] && raisedHands[uid].name) || "Student";
   showClassroomToast("Allowing " + name + " to speak…");
+  var ok = false;
+  var errMsg = "";
   if (liveSocket && liveSocket.readyState === WebSocket.OPEN) {
     liveSocket.send(JSON.stringify({ event: "grant_mic", target_user_id: uid }));
   }
   try {
-    var hostTok = localStorage.getItem("sia_teacher_token") || localStorage.getItem("sia_admin_token") || getAuthToken();
-    await fetch(API_BASE + "/api/v1/live-classes/" + classId + "/students/" + encodeURIComponent(uid) + "/unmute", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + hostTok },
-    }).then(function (res) {
-      return res.json().then(function (data) {
-        if (!res.ok) throw new Error((data && data.detail) || "Could not allow student to speak");
-        return data;
-      });
-    });
+    await classroomHostApi(
+      "/api/v1/live-classes/" + classId + "/students/" + encodeURIComponent(uid) + "/unmute",
+      { method: "POST" }
+    );
+    ok = true;
+  } catch (e) {
+    errMsg = e.message || "Server error";
+  }
+  if (ok) {
     removeRaisedHand(uid);
-    showClassroomToast("Access approved — " + name + " can speak");
+    showClassroomToast("Done — " + name + " can speak now");
     addChatMessage("", name + " can now use the microphone.", true);
     if (typeof ensureRoomAudioPlayback === "function") ensureRoomAudioPlayback();
     await loadClassroomStudents(true);
-  } catch (e) {
-    var msg = e.message || "Try again.";
-    if (liveSocket && liveSocket.readyState === WebSocket.OPEN) {
-      removeRaisedHand(uid);
-      showClassroomToast("Access sent — " + name + " should hear approval shortly");
-      addChatMessage("", name + " was allowed to speak.", true);
-      await loadClassroomStudents(true);
-      return;
-    }
-    showClassroomToast("Could not allow student to speak: " + msg, true);
-    addChatMessage("", "Could not allow student to speak: " + msg, true);
+    return;
   }
+  showClassroomToast("Could not allow " + name + ": " + errMsg, true);
+  addChatMessage("", "Could not allow " + name + " to speak: " + errMsg, true);
 }
 
 async function grantStudentAccess(userId, studentName) {
@@ -730,13 +759,13 @@ function renderClassroomStudents(students) {
     if (isTeacherRole()) {
       hostActions = '<div class="participant-actions">' +
         (micOn
-          ? '<button type="button" onclick="revokeStudentMic(\'' + safeId + '\')">Mute</button>'
-          : '<button type="button" class="btn-give-access" onclick="grantStudentMic(' +
-            JSON.stringify(s.student_id) + ',' + JSON.stringify(s.name || "Student") + ')">Allow to speak</button>') +
+          ? '<button type="button" data-action="mute-student" data-student-id="' + escHtml(String(s.student_id || "")) + '">Mute</button>'
+          : '<button type="button" class="btn-give-access btn-allow-speak" data-action="allow-speak" data-student-id="' +
+            escHtml(String(s.student_id || "")) + '" data-student-name="' + escHtml(s.name || "Student") + '">Allow to speak</button>') +
         (camOn
-          ? '<button type="button" onclick="revokeStudentCamera(\'' + safeId + '\')">Revoke cam</button>'
-          : '<button type="button" onclick="grantStudentCamera(\'' + safeId + '\')">Allow cam</button>') +
-        '<button type="button" onclick="removeStudentFromClass(\'' + safeId + '\')">Remove</button>' +
+          ? '<button type="button" data-action="revoke-cam" data-student-id="' + escHtml(String(s.student_id || "")) + '">Revoke cam</button>'
+          : '<button type="button" data-action="allow-cam" data-student-id="' + escHtml(String(s.student_id || "")) + '">Allow cam</button>') +
+        '<button type="button" data-action="remove-student" data-student-id="' + escHtml(String(s.student_id || "")) + '">Remove</button>' +
         "</div>";
     }
     return '<article class="participant-card' + (raised ? " raised" : "") + '" data-student-id="' + escHtml(String(s.student_id || "")) + '">' +
@@ -752,6 +781,27 @@ function renderClassroomStudents(students) {
   if (typeof window.reattachParticipantVideos === "function") {
     window.reattachParticipantVideos();
   }
+  bindParticipantActionClicks();
+}
+
+function bindParticipantActionClicks() {
+  var list = document.getElementById("participants-list");
+  if (!list || list.dataset.actionsBound === "1") return;
+  list.dataset.actionsBound = "1";
+  list.addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-action]");
+    if (!btn || !isTeacherRole()) return;
+    e.preventDefault();
+    e.stopPropagation();
+    var sid = btn.getAttribute("data-student-id");
+    var sname = btn.getAttribute("data-student-name") || "Student";
+    var action = btn.getAttribute("data-action");
+    if (action === "allow-speak") grantStudentMic(sid, sname);
+    else if (action === "mute-student") revokeStudentMic(sid);
+    else if (action === "allow-cam") grantStudentCamera(sid);
+    else if (action === "revoke-cam") revokeStudentCamera(sid);
+    else if (action === "remove-student") removeStudentFromClass(sid);
+  });
 }
 
 function setParticipantCameraOn(studentId, on) {
@@ -917,13 +967,13 @@ function startStudentMicPermissionPoll() {
     if (window.studentMicAllowed || !liveSession) return;
     try {
       var classId = liveSession.class_id || liveSession.classId;
-      if (!classId || typeof LiveClassMedia === "undefined") return;
+      if (!classId) return;
       var data = await api("/api/v1/live-classes/" + classId + "/token");
       if (data && data.mic_allowed && typeof enableStudentMic === "function") {
         enableStudentMic();
       }
     } catch (e) { /* ignore */ }
-  }, 10000);
+  }, 5000);
 }
 
 window.grantStudentMic = grantStudentMic;
@@ -1538,10 +1588,16 @@ function connectChat() {
       } else if (msg.event === "lower_hand") {
         removeRaisedHand(msg.user_id);
       } else if (msg.event === "mic_access_granted") {
-        if (typeof enableStudentMic === "function") enableStudentMic();
+        if (!isTeacherRole() && isMicEventForMe(msg) && typeof enableStudentMic === "function") {
+          enableStudentMic().catch(function (err) {
+            addChatMessage("", "Mic: " + (err.message || "turn on Mic button"), true);
+          });
+        }
       } else if (msg.event === "mic_access_update") {
-        if (!isTeacherRole() && msg.has_mic && typeof enableStudentMic === "function") {
-          enableStudentMic();
+        if (!isTeacherRole() && msg.has_mic && isMicEventForMe(msg) && typeof enableStudentMic === "function") {
+          enableStudentMic().catch(function (err) {
+            addChatMessage("", "Mic: " + (err.message || "turn on Mic button"), true);
+          });
         }
         if (isTeacherRole() && msg.has_mic) {
           if (typeof ensureRoomAudioPlayback === "function") ensureRoomAudioPlayback();
@@ -1549,8 +1605,10 @@ function connectChat() {
           addChatMessage("", "A student can speak now — tap Enable sound if you cannot hear them.", true);
         }
       } else if (msg.event === "mic_access_revoked") {
-        disableStudentMic();
-        addChatMessage("", msg.message || "Your mic was turned off by the teacher.", true);
+        if (!isTeacherRole() && isMicEventForMe(msg) && typeof disableStudentMic === "function") {
+          disableStudentMic();
+          addChatMessage("", msg.message || "Your mic was turned off by the teacher.", true);
+        }
       } else if (msg.event === "camera_access_granted") {
         if (typeof enableStudentCamera === "function") enableStudentCamera();
       } else if (msg.event === "camera_access_revoked") {

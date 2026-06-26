@@ -77,27 +77,37 @@ def _is_teacher_role(role: str) -> bool:
 
 
 async def notify_mic_granted(room_id: str, student_id: str) -> None:
-    grant_mic(room_id, student_id)
-    await send_to_user(room_id, student_id, {
+    sid = str(student_id or "").strip()
+    grant_mic(room_id, sid)
+    payload = {
         "event": "mic_access_granted",
+        "user_id": sid,
+        "target_user_id": sid,
         "message": "Your teacher let you speak. Your mic is turning on.",
-    })
+    }
+    await send_to_user(room_id, sid, payload)
+    await broadcast(room_id, payload)
     await broadcast(room_id, {
         "event": "mic_access_update",
-        "user_id": student_id,
+        "user_id": sid,
         "has_mic": True,
     })
 
 
 async def notify_mic_revoked(room_id: str, student_id: str) -> None:
-    revoke_mic(room_id, student_id)
-    await send_to_user(room_id, student_id, {
+    sid = str(student_id or "").strip()
+    revoke_mic(room_id, sid)
+    payload = {
         "event": "mic_access_revoked",
+        "user_id": sid,
+        "target_user_id": sid,
         "message": "Your teacher muted you.",
-    })
+    }
+    await send_to_user(room_id, sid, payload)
+    await broadcast(room_id, payload)
     await broadcast(room_id, {
         "event": "mic_access_update",
-        "user_id": student_id,
+        "user_id": sid,
         "has_mic": False,
     })
 
@@ -216,16 +226,7 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
                 else:
                     target_id = message.get("target_user_id")
                     if target_id:
-                        grant_mic(room_id, target_id)
-                        await send_to_user(room_id, target_id, {
-                            "event": "mic_access_granted",
-                            "message": "Your teacher let you speak. Your mic is turning on.",
-                        })
-                        await broadcast(room_id, {
-                            "event": "mic_access_update",
-                            "user_id": target_id,
-                            "has_mic": True,
-                        })
+                        await notify_mic_granted(room_id, str(target_id))
 
             elif event == "revoke_mic":
                 if not _is_teacher_role(role):
@@ -236,16 +237,7 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
                 else:
                     target_id = message.get("target_user_id")
                     if target_id:
-                        revoke_mic(room_id, target_id)
-                        await send_to_user(room_id, target_id, {
-                            "event": "mic_access_revoked",
-                            "message": "Your teacher muted you.",
-                        })
-                        await broadcast(room_id, {
-                            "event": "mic_access_update",
-                            "user_id": target_id,
-                            "has_mic": False,
-                        })
+                        await notify_mic_revoked(room_id, str(target_id))
 
             elif event == "request_board_sync":
                 await broadcast(room_id, {

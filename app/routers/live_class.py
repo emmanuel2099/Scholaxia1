@@ -331,6 +331,38 @@ async def _active_attendance(
     return result.scalar_one_or_none()
 
 
+async def _ensure_attendance_for_unmute(
+    db: AsyncSession,
+    live_class_id,
+    student_uuid,
+) -> ClassAttendance:
+    """Find or create attendance so unmute always works for students in class."""
+    att = await _active_attendance(db, live_class_id, str(student_uuid))
+    if att:
+        return att
+    cid = live_class_id if not isinstance(live_class_id, str) else parse_uuid(live_class_id)
+    result = await db.execute(
+        select(ClassAttendance).where(
+            ClassAttendance.live_class_id == cid,
+            ClassAttendance.student_id == student_uuid,
+            ClassAttendance.is_removed == False,  # noqa: E712
+        ).order_by(ClassAttendance.joined_at.desc())
+    )
+    att = result.scalar_one_or_none()
+    if att:
+        att.left_at = None
+        att.is_muted = False
+        return att
+    att = ClassAttendance(
+        live_class_id=cid,
+        student_id=student_uuid,
+        is_muted=False,
+    )
+    db.add(att)
+    await db.flush()
+    return att
+
+
 def _mic_allowed_for(room_id: str, student_id: str, attendance: ClassAttendance | None) -> bool:
     if has_mic_access(room_id, student_id):
         return True
@@ -929,15 +961,16 @@ async def unmute_student(
     )
     attendance = result.scalar_one_or_none()
     if not attendance:
-        raise HTTPException(status_code=404, detail="Student not in class")
+        attendance = await _ensure_attendance_for_unmute(db, class_uuid, student_uuid)
     attendance.is_muted = False
-    grant_mic(live_class.room_id, str(student_id))
+    attendance.left_at = None
+    grant_mic(live_class.room_id, str(student_uuid))
     await db.flush()
     try:
-        await live_class_ws.notify_mic_granted(live_class.room_id, str(student_id))
+        await live_class_ws.notify_mic_granted(live_class.room_id, str(student_uuid))
     except Exception:
         pass
-    return {"message": "Student can speak now", "mic_allowed": True, "student_id": str(student_id)}
+    return {"message": "Student can speak now", "mic_allowed": True, "student_id": str(student_uuid)}
 
 
 @router.post("/{class_id}/students/{student_id}/mute")
