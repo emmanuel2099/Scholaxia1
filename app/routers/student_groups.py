@@ -91,6 +91,50 @@ async def my_groups(
     return groups
 
 
+@router.get("/community-listed")
+async def community_listed_groups(
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """All groups listed in Community (including ones you created or joined)."""
+    uid = parse_uuid(current_user["sub"])
+    result = await db.execute(
+        select(StudentGroup).where(
+            StudentGroup.is_public == True,  # noqa: E712
+            StudentGroup.is_community_listed == True,  # noqa: E712
+        )
+    )
+    out = []
+    for grp in result.scalars().all():
+        mem = await db.execute(
+            select(StudentGroupMember).where(
+                StudentGroupMember.group_id == grp.id,
+                StudentGroupMember.user_id == uid,
+            )
+        )
+        member = mem.scalar_one_or_none()
+        pending = await db.execute(
+            select(StudentGroupJoinRequest).where(
+                StudentGroupJoinRequest.group_id == grp.id,
+                StudentGroupJoinRequest.user_id == uid,
+                StudentGroupJoinRequest.status == StudentGroupJoinStatus.pending,
+            )
+        )
+        creator_res = await db.execute(select(User).where(User.id == grp.creator_id))
+        creator = creator_res.scalar_one_or_none()
+        out.append({
+            "id": str(grp.id),
+            "name": grp.name,
+            "description": grp.description,
+            "is_member": member is not None,
+            "is_admin": member is not None and member.role == StudentGroupMemberRole.admin,
+            "pending_request": pending.scalar_one_or_none() is not None,
+            "creator_name": creator.full_name if creator else "Student",
+        })
+    out.sort(key=lambda g: g["name"].lower())
+    return out
+
+
 @router.get("/discover")
 async def discover_groups(
     current_user: dict = Depends(require_student),

@@ -1266,7 +1266,7 @@ async function askTeacherAI() {
   if (wrap) wrap.classList.remove("hidden");
   if (out) {
     out.classList.add("loading");
-    out.textContent = "Sia is thinking…";
+    out.textContent = "Tutor AI is thinking…";
   }
   if (btn) {
     btn.disabled = true;

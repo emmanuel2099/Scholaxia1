@@ -191,6 +191,7 @@ function renderCommunityPosts(posts, targetEl) {
     return;
   }
   feed.innerHTML = posts.map(function (p) {
+    var domId = postCardDomId(p);
     var body = displayPostContent(p.content);
     var media = "";
     if (p.media_url && p.media_type === "audio") {
@@ -226,19 +227,32 @@ function renderCommunityPosts(posts, targetEl) {
 }
 
 async function ensureCommunityChannel() {
-  restoreCommunityChannelId();
-  if (communityChannelId) return communityChannelId;
   var channels = await api("/api/v1/community/channels");
-  var general = (channels || []).find(function (c) { return c.type === "general"; }) || (channels || [])[0];
+  var general = (channels || []).find(function (c) { return c.type === "general"; });
   if (!general) return null;
   saveCommunityChannelId(general.id);
   try {
     await api("/api/v1/community/join", {
       method: "POST",
-      body: JSON.stringify({ channel_id: communityChannelId }),
+      body: JSON.stringify({ channel_id: general.id }),
     });
   } catch (joinErr) { /* already joined */ }
-  return communityChannelId;
+  return general.id;
+}
+
+function mergePostsWithCache(serverPosts, cachedPosts) {
+  var merged = [];
+  var seen = {};
+  (serverPosts || []).forEach(function (p) {
+    if (p && p.id) { merged.push(p); seen[p.id] = true; }
+  });
+  (cachedPosts || []).forEach(function (p) {
+    if (p && p.id && !seen[p.id]) merged.push(p);
+  });
+  merged.sort(function (a, b) {
+    return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+  });
+  return merged;
 }
 
 function normalizeCreatedPost(created, content, mediaUrl, mediaType) {
@@ -411,8 +425,16 @@ async function loadCommunity(newPost) {
     }
     var posts = await fetchCommunityPosts();
     if (newPost) posts = prependNewPost(posts, newPost);
-    saveCommunityCache(posts);
-    renderCommunityPosts(posts);
+    var cachedPosts = (cached && cached.posts) || [];
+    posts = mergePostsWithCache(posts, cachedPosts);
+    if (posts.length) {
+      saveCommunityCache(posts);
+      renderCommunityPosts(posts);
+    } else if (showingCache && cachedPosts.length) {
+      renderCommunityPosts(cachedPosts);
+    } else {
+      renderCommunityPosts([]);
+    }
   } catch (e) {
     if (showingCache) {
       try { await refreshCommunityComments(cached && cached.posts); } catch (e2) { /* keep cache */ }
@@ -588,12 +610,21 @@ function showCommunityTab(tab) {
   communityActiveTab = tab;
   document.getElementById("community-tab-feed").classList.toggle("active", tab === "feed");
   document.getElementById("community-tab-announcements").classList.toggle("active", tab === "announcements");
+  var groupsTab = document.getElementById("community-tab-groups");
+  if (groupsTab) groupsTab.classList.toggle("active", tab === "groups");
   document.getElementById("community-feed").classList.toggle("hidden", tab !== "feed");
   document.getElementById("community-announcements").classList.toggle("hidden", tab !== "announcements");
+  var groupsPanel = document.getElementById("community-groups-panel");
+  if (groupsPanel) groupsPanel.classList.toggle("hidden", tab !== "groups");
   var fab = document.getElementById("community-fab");
   if (fab) fab.style.display = tab === "feed" ? "flex" : "none";
   if (tab === "announcements") loadCommunityAnnouncements();
-  else loadCommunity();
+  else if (tab === "groups") {
+    if (typeof loadGroupsPage === "function") loadGroupsPage();
+  } else {
+    if (typeof markCommunityRead === "function") markCommunityRead();
+    loadCommunity();
+  }
 }
 
 async function loadCommunityAnnouncements() {

@@ -2,7 +2,6 @@ const PAGE_TITLES = {
   dashboard: "Home",
   live: "Live Class",
   "access-code": "Access Code",
-  groups: "Groups",
   school: "Scholaxia Exam",
   "school-portal": "External School Exam",
   marketplace: "Scholaxia Marketplace",
@@ -15,7 +14,7 @@ const PAGE_TITLES = {
   contact: "Contact",
   library: "Library",
   "saved-lives": "Saved Lives",
-  sia: "Ask Sia",
+  sia: "Tutor AI",
   community: "Community",
   "community-create": "New Post",
   notifications: "Notifications",
@@ -347,6 +346,7 @@ window.onload = async () => {
   if (loggedIn) {
     startLivePolling();
     if (typeof startAccessCodePoll === "function") startAccessCodePoll();
+    if (typeof startCommunityNotifyPoll === "function") startCommunityNotifyPoll();
     if (typeof prefetchCommunityFeed === "function") prefetchCommunityFeed();
   }
   hideSplash();
@@ -792,7 +792,7 @@ function renderDashboardLive(sessions) {
       (s.visibility && s.visibility !== "private" ? '<span class="live-vis-pill">' + escHtml(liveVisibilityLabel(s.visibility)) + "</span>" : "") +
       "<h4>" + escHtml(s.title) + "</h4>" +
       '<p class="meta">Teacher: ' + escHtml(s.teacher_name || "Teacher") + " · " + escHtml(s.subject) + "</p>" +
-      '<button type="button" class="btn-action" onclick="showPage(\'access-code\')">Open Access Code tab</button>' +
+      '<button type="button" class="btn-action" onclick="openJoinLiveModal()">Join live</button>' +
       "</article>";
   }).join("");
 }
@@ -869,9 +869,6 @@ function refreshPage() {
   } else if (currentPage === "access-code") {
     if (typeof loadAccessCodesPage === "function") loadAccessCodesPage();
     done();
-  } else if (currentPage === "groups") {
-    if (typeof loadGroupsPage === "function") loadGroupsPage();
-    done();
   } else if (currentPage === "school") { loadSchoolExams(); done(); }
   else if (currentPage === "school-portal") { /* static */ done(); }
   else if (currentPage === "study-materials") { /* embedded buy materials */ done(); }
@@ -892,6 +889,7 @@ function refreshPage() {
   else if (currentPage === "saved-lives") { loadSavedLivesPage(); done(); }
   else if (currentPage === "sia") { loadSia(); done(); }
   else if (currentPage === "community") {
+    if (typeof markCommunityRead === "function") markCommunityRead();
     var pending = communityPendingPost;
     communityPendingPost = null;
     loadCommunity(pending);
@@ -1039,7 +1037,7 @@ function renderLiveEmpty(el) {
     <div class="live-empty-state">
       <div class="live-empty-icon" aria-hidden="true">&#127909;</div>
       <h3>No live classes right now</h3>
-      <p>When your teacher hosts a class, your code appears in the <strong>Access Code</strong> tab. Paste the code there to join.</p>
+      <p>When your teacher hosts a class, copy your code from <strong>Access Code</strong>, then tap <strong>Join live</strong> and paste once.</p>
       <button type="button" class="btn-action live-empty-refresh" onclick="refreshPage()">Check again</button>
     </div>`;
 }
@@ -1073,7 +1071,7 @@ function renderLive(sessions) {
       ${vis}
       <h3>${escHtml(s.title)}</h3>
       <p class="meta">Teacher: ${escHtml(s.teacher_name)} · ${escHtml(s.subject)}</p>
-      <button type="button" class="btn-action" onclick="showPage('access-code')">Use Access Code to join</button>
+      <button type="button" class="btn-action" onclick="openJoinLiveModal()">Join live</button>
     </div>
   `;
   }).join("");
@@ -1097,7 +1095,7 @@ function renderUpcoming(sessions) {
       <h3>${escHtml(s.title)}</h3>
       <p class="meta">${escHtml(s.subject)} · ${escHtml(s.teacher_name)}</p>
       <p class="schedule-meta">&#128197; ${formatDate(s.start_time)}${s.end_time ? " → " + formatDate(s.end_time) : ""}</p>
-      ${s.is_live ? `<button type="button" class="btn-action" onclick="showPage('access-code')">Use Access Code when live</button>` : (started ? `<p class="notify-hint">Code will appear in Access Code tab when class starts.</p>` : `<p class="notify-hint">You'll get a code in Access Code tab when class starts.</p>`)}
+      ${s.is_live ? `<button type="button" class="btn-action" onclick="openJoinLiveModal()">Join live</button>` : (started ? `<p class="notify-hint">Code will appear in Access Code tab when class starts.</p>` : `<p class="notify-hint">You'll get a code in Access Code tab when class starts.</p>`)}
     </div>`;
   }).join("");
 }

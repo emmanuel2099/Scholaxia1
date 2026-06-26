@@ -45,7 +45,7 @@ async function syncSiaLevelFromProfile() {
 function loadSia() {
   if (typeof isCbtExamActive === "function" && isCbtExamActive()) {
     var err = document.getElementById("sia-error");
-    if (err) err.textContent = "Finish your exam before using Sia.";
+    if (err) err.textContent = "Finish your exam before using Tutor AI.";
     return;
   }
   updateSiaLevelLabel();
@@ -59,14 +59,14 @@ function loadSia() {
     if (level) {
       el.innerHTML =
         '<div class="sia-welcome"><div class="sia-orb">S</div>' +
-        "<p>Hi! I'm <strong>Sia</strong>, your AI tutor.</p>" +
+        "<p>Hi! I'm <strong>Tutor AI</strong>, your study assistant.</p>" +
         "<p>I'll explain at <strong>" + escHtml(level) + "</strong> level. Ask me anything.</p></div>";
       return;
     }
 
     el.innerHTML =
       '<div class="sia-welcome"><div class="sia-orb">S</div>' +
-      "<p>Hi! I'm <strong>Sia</strong>, your AI tutor.</p></div>";
+      "<p>Hi! I'm <strong>Tutor AI</strong>, your study assistant.</p></div>";
     promptSiaLevel(true);
   });
 }
@@ -434,7 +434,7 @@ function siaSubject() {
 async function askSiaQuestion(question, alreadyShown) {
   var err = document.getElementById("sia-error");
   if (typeof isCbtExamActive === "function" && isCbtExamActive()) {
-    if (err) err.textContent = "Sia is locked during an exam. Submit your exam first.";
+    if (err) err.textContent = "Tutor AI is locked during an exam. Submit your exam first.";
     return;
   }
   if (!alreadyShown) {
@@ -476,7 +476,7 @@ async function sendSiaMessage() {
   var input = document.getElementById("sia-input");
   var err = document.getElementById("sia-error");
   if (typeof isCbtExamActive === "function" && isCbtExamActive()) {
-    if (err) err.textContent = "Sia is locked during an exam. Submit your exam first.";
+    if (err) err.textContent = "Tutor AI is locked during an exam. Submit your exam first.";
     return;
   }
   var question = input.value.trim();

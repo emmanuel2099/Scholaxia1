@@ -1,5 +1,5 @@
 /**
- * Access Code tab — codes delivered when teacher hosts a class.
+ * Access Code tab — codes delivered when teacher hosts a class (copy only).
  */
 (function () {
   var accessCodePollTimer = null;
@@ -49,7 +49,7 @@
         list.innerHTML =
           '<div class="empty-state">' +
           "<h3>No access codes yet</h3>" +
-          "<p>When your teacher hosts a class for you, the unique code appears here automatically.</p>" +
+          "<p>When your teacher hosts a class for you, the unique code appears here. Copy it, then tap <strong>Join Live</strong> and paste once.</p>" +
           "</div>";
         return;
       }
@@ -82,48 +82,14 @@
     if (!text) return;
     if (navigator.clipboard && navigator.clipboard.writeText) {
       navigator.clipboard.writeText(text).then(function () {
-        alert("Code copied: " + text);
+        alert("Code copied: " + text + "\n\nTap Join Live and paste when asked.");
       }).catch(function () {
         prompt("Copy this code:", text);
       });
     } else {
       prompt("Copy this code:", text);
     }
-    var input = document.getElementById("access-code-input");
-    if (input) input.value = text;
   };
-
-  async function joinWithAccessCode() {
-    var input = document.getElementById("access-code-input");
-    var code = input ? input.value.trim().toUpperCase() : "";
-    if (!code) {
-      alert("Paste the access code from the list above.");
-      return;
-    }
-    var btn = document.getElementById("btn-join-access-code");
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = "Joining…";
-    }
-    try {
-      if (typeof joinClassWithAccessCode === "function") {
-        await joinClassWithAccessCode(code);
-      } else if (typeof handleJoinCodeInput === "function") {
-        await handleJoinCodeInput(code);
-      } else {
-        var preview = await api("/api/v1/live-classes/join-preview?code=" + encodeURIComponent(code));
-        if (!preview || !preview.id) throw new Error("Invalid code.");
-        await joinClassWithPayment({ getAttribute: function () { return preview.id; }, dataset: { id: preview.id, title: preview.title, subject: preview.subject, teacher: preview.teacher_name } });
-      }
-    } catch (e) {
-      alert(e.message || "Could not join with this code.");
-    } finally {
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = "Join class";
-      }
-    }
-  }
 
   function startAccessCodePoll() {
     if (accessCodePollTimer) clearInterval(accessCodePollTimer);
@@ -132,7 +98,6 @@
   }
 
   window.loadAccessCodesPage = loadAccessCodesPage;
-  window.joinWithAccessCode = joinWithAccessCode;
   window.refreshAccessCodeBadge = refreshAccessCodeBadge;
   window.startAccessCodePoll = startAccessCodePoll;
 })();

@@ -68,10 +68,6 @@
           <span class="nav-label">Access Code</span>
           <span id="access-code-badge" class="nav-badge hidden">0</span>
         </button>
-        <button type="button" class="nav-item topnav-btn" data-page="groups" onclick="showPage('groups')">
-          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
-          <span class="nav-label">Groups</span>
-        </button>
         <button type="button" class="nav-item topnav-btn" data-page="live" onclick="showPage('live')">
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 10l5-3v10l-5-3v-4z"/><rect x="3" y="6" width="12" height="12" rx="2"/></svg></span>
           <span class="nav-label">Live Class</span>
@@ -98,11 +94,12 @@
         </button>
         <button type="button" class="nav-item topnav-btn" data-page="sia" onclick="showPage('sia')">
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"/><path d="M5 19l1 2 1-2 2-1-2-1-1-2-1 2-2 1 2 1z"/></svg></span>
-          <span class="nav-label">Sia</span>
+          <span class="nav-label">Tutor AI</span>
         </button>
         <button type="button" class="nav-item topnav-btn" data-page="community" onclick="showPage('community')">
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-1.9 5.4 8.5 8.5 0 0 1-13 0 8.38 8.38 0 0 1-1.9-5.4 8.5 8.5 0 0 1 13 0z"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/></svg></span>
           <span class="nav-label">Community</span>
+          <span id="community-badge" class="nav-badge hidden">0</span>
         </button>
         <button type="button" class="nav-item topnav-btn" data-page="saved-lives" onclick="showPage('saved-lives')">
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M10 9l5 3-5 3V9z"/></svg></span>
@@ -277,7 +274,7 @@
 
       <h3 class="dash-section-title">Quick Actions</h3>
       <div class="dash-actions-grid">
-        <button type="button" class="dash-action-card dash-action-live" data-dash-page="live" onclick="quickDashAction('live')">
+        <button type="button" class="dash-action-card dash-action-live" data-dash-page="live" onclick="openJoinLiveModal()">
           <span class="dash-action-icon">&#127909;</span>
           <strong>Live Class</strong>
           <span>Join a lesson now</span>
@@ -299,7 +296,7 @@
         </button>
         <button type="button" class="dash-action-card dash-action-sia" data-dash-page="sia" onclick="quickDashAction('sia')">
           <span class="dash-action-icon">&#10024;</span>
-          <strong>Ask Sia</strong>
+          <strong>Tutor AI</strong>
           <span>AI study assistant</span>
         </button>
       </div>
@@ -317,7 +314,7 @@
 
     <section id="page-live" class="page">
 
-      <div class="info-banner">Teachers send a <strong>unique access code</strong> for each class. Open the <strong>Access Code</strong> tab, copy your code, paste it, then join. You cannot use another class&apos;s code.</div>
+      <div class="info-banner">Copy your code from the <strong>Access Code</strong> tab. Tap <strong>Join live</strong> on a class below and paste the code once to enter.</div>
 
       <div class="section-header">
         <h2>Live Now</h2>
@@ -365,16 +362,8 @@
     <!-- Access Code -->
 
     <section id="page-access-code" class="page">
-      <div class="info-banner">When your teacher hosts a class, your <strong>unique code</strong> appears here. Copy it, paste below, then tap <strong>Join class</strong>. Each class has its own code.</div>
-      <div class="join-code-box">
-        <h3>Enter access code</h3>
-        <p>Paste the code from the list (e.g. SX-A1B2C3D4)</p>
-        <div class="join-code-row">
-          <input type="text" id="access-code-input" placeholder="SX-XXXXXXXX" autocomplete="off" />
-          <button type="button" id="btn-join-access-code" class="btn-action" onclick="joinWithAccessCode()">Join class</button>
-        </div>
-      </div>
-      <div class="section-header" style="margin-top:24px">
+      <div class="info-banner">When your teacher hosts a class, your <strong>unique code</strong> appears here. <strong>Copy</strong> the code — when you tap <strong>Join Live</strong>, paste it once to enter the class.</div>
+      <div class="section-header">
         <h2>Your codes</h2>
       </div>
       <div id="access-codes-list" class="access-codes-list"><div class="loading">Loading…</div></div>
@@ -382,24 +371,9 @@
 
 
 
-    <!-- Groups -->
+    <!-- Groups (inside Community tab) -->
 
-    <section id="page-groups" class="page">
-      <div class="info-banner"><strong>School groups</strong> — your school adds you; codes go to Access Code tab. <strong>Student groups</strong> — you create or request to join; admin must approve.</div>
-      <div class="request-box">
-        <h3>Create a student group</h3>
-        <p>You become the admin and can approve who joins. You can list the group in Community later.</p>
-        <input type="text" id="new-group-name" placeholder="Group name" />
-        <input type="text" id="new-group-desc" placeholder="Short description (optional)" />
-        <button type="button" class="btn-action" onclick="createStudentGroup()">Create group</button>
-      </div>
-      <div class="section-header" style="margin-top:24px"><h2>My groups</h2></div>
-      <div id="groups-mine-list" class="groups-list"></div>
-      <div class="section-header" style="margin-top:24px"><h2>School groups</h2></div>
-      <div id="groups-school-list" class="groups-list"></div>
-      <div class="section-header" style="margin-top:24px"><h2>Discover in Community</h2></div>
-      <div id="groups-discover-list" class="groups-list"></div>
-    </section>
+    <section id="page-groups" class="page hidden" aria-hidden="true"></section>
 
 
 
@@ -530,11 +504,11 @@
 
 
 
-    <!-- Ask Sia AI -->
+    <!-- Ask Tutor AI -->
 
     <section id="page-sia" class="page">
 
-      <div class="info-banner success">&#10024; Sia uses <strong>Smart tutor mode</strong> — structured answers with code blocks like ChatGPT, tuned for your class level.</div>
+      <div class="info-banner success">&#10024; Tutor AI uses <strong>Smart tutor mode</strong> — structured answers with code blocks like ChatGPT, tuned for your class level.</div>
 
       <div class="sia-chat-wrap">
 
@@ -543,7 +517,7 @@
         <div class="sia-compose">
 
           <div class="sia-compose-row">
-            <input type="text" id="sia-input" placeholder="Ask Sia anything…" onkeydown="if(event.key==='Enter')sendSiaMessage()" />
+            <input type="text" id="sia-input" placeholder="Ask Tutor AI anything…" onkeydown="if(event.key==='Enter')sendSiaMessage()" />
             <button class="btn-action" onclick="sendSiaMessage()">Send</button>
           </div>
           <p class="sia-level-bar">
@@ -584,20 +558,27 @@
       <div class="community-tabs">
         <button type="button" class="community-tab active" id="community-tab-feed" onclick="showCommunityTab('feed')">Feed</button>
         <button type="button" class="community-tab" id="community-tab-announcements" onclick="showCommunityTab('announcements')">Announcements</button>
-      </div>
-
-      <div class="community-social-bar" aria-label="Scholaxia social links">
-        <span>Follow Scholaxia:</span>
-        <a href="https://www.scholaxiacbtexam.blog" target="_blank" rel="noopener noreferrer">Website</a>
-        <a href="https://facebook.com" target="_blank" rel="noopener noreferrer">Facebook</a>
-        <a href="https://instagram.com" target="_blank" rel="noopener noreferrer">Instagram</a>
-        <a href="https://x.com" target="_blank" rel="noopener noreferrer">X</a>
-        <a href="https://youtube.com" target="_blank" rel="noopener noreferrer">YouTube</a>
-        <span class="community-social-hint">Tap &#128172; on a post to view comments</span>
+        <button type="button" class="community-tab" id="community-tab-groups" onclick="showCommunityTab('groups')">Groups</button>
       </div>
 
       <div id="community-feed" class="community-feed"><div class="loading">Loading posts…</div></div>
       <div id="community-announcements" class="community-feed hidden"><div class="loading">Loading announcements…</div></div>
+      <div id="community-groups-panel" class="community-groups-panel hidden">
+        <div class="info-banner"><strong>School groups</strong> — your school adds you. <strong>Student groups</strong> — create or request to join; admin approves.</div>
+        <div class="request-box">
+          <h3>Create a student group</h3>
+          <p>You become the admin. List it here in Community so others can request to join.</p>
+          <input type="text" id="new-group-name" placeholder="Group name" />
+          <input type="text" id="new-group-desc" placeholder="Short description (optional)" />
+          <button type="button" class="btn-action" onclick="createStudentGroup()">Create group</button>
+        </div>
+        <div class="section-header" style="margin-top:24px"><h2>Listed in Community</h2></div>
+        <div id="groups-community-list" class="groups-list"></div>
+        <div class="section-header" style="margin-top:24px"><h2>My groups</h2></div>
+        <div id="groups-mine-list" class="groups-list"></div>
+        <div class="section-header" style="margin-top:24px"><h2>School groups</h2></div>
+        <div id="groups-school-list" class="groups-list"></div>
+      </div>
 
       <button type="button" id="community-fab" class="community-fab" onclick="openCommunityCreate()" title="New post" aria-label="New post">
 
@@ -710,7 +691,7 @@
       <div class="about-blocks">
         <div class="about-block">
           <h3>Everything you need in one app</h3>
-          <p>Library materials, saved live recordings, Sia AI tutor, Scholaxia Marketplace for books, and external school exams through our CBT portal.</p>
+          <p>Library materials, saved live recordings, Tutor AI, Scholaxia Marketplace for books, and external school exams through our CBT portal.</p>
         </div>
         <div class="about-block">
           <h3>Built for real students, real results</h3>
@@ -853,6 +834,20 @@
     </section>
 
   </main>
+
+  <div id="join-access-modal" class="join-access-modal hidden" role="dialog" aria-modal="true" aria-labelledby="join-access-title">
+    <div class="join-access-backdrop" onclick="closeJoinLiveModal()"></div>
+    <div class="join-access-card">
+      <h2 id="join-access-title">Join live class</h2>
+      <p>Paste the access code your teacher sent you (from the <strong>Access Code</strong> tab).</p>
+      <input type="text" id="join-access-modal-input" placeholder="SX-XXXXXXXX" autocomplete="off" />
+      <div class="join-access-actions">
+        <button type="button" class="btn-secondary" onclick="closeJoinLiveModal()">Cancel</button>
+        <button type="button" class="btn-action" id="btn-join-access-modal" onclick="submitJoinLiveModal()">Enter class</button>
+      </div>
+      <p class="host-hint"><a href="#" onclick="showPage('access-code'); closeJoinLiveModal(); return false;">Open Access Code tab to copy</a></p>
+    </div>
+  </div>
   </div>
 
 </div>
@@ -929,6 +924,8 @@
 
 <script src="js/voice-recorder.js"></script>
 <script src="js/community.js"></script>
+<script src="js/community-notify.js"></script>
+<script src="js/join-access-modal.js"></script>
 <script src="js/skills.js"></script>
 
 <script src="js/live-plans.js"></script>

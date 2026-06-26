@@ -1637,6 +1637,45 @@ body:has(.app-shell-topnav) { overflow: auto; height: auto; }
 }
 .group-card-school { border-left: 4px solid #3d8f5a; }
 
+.join-access-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.join-access-modal.hidden { display: none; }
+.join-access-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+}
+.join-access-card {
+  position: relative;
+  background: #fff;
+  border-radius: 16px;
+  padding: 24px 26px;
+  width: min(420px, 92vw);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+}
+.join-access-card h2 { margin: 0 0 8px; font-size: 1.2rem; }
+.join-access-card input {
+  width: 100%;
+  margin: 14px 0;
+  padding: 12px 14px;
+  border: 1px solid #d8e0dc;
+  border-radius: 10px;
+  font-size: 1rem;
+  letter-spacing: 0.05em;
+}
+.join-access-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+.community-groups-panel { margin-top: 8px; }
+
 .raised-waiting {
   font-size: 0.78rem;
   color: #b45309;

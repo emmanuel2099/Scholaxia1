@@ -13,15 +13,41 @@
   async function loadGroupsPage() {
     var mineEl = document.getElementById("groups-mine-list");
     var schoolEl = document.getElementById("groups-school-list");
-    var discoverEl = document.getElementById("groups-discover-list");
+    var communityEl = document.getElementById("groups-community-list");
     if (mineEl) mineEl.innerHTML = '<div class="loading">Loading…</div>';
     if (schoolEl) schoolEl.innerHTML = '<div class="loading">Loading…</div>';
-    if (discoverEl) discoverEl.innerHTML = '<div class="loading">Loading…</div>';
+    if (communityEl) communityEl.innerHTML = '<div class="loading">Loading…</div>';
 
     try {
       var mine = await api("/api/v1/student-groups/mine") || [];
       var school = await api("/api/v1/school-groups/student/mine") || [];
-      var discover = await api("/api/v1/student-groups/discover") || [];
+      var listed = await api("/api/v1/student-groups/community-listed") || [];
+
+      if (communityEl) {
+        if (!listed.length) {
+          communityEl.innerHTML = '<p class="host-hint">No groups listed yet. Create a group and tap <strong>List in Community</strong>.</p>';
+        } else {
+          communityEl.innerHTML = listed.map(function (g) {
+            var action = "";
+            if (g.is_member) {
+              action = g.is_admin
+                ? ' <span class="access-code-pill">Admin · Listed</span>'
+                : ' <span class="host-hint">Member</span>';
+            } else if (g.pending_request) {
+              action = '<span class="host-hint">Request pending</span>';
+            } else {
+              action = '<button type="button" class="btn-sm" onclick="requestJoinGroup(\'' + escHtml(g.id) + '\')">Request to join</button>';
+            }
+            return (
+              '<div class="group-card">' +
+              "<strong>" + escHtml(g.name) + "</strong>" +
+              "<p>" + escHtml(g.description || "") + " · by " + escHtml(g.creator_name || "Student") + "</p>" +
+              action +
+              "</div>"
+            );
+          }).join("");
+        }
+      }
 
       if (mineEl) {
         if (!mine.length) {
@@ -35,6 +61,7 @@
               "<p>" + escHtml(g.description || "") + "</p>" +
               (g.is_admin ? '<button type="button" class="btn-sm" onclick="viewGroupRequests(\'' + escHtml(g.id) + '\')">Pending requests</button>' : "") +
               (g.is_admin && !g.is_community_listed ? '<button type="button" class="btn-sm" onclick="promoteGroupToCommunity(\'' + escHtml(g.id) + '\')">List in Community</button>' : "") +
+              (g.is_community_listed ? ' <span class="access-code-pill">In Community</span>' : "") +
               "</div>"
             );
           }).join("");
@@ -57,23 +84,6 @@
         }
       }
 
-      if (discoverEl) {
-        if (!discover.length) {
-          discoverEl.innerHTML = '<p class="host-hint">No groups listed in Community yet.</p>';
-        } else {
-          discoverEl.innerHTML = discover.map(function (g) {
-            return (
-              '<div class="group-card">' +
-              "<strong>" + escHtml(g.name) + "</strong>" +
-              "<p>" + escHtml(g.description || "") + "</p>" +
-              (g.pending_request
-                ? '<span class="host-hint">Request pending — wait for admin approval</span>'
-                : '<button type="button" class="btn-sm" onclick="requestJoinGroup(\'' + escHtml(g.id) + '\')">Request to join</button>') +
-              "</div>"
-            );
-          }).join("");
-        }
-      }
     } catch (e) {
       if (mineEl) mineEl.innerHTML = '<p class="error-hint">' + escHtml(e.message) + "</p>";
     }
@@ -126,7 +136,7 @@
         method: "PATCH",
         body: JSON.stringify({ is_community_listed: true }),
       });
-      alert("Group is now visible in Community.");
+      alert("Group is now visible in the Community Groups tab.");
       loadGroupsPage();
     } catch (e) {
       alert(e.message || "Could not update group.");

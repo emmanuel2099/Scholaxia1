@@ -10,6 +10,29 @@
   var knownIds = {};
   var notificationsInitialized = false;
   var liveClassActive = false;
+  var ringSnoozeUntil = 0;
+  var snoozeWakeTimer = null;
+  var RING_SNOOZE_MS = 90000;
+
+  function isRingSnoozed() {
+    return ringSnoozeUntil && Date.now() < ringSnoozeUntil;
+  }
+
+  function scheduleSnoozeWake() {
+    if (snoozeWakeTimer) clearTimeout(snoozeWakeTimer);
+    if (!ringSnoozeUntil || Date.now() >= ringSnoozeUntil) return;
+    var wait = ringSnoozeUntil - Date.now() + 300;
+    snoozeWakeTimer = setTimeout(function () {
+      snoozeWakeTimer = null;
+      syncRingWithLiveStatus();
+    }, wait);
+  }
+
+  function stopRingWithSnooze() {
+    ringSnoozeUntil = Date.now() + RING_SNOOZE_MS;
+    stopRing(true);
+    scheduleSnoozeWake();
+  }
 
   function getBell() {
     return document.getElementById("topbar-bell");
@@ -66,6 +89,7 @@
   }
 
   function startRing() {
+    if (isRingSnoozed()) return;
     var hasUnreadLive = notifications.some(function (n) { return isLiveNotif(n) && !n.is_read; });
     if (!liveClassActive && !hasUnreadLive) return;
     stopRing(false);
@@ -147,8 +171,7 @@
         return;
       }
 
-      var unreadLive = notifications.filter(function (n) { return isLiveNotif(n) && !n.is_read; });
-      if (unreadLive.length && ringTimer === null) {
+      if (!isRingSnoozed() && ringTimer === null) {
         startRing();
       }
     } catch (e) { /* ignore */ }
@@ -292,8 +315,8 @@
     try {
       if (localStorage.getItem("sia_stop_live_ring")) {
         localStorage.removeItem("sia_stop_live_ring");
-        stopRing();
-        liveClassActive = false;
+        ringSnoozeUntil = Date.now() + 45 * 60 * 1000;
+        stopRing(true);
       }
     } catch (e) { /* ignore */ }
   }
@@ -322,7 +345,7 @@
     fetchNotifications();
   };
   window.markAllNotificationsRead = markAllRead;
-  window.stopNotificationRing = stopRing;
+  window.stopNotificationRing = stopRingWithSnooze;
   window.scholaxiaNotifyRefresh = fetchNotifications;
   window.scholaxiaSyncLiveRing = syncRingWithLiveStatus;
   window.scholaxiaNotifyIncoming = function (payload) {
