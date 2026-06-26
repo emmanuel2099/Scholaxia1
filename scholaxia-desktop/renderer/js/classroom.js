@@ -209,6 +209,9 @@ function showStudentSelfPreview(track) {
   if (typeof track.attach === "function") {
     el = track.attach();
     el.className = "participant-video-el";
+    el.muted = true;
+    el.autoplay = true;
+    el.playsInline = true;
   } else {
     el = document.createElement("video");
     el.className = "participant-video-el";
@@ -528,23 +531,10 @@ function startMicMonitor(streamOrTrack) {
   } catch (e) { /* ignore */ }
 }
 
-function startSelfHear(streamOrTrack) {
-  stopSelfHear();
-  try {
-    var stream = streamOrTrack;
-    if (streamOrTrack.getMediaStreamTrack) {
-      stream = new MediaStream([streamOrTrack.getMediaStreamTrack()]);
-    } else if (streamOrTrack.mediaStreamTrack) {
-      stream = new MediaStream([streamOrTrack.mediaStreamTrack]);
-    }
-    selfHearAudio = document.createElement("audio");
-    selfHearAudio.srcObject = stream;
-    selfHearAudio.volume = 0.35;
-    selfHearAudio.autoplay = true;
-    selfHearAudio.muted = false;
-    document.body.appendChild(selfHearAudio);
-  } catch (e) { /* ignore */ }
-}
+  function startSelfHear(streamOrTrack) {
+    stopSelfHear();
+    /* Disabled — local mic playback caused echo for teacher and students. */
+  }
 
 function stopSelfHear() {
   if (!selfHearAudio) return;
@@ -710,6 +700,9 @@ async function grantStudentCamera(userId) {
     showClassroomToast("Camera access approved");
     addChatMessage("", "Student can turn on camera now.", true);
     await loadClassroomStudents(true);
+    setTimeout(function () {
+      if (typeof window.reattachParticipantVideos === "function") window.reattachParticipantVideos();
+    }, 400);
   } catch (e) {
     showClassroomToast("Could not allow camera: " + (e.message || "Try again."), true);
     addChatMessage("", "Could not allow camera: " + (e.message || "Try again."), true);
@@ -817,9 +810,16 @@ function attachParticipantCameraVideo(studentId, track) {
   slot.innerHTML = "";
   var el = track.attach();
   el.className = "participant-video-el";
+  el.muted = true;
+  el.autoplay = true;
+  el.playsInline = true;
   slot.appendChild(el);
   slot.classList.remove("hidden");
   setParticipantCameraOn(studentId, true);
+  var playPromise = el.play && el.play();
+  if (playPromise && playPromise.catch) {
+    playPromise.catch(function () { /* autoplay policy */ });
+  }
 }
 
 function detachParticipantCameraVideo(studentId) {
@@ -1712,7 +1712,6 @@ async function startLocalPreviewOnly() {
     updateMediaButton(document.getElementById("btn-mic"), true);
     setVideoControlsEnabled(true);
     startMicMonitor(localPreviewStream);
-    startSelfHear(localPreviewStream);
     if (!LiveClassMedia.isJoined()) {
       setStatus("Camera on — connecting live video for students…");
       addChatMessage(

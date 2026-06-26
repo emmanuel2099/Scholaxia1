@@ -3,8 +3,10 @@ title Build Scholaxia Student Windows Installer
 cd /d "%~dp0"
 
 echo.
-echo Building Scholaxia STUDENT installer for Windows...
-echo Output: dist\Scholaxia-Student-Setup-*.exe
+echo Building Scholaxia STUDENT for Windows (installer + portable)...
+echo Output:
+echo   dist\Scholaxia-Student-Setup-*.exe
+echo   dist\Scholaxia-Student-Portable-*.exe
 echo Admin and teacher portals are NOT included.
 echo.
 

@@ -3,16 +3,19 @@ SCHOLAXIA STUDENT — INSTALL ON WINDOWS
 
 You received the Scholaxia Student app for Windows PC or tablet.
 
-IMPORTANT — USE THE INSTALLER FILE
-----------------------------------
-Install with this file ONLY:
+WHICH FILE TO USE
+-----------------
+Try in this order:
 
-  Scholaxia-Student-Setup-1.0.0.exe
+  1. Scholaxia-Student-Portable-1.0.1.exe  (no install — try this FIRST if Setup failed)
+  2. Scholaxia-Student-Setup-1.0.1.exe     (installer)
+
+IMPORTANT: Download the full file (~45 MB). If sent via WhatsApp, the file may be
+corrupted — ask for a Google Drive / WeTransfer link instead.
 
 Do NOT use:
-- Scholaxia Student.exe inside a "win-unpacked" folder (runs without installing)
-- START.bat or BUILD-INSTALLER.bat (for developers only)
-- Any file named "Portable" (no install, not for sharing)
+- Files inside the "win-unpacked" folder (developer build only)
+- START.bat / BUILD-INSTALLER.bat (developers only)
 
 WHAT YOU NEED
 -------------
@@ -20,28 +23,46 @@ WHAT YOU NEED
 - Internet connection
 - About 300 MB free disk space
 
-INSTALL STEPS
--------------
-1. Close Scholaxia Student if it is already open (taskbar / Task Manager)
-2. Double-click: Scholaxia-Student-Setup-1.0.0.exe
-3. If Windows SmartScreen appears, click "More info" then "Run anyway"
-4. Follow the setup wizard → choose install folder → Finish
-5. Open Scholaxia Student from Desktop or Start menu
+IF YOU SEE "This file does not have an app associated with it"
+--------------------------------------------------------------
+This usually means Windows shortcuts (.lnk) are broken on that PC. Try these:
 
-The installer adds shortcuts and an entry in Settings → Apps so you can uninstall later.
+  A) PORTABLE (easiest)
+     Double-click Scholaxia-Student-Portable-1.0.1.exe
+     SmartScreen: More info → Run anyway
 
-FIRST TIME USE
---------------
-1. Open Scholaxia Student from Desktop or Start menu
-2. Sign up or log in with your student account
-3. Use Live Class, CBT, Skills, Ask Sia, Community, and Library
+  B) DESKTOP BAT FILE (after Setup install)
+     On Desktop, double-click "Scholaxia Student.bat" (NOT the shortcut icon)
+     Or: Start menu → Scholaxia Student → Scholaxia Student.bat
 
-TROUBLESHOOTING
----------------
-- App opened but never installed: you ran the wrong file. Use Scholaxia-Student-Setup-*.exe
-- App won't open: Right-click shortcut → Run as administrator once
-- Login fails: check internet; wait 30 seconds and retry
+  C) RUN THE EXE DIRECTLY
+     Open File Explorer and go to:
+       %LOCALAPPDATA%\Programs\Scholaxia Student\
+     Double-click ScholaxiaStudent.exe
 
-Teachers and admins use separate Scholaxia apps — not included in this student package.
+  D) FIX WINDOWS SHORTCUTS (if nothing above works)
+     Search Google for: "repair lnk file association windows 10"
+     Then try the Desktop shortcut again.
 
-Support: contact the person who sent you this installer.
+If you see "This app can't run on your PC":
+- Your PC may be 32-bit Windows — Scholaxia needs 64-bit (Settings → System → About)
+- Re-download the full installer — file may be incomplete
+- Click "More info" → "Run anyway" if Windows SmartScreen blocks it
+
+INSTALL STEPS (Setup file)
+--------------------------
+1. Close Scholaxia if already open
+2. Double-click Scholaxia-Student-Setup-1.0.1.exe
+3. If SmartScreen appears: More info → Run anyway
+4. Follow the wizard → Finish
+5. Open "Scholaxia Student.bat" from Desktop (recommended)
+   or Scholaxia Student from Start menu
+
+PORTABLE (no install)
+---------------------
+1. Double-click Scholaxia-Student-Portable-1.0.1.exe
+2. Allow if Windows asks — same SmartScreen steps as above
+
+Teachers: use TEACHER.bat on the teacher's computer (not the student installer).
+
+Support: contact the person who sent you this app.

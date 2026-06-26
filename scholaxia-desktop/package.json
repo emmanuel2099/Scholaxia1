@@ -1,13 +1,13 @@
 {
   "name": "scholaxia-desktop",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Scholaxia Student Portal — Windows Desktop App",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder --win nsis --x64",
+    "build": "electron-builder --win nsis portable --x64",
     "build:portable": "electron-builder --win portable --x64",
-    "build:installer": "electron-builder --win nsis --x64"
+    "build:installer": "electron-builder --win nsis portable --x64"
   },
   "author": "Scholaxia",
   "license": "MIT",
@@ -23,9 +23,16 @@
       "buildResources": "build"
     },
     "win": {
+      "executableName": "ScholaxiaStudent",
       "target": [
         {
           "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
           "arch": [
             "x64"
           ]
@@ -38,15 +45,18 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
       "allowElevation": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
+      "createDesktopShortcut": false,
+      "createStartMenuShortcut": false,
       "shortcutName": "Scholaxia Student",
-      "runAfterFinish": true,
+      "runAfterFinish": false,
       "artifactName": "Scholaxia-Student-Setup-${version}.${ext}",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "installerHeaderIcon": "build/icon.ico",
       "include": "build/installer.nsh"
+    },
+    "portable": {
+      "artifactName": "Scholaxia-Student-Portable-${version}.${ext}"
     },
     "files": [
       "main.js",
@@ -64,6 +74,12 @@
       "!renderer/css/teacher.css",
       "assets/**/*",
       "node_modules/**/*"
+    ],
+    "extraFiles": [
+      {
+        "from": "launch/Scholaxia Student.bat",
+        "to": "Scholaxia Student.bat"
+      }
     ],
     "extraResources": [
       {

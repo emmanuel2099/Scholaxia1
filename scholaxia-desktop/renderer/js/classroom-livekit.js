@@ -16,6 +16,7 @@
   var participantVideoTracks = {};
   var teacherVideoTrack = null;
   var JOIN_TIMEOUT_MS = 45000;
+  var AUDIO_CAPTURE_OPTS = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
 
   function lk() {
     return window.LivekitClient || null;
@@ -112,6 +113,7 @@
       liveSession.channel_id = data.channel_id || liveSession.channel_id;
       if (data.end_time) liveSession.end_time = data.end_time;
       if (data.mic_allowed) liveSession.mic_allowed = true;
+      if (data.camera_allowed) liveSession.camera_allowed = true;
       if (data.can_publish) liveSession.can_publish = true;
       if (data.teacher_id) liveSession.teacher_id = data.teacher_id;
       if (typeof applyStudentMediaPermissions === "function") applyStudentMediaPermissions(data);
@@ -213,10 +215,17 @@
     if (data.can_publish && liveSession) {
       liveSession.can_publish = true;
       liveSession.mic_allowed = !!data.mic_allowed;
+      liveSession.camera_allowed = !!data.camera_allowed;
       if (typeof persistLiveSession === "function") persistLiveSession(liveSession);
-    } else if (data.mic_allowed && liveSession) {
-      liveSession.mic_allowed = true;
-      if (typeof persistLiveSession === "function") persistLiveSession(liveSession);
+    } else {
+      if (data.mic_allowed && liveSession) {
+        liveSession.mic_allowed = true;
+        if (typeof persistLiveSession === "function") persistLiveSession(liveSession);
+      }
+      if (data.camera_allowed && liveSession) {
+        liveSession.camera_allowed = true;
+        if (typeof persistLiveSession === "function") persistLiveSession(liveSession);
+      }
     }
     if (typeof setVideoControlsEnabled === "function" && liveVideoJoined) {
       var canMic = window.studentMicAllowed;
@@ -233,18 +242,30 @@
     var c = lk();
     if (!track || !c) return;
     var pid = participant && participant.identity ? String(participant.identity) : "remote";
-    remoteAudioEls = remoteAudioEls.filter(function (el) {
-      if (el && el.getAttribute && el.getAttribute("data-participant-id") === pid) {
-        try { el.remove(); } catch (e) { /* ignore */ }
-        return false;
-      }
-      return true;
-    });
     var audioWrap = ensureRemoteAudioContainer();
-    var audioEl = track.attach();
-    audioEl.setAttribute("data-participant-id", pid);
-    audioWrap.appendChild(audioEl);
-    remoteAudioEls.push(audioEl);
+    var audioEl = null;
+    for (var i = 0; i < remoteAudioEls.length; i++) {
+      var el = remoteAudioEls[i];
+      if (el && el.getAttribute && el.getAttribute("data-participant-id") === pid) {
+        audioEl = el;
+        break;
+      }
+    }
+    if (!audioEl) {
+      audioEl = track.attach();
+      audioEl.setAttribute("data-participant-id", pid);
+      audioWrap.appendChild(audioEl);
+      remoteAudioEls.push(audioEl);
+    } else {
+      try {
+        track.attach(audioEl);
+      } catch (e) {
+        audioEl = track.attach();
+        audioEl.setAttribute("data-participant-id", pid);
+        audioWrap.appendChild(audioEl);
+        remoteAudioEls.push(audioEl);
+      }
+    }
     playRemoteAudioElement(audioEl);
     ensureRoomAudioPlayback();
     if (isTeacherRole()) {
@@ -277,7 +298,16 @@
 
   function resolveStudentIdFromParticipant(participant) {
     if (!participant) return null;
-    return normalizeParticipantId(participant.identity);
+    var id = normalizeParticipantId(participant.identity);
+    if (!id) return null;
+    if (typeof findParticipantCard === "function" && findParticipantCard(id)) return id;
+    var cards = document.querySelectorAll(".participant-card[data-student-id]");
+    var idLower = id.toLowerCase();
+    for (var i = 0; i < cards.length; i++) {
+      var sid = cards[i].getAttribute("data-student-id") || "";
+      if (sid.toLowerCase() === idLower) return sid;
+    }
+    return id;
   }
 
   function getTeacherIdFromSession() {
@@ -323,6 +353,9 @@
     var el = track.attach();
     el.style.width = "100%";
     el.style.height = "100%";
+    el.muted = true;
+    el.autoplay = true;
+    el.playsInline = true;
     box.appendChild(el);
     wrap.appendChild(box);
     if (!isTeacherRole() && typeof showBoardForStudent === "function") {
@@ -432,6 +465,7 @@
 
   function handleRemoteCameraMuted(publication, participant) {
     if (!isCameraPublication(publication)) return;
+    if (publication && publication.track && !publication.isMuted && !publication.track.isMuted) return;
     if (isTeacherRole()) {
       var studentId = resolveStudentIdFromParticipant(participant);
       clearStudentParticipantVideo(studentId, publication, participant);
@@ -464,6 +498,9 @@
         var el = pub.track.attach();
         el.style.width = "100%";
         el.style.height = "100%";
+        el.muted = true;
+        el.autoplay = true;
+        el.playsInline = true;
         localEl.appendChild(el);
         localEl.classList.remove("hidden");
       } else if (typeof showStudentSelfPreview === "function") {
@@ -537,14 +574,6 @@
     });
     room.on(c.RoomEvent.TrackUnsubscribed, function (track, publication, participant) {
       if (track && (track.kind === c.Track.Kind.Audio || track.kind === "audio")) {
-        var pid = participant && participant.identity ? String(participant.identity) : "";
-        remoteAudioEls = remoteAudioEls.filter(function (el) {
-          if (el && pid && el.getAttribute && el.getAttribute("data-participant-id") === pid) {
-            try { el.remove(); } catch (e) { /* ignore */ }
-            return false;
-          }
-          return true;
-        });
         return;
       }
       detachRemoteVideo(track, publication, participant);
@@ -582,6 +611,14 @@
       if (typeof updateAudienceStats === "function") updateAudienceStats();
     });
     room.on(c.RoomEvent.ParticipantDisconnected, function (participant) {
+      var pid = participant && participant.identity ? String(participant.identity) : "";
+      remoteAudioEls = remoteAudioEls.filter(function (el) {
+        if (el && pid && el.getAttribute && el.getAttribute("data-participant-id") === pid) {
+          try { el.remove(); } catch (e) { /* ignore */ }
+          return false;
+        }
+        return true;
+      });
       if (isTeacherRole()) {
         var studentId = resolveStudentIdFromParticipant(participant);
         if (studentId && participantVideoTracks[studentId]) {
@@ -634,6 +671,36 @@
         }
       });
     }
+  }
+
+  async function refreshRoomToken() {
+    var ok = await refreshLiveKitToken();
+    if (!ok || !liveRoom || !liveSession || !liveSession.livekit_token) return false;
+    try {
+      var client = liveRoom.engine && liveRoom.engine.client;
+      if (client && typeof client.refreshToken === "function") {
+        await client.refreshToken(liveSession.livekit_token);
+        return true;
+      }
+      if (liveSession.livekit_url && typeof liveRoom.connect === "function") {
+        await liveRoom.connect(liveSession.livekit_url, liveSession.livekit_token);
+        return true;
+      }
+    } catch (e) {
+      return false;
+    }
+    return false;
+  }
+
+  async function ensurePublishPermissions() {
+    if (!liveVideoJoined || !liveRoom) {
+      await tryConnectLiveVideo(true);
+      return !!liveVideoJoined;
+    }
+    var refreshed = await refreshRoomToken();
+    if (refreshed) return true;
+    await reconnectWithFreshToken();
+    return !!liveVideoJoined;
   }
 
   async function reconnectWithFreshToken() {
@@ -738,7 +805,18 @@
     try {
       if (!liveRoom) {
         var c = LK();
-        liveRoom = new c.Room({ adaptiveStream: true, dynacast: true });
+        liveRoom = new c.Room({
+          adaptiveStream: false,
+          dynacast: false,
+          audioCaptureDefaults: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+          videoCaptureDefaults: {
+            resolution: { width: 1280, height: 720, frameRate: 24 },
+          },
+        });
         wireRoomEvents(liveRoom);
       }
 
@@ -809,7 +887,6 @@
       }
       if (on) {
         if (typeof startMicMonitor === "function") startMicMonitor(window.localPreviewStream);
-        if (typeof startSelfHear === "function") startSelfHear(window.localPreviewStream);
       } else {
         if (typeof stopMicMonitor === "function") stopMicMonitor();
         if (typeof stopSelfHear === "function") stopSelfHear();
@@ -820,15 +897,13 @@
     if (!liveVideoJoined || !liveRoom) return;
     var btn = document.getElementById("btn-mic");
     if (on === micOn && isLocalMicPublished() === on) return;
-    await liveRoom.localParticipant.setMicrophoneEnabled(on);
+    var audioOpts = AUDIO_CAPTURE_OPTS;
+    await liveRoom.localParticipant.setMicrophoneEnabled(on, audioOpts);
     micOn = on;
     if (typeof updateMediaButton === "function") updateMediaButton(btn, on);
     if (on) {
       var track = getLocalMicTrack();
-      if (track) {
-        if (typeof startMicMonitor === "function") startMicMonitor(track);
-        if (typeof startSelfHear === "function") startSelfHear(track);
-      }
+      if (track && typeof startMicMonitor === "function") startMicMonitor(track);
     } else {
       if (typeof stopMicMonitor === "function") stopMicMonitor();
       if (typeof stopSelfHear === "function") stopSelfHear();
@@ -916,7 +991,7 @@
       screenOn = true;
       if (camOn) await liveRoom.localParticipant.setCameraEnabled(false);
       if (!micOn) {
-        await liveRoom.localParticipant.setMicrophoneEnabled(true);
+        await liveRoom.localParticipant.setMicrophoneEnabled(true, AUDIO_CAPTURE_OPTS);
         micOn = true;
         if (typeof updateMediaButton === "function") {
           updateMediaButton(document.getElementById("btn-mic"), true);
@@ -1047,15 +1122,11 @@
       if (!liveSession.mic_allowed && !liveSession.can_publish) {
         throw new Error("Server has not approved your mic yet — wait a few seconds");
       }
-      if (!liveVideoJoined || !liveRoom) {
-        await tryConnectLiveVideo(true);
-      } else {
-        await reconnectWithFreshToken();
-      }
+      await ensurePublishPermissions();
       micOn = false;
       await setMic(true);
-      if (!micOn) {
-        await reconnectWithFreshToken();
+      if (!micOn || !isLocalMicPublished()) {
+        await ensurePublishPermissions();
         micOn = false;
         await setMic(true);
       }
@@ -1089,19 +1160,46 @@
 
   async function enableStudentCamera() {
     window.studentCameraAllowed = true;
+    liveSession = window.liveSession || liveSession;
+    if (liveSession) {
+      liveSession.camera_allowed = true;
+      if (typeof persistLiveSession === "function") persistLiveSession(liveSession);
+    }
     if (typeof showClassroomToast === "function") {
-      showClassroomToast("Camera access approved — you can turn on your camera");
+      showClassroomToast("Camera access approved — turning on your camera");
     }
     if (typeof addChatMessage === "function") {
-      addChatMessage("", "Your teacher let you use your camera.", true);
+      addChatMessage("", "Your teacher let you use your camera. Turning it on…", true);
     }
     try {
-      await refreshLiveKitToken();
-      await reconnectWithFreshToken();
+      var tokenOk = await refreshLiveKitToken();
+      if (!tokenOk) throw new Error("Could not refresh permissions");
+      if (!liveSession.camera_allowed && !liveSession.can_publish) {
+        throw new Error("Server has not approved your camera yet — wait a few seconds");
+      }
+      await ensurePublishPermissions();
+      if (typeof setVideoControlsEnabled === "function") setVideoControlsEnabled(true);
       var camBtn = document.getElementById("btn-cam");
       if (camBtn) camBtn.disabled = false;
+      camOn = false;
+      await setCam(true);
+      if (!camOn || !isLocalCamPublished()) {
+        await ensurePublishPermissions();
+        camOn = false;
+        await setCam(true);
+      }
+      if (typeof updateMediaButton === "function") {
+        updateMediaButton(camBtn, true);
+      }
+      if (typeof showClassroomToast === "function") {
+        showClassroomToast("Camera is on");
+      }
     } catch (e) {
-      if (typeof addChatMessage === "function") addChatMessage("", "Camera: " + e.message, true);
+      var camBtnErr = document.getElementById("btn-cam");
+      if (camBtnErr) camBtnErr.disabled = false;
+      if (typeof addChatMessage === "function") {
+        addChatMessage("", "Camera allowed — tap the Cam button. (" + (e.message || "") + ")", true);
+      }
     }
   }
 

@@ -226,12 +226,8 @@ def get_window_size():
 
 
 def main():
-    if "--teacher" in sys.argv or "--admin" in sys.argv:
-        print(
-            "\nScholaxia Desktop is STUDENT ONLY.\n"
-            "Teachers and admins should use the Scholaxia web portal in a browser.\n"
-            "Starting the student app instead…\n"
-        )
+    is_admin = "--admin" in sys.argv
+    is_teacher = "--teacher" in sys.argv
 
     if not os.path.isfile(os.path.join(RENDERER, "index.html")):
         print("Missing renderer/index.html")
@@ -244,7 +240,12 @@ def main():
         )
         sys.exit(1)
 
-    page, title, bg = "app.html", "Scholaxia Student", "#0d1f14"
+    if is_teacher:
+        page, title, bg = "teacher.html", "Scholaxia Teacher Portal", "#0a1410"
+    elif is_admin:
+        page, title, bg = "admin.html", "Scholaxia Admin Console", "#0a1410"
+    else:
+        page, title, bg = "app.html", "Scholaxia Student", "#0d1f14"
 
     url = f"http://127.0.0.1:{PORT}/{page}"
     width, height, min_size = get_window_size()

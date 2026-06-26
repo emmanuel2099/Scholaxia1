@@ -1,15 +1,8 @@
 @echo off
-title Scholaxia Student (desktop is student-only)
+title Scholaxia Admin Console
 cd /d "%~dp0"
-echo.
-echo Scholaxia DESKTOP is for STUDENTS only.
-echo Admins use the Scholaxia web console in your browser.
-echo.
-echo Starting STUDENT app...
-echo.
 if exist "..\venv\Scripts\python.exe" (
-  "..\venv\Scripts\python.exe" run_desktop.py
+  "..\venv\Scripts\python.exe" run_desktop.py --admin
 ) else (
-  python run_desktop.py
+  python run_desktop.py --admin
 )
-pause
