@@ -202,9 +202,15 @@
     if (isTeacherRole() || !data) return;
     if (data.mic_allowed) {
       window.studentMicAllowed = true;
+      if (typeof syncStudentMicState === "function") syncStudentMicState(true);
     }
     if (data.camera_allowed) {
       window.studentCameraAllowed = true;
+    }
+    if (data.can_publish && liveSession) {
+      liveSession.can_publish = true;
+      liveSession.mic_allowed = !!data.mic_allowed;
+      if (typeof persistLiveSession === "function") persistLiveSession(liveSession);
     }
     if (typeof setVideoControlsEnabled === "function" && liveVideoJoined) {
       var canMic = window.studentMicAllowed;
@@ -961,6 +967,13 @@
 
   async function enableStudentMic() {
     window.studentMicAllowed = true;
+    if (typeof syncStudentMicState === "function") syncStudentMicState(true);
+    liveSession = window.liveSession || liveSession;
+    if (liveSession) {
+      liveSession.mic_allowed = true;
+      if (typeof persistLiveSession === "function") persistLiveSession(liveSession);
+    }
+    if (typeof setVideoControlsEnabled === "function") setVideoControlsEnabled(true);
     var micBtn = document.getElementById("btn-mic");
     if (micBtn) micBtn.disabled = false;
     if (typeof showClassroomToast === "function") {
@@ -970,18 +983,39 @@
       addChatMessage("", "Your teacher let you speak. Turning on your mic…", true);
     }
     try {
-      await refreshLiveKitToken();
-      await reconnectWithFreshToken();
-      await setMic(true);
+      var tokenOk = await refreshLiveKitToken();
+      if (!tokenOk) throw new Error("Could not refresh video permissions");
       var c = lk();
+      if (liveRoom && c && liveSession.livekit_token) {
+        try {
+          if (liveRoom.engine && liveRoom.engine.client && liveRoom.engine.client.refreshToken) {
+            await liveRoom.engine.client.refreshToken(liveSession.livekit_token);
+          }
+        } catch (refreshErr) {
+          await reconnectWithFreshToken();
+        }
+      } else if (!liveVideoJoined) {
+        await tryConnectLiveVideo(true);
+      }
+      micOn = false;
+      await setMic(true);
+      if (!micOn) {
+        await reconnectWithFreshToken();
+        micOn = false;
+        await setMic(true);
+      }
+      if (typeof updateMediaButton === "function") {
+        updateMediaButton(document.getElementById("btn-mic"), true);
+      }
       var pub = liveRoom && c && liveRoom.localParticipant.getTrackPublication(c.Track.Source.Microphone);
       if (!pub || !pub.track) {
         if (typeof addChatMessage === "function") {
-          addChatMessage("", "Mic allowed — tap the Mic button if others cannot hear you.", true);
+          addChatMessage("", "Mic is on — tap Mic again if others cannot hear you.", true);
         }
       }
     } catch (e) {
-      if (typeof addChatMessage === "function") addChatMessage("", "Mic: " + e.message, true);
+      if (typeof addChatMessage === "function") addChatMessage("", "Mic: " + (e.message || "Try tapping Mic"), true);
+      if (micBtn) micBtn.disabled = false;
     }
   }
 

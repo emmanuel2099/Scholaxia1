@@ -335,7 +335,7 @@ async function loadLiveClassStudents(quiet) {
         : '<span class="badge muted">Muted</span>';
       var btn = s.mic_allowed
         ? '<button type="button" class="btn-sm danger" onclick="teacherRevokeStudentMic(\'' + safeId + '\')">Mute</button>'
-        : '<span class="muted">Must raise hand in classroom</span>';
+        : '<button type="button" class="btn-sm primary" onclick="teacherAllowStudentMic(\'' + safeId + '\')">Allow to speak</button>';
       return '<div class="live-student-row">' +
         '<div><strong>' + safeName + '</strong><br><span class="muted">' + status + '</span></div>' +
         '<div class="actions">' + btn + '</div></div>';

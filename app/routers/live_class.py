@@ -310,6 +310,47 @@ def _can_manage_class(current_user: dict, live_class: LiveClass) -> bool:
     return str(live_class.teacher_id) == current_user["sub"]
 
 
+async def _active_attendance(
+    db: AsyncSession,
+    live_class_id,
+    student_id: str,
+) -> ClassAttendance | None:
+    try:
+        cid = live_class_id if not isinstance(live_class_id, str) else parse_uuid(live_class_id)
+        sid = parse_uuid(student_id)
+    except ValueError:
+        return None
+    result = await db.execute(
+        select(ClassAttendance).where(
+            ClassAttendance.live_class_id == cid,
+            ClassAttendance.student_id == sid,
+            ClassAttendance.is_removed == False,  # noqa: E712
+            ClassAttendance.left_at.is_(None),
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+def _mic_allowed_for(room_id: str, student_id: str, attendance: ClassAttendance | None) -> bool:
+    if has_mic_access(room_id, student_id):
+        return True
+    return attendance is not None and not attendance.is_muted
+
+
+def _camera_allowed_for(room_id: str, student_id: str) -> bool:
+    return has_camera_access(room_id, student_id)
+
+
+def _can_publish_for_student(
+    room_id: str,
+    student_id: str,
+    attendance: ClassAttendance | None,
+) -> bool:
+    if has_publish_access(room_id, student_id):
+        return True
+    return _mic_allowed_for(room_id, student_id, attendance) or _camera_allowed_for(room_id, student_id)
+
+
 def _class_is_active(live_class: LiveClass, now: datetime) -> bool:
     """True when class is live or within its scheduled window."""
     if live_class.is_live:
@@ -677,13 +718,15 @@ async def join_class(
         )
     )
     if existing.scalar_one_or_none():
+        sid = current_user["sub"]
+        att = await _active_attendance(db, live_class.id, sid)
+        can_pub = _can_publish_for_student(live_class.room_id, sid, att)
         payload = _livekit_token_payload(
             live_class.room_id,
-            current_user["sub"],
+            sid,
             current_user.get("email") or "student",
-            can_publish=has_publish_access(live_class.room_id, current_user["sub"]),
+            can_publish=can_pub,
         )
-        sid = current_user["sub"]
         return {
             **payload,
             **teacher_meta,
@@ -691,8 +734,8 @@ async def join_class(
             "subject": live_class.subject,
             "is_live": live_class.is_live,
             "end_time": live_class.end_time.isoformat() if live_class.end_time else None,
-            "mic_allowed": has_mic_access(live_class.room_id, sid),
-            "camera_allowed": has_camera_access(live_class.room_id, sid),
+            "mic_allowed": _mic_allowed_for(live_class.room_id, sid, att),
+            "camera_allowed": _camera_allowed_for(live_class.room_id, sid),
         }
 
     if requires_plan:
@@ -744,17 +787,18 @@ async def get_livekit_token(
         str(live_class.teacher_id) == current_user["sub"]
         or current_user.get("role") == "admin"
     )
-    can_publish = is_teacher or has_publish_access(live_class.room_id, current_user["sub"])
+    uid = current_user["sub"]
+    att = None if is_teacher else await _active_attendance(db, live_class.id, uid)
+    can_publish = is_teacher or _can_publish_for_student(live_class.room_id, uid, att)
     display = current_user.get("email") or current_user.get("sub") or "user"
     payload = _livekit_token_payload(
         live_class.room_id,
-        current_user["sub"],
+        uid,
         display,
         can_publish=can_publish,
     )
-    uid = current_user["sub"]
-    mic_ok = is_teacher or has_mic_access(live_class.room_id, uid)
-    cam_ok = is_teacher or has_camera_access(live_class.room_id, uid)
+    mic_ok = is_teacher or _mic_allowed_for(live_class.room_id, uid, att)
+    cam_ok = is_teacher or _camera_allowed_for(live_class.room_id, uid)
 
     return {
         **payload,
@@ -763,6 +807,7 @@ async def get_livekit_token(
         "is_live": live_class.is_live,
         "mic_allowed": mic_ok,
         "camera_allowed": cam_ok,
+        "can_publish": can_publish,
     }
 
 
@@ -800,8 +845,8 @@ async def list_class_students(
     for att in attendances:
         sid = str(att.student_id)
         user = users_map.get(sid)
-        mic_allowed = has_mic_access(live_class.room_id, sid)
-        camera_allowed = has_camera_access(live_class.room_id, sid)
+        mic_allowed = _mic_allowed_for(live_class.room_id, sid, att)
+        camera_allowed = _camera_allowed_for(live_class.room_id, sid)
         out.append({
             "student_id": sid,
             "name": user.full_name if user else "Student",
@@ -887,11 +932,12 @@ async def unmute_student(
         raise HTTPException(status_code=404, detail="Student not in class")
     attendance.is_muted = False
     grant_mic(live_class.room_id, str(student_id))
+    await db.flush()
     try:
         await live_class_ws.notify_mic_granted(live_class.room_id, str(student_id))
     except Exception:
         pass
-    return {"message": "Student can speak now", "mic_allowed": True}
+    return {"message": "Student can speak now", "mic_allowed": True, "student_id": str(student_id)}
 
 
 @router.post("/{class_id}/students/{student_id}/mute")

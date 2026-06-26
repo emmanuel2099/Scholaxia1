@@ -3,6 +3,14 @@ var liveSocket = null;
 var localPreviewStream = null;
 var studentMicAllowed = false;
 window.studentMicAllowed = false;
+window.syncStudentMicState = function (allowed) {
+  studentMicAllowed = !!allowed;
+  window.studentMicAllowed = studentMicAllowed;
+  if (liveSession) {
+    liveSession.mic_allowed = studentMicAllowed;
+    saveLiveSession(liveSession);
+  }
+};
 var studentCameraAllowed = false;
 window.studentCameraAllowed = false;
 var classStudentsPollTimer = null;
@@ -723,7 +731,8 @@ function renderClassroomStudents(students) {
       hostActions = '<div class="participant-actions">' +
         (micOn
           ? '<button type="button" onclick="revokeStudentMic(\'' + safeId + '\')">Mute</button>'
-          : (raised ? '<span class="raised-waiting">✋ Raised — use Raised hands panel</span>' : "")) +
+          : '<button type="button" class="btn-give-access" onclick="grantStudentMic(' +
+            JSON.stringify(s.student_id) + ',' + JSON.stringify(s.name || "Student") + ')">Allow to speak</button>') +
         (camOn
           ? '<button type="button" onclick="revokeStudentCamera(\'' + safeId + '\')">Revoke cam</button>'
           : '<button type="button" onclick="grantStudentCamera(\'' + safeId + '\')">Allow cam</button>') +
@@ -899,6 +908,22 @@ function startClassroomStudentsPoll() {
   classStudentsPollTimer = setInterval(function () {
     loadClassroomStudents(true);
   }, 12000);
+}
+
+var studentMicPollTimer = null;
+function startStudentMicPermissionPoll() {
+  if (isTeacherRole() || studentMicPollTimer) return;
+  studentMicPollTimer = setInterval(async function () {
+    if (window.studentMicAllowed || !liveSession) return;
+    try {
+      var classId = liveSession.class_id || liveSession.classId;
+      if (!classId || typeof LiveClassMedia === "undefined") return;
+      var data = await api("/api/v1/live-classes/" + classId + "/token");
+      if (data && data.mic_allowed && typeof enableStudentMic === "function") {
+        enableStudentMic();
+      }
+    } catch (e) { /* ignore */ }
+  }, 10000);
 }
 
 window.grantStudentMic = grantStudentMic;
@@ -1513,8 +1538,11 @@ function connectChat() {
       } else if (msg.event === "lower_hand") {
         removeRaisedHand(msg.user_id);
       } else if (msg.event === "mic_access_granted") {
-        enableStudentMic();
+        if (typeof enableStudentMic === "function") enableStudentMic();
       } else if (msg.event === "mic_access_update") {
+        if (!isTeacherRole() && msg.has_mic && typeof enableStudentMic === "function") {
+          enableStudentMic();
+        }
         if (isTeacherRole() && msg.has_mic) {
           if (typeof ensureRoomAudioPlayback === "function") ensureRoomAudioPlayback();
           if (typeof showAudioUnlockBanner === "function") showAudioUnlockBanner();
@@ -1816,6 +1844,7 @@ window.onload = function () {
   } else {
     showStudentTools(true);
     startClassroomStudentsPoll();
+    startStudentMicPermissionPoll();
     bindClassroomAudioUnlock();
   }
   connectChat();
