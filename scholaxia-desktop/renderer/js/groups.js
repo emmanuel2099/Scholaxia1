@@ -63,14 +63,22 @@
     var mineEl = document.getElementById("groups-mine-list");
     var schoolEl = document.getElementById("groups-school-list");
     var communityEl = document.getElementById("groups-community-list");
-    if (mineEl) mineEl.innerHTML = '<div class="loading">Loading…</div>';
-    if (schoolEl) schoolEl.innerHTML = '<div class="loading">Loading…</div>';
-    if (communityEl) communityEl.innerHTML = '<div class="loading">Loading…</div>';
+    var skel = typeof showGroupsSkeleton === "function" ? showGroupsSkeleton : null;
+    if (mineEl) (skel ? skel(mineEl) : (mineEl.innerHTML = '<div class="loading">Loading…</div>'));
+    if (schoolEl) (skel ? skel(schoolEl) : (schoolEl.innerHTML = '<div class="loading">Loading…</div>'));
+    if (communityEl) (skel ? skel(communityEl) : (communityEl.innerHTML = '<div class="loading">Loading…</div>'));
 
     try {
-      var mine = await api("/api/v1/student-groups/mine") || [];
-      var school = await api("/api/v1/school-groups/student/mine") || [];
-      var listed = await api("/api/v1/student-groups/community-listed") || [];
+      if (typeof warmScholaxiaApi === "function") await warmScholaxiaApi().catch(function () {});
+      var apiFn = typeof apiRetry === "function" ? apiRetry : api;
+      var results = await Promise.all([
+        apiFn("/api/v1/student-groups/mine", { attempts: 3 }),
+        apiFn("/api/v1/school-groups/student/mine", { attempts: 2 }).catch(function () { return []; }),
+        apiFn("/api/v1/student-groups/community-listed", { attempts: 3 }),
+      ]);
+      var mine = results[0] || [];
+      var school = results[1] || [];
+      var listed = results[2] || [];
 
       if (communityEl) {
         var discover = listed.filter(function (g) { return !g.is_member; });

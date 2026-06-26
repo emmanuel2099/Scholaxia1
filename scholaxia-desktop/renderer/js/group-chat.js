@@ -5,6 +5,11 @@
   var activeGroupId = null;
   var activeGroupMeta = null;
   var pollTimer = null;
+  var localMessages = [];
+
+  function apiFn() {
+    return typeof apiRetry === "function" ? apiRetry : api;
+  }
 
   function escHtml(s) {
     return String(s || "")
@@ -24,17 +29,29 @@
     }
   }
 
+  function showChatSkeleton() {
+    var el = document.getElementById("group-chat-messages");
+    if (!el) return;
+    el.innerHTML =
+      '<div class="feed-skeleton chat-skeleton" aria-busy="true">' +
+      '<div class="skel-bubble skel-left"></div><div class="skel-bubble skel-right"></div>' +
+      '<div class="skel-bubble skel-left skel-short"></div>' +
+      '<p class="skel-label">Loading messages…</p></div>';
+  }
+
   function renderMessages(messages) {
     var el = document.getElementById("group-chat-messages");
     if (!el) return;
-    if (!messages || !messages.length) {
+    var list = messages || localMessages;
+    if (!list.length) {
       el.innerHTML = '<div class="group-chat-empty">No messages yet. Say hello to your group!</div>';
       return;
     }
-    el.innerHTML = messages.map(function (m) {
+    el.innerHTML = list.map(function (m) {
       var mine = m.is_mine ? " group-msg-mine" : "";
+      var pending = m._pending ? " group-msg-pending" : "";
       return (
-        '<div class="group-msg' + mine + '">' +
+        '<div class="group-msg' + mine + pending + '">' +
         '<div class="group-msg-meta"><strong>' + escHtml(m.author_name || "Student") + "</strong>" +
         "<span>" + escHtml(formatChatTime(m.created_at)) + "</span></div>" +
         '<p class="group-msg-text">' + escHtml(m.content) + "</p></div>"
@@ -64,7 +81,7 @@
   async function loadMembers() {
     if (!activeGroupId) return;
     try {
-      var members = await api("/api/v1/student-groups/" + activeGroupId + "/members");
+      var members = await apiFn()("/api/v1/student-groups/" + activeGroupId + "/members", { attempts: 2 });
       renderMembers(members);
     } catch (e) {
       var list = document.getElementById("group-chat-members-list");
@@ -72,20 +89,31 @@
     }
   }
 
-  async function refreshMessages() {
+  async function refreshMessages(silent) {
     if (!activeGroupId) return;
+    if (!silent) showChatSkeleton();
     try {
-      var messages = await api("/api/v1/student-groups/" + activeGroupId + "/messages?limit=120");
-      renderMessages(messages);
+      var messages = await apiFn()("/api/v1/student-groups/" + activeGroupId + "/messages?limit=120", { attempts: 3 });
+      localMessages = messages || [];
+      renderMessages(localMessages);
     } catch (e) {
+      if (localMessages.length) {
+        renderMessages(localMessages);
+        return;
+      }
       var el = document.getElementById("group-chat-messages");
-      if (el) el.innerHTML = '<div class="empty">' + escHtml(e.message) + "</div>";
+      if (el) {
+        el.innerHTML =
+          '<div class="group-chat-retry">' +
+          '<p>' + escHtml(/failed to fetch|timed out/i.test(e.message || "") ? "Server is waking up…" : e.message) + "</p>" +
+          '<button type="button" class="btn-sm" onclick="loadGroupChatPage()">Try again</button></div>';
+      }
     }
   }
 
   function startPoll() {
     if (pollTimer) clearInterval(pollTimer);
-    pollTimer = setInterval(refreshMessages, 8000);
+    pollTimer = setInterval(function () { refreshMessages(true); }, 10000);
   }
 
   function stopPoll() {
@@ -98,6 +126,7 @@
   async function openGroupChat(groupId, meta) {
     activeGroupId = groupId;
     activeGroupMeta = meta || null;
+    localMessages = [];
     stopPoll();
     showPage("group-chat");
 
@@ -105,12 +134,19 @@
     var sub = document.getElementById("group-chat-subtitle");
     var addBox = document.getElementById("group-chat-add-member");
     var input = document.getElementById("group-chat-input");
-    var msgs = document.getElementById("group-chat-messages");
-    if (msgs) msgs.innerHTML = '<div class="loading">Loading chat…</div>';
+    if (meta && meta.name && title) title.textContent = meta.name;
+    if (meta && sub) {
+      sub.textContent = (meta.member_count || 0) + " member" + ((meta.member_count || 0) === 1 ? "" : "s") +
+        (meta.description ? " · " + meta.description : "");
+    }
+    showChatSkeleton();
     if (input) input.value = "";
 
     try {
-      var info = meta || (await api("/api/v1/student-groups/" + groupId));
+      if (typeof warmScholaxiaApi === "function") await warmScholaxiaApi().catch(function () {});
+      var info = meta && meta.is_member != null
+        ? meta
+        : await apiFn()("/api/v1/student-groups/" + groupId, { attempts: 3 });
       activeGroupMeta = info;
       if (title) title.textContent = info.name || "Group chat";
       if (sub) {
@@ -119,17 +155,20 @@
       }
       if (addBox) addBox.classList.toggle("hidden", !info.is_admin);
       if (!info.is_member) {
-        if (msgs) {
-          msgs.innerHTML = '<div class="empty">Join this group first to open the chat room.</div>';
-        }
+        var msgs = document.getElementById("group-chat-messages");
+        if (msgs) msgs.innerHTML = '<div class="empty">Join this group first to open the chat room.</div>';
         return;
       }
-      await refreshMessages();
-      await loadMembers();
+      await Promise.all([refreshMessages(true), loadMembers()]);
       startPoll();
       if (input) input.focus();
     } catch (e) {
-      if (msgs) msgs.innerHTML = '<div class="empty">' + escHtml(e.message) + "</div>";
+      var msgsEl = document.getElementById("group-chat-messages");
+      if (msgsEl) {
+        msgsEl.innerHTML =
+          '<div class="group-chat-retry"><p>' + escHtml(e.message) + '</p>' +
+          '<button type="button" class="btn-sm" onclick="openGroupChat(\'' + String(groupId).replace(/'/g, "\\'") + '\')">Try again</button></div>';
+      }
     }
   }
 
@@ -145,14 +184,29 @@
     var text = input.value.trim();
     if (!text) return;
     input.value = "";
+    var optimistic = {
+      id: "local-" + Date.now(),
+      author_name: (typeof getUser === "function" ? getUser().name : null) || "You",
+      content: text,
+      created_at: new Date().toISOString(),
+      is_mine: true,
+      _pending: true,
+    };
+    localMessages = (localMessages || []).concat([optimistic]);
+    renderMessages(localMessages);
     try {
-      await api("/api/v1/student-groups/" + activeGroupId + "/messages", {
+      var sent = await apiFn()("/api/v1/student-groups/" + activeGroupId + "/messages", {
         method: "POST",
         body: JSON.stringify({ content: text }),
+        attempts: 3,
       });
-      await refreshMessages();
+      localMessages = localMessages.filter(function (m) { return m.id !== optimistic.id; });
+      if (sent) localMessages.push(sent);
+      renderMessages(localMessages);
     } catch (e) {
-      alert(e.message || "Could not send message.");
+      localMessages = localMessages.filter(function (m) { return m.id !== optimistic.id; });
+      renderMessages(localMessages);
+      alert(e.message || "Could not send message. Tap Try again or wait a moment.");
       input.value = text;
     }
   };
@@ -171,14 +225,14 @@
       return;
     }
     try {
-      var res = await api("/api/v1/student-groups/" + activeGroupId + "/members", {
+      var res = await apiFn()("/api/v1/student-groups/" + activeGroupId + "/members", {
         method: "POST",
         body: JSON.stringify({ email: email }),
+        attempts: 2,
       });
       emailInput.value = "";
       alert((res && res.message) || "Member added.");
       await loadMembers();
-      await refreshMessages();
     } catch (e) {
       alert(e.message || "Could not add member.");
     }

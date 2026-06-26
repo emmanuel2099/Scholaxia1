@@ -175,13 +175,17 @@ async function api(path, options) {
         options.headers || {}
       ),
       body: options.body,
-      signal: options.signal || fetchTimeout(45000),
+      signal: options.signal || fetchTimeout(options.timeoutMs || 45000),
     });
   } catch (ex) {
     if (ex.name === "AbortError" || ex.name === "TimeoutError") {
       throw new Error("Request timed out. The server may be waking up — try again.");
     }
-    throw new Error(ex.message || "Network error. Check your connection.");
+    var netMsg = ex.message || "Network error";
+    if (/failed to fetch/i.test(netMsg)) {
+      throw new Error("Failed to fetch");
+    }
+    throw new Error(netMsg + ". Check your connection.");
   }
   var data = await res.json().catch(function () { return {}; });
   if (res.status === 401) {
@@ -190,6 +194,33 @@ async function api(path, options) {
   }
   if (!res.ok) throw new Error(formatApiError(data.detail) || "Request failed (" + res.status + ")");
   return data;
+}
+
+/** Retry API calls — helps when Render wakes from sleep. */
+async function apiRetry(path, options) {
+  options = options || {};
+  var attempts = options.attempts || 3;
+  var baseDelay = options.retryDelay || 1000;
+  await warmScholaxiaApi().catch(function () {});
+  var lastErr;
+  for (var i = 0; i < attempts; i++) {
+    try {
+      return await api(path, options);
+    } catch (e) {
+      lastErr = e;
+      var retryable = /failed to fetch|timed out|network|waking up/i.test(e.message || "");
+      if (!retryable || i >= attempts - 1) throw e;
+      await new Promise(function (r) { setTimeout(r, baseDelay * (i + 1)); });
+      _apiWarmPromise = null;
+      await warmScholaxiaApi().catch(function () {});
+    }
+  }
+  throw lastErr;
+}
+
+if (typeof window !== "undefined") {
+  window.apiRetry = apiRetry;
+  window.warmScholaxiaApi = warmScholaxiaApi;
 }
 
 async function apiUpload(path, file) {

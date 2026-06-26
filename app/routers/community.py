@@ -962,16 +962,18 @@ async def toggle_like(
     Toggles like — like if not liked, unlike if already liked.
     """
     post_res = await db.execute(
-        select(CommunityPost).where(CommunityPost.id == post_id, CommunityPost.is_deleted == False)  # noqa: E712
+        select(CommunityPost).where(CommunityPost.id == parse_uuid(post_id), CommunityPost.is_deleted == False)  # noqa: E712
     )
     post = post_res.scalar_one_or_none()
     if not post:
         raise HTTPException(status_code=404, detail="Post not found")
 
+    post_uuid = parse_uuid(post_id)
+    user_uuid = parse_uuid(current_user["sub"])
     existing = await db.execute(
         select(PostLike).where(
-            PostLike.post_id == post_id,
-            PostLike.user_id == current_user["sub"],
+            PostLike.post_id == post_uuid,
+            PostLike.user_id == user_uuid,
         )
     )
     like = existing.scalar_one_or_none()
@@ -979,10 +981,12 @@ async def toggle_like(
     if like:
         await db.delete(like)
         post.like_count = max(0, post.like_count - 1)
+        await db.flush()
         return {"liked": False, "like_count": post.like_count}
     else:
-        db.add(PostLike(post_id=post_id, user_id=current_user["sub"]))
+        db.add(PostLike(post_id=post_uuid, user_id=user_uuid))
         post.like_count += 1
+        await db.flush()
         return {"liked": True, "like_count": post.like_count}
 
 

@@ -1537,6 +1537,42 @@ body:has(.app-shell-topnav) { overflow: auto; height: auto; }
   font-size: 0.9rem;
 }
 
+/* Animated loading skeletons */
+@keyframes skel-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.feed-skeleton { padding: 8px 0 16px; }
+.skel-card, .skel-bubble {
+  height: 100px;
+  border-radius: 14px;
+  margin-bottom: 12px;
+  background: linear-gradient(90deg, #e8efe9 25%, #f4f8f5 50%, #e8efe9 75%);
+  background-size: 200% 100%;
+  animation: skel-shimmer 1.4s ease-in-out infinite;
+}
+.skel-card.skel-short { height: 72px; }
+.skel-card.skel-group { height: 88px; }
+.skel-bubble { height: 56px; max-width: 70%; }
+.skel-bubble.skel-right { margin-left: auto; max-width: 55%; }
+.skel-bubble.skel-left { max-width: 65%; }
+.skel-bubble.skel-short { height: 40px; }
+.skel-label {
+  text-align: center;
+  font-size: 0.82rem;
+  color: #7a9488;
+  margin: 8px 0 0;
+}
+.chat-skeleton { padding: 20px 16px; }
+.feed-refreshing { opacity: 0.72; transition: opacity 0.2s; }
+.group-chat-retry {
+  text-align: center;
+  padding: 48px 20px;
+  color: #6b8578;
+}
+.group-chat-retry p { margin: 0 0 12px; }
+.group-msg-pending { opacity: 0.75; }
+
 .info-banner {
   background: rgba(255, 248, 230, 0.85);
   backdrop-filter: blur(8px);
