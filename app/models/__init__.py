@@ -8,7 +8,7 @@ from app.models.content import Book, BookPurchase, SavedBook, BookReadProgress, 
 from app.models.notification import Notification
 from app.models.school_group import SchoolGroup
 from app.models.live_class_access_code import LiveClassAccessCodeDelivery
-from app.models.student_group import StudentGroup, StudentGroupMember, StudentGroupJoinRequest
+from app.models.student_group import StudentGroup, StudentGroupMember, StudentGroupJoinRequest, StudentGroupMessage
 from app.models.sia_note import SiaNote
 from app.models.api_key import ApiKey, ApiUsageLog, ApiDailyUsage
 from app.models.review_report import Report, TeacherReview

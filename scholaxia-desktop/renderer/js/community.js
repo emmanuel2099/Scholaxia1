@@ -7,6 +7,7 @@ var COMMUNITY_CHANNEL_KEY = "sia_community_channel_id";
 var COMMUNITY_POSTS_CACHE_KEY = "sia_community_posts_cache";
 var COMMUNITY_DRAFT_KEY = "sia_community_compose_draft";
 var POST_COMMENT_RE = /^@post:([^\s]+)\s*([\s\S]*)$/;
+var GROUP_POST_RE = /^@group:([^\s]+)(?:\s+([\s\S]*))?$/;
 
 function restoreCommunityChannelId() {
   if (communityChannelId) return;
@@ -71,6 +72,57 @@ function isRealPostId(id) {
   return id && String(id).indexOf("orphan") !== 0;
 }
 
+function parseGroupPost(content) {
+  var match = GROUP_POST_RE.exec(content || "");
+  if (!match) return null;
+  return { groupId: match[1], text: (match[2] || "").trim() };
+}
+
+function isGroupPost(p) {
+  if (!p) return false;
+  if (p.post_type === "group" && p.group_id) return true;
+  return !!parseGroupPost(p.content);
+}
+
+function groupPostIdFromPost(p) {
+  if (p.group_id) return p.group_id;
+  var parsed = parseGroupPost(p.content);
+  return parsed ? parsed.groupId : null;
+}
+
+function renderGroupFeedCard(p) {
+  var gid = groupPostIdFromPost(p);
+  if (!gid) return "";
+  var safeGid = String(gid).replace(/'/g, "\\'");
+  var name = p.group_name || "Study group";
+  var desc = p.group_description || parseGroupPost(p.content || "");
+  desc = typeof desc === "string" ? desc : (desc && desc.text) || "";
+  var members = p.group_member_count != null ? p.group_member_count : 0;
+  var initial = name.charAt(0).toUpperCase();
+  var actions = "";
+  if (p.group_is_member) {
+    actions = '<button type="button" class="btn-action group-feed-btn" onclick="openGroupChat(\'' + safeGid + '\')">Open chat</button>';
+    if (p.group_is_admin) {
+      actions += '<button type="button" class="btn-sm" onclick="viewGroupRequests(\'' + safeGid + '\')">Manage requests</button>';
+    }
+  } else if (p.group_pending_request) {
+    actions = '<span class="group-status-pill pending">Join request pending</span>';
+  } else {
+    actions = '<button type="button" class="btn-action group-feed-btn" onclick="requestJoinGroup(\'' + safeGid + '\')">Join group</button>';
+  }
+  return '<article class="community-post group-feed-post">' +
+    '<div class="group-feed-banner"><span class="group-feed-tag">New group</span></div>' +
+    '<div class="post-top">' +
+    '<div class="post-avatar group-feed-avatar">' + escHtml(initial) + '</div>' +
+    '<div class="post-main">' +
+    '<div class="post-head"><strong>' + escHtml(name) + '</strong>' +
+    '<span>' + formatDate(p.created_at) + '</span></div>' +
+    '<p class="post-body group-feed-desc">' + escHtml(desc || "Tap join to request access — admin approves new members.") + '</p>' +
+    '<p class="group-feed-meta">' + escHtml(p.author_name || "Student") + ' started this group · ' + members + ' member' + (members === 1 ? '' : 's') + '</p>' +
+    '<div class="group-feed-actions">' + actions + '</div>' +
+    '</div></div></article>';
+}
+
 function parsePostComment(content) {
   var match = POST_COMMENT_RE.exec(content || "");
   if (!match) return null;
@@ -78,7 +130,9 @@ function parsePostComment(content) {
 }
 
 function displayPostContent(content) {
-  var parsed = parsePostComment(content);
+  var parsed = parseGroupPost(content);
+  if (parsed) return parsed.text;
+  parsed = parsePostComment(content);
   return parsed ? parsed.text : (content || "");
 }
 
@@ -191,6 +245,7 @@ function renderCommunityPosts(posts, targetEl) {
     return;
   }
   feed.innerHTML = posts.map(function (p) {
+    if (isGroupPost(p)) return renderGroupFeedCard(p);
     var domId = postCardDomId(p);
     var body = displayPostContent(p.content);
     var media = "";
@@ -276,6 +331,42 @@ function prependNewPost(posts, newPost) {
   return [newPost].concat(list);
 }
 
+async function mergeListedGroupsIntoFeed(posts) {
+  try {
+    var listed = await api("/api/v1/student-groups/community-listed") || [];
+    var seenGroups = {};
+    (posts || []).forEach(function (p) {
+      var gid = groupPostIdFromPost(p);
+      if (gid) seenGroups[gid] = true;
+    });
+    listed.forEach(function (g) {
+      if (!g.id || seenGroups[g.id]) return;
+      posts.push({
+        id: "group-feed-" + g.id,
+        card_key: "group-feed-" + g.id,
+        post_type: "group",
+        group_id: g.id,
+        group_name: g.name,
+        group_description: g.description,
+        group_member_count: g.member_count,
+        group_is_member: g.is_member,
+        group_is_admin: g.is_admin,
+        group_pending_request: g.pending_request,
+        author_name: g.creator_name || "Student",
+        created_at: g.created_at || new Date().toISOString(),
+        content: "@group:" + g.id + (g.description ? " " + g.description : ""),
+        like_count: 0,
+        liked_by_me: false,
+        comments: [],
+      });
+    });
+    posts.sort(function (a, b) {
+      return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+    });
+  } catch (e) { /* optional */ }
+  return posts;
+}
+
 async function fetchCommunityPosts() {
   await ensureCommunityChannel();
   var posts = [];
@@ -306,6 +397,7 @@ async function fetchCommunityPosts() {
   }
 
   posts = posts.filter(function (p) { return !isPostComment(p.content); });
+  posts = await mergeListedGroupsIntoFeed(posts);
   var commentsByPost = await fetchPostComments();
   return attachComments(posts, commentsByPost);
 }

@@ -17,6 +17,7 @@ const PAGE_TITLES = {
   sia: "Tutor AI",
   community: "Community",
   "community-create": "New Post",
+  "group-chat": "Group Chat",
   notifications: "Notifications",
   profile: "Profile",
 };
@@ -833,7 +834,7 @@ function showPage(page) {
   document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
   document.querySelectorAll(".topnav-btn").forEach((n) => n.classList.remove("active"));
   document.getElementById(`page-${page}`).classList.add("active");
-  const navPage = page === "community-create" ? "community" : page;
+  const navPage = page === "community-create" || page === "group-chat" ? "community" : page;
   const navEl = document.querySelector(`.topnav-btn[data-page="${navPage}"]`);
   if (navEl) navEl.classList.add("active");
   document.getElementById("page-title").textContent = PAGE_TITLES[page] || page;
@@ -893,6 +894,10 @@ function refreshPage() {
     var pending = communityPendingPost;
     communityPendingPost = null;
     loadCommunity(pending);
+    done();
+  }
+  else if (currentPage === "group-chat") {
+    if (typeof loadGroupChatPage === "function") loadGroupChatPage();
     done();
   }
   else if (currentPage === "community-create") { initCommunityCreate(); done(); }

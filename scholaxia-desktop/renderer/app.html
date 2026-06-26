@@ -564,20 +564,51 @@
       <div id="community-feed" class="community-feed"><div class="loading">Loading posts…</div></div>
       <div id="community-announcements" class="community-feed hidden"><div class="loading">Loading announcements…</div></div>
       <div id="community-groups-panel" class="community-groups-panel hidden">
-        <div class="info-banner"><strong>School groups</strong> — your school adds you. <strong>Student groups</strong> — create or request to join; admin approves.</div>
-        <div class="request-box">
-          <h3>Create a student group</h3>
-          <p>You become the admin. List it here in Community so others can request to join.</p>
-          <input type="text" id="new-group-name" placeholder="Group name" />
-          <input type="text" id="new-group-desc" placeholder="Short description (optional)" />
-          <button type="button" class="btn-action" onclick="createStudentGroup()">Create group</button>
+        <div class="groups-hero">
+          <div class="groups-hero-icon" aria-hidden="true">&#128101;</div>
+          <div>
+            <h2>Student groups</h2>
+            <p>Create a study group, list it in the feed, and chat with members after they join.</p>
+          </div>
         </div>
-        <div class="section-header" style="margin-top:24px"><h2>Listed in Community</h2></div>
-        <div id="groups-community-list" class="groups-list"></div>
-        <div class="section-header" style="margin-top:24px"><h2>My groups</h2></div>
-        <div id="groups-mine-list" class="groups-list"></div>
-        <div class="section-header" style="margin-top:24px"><h2>School groups</h2></div>
-        <div id="groups-school-list" class="groups-list"></div>
+
+        <div class="groups-create-card">
+          <h3>Create a group</h3>
+          <p class="groups-create-hint">You become the admin and can approve join requests or add members by email.</p>
+          <div class="groups-create-fields">
+            <input type="text" id="new-group-name" placeholder="Group name" maxlength="120" />
+            <textarea id="new-group-desc" placeholder="What is this group about? (optional)" rows="2" maxlength="400"></textarea>
+          </div>
+          <label class="groups-list-feed-check">
+            <input type="checkbox" id="new-group-list-feed" checked />
+            <span>List in Community feed so others can join</span>
+          </label>
+          <button type="button" class="btn-action groups-create-btn" onclick="createStudentGroup()">Create group</button>
+        </div>
+
+        <div class="groups-section">
+          <div class="groups-section-head">
+            <h3>My groups</h3>
+            <span class="groups-section-sub">Tap a group to open chat</span>
+          </div>
+          <div id="groups-mine-list" class="groups-grid"></div>
+        </div>
+
+        <div class="groups-section">
+          <div class="groups-section-head">
+            <h3>Discover in feed</h3>
+            <span class="groups-section-sub">Also shown as posts on the Feed tab</span>
+          </div>
+          <div id="groups-community-list" class="groups-grid"></div>
+        </div>
+
+        <div class="groups-section">
+          <div class="groups-section-head">
+            <h3>School groups</h3>
+            <span class="groups-section-sub">Added by your school</span>
+          </div>
+          <div id="groups-school-list" class="groups-grid"></div>
+        </div>
       </div>
 
       <button type="button" id="community-fab" class="community-fab" onclick="openCommunityCreate()" title="New post" aria-label="New post">
@@ -586,6 +617,42 @@
 
       </button>
 
+    </section>
+
+
+
+    <!-- Group chat room -->
+
+    <section id="page-group-chat" class="page">
+      <div class="group-chat-shell">
+        <div class="group-chat-header">
+          <button type="button" class="group-chat-back" onclick="showPage('community'); showCommunityTab('groups');" aria-label="Back">&#8592;</button>
+          <div class="group-chat-title-wrap">
+            <h2 id="group-chat-title">Group chat</h2>
+            <p id="group-chat-subtitle" class="group-chat-subtitle"></p>
+          </div>
+          <button type="button" class="btn-sm group-chat-members-btn" id="group-chat-members-toggle" onclick="toggleGroupMembersPanel()">Members</button>
+        </div>
+        <div class="group-chat-body">
+          <div id="group-chat-messages" class="group-chat-messages"><div class="loading">Loading chat…</div></div>
+          <aside id="group-chat-members-panel" class="group-chat-members-panel hidden">
+            <h3>Members</h3>
+            <div id="group-chat-members-list" class="group-chat-members-list"></div>
+            <div id="group-chat-add-member" class="group-chat-add-member hidden">
+              <h4>Add member</h4>
+              <p class="host-hint">Enter a student's Scholaxia email.</p>
+              <div class="group-chat-add-row">
+                <input type="email" id="group-add-email" placeholder="student@email.com" />
+                <button type="button" class="btn-action btn-sm" onclick="addGroupMemberByEmail()">Add</button>
+              </div>
+            </div>
+          </aside>
+        </div>
+        <div class="group-chat-compose">
+          <input type="text" id="group-chat-input" placeholder="Message the group…" onkeydown="if(event.key==='Enter')sendGroupChatMessage()" />
+          <button type="button" class="btn-action" onclick="sendGroupChatMessage()">Send</button>
+        </div>
+      </div>
     </section>
 
 
@@ -933,6 +1000,7 @@
 <script src="js/live-payment.js"></script>
 <script src="js/access-codes.js"></script>
 <script src="js/groups.js"></script>
+<script src="js/group-chat.js"></script>
 <script src="js/library.js"></script>
 <script src="js/saved-live.js"></script>
 <script src="js/app.js"></script>

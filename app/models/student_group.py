@@ -50,3 +50,14 @@ class StudentGroupJoinRequest(Base):
     status: Mapped[StudentGroupJoinStatus] = mapped_column(Enum(StudentGroupJoinStatus), default=StudentGroupJoinStatus.pending)
     message: Mapped[str] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class StudentGroupMessage(Base):
+    """Group chat messages — visible to members only."""
+    __tablename__ = "student_group_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    group_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("student_groups.id"), index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), index=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

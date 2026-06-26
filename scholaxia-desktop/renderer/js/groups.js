@@ -1,5 +1,5 @@
 /**
- * Groups tab — student groups + school groups (teacher-added).
+ * Groups tab — student groups + school groups + feed integration.
  */
 (function () {
   function escHtml(s) {
@@ -8,6 +8,55 @@
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
+  }
+
+  function safeId(id) {
+    return String(id || "").replace(/'/g, "\\'");
+  }
+
+  function renderGroupCard(g, opts) {
+    opts = opts || {};
+    var gid = safeId(g.id);
+    var initial = (g.name || "G").charAt(0).toUpperCase();
+    var members = g.member_count != null ? g.member_count : 0;
+    var meta = escHtml(g.description || "Student study group") +
+      " · " + members + " member" + (members === 1 ? "" : "s");
+    if (g.creator_name && opts.showCreator) meta += " · by " + escHtml(g.creator_name);
+
+    var actions = "";
+    if (g.is_member) {
+      actions =
+        '<button type="button" class="btn-action btn-sm group-open-chat" onclick="openGroupChat(\'' + gid + '\')">Open chat</button>';
+      if (g.is_admin && !g.is_community_listed) {
+        actions += '<button type="button" class="btn-sm" onclick="promoteGroupToCommunity(\'' + gid + '\')">List in feed</button>';
+      }
+      if (g.is_admin) {
+        actions += '<button type="button" class="btn-sm" onclick="viewGroupRequests(\'' + gid + '\')">Requests</button>';
+      }
+    } else if (g.pending_request) {
+      actions = '<span class="group-status-pill pending">Request pending</span>';
+    } else if (opts.allowJoin) {
+      actions =
+        '<button type="button" class="btn-action btn-sm" onclick="requestJoinGroup(\'' + gid + '\')">Join group</button>';
+    }
+
+    var badges = "";
+    if (g.is_admin) badges += '<span class="group-badge admin">Admin</span>';
+    if (g.is_community_listed) badges += '<span class="group-badge listed">In feed</span>';
+
+    var clickable = g.is_member
+      ? ' group-card-clickable" onclick="openGroupChat(\'' + gid + '\')" role="button" tabindex="0"'
+      : '"';
+
+    return (
+      '<article class="group-card-v2' + clickable + '>' +
+      '<div class="group-card-icon">' + escHtml(initial) + "</div>" +
+      '<div class="group-card-body">' +
+      '<div class="group-card-top"><h4>' + escHtml(g.name) + "</h4>" + badges + "</div>" +
+      '<p class="group-card-meta">' + meta + "</p>" +
+      '<div class="group-card-actions" onclick="event.stopPropagation()">' + actions + "</div>" +
+      "</div></article>"
+    );
   }
 
   async function loadGroupsPage() {
@@ -24,66 +73,43 @@
       var listed = await api("/api/v1/student-groups/community-listed") || [];
 
       if (communityEl) {
-        if (!listed.length) {
-          communityEl.innerHTML = '<p class="host-hint">No groups listed yet. Create a group and tap <strong>List in Community</strong>.</p>';
+        var discover = listed.filter(function (g) { return !g.is_member; });
+        if (!discover.length) {
+          communityEl.innerHTML = '<p class="groups-empty-hint">No open groups right now. Create one and list it in the feed!</p>';
         } else {
-          communityEl.innerHTML = listed.map(function (g) {
-            var action = "";
-            if (g.is_member) {
-              action = g.is_admin
-                ? ' <span class="access-code-pill">Admin · Listed</span>'
-                : ' <span class="host-hint">Member</span>';
-            } else if (g.pending_request) {
-              action = '<span class="host-hint">Request pending</span>';
-            } else {
-              action = '<button type="button" class="btn-sm" onclick="requestJoinGroup(\'' + escHtml(g.id) + '\')">Request to join</button>';
-            }
-            return (
-              '<div class="group-card">' +
-              "<strong>" + escHtml(g.name) + "</strong>" +
-              "<p>" + escHtml(g.description || "") + " · by " + escHtml(g.creator_name || "Student") + "</p>" +
-              action +
-              "</div>"
-            );
+          communityEl.innerHTML = discover.map(function (g) {
+            return renderGroupCard(g, { allowJoin: true, showCreator: true });
           }).join("");
         }
       }
 
       if (mineEl) {
         if (!mine.length) {
-          mineEl.innerHTML = '<p class="host-hint">You have not joined any student groups yet. Create one below or discover groups in Community.</p>';
+          mineEl.innerHTML = '<p class="groups-empty-hint">You have not created or joined a group yet. Use the form above to start one.</p>';
         } else {
           mineEl.innerHTML = mine.map(function (g) {
-            return (
-              '<div class="group-card">' +
-              "<strong>" + escHtml(g.name) + "</strong>" +
-              (g.is_admin ? ' <span class="access-code-pill">Admin</span>' : "") +
-              "<p>" + escHtml(g.description || "") + "</p>" +
-              (g.is_admin ? '<button type="button" class="btn-sm" onclick="viewGroupRequests(\'' + escHtml(g.id) + '\')">Pending requests</button>' : "") +
-              (g.is_admin && !g.is_community_listed ? '<button type="button" class="btn-sm" onclick="promoteGroupToCommunity(\'' + escHtml(g.id) + '\')">List in Community</button>' : "") +
-              (g.is_community_listed ? ' <span class="access-code-pill">In Community</span>' : "") +
-              "</div>"
-            );
+            return renderGroupCard(g, { allowJoin: false, showCreator: false });
           }).join("");
         }
       }
 
       if (schoolEl) {
         if (!school.length) {
-          schoolEl.innerHTML = '<p class="host-hint">Your school adds you to groups — you cannot join school groups yourself.</p>';
+          schoolEl.innerHTML = '<p class="groups-empty-hint">Your school adds you to groups — you cannot join school groups yourself.</p>';
         } else {
           schoolEl.innerHTML = school.map(function (g) {
             return (
-              '<div class="group-card group-card-school">' +
-              "<strong>" + escHtml(g.school_name) + " — " + escHtml(g.name) + "</strong>" +
-              "<p>Teacher: " + escHtml(g.teacher_name) + " · " + g.member_count + " students</p>" +
-              "<p class=\"host-hint\">Live class codes for this group appear in Access Code tab.</p>" +
-              "</div>"
+              '<article class="group-card-v2 group-card-school">' +
+              '<div class="group-card-icon school">&#127979;</div>' +
+              '<div class="group-card-body">' +
+              '<div class="group-card-top"><h4>' + escHtml(g.school_name) + " — " + escHtml(g.name) + "</h4></div>" +
+              '<p class="group-card-meta">Teacher: ' + escHtml(g.teacher_name) + " · " + g.member_count + " students</p>" +
+              '<p class="host-hint">Live class codes appear in Access Code tab.</p>' +
+              "</div></article>"
             );
           }).join("");
         }
       }
-
     } catch (e) {
       if (mineEl) mineEl.innerHTML = '<p class="error-hint">' + escHtml(e.message) + "</p>";
     }
@@ -92,25 +118,34 @@
   async function createStudentGroup() {
     var name = document.getElementById("new-group-name");
     var desc = document.getElementById("new-group-desc");
+    var listFeed = document.getElementById("new-group-list-feed");
     var n = name ? name.value.trim() : "";
     if (!n) {
       alert("Enter a group name.");
       return;
     }
+    var listInFeed = listFeed ? listFeed.checked : false;
     try {
-      await api("/api/v1/student-groups/", {
+      var created = await api("/api/v1/student-groups/", {
         method: "POST",
         body: JSON.stringify({
           name: n,
           description: desc ? desc.value.trim() : "",
           is_public: true,
-          is_community_listed: false,
+          is_community_listed: listInFeed,
         }),
       });
       if (name) name.value = "";
       if (desc) desc.value = "";
-      alert("Group created — you are the admin.");
       loadGroupsPage();
+      if (typeof loadCommunity === "function") loadCommunity();
+      if (listInFeed && created && created.id) {
+        if (confirm("Group created and posted to the feed. Open chat room now?")) {
+          openGroupChat(created.id, { id: created.id, name: n, is_member: true, is_admin: true, member_count: 1 });
+        }
+      } else if (confirm("Group created. Open chat room now?")) {
+        openGroupChat(created.id, { id: created.id, name: n, is_member: true, is_admin: true, member_count: 1 });
+      }
     } catch (e) {
       alert(e.message || "Could not create group.");
     }
@@ -122,22 +157,24 @@
         method: "POST",
         body: JSON.stringify({ message: "I would like to join this group." }),
       });
-      alert((res && res.message) || "Request sent.");
+      alert((res && res.message) || "Join request sent. The admin will approve you.");
       loadGroupsPage();
+      if (typeof loadCommunity === "function") loadCommunity();
     } catch (e) {
       alert(e.message || "Could not send request.");
     }
   };
 
   window.promoteGroupToCommunity = async function (groupId) {
-    if (!confirm("List this group in Community so other students can request to join? You must approve each member.")) return;
+    if (!confirm("Post this group to the Community feed so others can join?")) return;
     try {
       await api("/api/v1/student-groups/" + groupId + "/community-list", {
         method: "PATCH",
         body: JSON.stringify({ is_community_listed: true }),
       });
-      alert("Group is now visible in the Community Groups tab.");
+      alert("Group is now on the Community feed.");
       loadGroupsPage();
+      if (typeof loadCommunity === "function") loadCommunity();
     } catch (e) {
       alert(e.message || "Could not update group.");
     }
@@ -150,11 +187,18 @@
         alert("No pending join requests.");
         return;
       }
-      var msg = reqs.map(function (r) { return r.name + (r.message ? " — " + r.message : ""); }).join("\n");
-      var pick = prompt("Pending requests:\n" + msg + "\n\nPaste request ID to approve (first: " + reqs[0].id + "):", reqs[0].id);
+      var lines = reqs.map(function (r, i) {
+        return (i + 1) + ". " + r.name + (r.message ? " — " + r.message : "");
+      }).join("\n");
+      var pick = prompt("Pending requests:\n" + lines + "\n\nEnter number to approve (1-" + reqs.length + "):", "1");
       if (!pick) return;
-      await api("/api/v1/student-groups/" + groupId + "/join-requests/" + pick.trim() + "/approve", { method: "POST" });
-      alert("Student approved.");
+      var idx = parseInt(pick, 10) - 1;
+      if (idx < 0 || idx >= reqs.length) {
+        alert("Invalid choice.");
+        return;
+      }
+      await api("/api/v1/student-groups/" + groupId + "/join-requests/" + reqs[idx].id + "/approve", { method: "POST" });
+      alert("Student approved and added to the group.");
       loadGroupsPage();
     } catch (e) {
       alert(e.message || "Could not load requests.");

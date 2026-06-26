@@ -22,6 +22,15 @@ from app.services.notification_service import (
     send_channel_members_notification,
 )
 from app.services.media_service import upload_file
+from app.services.group_community import parse_group_post
+from app.models.student_group import (
+    StudentGroup,
+    StudentGroupMember,
+    StudentGroupJoinRequest,
+    StudentGroupJoinStatus,
+    StudentGroupMemberRole,
+)
+from sqlalchemy import func
 
 import re
 
@@ -691,7 +700,52 @@ async def _fetch_channel_posts(
         liked_ids = {str(l.post_id) for l in likes_result.scalars().all()}
 
     viewer_id = current_user["sub"]
-    return [_serialize_post(p, users_map, liked_ids, viewer_id, current_user.get("role")) for p in posts]
+    serialized = [_serialize_post(p, users_map, liked_ids, viewer_id, current_user.get("role")) for p in posts]
+    return await _enrich_group_posts(serialized, viewer_id, db)
+
+
+async def _enrich_group_posts(posts: list[dict], viewer_id: str, db: AsyncSession) -> list[dict]:
+    uid = parse_uuid(viewer_id)
+    for p in posts:
+        gid, extra = parse_group_post(p.get("content") or "")
+        if not gid:
+            continue
+        try:
+            group_uuid = parse_uuid(gid)
+        except Exception:
+            continue
+        grp_res = await db.execute(select(StudentGroup).where(StudentGroup.id == group_uuid))
+        grp = grp_res.scalar_one_or_none()
+        if not grp:
+            continue
+        mem_res = await db.execute(
+            select(StudentGroupMember).where(
+                StudentGroupMember.group_id == group_uuid,
+                StudentGroupMember.user_id == uid,
+            )
+        )
+        member = mem_res.scalar_one_or_none()
+        pending_res = await db.execute(
+            select(StudentGroupJoinRequest).where(
+                StudentGroupJoinRequest.group_id == group_uuid,
+                StudentGroupJoinRequest.user_id == uid,
+                StudentGroupJoinRequest.status == StudentGroupJoinStatus.pending,
+            )
+        )
+        count_res = await db.execute(
+            select(func.count()).select_from(StudentGroupMember).where(
+                StudentGroupMember.group_id == group_uuid
+            )
+        )
+        p["post_type"] = "group"
+        p["group_id"] = gid
+        p["group_name"] = grp.name
+        p["group_description"] = grp.description or extra
+        p["group_member_count"] = int(count_res.scalar() or 0)
+        p["group_is_member"] = member is not None
+        p["group_is_admin"] = member is not None and member.role == StudentGroupMemberRole.admin
+        p["group_pending_request"] = pending_res.scalar_one_or_none() is not None
+    return posts
 
 
 @router.get("/feed")
