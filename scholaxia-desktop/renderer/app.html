@@ -565,6 +565,10 @@
           <header class="discord-main-head" id="discord-main-head">
             <span class="discord-channel-hash">#</span>
             <span id="discord-channel-title">general</span>
+            <div class="discord-head-actions">
+              <button type="button" id="discord-group-edit-btn" class="discord-head-btn hidden" onclick="discordEditGroupMenu()" title="Edit group">Edit group</button>
+              <button type="button" id="discord-theme-toggle" class="discord-head-btn" onclick="toggleDiscordTheme()" title="Light / dark mode">🌙</button>
+            </div>
           </header>
           <div id="discord-messages" class="discord-messages"></div>
           <footer class="discord-composer" id="discord-composer">
@@ -602,20 +606,12 @@
     <!-- Profile -->
 
     <section id="page-study-materials" class="page">
-      <div class="portal-embed-wrap">
+      <div class="study-materials-page">
         <div class="portal-embed-head portal-embed-head-slim">
           <span class="portal-pill">Study Materials</span>
-          <p>Buy comprehensive study materials for JAMB, WAEC, NECO and all subjects.</p>
+          <p>Materials posted by Scholaxia admin — read in your Library.</p>
         </div>
-        <iframe
-          id="study-materials-frame"
-          class="portal-embed-frame"
-          title="Scholaxia Study Materials"
-          src="https://www.scholaxiacbtexam.blog/buy-materials"
-          loading="lazy"
-          referrerpolicy="no-referrer-when-downgrade"
-          allow="fullscreen; payment"
-        ></iframe>
+        <div id="study-materials-list" class="study-materials-list"><div class="loading">Loading materials…</div></div>
       </div>
     </section>
 

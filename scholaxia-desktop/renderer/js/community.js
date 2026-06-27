@@ -5,6 +5,7 @@ var communityPendingPost = null;
 var communityActiveTab = "feed";
 var COMMUNITY_CHANNEL_KEY = "sia_community_channel_id";
 var COMMUNITY_POSTS_CACHE_KEY = "sia_community_posts_cache";
+var COMMUNITY_ANNOUNCEMENTS_CACHE_KEY = "sia_community_announcements_cache";
 var COMMUNITY_DRAFT_KEY = "sia_community_compose_draft";
 var POST_COMMENT_RE = /^@post:([^\s]+)\s*([\s\S]*)$/;
 var GROUP_POST_RE = /^@group:([^\s]+)(?:\s+([\s\S]*))?$/;
@@ -47,12 +48,28 @@ function updatePostInCache(postId, patch) {
 }
 
 function showFeedSkeleton(targetEl) {
+  if (document.getElementById("discord-hub")) return;
   var feed = targetEl || document.getElementById("community-feed");
   if (!feed) return;
   feed.innerHTML =
-    '<div class="feed-skeleton" aria-busy="true" aria-label="Loading posts">' +
-    '<div class="skel-card"></div><div class="skel-card skel-short"></div><div class="skel-card"></div>' +
-    '<p class="skel-label">Loading community…</p></div>';
+    '<div class="feed-skeleton feed-skeleton-min" aria-busy="true" aria-label="Loading posts">' +
+    '<div class="skel-card"></div><div class="skel-card skel-short"></div></div>';
+}
+
+function loadAnnouncementsCache() {
+  try {
+    var raw = localStorage.getItem(COMMUNITY_ANNOUNCEMENTS_CACHE_KEY);
+    if (!raw) return null;
+    var data = JSON.parse(raw);
+    return data && Array.isArray(data.posts) ? data.posts : null;
+  } catch (e) { return null; }
+}
+
+function saveAnnouncementsCache(posts) {
+  if (!posts || !posts.length) return;
+  try {
+    localStorage.setItem(COMMUNITY_ANNOUNCEMENTS_CACHE_KEY, JSON.stringify({ saved_at: Date.now(), posts: posts }));
+  } catch (e) { /* ignore */ }
 }
 
 function showGroupsSkeleton(el) {
@@ -574,7 +591,8 @@ async function loadCommunity(newPost) {
   return loadCommunityLegacy(newPost);
 }
 
-async function loadCommunityPostsFeed(newPost) {
+async function loadCommunityPostsFeed(newPost, opts) {
+  opts = opts || {};
   var feed = document.getElementById("community-feed");
   if (!feed) return;
   window.communityPostUiMode = window.communityPostUiMode || "emoji";
@@ -591,19 +609,23 @@ async function loadCommunityPostsFeed(newPost) {
   } else if (newPost) {
     renderCommunityPosts([newPost]);
     showingCache = true;
-  } else {
+  } else if (!opts.silent) {
     showFeedSkeleton(feed);
   }
 
   try {
-    if (typeof warmScholaxiaApi === "function") await warmScholaxiaApi().catch(function () {});
-    var channelId = await ensureCommunityChannel();
+    if (!opts.skipWarm && typeof warmScholaxiaApi === "function") {
+      warmScholaxiaApi().catch(function () {});
+    }
+    var channelId = communityChannelId;
+    if (!channelId) channelId = await ensureCommunityChannel();
     if (!channelId) {
       feed.classList.remove("feed-refreshing");
       if (!showingCache) feed.innerHTML = '<div class="empty">Community is not set up yet.</div>';
       return;
     }
-    var posts = await fetchCommunityPosts({ includeGroups: false });
+    var apiFn = opts.silent && typeof api === "function" ? api : (typeof apiRetry === "function" ? apiRetry : api);
+    var posts = await fetchCommunityPostsFast({ includeGroups: false, apiFn: apiFn, attempts: opts.silent ? 1 : 2 });
     if (newPost) posts = prependNewPost(posts, newPost);
     posts = mergePostsWithCache(posts, cachedSocial);
     feed.classList.remove("feed-refreshing");
@@ -618,11 +640,91 @@ async function loadCommunityPostsFeed(newPost) {
   } catch (e) {
     feed.classList.remove("feed-refreshing");
     if (showingCache) return;
-    var msg = /failed to fetch|timed out/i.test(e.message || "")
-      ? "Could not reach the server yet. Tap Refresh — the server may be waking up."
-      : e.message;
-    feed.innerHTML = '<div class="empty">' + escHtml(msg) + '</div>';
+    if (newPost) {
+      renderCommunityPosts([newPost]);
+      return;
+    }
+    var msg = typeof networkErrorMessage === "function" ? networkErrorMessage(e) : e.message;
+    feed.innerHTML = '<div class="empty">' + escHtml(msg) + "</div>";
   }
+}
+
+async function fetchCommunityPostsFast(opts) {
+  opts = opts || {};
+  var includeGroups = opts.includeGroups !== false;
+  var apiFn = opts.apiFn || api;
+  var attempts = { attempts: opts.attempts || 2, skipWarm: true };
+  await ensureCommunityChannel();
+  var channelId = communityChannelId;
+  var feedPromise = apiFn("/api/v1/community/feed?limit=50", attempts).catch(function () {
+    if (!channelId) return [];
+    return apiFn("/api/v1/community/posts?channel_id=" + channelId + "&limit=50", attempts).catch(function () { return []; });
+  });
+  var commentsPromise = channelId ? fetchPostCommentsFast(apiFn) : Promise.resolve({});
+  var listedPromise = includeGroups
+    ? apiFn("/api/v1/student-groups/community-listed", { attempts: 1, skipWarm: true }).catch(function () { return []; })
+    : Promise.resolve([]);
+  var results = await Promise.all([feedPromise, commentsPromise, listedPromise]);
+  var posts = results[0] || [];
+  var commentsByPost = results[1] || {};
+  var listed = results[2] || [];
+  posts = (posts || []).filter(function (p) { return !isPostComment(p.content); });
+  posts = attachComments(posts, commentsByPost);
+  if (includeGroups) {
+    var seenGroups = {};
+    posts.forEach(function (p) {
+      var gid = groupPostIdFromPost(p);
+      if (gid) seenGroups[gid] = true;
+    });
+    listed.forEach(function (g) {
+      if (!g.id || seenGroups[g.id]) return;
+      posts.push({
+        id: "group-feed-" + g.id,
+        card_key: "group-feed-" + g.id,
+        post_type: "group",
+        group_id: g.id,
+        group_name: g.name,
+        group_description: g.description,
+        group_member_count: g.member_count,
+        group_is_member: g.is_member,
+        group_is_admin: g.is_admin,
+        group_pending_request: g.pending_request,
+        author_name: g.creator_name || "Student",
+        created_at: g.created_at || new Date().toISOString(),
+        content: "@group:" + g.id + (g.description ? " " + g.description : ""),
+        like_count: 0,
+        liked_by_me: false,
+        comments: [],
+      });
+    });
+  } else {
+    posts = posts.filter(function (p) { return !isGroupPost(p); });
+  }
+  posts.sort(function (a, b) {
+    return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+  });
+  return posts;
+}
+
+async function fetchPostCommentsFast(apiFn) {
+  apiFn = apiFn || api;
+  var commentsByPost = {};
+  if (!communityChannelId) return commentsByPost;
+  try {
+    var messages = await apiFn(
+      "/api/v1/community/messages?channel_id=" + encodeURIComponent(communityChannelId) + "&limit=120",
+      { attempts: 1, skipWarm: true }
+    );
+    ingestCommentItems(commentsByPost, messages, "sender_name");
+  } catch (e) { /* optional */ }
+  try {
+    var replyPosts = await apiFn(
+      "/api/v1/community/post-comments?channel_id=" + encodeURIComponent(communityChannelId) + "&limit=120",
+      { attempts: 1, skipWarm: true }
+    );
+    ingestCommentItems(commentsByPost, replyPosts, "author_name");
+  } catch (e) { /* optional */ }
+  return commentsByPost;
 }
 
 async function loadCommunityLegacy(newPost) {
@@ -678,10 +780,8 @@ async function loadCommunityLegacy(newPost) {
       saveCommunityCache([newPost]);
       return;
     }
-    var msg = /failed to fetch|timed out/i.test(e.message || "")
-      ? "Could not reach the server yet. Tap Refresh — the server may be waking up."
-      : e.message;
-    feed.innerHTML = '<div class="empty">' + escHtml(msg) + '</div>';
+    var msg = typeof networkErrorMessage === "function" ? networkErrorMessage(e) : e.message;
+    feed.innerHTML = '<div class="empty">' + escHtml(msg) + "</div>";
   }
 }
 
@@ -690,8 +790,20 @@ async function prefetchCommunityFeed() {
   try {
     if (typeof warmScholaxiaApi === "function") await warmScholaxiaApi().catch(function () {});
     await ensureCommunityChannel();
-    var posts = await fetchCommunityPosts();
+    var apiFn = typeof api === "function" ? api : null;
+    if (!apiFn) return;
+    var posts = await fetchCommunityPostsFast({ includeGroups: false, apiFn: apiFn, attempts: 2 });
     if (posts && posts.length) saveCommunityCache(posts);
+    apiFn("/api/v1/community/announcements?limit=40", { attempts: 1, skipWarm: true })
+      .then(function (ann) { if (ann && ann.length) saveAnnouncementsCache(ann); })
+      .catch(function () {});
+    apiFn("/api/v1/student-groups/mine", { attempts: 1, skipWarm: true })
+      .then(function (groups) {
+        if (groups && groups.length) {
+          try { localStorage.setItem("sia_groups_cache", JSON.stringify(groups)); } catch (e) { /* ignore */ }
+        }
+      })
+      .catch(function () {});
   } catch (e) { /* background warm-up */ }
 }
 
@@ -932,30 +1044,44 @@ async function loadCommunityAnnouncements() {
   var el = document.getElementById("community-announcements");
   if (!el) return;
   window.communityPostUiMode = "comments";
-  el.innerHTML = '<div class="loading">Loading announcements…</div>';
+  var cachedAnn = loadAnnouncementsCache();
+  var showingCache = false;
+  if (cachedAnn && cachedAnn.length) {
+    renderCommunityPosts(cachedAnn, el);
+    showingCache = true;
+    el.classList.add("feed-refreshing");
+  }
   try {
     var posts = await api("/api/v1/community/announcements?limit=40");
+    el.classList.remove("feed-refreshing");
     if (!posts || !posts.length) {
-      el.innerHTML = '<div class="empty">No announcements from your teachers yet.</div>';
+      if (!showingCache) el.innerHTML = '<div class="empty">No announcements from your teachers yet.</div>';
       return;
     }
+    saveAnnouncementsCache(posts);
     renderCommunityPosts(posts, el);
   } catch (e) {
     try {
       var channels = await api("/api/v1/community/channels");
       var ann = (channels || []).find(function (c) { return c.type === "teacher_announcement"; });
       if (!ann) {
-        el.innerHTML = '<div class="empty">No announcement channel yet.</div>';
+        el.classList.remove("feed-refreshing");
+        if (!showingCache) el.innerHTML = '<div class="empty">No announcement channel yet.</div>';
         return;
       }
       var posts = await api("/api/v1/community/posts?channel_id=" + encodeURIComponent(ann.id) + "&limit=40");
+      el.classList.remove("feed-refreshing");
       if (!posts || !posts.length) {
-        el.innerHTML = '<div class="empty">No announcements from your teachers yet.</div>';
+        if (!showingCache) el.innerHTML = '<div class="empty">No announcements from your teachers yet.</div>';
         return;
       }
+      saveAnnouncementsCache(posts);
       renderCommunityPosts(posts, el);
     } catch (e2) {
-      el.innerHTML = '<div class="empty">' + escHtml(e2.message || e.message) + '</div>';
+      el.classList.remove("feed-refreshing");
+      if (showingCache) return;
+      var msg = typeof networkErrorMessage === "function" ? networkErrorMessage(e2) : (e2.message || e.message);
+      el.innerHTML = '<div class="empty">' + escHtml(msg) + "</div>";
     }
   }
 }
@@ -981,6 +1107,8 @@ function clearCommunityVoice() {
 }
 
 window.prefetchCommunityFeed = prefetchCommunityFeed;
+window.loadAnnouncementsCache = loadAnnouncementsCache;
+window.saveAnnouncementsCache = saveAnnouncementsCache;
 window.showCommunityTab = showCommunityTab;
 window.showGroupsSkeleton = showGroupsSkeleton;
 window.clearCommunityVoice = clearCommunityVoice;

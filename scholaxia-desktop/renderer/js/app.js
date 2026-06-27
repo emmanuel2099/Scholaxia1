@@ -758,6 +758,43 @@ async function loadDashboard(force) {
   if (typeof renderHomeSkillsPreview === "function") renderHomeSkillsPreview();
 }
 
+async function loadStudyMaterials() {
+  var el = document.getElementById("study-materials-list");
+  if (!el) return;
+  if (!isStudentLoggedIn()) {
+    el.innerHTML = '<div class="empty">Sign in to see study materials posted by admin.</div>';
+    return;
+  }
+  el.innerHTML = '<div class="loading">Loading materials…</div>';
+  try {
+    var rows = await api("/api/v1/recommendations/feed");
+    if (!rows || !rows.length) {
+      el.innerHTML = '<div class="empty">No study materials yet. Admin will post materials here soon.</div>';
+      return;
+    }
+    el.innerHTML = rows.map(function (r) {
+      var cover = r.cover_image_url
+        ? '<img class="study-mat-cover" src="' + escHtml(r.cover_image_url) + '" alt="" />'
+        : '<div class="study-mat-cover study-mat-cover-ph">&#128218;</div>';
+      var action = "";
+      if (r.book_id) {
+        action = '<button type="button" class="btn-action btn-sm" onclick="showPage(\'library\')">Read in Library</button>';
+      }
+      return (
+        '<article class="study-mat-card">' + cover +
+        '<div class="study-mat-body"><h4>' + escHtml(r.title || "Material") + '</h4>' +
+        (r.author ? '<p class="study-mat-meta">' + escHtml(r.author) + "</p>" : "") +
+        (r.description ? '<p class="study-mat-desc">' + escHtml(r.description) + "</p>" : "") +
+        (action ? '<div class="study-mat-actions">' + action + "</div>" : "") +
+        "</div></article>"
+      );
+    }).join("");
+  } catch (e) {
+    var msg = typeof networkErrorMessage === "function" ? networkErrorMessage(e) : e.message;
+    el.innerHTML = '<div class="empty">' + escHtml(msg) + "</div>";
+  }
+}
+
 function dedupeLiveSessions(sessions) {
   var seen = {};
   return (sessions || []).filter(function (s) {
@@ -872,7 +909,7 @@ function refreshPage() {
     done();
   } else if (currentPage === "school") { loadSchoolExams(); done(); }
   else if (currentPage === "school-portal") { /* static */ done(); }
-  else if (currentPage === "study-materials") { /* embedded buy materials */ done(); }
+  else if (currentPage === "study-materials") { loadStudyMaterials(); done(); }
   else if (currentPage === "past-questions") { /* embedded past questions */ done(); }
   else if (currentPage === "about") { done(); }
   else if (currentPage === "contact") { initAppContactForm(); done(); }
@@ -1025,7 +1062,8 @@ async function loadLive(quiet) {
     }
   } catch (e) {
     if (!quiet && !_liveSessionsCache.live.length) {
-      document.getElementById("live-grid").innerHTML = `<div class="empty">${escHtml(e.message)}</div>`;
+      var liveMsg = typeof networkErrorMessage === "function" ? networkErrorMessage(e) : e.message;
+      document.getElementById("live-grid").innerHTML = `<div class="empty">${escHtml(liveMsg)}</div>`;
     }
   }
 }
@@ -1154,7 +1192,9 @@ async function loadSchoolExams() {
     schoolExams = data.school_exams || [];
     renderSchoolGrid();
   } catch (e) {
-    const msg = e.message.includes("setup") ? `${e.message} Go to Profile to complete setup.` : e.message;
+    var msg = e.message && e.message.includes("setup")
+      ? e.message + " Go to Profile to complete setup."
+      : (typeof networkErrorMessage === "function" ? networkErrorMessage(e) : e.message);
     document.getElementById("school-grid").innerHTML = `<div class="empty">${escHtml(msg)}</div>`;
   }
 }
@@ -1260,7 +1300,9 @@ async function loadCbtExams() {
       }
     }
     if (!profileComplete) {
-      const msg = e.message.includes("setup") ? `${e.message} Go to Profile to complete setup.` : e.message;
+      var msg = e.message && e.message.includes("setup")
+        ? e.message + " Go to Profile to complete setup."
+        : (typeof networkErrorMessage === "function" ? networkErrorMessage(e) : e.message);
       document.getElementById("cbt-grid").innerHTML = `<div class="empty">${escHtml(msg)}</div>`;
       return;
     }

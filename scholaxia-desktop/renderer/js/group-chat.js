@@ -103,10 +103,8 @@
       }
       var el = document.getElementById("group-chat-messages");
       if (el) {
-        el.innerHTML =
-          '<div class="group-chat-retry">' +
-          '<p>' + escHtml(/failed to fetch|timed out/i.test(e.message || "") ? "Server is waking up…" : e.message) + "</p>" +
-          '<button type="button" class="btn-sm" onclick="loadGroupChatPage()">Try again</button></div>';
+        var offline = typeof networkErrorMessage === "function" ? networkErrorMessage(e) : e.message;
+        el.innerHTML = '<div class="group-chat-retry"><p>' + escHtml(offline) + "</p></div>";
       }
     }
   }
@@ -169,9 +167,8 @@
     } catch (e) {
       var msgsEl = document.getElementById("group-chat-messages");
       if (msgsEl) {
-        msgsEl.innerHTML =
-          '<div class="group-chat-retry"><p>' + escHtml(e.message) + '</p>' +
-          '<button type="button" class="btn-sm" onclick="openGroupChat(\'' + String(groupId).replace(/'/g, "\\'") + '\')">Try again</button></div>';
+        var offline = typeof networkErrorMessage === "function" ? networkErrorMessage(e) : e.message;
+        msgsEl.innerHTML = '<div class="group-chat-retry"><p>' + escHtml(offline) + "</p></div>";
       }
     }
   }

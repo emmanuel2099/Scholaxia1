@@ -5,6 +5,8 @@
   var pollTimer = null;
   var booted = false;
   var loading = false;
+  var GROUPS_CACHE_KEY = "sia_groups_cache";
+  var GROUP_POSTS_CACHE_PREFIX = "sia_group_posts_";
 
   var state = {
     server: "scholaxia",
@@ -26,6 +28,68 @@
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
+  }
+
+  function errMsg(e) {
+    return typeof networkErrorMessage === "function" ? networkErrorMessage(e) : (e && e.message) || "Error";
+  }
+
+  function loadGroupsFromCache() {
+    try {
+      var raw = localStorage.getItem(GROUPS_CACHE_KEY);
+      if (!raw) return [];
+      return JSON.parse(raw) || [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveGroupsCache(groups) {
+    try {
+      localStorage.setItem(GROUPS_CACHE_KEY, JSON.stringify(groups || []));
+    } catch (e) { /* ignore */ }
+  }
+
+  function loadGroupPostsFromCache(groupId) {
+    try {
+      var raw = localStorage.getItem(GROUP_POSTS_CACHE_PREFIX + groupId);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function saveGroupPostsCache(groupId, posts) {
+    try {
+      localStorage.setItem(GROUP_POSTS_CACHE_PREFIX + groupId, JSON.stringify({ saved_at: Date.now(), posts: posts || [] }));
+    } catch (e) { /* ignore */ }
+  }
+
+  window.toggleDiscordTheme = function () {
+    var page = document.getElementById("page-community");
+    var btn = document.getElementById("discord-theme-toggle");
+    if (!page) return;
+    var next = page.getAttribute("data-community-theme") === "light" ? "dark" : "light";
+    page.setAttribute("data-community-theme", next);
+    try { localStorage.setItem("sia_community_theme", next); } catch (e) { /* ignore */ }
+    if (btn) btn.textContent = next === "light" ? "☀️" : "🌙";
+  };
+
+  window.discordEditGroupMenu = function (groupId) {
+    var gid = groupId || state.groupId;
+    if (!gid) return;
+    var choice = prompt("Edit group:\n1 = Rename\n2 = Delete\n\nType 1 or 2:");
+    if (choice === "1") window.discordRenameGroup(gid);
+    else if (choice === "2") window.discordDeleteGroup(gid);
+  };
+
+  function applySavedTheme() {
+    var page = document.getElementById("page-community");
+    var btn = document.getElementById("discord-theme-toggle");
+    var theme = "dark";
+    try { theme = localStorage.getItem("sia_community_theme") || "dark"; } catch (e) { /* ignore */ }
+    if (page) page.setAttribute("data-community-theme", theme);
+    if (btn) btn.textContent = theme === "light" ? "☀️" : "🌙";
   }
 
   function formatTime(iso) {
@@ -72,9 +136,9 @@
     }
   }
 
-  function startPoll(fn) {
+  function startPoll(fn, ms) {
     stopPoll();
-    pollTimer = setInterval(fn, 10000);
+    pollTimer = setInterval(fn, ms || 30000);
   }
 
   function scholaxiaChannels() {
@@ -98,6 +162,12 @@
     if (g.is_member) {
       if (!g.is_approved) {
         actions = '<span class="discord-group-pill">Waiting for admin approval</span>';
+        if (g.is_admin) {
+          actions +=
+            '<button type="button" class="discord-group-btn discord-group-btn-edit" onclick="discordEditGroupMenu(\'' +
+            gid +
+            '\')">Edit group</button>';
+        }
       } else {
         actions =
           '<button type="button" class="discord-group-btn discord-group-btn-primary" onclick="openGroupChat(\'' +
@@ -109,13 +179,9 @@
             gid +
             '\')">Manage requests</button>';
           actions +=
-            '<button type="button" class="discord-group-btn discord-group-btn-secondary" onclick="discordRenameGroup(\'' +
+            '<button type="button" class="discord-group-btn discord-group-btn-edit" onclick="discordEditGroupMenu(\'' +
             gid +
-            '\')">Rename</button>';
-          actions +=
-            '<button type="button" class="discord-group-btn discord-group-btn-secondary" onclick="discordDeleteGroup(\'' +
-            gid +
-            '\')">Delete</button>';
+            '\')">Edit group</button>';
         }
       }
     } else if (g.pending_request) {
@@ -214,6 +280,12 @@
     var ch = channels.find(function (c) { return c.id === state.channel; }) || channels[0];
     if (title && ch) title.textContent = ch.label;
 
+    var editBtn = document.getElementById("discord-group-edit-btn");
+    if (editBtn) {
+      var showEdit = state.server === "group" && state.groupMeta && state.groupMeta.is_admin;
+      editBtn.classList.toggle("hidden", !showEdit);
+    }
+
     var input = document.getElementById("discord-message-input");
     var composer = document.getElementById("discord-composer");
     var isReadonly =
@@ -264,31 +336,42 @@
     el.scrollTop = el.scrollHeight;
   }
 
-  async function loadGeneralPostsPanel(newPost) {
+  async function loadGeneralPostsPanel(newPost, silent) {
     var el = document.getElementById("discord-messages");
     if (!el) return;
-    el.innerHTML =
-      '<div id="community-feed" class="community-feed discord-posts-feed"><div class="loading">Loading posts…</div></div>';
+    var cached = typeof loadCommunityCache === "function" ? loadCommunityCache() : null;
+    var cachedSocial = cached && cached.posts ? cached.posts.filter(function (p) {
+      return typeof isGroupPost === "function" ? !isGroupPost(p) : true;
+    }) : [];
+    if (cachedSocial.length && typeof renderCommunityPosts === "function") {
+      el.innerHTML = '<div id="community-feed" class="community-feed discord-posts-feed feed-refreshing"></div>';
+      window.communityPostUiMode = "emoji";
+      renderCommunityPosts(newPost && typeof prependNewPost === "function" ? prependNewPost(cachedSocial, newPost) : cachedSocial);
+    } else {
+      el.innerHTML = '<div id="community-feed" class="community-feed discord-posts-feed"></div>';
+    }
     stopPoll();
     window.communityPostUiMode = "emoji";
-    if (typeof loadCommunityPostsFeed === "function") await loadCommunityPostsFeed(newPost);
+    if (typeof loadCommunityPostsFeed === "function") {
+      await loadCommunityPostsFeed(newPost, { silent: silent || !!newPost || !!cachedSocial.length, skipWarm: !!cachedSocial.length });
+    }
     startPoll(function () {
-      if (typeof loadCommunityPostsFeed === "function") loadCommunityPostsFeed(null);
-    });
+      if (typeof loadCommunityPostsFeed === "function") loadCommunityPostsFeed(null, { silent: true, skipWarm: true });
+    }, 30000);
   }
 
-  async function loadGroupPostsPanel() {
+  async function loadGroupPostsPanel(silent) {
     var el = document.getElementById("discord-messages");
     if (!state.groupId) return;
 
     try {
       if (!state.groupMeta || state.groupMeta.is_member == null) {
-        state.groupMeta = await apiFn()("/api/v1/student-groups/" + state.groupId, { attempts: 3 });
+        state.groupMeta = await apiFn()("/api/v1/student-groups/" + state.groupId, { attempts: 1, skipWarm: true });
         renderChannelList();
         updateHeader();
       }
       if (!state.groupMeta.is_member) {
-        if (el) {
+        if (el && !silent) {
           el.innerHTML =
             '<div class="discord-empty">Join this group first.<br>' +
             '<button type="button" class="discord-group-btn discord-group-btn-primary" style="margin-top:12px" onclick="discordSelectScholaxia(); discordSelectChannel(\'groups\')">Browse groups</button></div>';
@@ -297,7 +380,7 @@
         return;
       }
       if (!state.groupMeta.is_approved) {
-        if (el) {
+        if (el && !silent) {
           el.innerHTML =
             '<div class="discord-empty">This group is waiting for admin approval. Chat opens once approved.</div>';
         }
@@ -305,81 +388,126 @@
         return;
       }
     } catch (e) {
-      if (el) el.innerHTML = '<div class="discord-error">' + escHtml(e.message) + "</div>";
+      if (el && !silent) el.innerHTML = '<div class="discord-error">' + escHtml(errMsg(e)) + "</div>";
       return;
     }
 
-    el.innerHTML =
-      '<div id="community-feed" class="community-feed discord-posts-feed"><div class="loading">Loading posts…</div></div>';
+    var cached = loadGroupPostsFromCache(state.groupId);
+    if (!silent || !document.getElementById("community-feed")) {
+      el.innerHTML = '<div id="community-feed" class="community-feed discord-posts-feed"></div>';
+    }
+    if (cached && cached.posts && cached.posts.length && typeof renderCommunityPosts === "function") {
+      window.communityPostUiMode = "comments";
+      renderCommunityPosts(cached.posts);
+    }
 
     try {
       window.communityPostUiMode = "comments";
-      if (typeof ensureCommunityChannel === "function") await ensureCommunityChannel();
       var posts = await apiFn()(
         "/api/v1/student-groups/" + state.groupId + "/posts?limit=50",
-        { attempts: 3 }
+        { attempts: silent ? 1 : 2, skipWarm: true }
       );
-      if (typeof fetchPostComments === "function" && typeof attachComments === "function") {
-        var commentsByPost = await fetchPostComments();
+      if (typeof fetchPostCommentsFast === "function" && typeof attachComments === "function") {
+        var commentsByPost = await fetchPostCommentsFast(apiFn);
         posts = attachComments(posts || [], commentsByPost);
+      } else if (typeof fetchPostComments === "function" && typeof attachComments === "function") {
+        if (typeof ensureCommunityChannel === "function") await ensureCommunityChannel().catch(function () {});
+        var commentsByPost2 = await fetchPostComments();
+        posts = attachComments(posts || [], commentsByPost2);
       }
+      saveGroupPostsCache(state.groupId, posts);
       if (typeof renderCommunityPosts === "function") renderCommunityPosts(posts || []);
-      else if (el) el.innerHTML = '<div class="discord-empty">No posts yet.</div>';
-      startPoll(function () { loadGroupPostsPanel(); });
+      else if (el && !silent) el.innerHTML = '<div class="discord-empty">No posts yet.</div>';
+      startPoll(function () { loadGroupPostsPanel(true); }, 30000);
     } catch (e) {
-      if (el) {
-        el.innerHTML =
-          '<div class="discord-error">' + escHtml(e.message || "Could not load group posts.") + "</div>";
-      }
+      if (cached && cached.posts && cached.posts.length) return;
+      if (el && !silent) el.innerHTML = '<div class="discord-error">' + escHtml(errMsg(e)) + "</div>";
     }
   }
 
-  async function loadGroupsPanel() {
+  function renderGroupsPanelContent(mine, listed) {
+    var mineEl = document.getElementById("discord-groups-mine");
+    var discoverEl = document.getElementById("discord-groups-discover");
+    if (mineEl) {
+      mineEl.innerHTML = mine.length
+        ? mine.map(function (g) { return renderGroupRow(g, { allowJoin: false }); }).join("")
+        : '<p class="discord-groups-hint">You have not joined a group yet. Create one above or join below.</p>';
+    }
+    if (discoverEl) {
+      var discover = listed.filter(function (g) { return !g.is_member; });
+      discoverEl.innerHTML = discover.length
+        ? discover.map(function (g) { return renderGroupRow(g, { allowJoin: true, showCreator: true }); }).join("")
+        : '<p class="discord-groups-hint">No open groups right now. Create one and list it for others.</p>';
+    }
+  }
+
+  async function loadGroupsPanel(silent) {
     var el = document.getElementById("discord-messages");
     if (!el) return;
-    el.innerHTML =
-      '<div class="discord-groups-panel">' +
-      '<div class="discord-groups-create">' +
-      '<input type="text" id="discord-new-group-name" placeholder="New group name" maxlength="80" />' +
-      '<input type="text" id="discord-new-group-desc" placeholder="Description (optional)" maxlength="200" />' +
-      '<label class="discord-groups-create-check"><input type="checkbox" id="discord-new-group-list" checked /> List for others to join after admin approval</label>' +
-      '<p class="discord-groups-hint" style="padding:0;margin:0;flex:1 1 100%">New groups need admin approval before they become active.</p>' +
-      '<button type="button" class="discord-group-btn discord-group-btn-primary" onclick="discordCreateGroupFromHub()">Create group</button>' +
-      "</div>" +
-      '<div class="discord-groups-section"><h3>Your groups</h3><div id="discord-groups-mine" class="discord-groups-list"><div class="loading">Loading…</div></div></div>' +
-      '<div class="discord-groups-section"><h3>Discover groups</h3><div id="discord-groups-discover" class="discord-groups-list"><div class="loading">Loading…</div></div></div>' +
-      "</div>";
+
+    var cachedMine = loadGroupsFromCache();
+    if (cachedMine.length) {
+      el.innerHTML =
+        '<div class="discord-groups-panel">' +
+        '<div class="discord-groups-create">' +
+        '<input type="text" id="discord-new-group-name" placeholder="New group name" maxlength="80" />' +
+        '<input type="text" id="discord-new-group-desc" placeholder="Description (optional)" maxlength="200" />' +
+        '<label class="discord-groups-create-check"><input type="checkbox" id="discord-new-group-list" checked /> List for others to join after admin approval</label>' +
+        '<p class="discord-groups-hint" style="padding:0;margin:0;flex:1 1 100%">New groups need admin approval before they become active.</p>' +
+        '<button type="button" class="discord-group-btn discord-group-btn-primary" onclick="discordCreateGroupFromHub()">Create group</button>' +
+        "</div>" +
+        '<div class="discord-groups-section"><h3>Your groups</h3><div id="discord-groups-mine" class="discord-groups-list"></div></div>' +
+        '<div class="discord-groups-section"><h3>Discover groups</h3><div id="discord-groups-discover" class="discord-groups-list"></div></div>' +
+        "</div>";
+      renderGroupsPanelContent(cachedMine, cachedMine);
+    } else if (!silent) {
+      el.innerHTML =
+        '<div class="discord-groups-panel">' +
+        '<div class="discord-groups-create">' +
+        '<input type="text" id="discord-new-group-name" placeholder="New group name" maxlength="80" />' +
+        '<input type="text" id="discord-new-group-desc" placeholder="Description (optional)" maxlength="200" />' +
+        '<label class="discord-groups-create-check"><input type="checkbox" id="discord-new-group-list" checked /> List for others to join after admin approval</label>' +
+        '<p class="discord-groups-hint" style="padding:0;margin:0;flex:1 1 100%">New groups need admin approval before they become active.</p>' +
+        '<button type="button" class="discord-group-btn discord-group-btn-primary" onclick="discordCreateGroupFromHub()">Create group</button>' +
+        "</div>" +
+        '<div class="discord-groups-section"><h3>Your groups</h3><div id="discord-groups-mine" class="discord-groups-list"></div></div>' +
+        '<div class="discord-groups-section"><h3>Discover groups</h3><div id="discord-groups-discover" class="discord-groups-list"></div></div>' +
+        "</div>";
+    }
     stopPoll();
 
     try {
-      if (typeof warmScholaxiaApi === "function") await warmScholaxiaApi().catch(function () {});
+      if (!silent && typeof warmScholaxiaApi === "function") warmScholaxiaApi().catch(function () {});
       var results = await Promise.all([
-        apiFn()("/api/v1/student-groups/mine", { attempts: 3 }),
-        apiFn()("/api/v1/student-groups/community-listed", { attempts: 3 }),
+        apiFn()("/api/v1/student-groups/mine", { attempts: silent ? 1 : 2, skipWarm: true }),
+        apiFn()("/api/v1/student-groups/community-listed", { attempts: silent ? 1 : 2, skipWarm: true }),
       ]);
       var mine = results[0] || [];
       var listed = results[1] || [];
+      saveGroupsCache(mine);
       state.groups = mine.filter(function (g) { return g.is_approved; });
       state.allGroups = mine;
       renderRail();
 
-      var mineEl = document.getElementById("discord-groups-mine");
-      var discoverEl = document.getElementById("discord-groups-discover");
-      if (mineEl) {
-        mineEl.innerHTML = mine.length
-          ? mine.map(function (g) { return renderGroupRow(g, { allowJoin: false }); }).join("")
-          : '<p class="discord-groups-hint">You have not joined a group yet. Create one above or join below.</p>';
-      }
-      if (discoverEl) {
-        var discover = listed.filter(function (g) { return !g.is_member; });
-        discoverEl.innerHTML = discover.length
-          ? discover.map(function (g) { return renderGroupRow(g, { allowJoin: true, showCreator: true }); }).join("")
-          : '<p class="discord-groups-hint">No open groups right now. Create one and list it for others.</p>';
-      }
-    } catch (e) {
-      if (el) {
+      if (!document.getElementById("discord-groups-mine")) {
         el.innerHTML =
-          '<div class="discord-error">' + escHtml(e.message || "Could not load groups.") + "</div>";
+          '<div class="discord-groups-panel">' +
+          '<div class="discord-groups-create">' +
+          '<input type="text" id="discord-new-group-name" placeholder="New group name" maxlength="80" />' +
+          '<input type="text" id="discord-new-group-desc" placeholder="Description (optional)" maxlength="200" />' +
+          '<label class="discord-groups-create-check"><input type="checkbox" id="discord-new-group-list" checked /> List for others to join after admin approval</label>' +
+          '<p class="discord-groups-hint" style="padding:0;margin:0;flex:1 1 100%">New groups need admin approval before they become active.</p>' +
+          '<button type="button" class="discord-group-btn discord-group-btn-primary" onclick="discordCreateGroupFromHub()">Create group</button>' +
+          "</div>" +
+          '<div class="discord-groups-section"><h3>Your groups</h3><div id="discord-groups-mine" class="discord-groups-list"></div></div>' +
+          '<div class="discord-groups-section"><h3>Discover groups</h3><div id="discord-groups-discover" class="discord-groups-list"></div></div>' +
+          "</div>";
+      }
+      renderGroupsPanelContent(mine, listed);
+    } catch (e) {
+      if (cachedMine.length) return;
+      if (el) {
+        el.innerHTML = '<div class="discord-error">' + escHtml(errMsg(e)) + "</div>";
       }
     }
   }
@@ -401,7 +529,7 @@
       await loadGroupsPanel();
       loadGroups().then(function () { renderRail(); });
     } catch (e) {
-      alert(e.message || "Could not rename group.");
+      alert(errMsg(e) || "Could not rename group.");
     }
   };
 
@@ -416,7 +544,7 @@
       await loadGroupsPanel();
       loadGroups().then(function () { renderRail(); });
     } catch (e) {
-      alert(e.message || "Could not delete group.");
+      alert(errMsg(e) || "Could not delete group.");
     }
   };
 
@@ -445,17 +573,23 @@
       await loadGroupsPanel();
       alert((created && created.message) || "Group submitted for admin approval.");
     } catch (e) {
-      alert(e.message || "Could not create group.");
+      alert(errMsg(e) || "Could not create group.");
     }
   };
 
   async function loadAnnouncementsPanel() {
     var el = document.getElementById("discord-messages");
     if (!el) return;
+    var cachedAnn = typeof loadAnnouncementsCache === "function" ? loadAnnouncementsCache() : null;
     el.innerHTML =
-      '<div id="community-announcements" class="community-feed discord-posts-feed discord-announcements-feed"><div class="loading">Loading announcements…</div></div>';
+      '<div id="community-announcements" class="community-feed discord-posts-feed discord-announcements-feed' +
+      (cachedAnn && cachedAnn.length ? " feed-refreshing" : "") +
+      '"></div>';
     stopPoll();
     window.communityPostUiMode = "comments";
+    if (cachedAnn && cachedAnn.length && typeof renderCommunityPosts === "function") {
+      renderCommunityPosts(cachedAnn, el.querySelector("#community-announcements") || el.firstElementChild);
+    }
     if (typeof loadCommunityAnnouncements === "function") await loadCommunityAnnouncements();
   }
 
@@ -469,9 +603,9 @@
       return;
     }
     if (state.channel === "general") {
-      await loadGeneralPostsPanel();
+      await loadGeneralPostsPanel(null, silent);
     } else if (state.channel === "groups") {
-      await loadGroupsPanel();
+      await loadGroupsPanel(silent);
     } else if (state.channel === "announcements") {
       await loadAnnouncementsPanel();
     }
@@ -488,13 +622,18 @@
   }
 
   async function loadGroups() {
+    var cached = loadGroupsFromCache();
+    if (cached.length) {
+      state.allGroups = cached;
+      state.groups = cached.filter(function (g) { return g.is_approved; });
+    }
     try {
-      var all = (await apiFn()("/api/v1/student-groups/mine", { attempts: 2 })) || [];
+      var all = (await apiFn()("/api/v1/student-groups/mine", { attempts: 2, skipWarm: true })) || [];
+      saveGroupsCache(all);
       state.groups = all.filter(function (g) { return g.is_approved; });
       state.allGroups = all;
     } catch (e) {
-      state.groups = [];
-      state.allGroups = [];
+      if (!state.groups.length) state.groups = [];
     }
   }
 
@@ -512,6 +651,9 @@
   window.discordSelectGroup = function (groupId, meta) {
     state.server = "group";
     state.groupId = groupId;
+    if (!meta && state.allGroups) {
+      meta = (state.allGroups || []).find(function (g) { return String(g.id) === String(groupId); }) || null;
+    }
     state.groupMeta = meta || null;
     state.channel = "chat";
     if (typeof showPage === "function") showPage("community");
@@ -550,7 +692,7 @@
         });
         await loadGroupPostsPanel();
       } catch (e) {
-        alert(e.message || "Post blocked or could not send.");
+        alert(errMsg(e) || "Post blocked or could not send.");
         input.value = text;
       }
       return;
@@ -571,7 +713,7 @@
       });
       await loadGeneralPostsPanel();
     } catch (e) {
-      alert(e.message || "Post blocked or could not send.");
+      alert(errMsg(e) || "Post blocked or could not send.");
       input.value = text;
     }
   };
@@ -592,33 +734,46 @@
     if (!hubEl()) return;
 
     loading = true;
-    showHubLoading();
+    applySavedTheme();
+    showHub();
+
+    if (!booted) {
+      state.server = "scholaxia";
+      state.channel = "general";
+      booted = true;
+    }
+    if (state.channel === "feed" || state.channel === "posts") state.channel = "general";
+
+    var cachedGroups = loadGroupsFromCache();
+    if (cachedGroups.length) {
+      state.allGroups = cachedGroups;
+      state.groups = cachedGroups.filter(function (g) { return g.is_approved; });
+    }
+
+    renderRail();
+    renderChannelList();
+    updateHeader();
+    restoreCommunityChannelId();
+
+    refreshActivePanel(false).catch(function () {});
 
     try {
-      if (typeof warmScholaxiaApi === "function") await warmScholaxiaApi().catch(function () {});
-      await Promise.all([loadChannelsMeta(), loadGroups()]);
-      if (typeof ensureCommunityChannel === "function") await ensureCommunityChannel().catch(function () {});
-
-      if (!booted) {
-        state.server = "scholaxia";
-        state.channel = "general";
-        booted = true;
-      }
-      if (state.channel === "feed" || state.channel === "posts") state.channel = "general";
-
-      showHub();
+      warmScholaxiaApi().catch(function () {});
+      await Promise.all([
+        loadChannelsMeta(),
+        loadGroups(),
+        typeof ensureCommunityChannel === "function" ? ensureCommunityChannel().catch(function () {}) : Promise.resolve(),
+      ]);
       renderRail();
       renderChannelList();
       updateHeader();
-      await refreshActivePanel(false);
-
+      refreshActivePanel(true);
       var input = document.getElementById("discord-message-input");
       if (input && state.channel === "general" && state.server === "scholaxia") input.focus();
     } catch (e) {
-      showHub();
       var errEl = document.getElementById("discord-messages");
-      if (errEl) {
-        errEl.innerHTML = '<div class="discord-error">' + escHtml(e.message || "Could not load Community.") + "</div>";
+      if (errEl && !errEl.querySelector(".community-post")) {
+        errEl.innerHTML = '<div class="discord-error">' + escHtml(errMsg(e)) + "</div>";
       }
     } finally {
       loading = false;

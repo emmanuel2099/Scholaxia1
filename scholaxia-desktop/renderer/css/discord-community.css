@@ -670,3 +670,179 @@
 .discord-posts-feed .loading {
   color: #949ba4;
 }
+
+.discord-main-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.discord-head-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.discord-head-btn {
+  background: #404249;
+  color: #dbdee1;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.discord-head-btn:hover {
+  background: #4e5058;
+}
+
+.discord-group-btn-edit {
+  background: #3ba55c !important;
+  color: #fff !important;
+}
+
+.discord-group-btn-edit:hover {
+  background: #2d7d46 !important;
+}
+
+.feed-skeleton-min .skel-label {
+  display: none;
+}
+
+/* Light mode */
+#page-community[data-community-theme="light"] {
+  background: #f2f3f5;
+}
+
+#page-community[data-community-theme="light"] .discord-hub-page,
+#page-community[data-community-theme="light"] .discord-hub {
+  background: #f2f3f5;
+}
+
+#page-community[data-community-theme="light"] .discord-rail {
+  background: #e3e5e8;
+}
+
+#page-community[data-community-theme="light"] .discord-channels {
+  background: #f2f3f5;
+}
+
+#page-community[data-community-theme="light"] .discord-channels-head,
+#page-community[data-community-theme="light"] .discord-main-head {
+  color: #060607;
+  border-color: #dbdee1;
+}
+
+#page-community[data-community-theme="light"] .discord-ch-item {
+  color: #4e5058;
+}
+
+#page-community[data-community-theme="light"] .discord-ch-item.active,
+#page-community[data-community-theme="light"] .discord-ch-item:hover {
+  background: #e3e5e8;
+  color: #060607;
+}
+
+#page-community[data-community-theme="light"] .discord-main {
+  background: #fff;
+}
+
+#page-community[data-community-theme="light"] .discord-posts-feed .community-post {
+  background: #f2f3f5;
+  border-color: #e3e5e8;
+}
+
+#page-community[data-community-theme="light"] .discord-posts-feed .post-head strong,
+#page-community[data-community-theme="light"] .discord-posts-feed .post-body,
+#page-community[data-community-theme="light"] .discord-posts-feed .comment-body p {
+  color: #060607 !important;
+}
+
+#page-community[data-community-theme="light"] .discord-posts-feed .post-head span {
+  color: #4e5058 !important;
+}
+
+#page-community[data-community-theme="light"] .discord-composer input {
+  background: #e3e5e8;
+  color: #060607;
+}
+
+#page-community[data-community-theme="light"] .discord-group-card {
+  background: #fff;
+  border-color: #e3e5e8;
+}
+
+#page-community[data-community-theme="light"] .discord-group-card-top strong {
+  color: #060607;
+}
+
+#page-community[data-community-theme="light"] .discord-group-card-desc {
+  color: #4e5058;
+}
+
+.study-materials-page {
+  padding: 16px 20px 32px;
+  max-width: 960px;
+}
+
+.study-materials-list {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.study-mat-card {
+  display: flex;
+  gap: 16px;
+  background: #fff;
+  border: 1px solid #dce5e0;
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.study-mat-cover {
+  width: 72px;
+  height: 96px;
+  object-fit: cover;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.study-mat-cover-ph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #e8f0ec;
+  font-size: 1.8rem;
+}
+
+.study-mat-body h4 {
+  margin: 0 0 6px;
+  color: #1a3d28;
+}
+
+.study-mat-meta {
+  margin: 0 0 4px;
+  color: #5f756a;
+  font-size: 0.88rem;
+}
+
+.study-mat-desc {
+  margin: 0 0 10px;
+  color: #2d4036;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.study-mat-actions {
+  margin-top: 8px;
+}
+
+.discord-posts-feed .skel-card,
+.discord-posts-feed .skel-bubble {
+  background: linear-gradient(90deg, #3f4147 25%, #4e5058 50%, #3f4147 75%);
+  background-size: 200% 100%;
+}

@@ -179,12 +179,15 @@ async function api(path, options) {
       signal: options.signal || fetchTimeout(options.timeoutMs || 45000),
     });
   } catch (ex) {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      throw new Error("There is no internet on your data.");
+    }
     if (ex.name === "AbortError" || ex.name === "TimeoutError") {
-      throw new Error("Request timed out. The server may be waking up — try again.");
+      throw new Error("There is no internet on your data.");
     }
     var netMsg = ex.message || "Network error";
     if (/failed to fetch/i.test(netMsg)) {
-      throw new Error("Failed to fetch");
+      throw new Error("There is no internet on your data.");
     }
     throw new Error(netMsg + ". Check your connection.");
   }
@@ -197,12 +200,23 @@ async function api(path, options) {
   return data;
 }
 
+function networkErrorMessage(err) {
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    return "There is no internet on your data.";
+  }
+  var msg = (err && err.message) || "";
+  if (/failed to fetch|timed out|network error|no internet/i.test(msg)) {
+    return "There is no internet on your data.";
+  }
+  return msg || "Something went wrong.";
+}
+
 /** Retry API calls — helps when Render wakes from sleep. */
 async function apiRetry(path, options) {
   options = options || {};
   var attempts = options.attempts || 3;
   var baseDelay = options.retryDelay || 1000;
-  await warmScholaxiaApi().catch(function () {});
+  if (!options.skipWarm) await warmScholaxiaApi().catch(function () {});
   var lastErr;
   for (var i = 0; i < attempts; i++) {
     try {
@@ -222,6 +236,7 @@ async function apiRetry(path, options) {
 if (typeof window !== "undefined") {
   window.apiRetry = apiRetry;
   window.warmScholaxiaApi = warmScholaxiaApi;
+  window.networkErrorMessage = networkErrorMessage;
 }
 
 async function apiUpload(path, file) {

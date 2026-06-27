@@ -113,14 +113,17 @@ async def notify_mic_revoked(room_id: str, student_id: str) -> None:
 
 
 async def notify_camera_granted(room_id: str, student_id: str) -> None:
-    grant_camera(room_id, student_id)
-    await send_to_user(room_id, student_id, {
+    sid = str(student_id or "").strip()
+    grant_camera(room_id, sid)
+    await send_to_user(room_id, sid, {
         "event": "camera_access_granted",
+        "user_id": sid,
+        "target_user_id": sid,
         "message": "Your teacher let you turn on your camera.",
     })
     await broadcast(room_id, {
         "event": "camera_access_update",
-        "user_id": student_id,
+        "user_id": sid,
         "has_camera": True,
     })
 

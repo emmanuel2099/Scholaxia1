@@ -215,9 +215,13 @@ async function login(e) {
     saveSession(data, email);
     await routeAfterAuth(data.access_token, data.role, email);
   } catch (ex) {
-    err.textContent = ex.name === "TimeoutError" || ex.name === "AbortError"
-      ? "Server is waking up — try again in 30 seconds."
-      : "Network error. Check your connection.";
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      err.textContent = "There is no internet on your data.";
+    } else if (ex.name === "TimeoutError" || ex.name === "AbortError" || /failed to fetch/i.test(ex.message || "")) {
+      err.textContent = "There is no internet on your data.";
+    } else {
+      err.textContent = "Network error. Check your connection.";
+    }
   } finally {
     btn.disabled = false;
     btn.textContent = "LOG IN";
@@ -260,9 +264,13 @@ async function signup(e) {
     saveSession(data, email, name);
     await routeAfterAuth(data.access_token, "student", email, name);
   } catch (ex) {
-    err.textContent = ex.name === "TimeoutError" || ex.name === "AbortError"
-      ? "Server is waking up — try again in 30 seconds."
-      : "Network error. Check your connection.";
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      err.textContent = "There is no internet on your data.";
+    } else if (ex.name === "TimeoutError" || ex.name === "AbortError" || /failed to fetch/i.test(ex.message || "")) {
+      err.textContent = "There is no internet on your data.";
+    } else {
+      err.textContent = "Network error. Check your connection.";
+    }
   } finally {
     btn.disabled = false;
     btn.textContent = "CREATE ACCOUNT";

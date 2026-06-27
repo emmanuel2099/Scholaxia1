@@ -656,6 +656,10 @@ async function grantStudentMic(userId, studentName) {
     addChatMessage("", name + " can now use the microphone.", true);
     if (typeof ensureRoomAudioPlayback === "function") ensureRoomAudioPlayback();
     await loadClassroomStudents(true);
+    setTimeout(function () {
+      if (typeof reattachRemoteClassAudio === "function") reattachRemoteClassAudio();
+      if (typeof ensureRoomAudioPlayback === "function") ensureRoomAudioPlayback();
+    }, 2500);
     return;
   }
   showClassroomToast("Could not allow " + name + ": " + errMsg, true);
@@ -1601,6 +1605,7 @@ function connectChat() {
         }
         if (isTeacherRole() && msg.has_mic) {
           if (typeof ensureRoomAudioPlayback === "function") ensureRoomAudioPlayback();
+          if (typeof reattachRemoteClassAudio === "function") reattachRemoteClassAudio();
           if (typeof showAudioUnlockBanner === "function") showAudioUnlockBanner();
           addChatMessage("", "A student can speak now — tap Enable sound if you cannot hear them.", true);
         }
@@ -1610,7 +1615,20 @@ function connectChat() {
           addChatMessage("", msg.message || "Your mic was turned off by the teacher.", true);
         }
       } else if (msg.event === "camera_access_granted") {
-        if (typeof enableStudentCamera === "function") enableStudentCamera();
+        if (!isTeacherRole() && isMicEventForMe(msg) && typeof enableStudentCamera === "function") {
+          enableStudentCamera().catch(function (err) {
+            addChatMessage("", "Camera: " + (err.message || "turn on Cam button"), true);
+          });
+        }
+      } else if (msg.event === "camera_access_update") {
+        if (!isTeacherRole() && msg.has_camera && isMicEventForMe(msg) && typeof enableStudentCamera === "function") {
+          enableStudentCamera().catch(function (err) {
+            addChatMessage("", "Camera: " + (err.message || "turn on Cam button"), true);
+          });
+        }
+        if (isTeacherRole() && msg.has_camera) {
+          if (typeof reattachParticipantVideos === "function") reattachParticipantVideos();
+        }
       } else if (msg.event === "camera_access_revoked") {
         if (typeof disableStudentCamera === "function") disableStudentCamera();
         addChatMessage("", msg.message || "Your camera access was removed by the teacher.", true);
