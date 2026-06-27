@@ -30,7 +30,7 @@ from app.models.student_group import (
     StudentGroupJoinStatus,
     StudentGroupMemberRole,
 )
-from sqlalchemy import func
+from sqlalchemy import func, or_
 
 import re
 
@@ -698,8 +698,12 @@ async def _fetch_channel_posts(
         .offset(offset)
     )
     if role_name not in ("teacher", "admin") and not is_announcement:
+        # Use string literals — PostgreSQL enum + SQLAlchemy `.in_([Enum, ...])` 500s for students.
         query = query.where(
-            CommunityPost.visibility.in_([PostVisibility.everyone, PostVisibility.class_only])
+            or_(
+                CommunityPost.visibility == "everyone",
+                CommunityPost.visibility == "class_only",
+            )
         )
 
     result = await db.execute(query)
