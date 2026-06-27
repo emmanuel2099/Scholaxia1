@@ -16,6 +16,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
 
   <link rel="stylesheet" href="css/app.css" />
+  <link rel="stylesheet" href="css/discord-community.css" />
   <link rel="stylesheet" href="css/responsive.css" />
 
 </head>
@@ -549,167 +550,46 @@
 
 
 
-    <!-- Community -->
+    <!-- Community — real Discord clone app (iframe) -->
 
-    <section id="page-community" class="page">
+    <section id="page-community" class="page discord-embed-page">
 
-      <div class="info-banner">&#128172; Scholaxia student community — share ideas, voice notes, and read teacher announcements.</div>
-
-      <div class="community-tabs">
-        <button type="button" class="community-tab active" id="community-tab-feed" onclick="showCommunityTab('feed')">Feed</button>
-        <button type="button" class="community-tab" id="community-tab-announcements" onclick="showCommunityTab('announcements')">Announcements</button>
-        <button type="button" class="community-tab" id="community-tab-groups" onclick="showCommunityTab('groups')">Groups</button>
+      <div id="discord-embed-status" class="discord-embed-status">
+        <p>Starting Scholaxia Community (Discord)…</p>
+        <p class="discord-embed-hint">Opens on the same server (port 17890) — Discord runs behind /discord-app</p>
+        <button type="button" class="btn-action btn-sm" onclick="loadDiscordCommunity(true)">Retry</button>
       </div>
 
-      <div id="community-feed" class="community-feed"><div class="loading">Loading posts…</div></div>
-      <div id="community-announcements" class="community-feed hidden"><div class="loading">Loading announcements…</div></div>
-      <div id="community-groups-panel" class="community-groups-panel hidden">
-        <div class="groups-hero">
-          <div class="groups-hero-icon" aria-hidden="true">&#128101;</div>
-          <div>
-            <h2>Student groups</h2>
-            <p>Create a study group, list it in the feed, and chat with members after they join.</p>
-          </div>
-        </div>
-
-        <div class="groups-create-card">
-          <h3>Create a group</h3>
-          <p class="groups-create-hint">You become the admin and can approve join requests or add members by email.</p>
-          <div class="groups-create-fields">
-            <input type="text" id="new-group-name" placeholder="Group name" maxlength="120" />
-            <textarea id="new-group-desc" placeholder="What is this group about? (optional)" rows="2" maxlength="400"></textarea>
-          </div>
-          <label class="groups-list-feed-check">
-            <input type="checkbox" id="new-group-list-feed" checked />
-            <span>List in Community feed so others can join</span>
-          </label>
-          <button type="button" class="btn-action groups-create-btn" onclick="createStudentGroup()">Create group</button>
-        </div>
-
-        <div class="groups-section">
-          <div class="groups-section-head">
-            <h3>My groups</h3>
-            <span class="groups-section-sub">Tap a group to open chat</span>
-          </div>
-          <div id="groups-mine-list" class="groups-grid"></div>
-        </div>
-
-        <div class="groups-section">
-          <div class="groups-section-head">
-            <h3>Discover in feed</h3>
-            <span class="groups-section-sub">Also shown as posts on the Feed tab</span>
-          </div>
-          <div id="groups-community-list" class="groups-grid"></div>
-        </div>
-
-        <div class="groups-section">
-          <div class="groups-section-head">
-            <h3>School groups</h3>
-            <span class="groups-section-sub">Added by your school</span>
-          </div>
-          <div id="groups-school-list" class="groups-grid"></div>
-        </div>
-      </div>
-
-      <button type="button" id="community-fab" class="community-fab" onclick="openCommunityCreate()" title="New post" aria-label="New post">
-
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>
-
-      </button>
+      <iframe
+        id="discord-community-frame"
+        class="discord-community-frame hidden"
+        title="Scholaxia Community"
+        allow="microphone; camera; clipboard-write"
+      ></iframe>
 
     </section>
 
 
 
-    <!-- Group chat room -->
+    <!-- Legacy pages kept hidden for script compatibility -->
 
-    <section id="page-group-chat" class="page">
-      <div class="group-chat-shell">
-        <div class="group-chat-header">
-          <button type="button" class="group-chat-back" onclick="showPage('community'); showCommunityTab('groups');" aria-label="Back">&#8592;</button>
-          <div class="group-chat-title-wrap">
-            <h2 id="group-chat-title">Group chat</h2>
-            <p id="group-chat-subtitle" class="group-chat-subtitle"></p>
-          </div>
-          <button type="button" class="btn-sm group-chat-members-btn" id="group-chat-members-toggle" onclick="toggleGroupMembersPanel()">Members</button>
-        </div>
-        <div class="group-chat-body">
-          <div id="group-chat-messages" class="group-chat-messages"><div class="loading">Loading chat…</div></div>
-          <aside id="group-chat-members-panel" class="group-chat-members-panel hidden">
-            <h3>Members</h3>
-            <div id="group-chat-members-list" class="group-chat-members-list"></div>
-            <div id="group-chat-add-member" class="group-chat-add-member hidden">
-              <h4>Add member</h4>
-              <p class="host-hint">Enter a student's Scholaxia email.</p>
-              <div class="group-chat-add-row">
-                <input type="email" id="group-add-email" placeholder="student@email.com" />
-                <button type="button" class="btn-action btn-sm" onclick="addGroupMemberByEmail()">Add</button>
-              </div>
-            </div>
-          </aside>
-        </div>
-        <div class="group-chat-compose">
-          <input type="text" id="group-chat-input" placeholder="Message the group…" onkeydown="if(event.key==='Enter')sendGroupChatMessage()" />
-          <button type="button" class="btn-action" onclick="sendGroupChatMessage()">Send</button>
-        </div>
-      </div>
+    <section id="page-groups" class="page hidden" aria-hidden="true"></section>
+
+    <section id="page-group-chat" class="page hidden" aria-hidden="true">
+      <div id="group-chat-messages"></div>
+      <input type="text" id="group-chat-input" class="hidden" />
     </section>
 
-
-
-    <!-- Community — create post -->
-
-    <section id="page-community-create" class="page">
-
-      <div class="community-create-card">
-
-        <div class="compose-row">
-
-          <div class="compose-avatar" id="community-create-avatar">S</div>
-
-          <div class="compose-body">
-
-            <textarea id="community-create-input" placeholder="What would you like to share?" rows="6"></textarea>
-
-            <div class="create-image-row">
-
-              <label class="btn-image-pick" for="community-image-input">&#128247; Add image</label>
-
-              <input type="file" id="community-image-input" accept="image/jpeg,image/png,image/webp" hidden onchange="onCommunityImagePick(this)" />
-
-              <button type="button" id="community-image-clear" class="btn-image-clear hidden" onclick="clearCommunityImage()">Remove image</button>
-
-            </div>
-
-            <div class="voice-note-compose">
-              <button type="button" id="community-voice-btn" class="btn-voice-record">&#127908; Tap to record voice</button>
-              <p id="community-voice-status" class="voice-status hidden"></p>
-              <div id="community-voice-preview" class="voice-preview hidden">
-                <audio id="community-voice-playback" controls playsinline></audio>
-                <button type="button" id="community-voice-delete" class="btn-image-clear">&#128465; Delete voice</button>
-              </div>
-            </div>
-
-            <div id="community-image-preview" class="create-image-preview hidden"></div>
-
-          </div>
-
-        </div>
-
-        <p class="compose-hint">Your post will be visible to all Scholaxia students.</p>
-
-        <p id="community-create-error" class="error-msg"></p>
-
-        <div class="create-actions">
-
-          <button type="button" class="btn-secondary" onclick="showPage('community')">Cancel</button>
-
-          <button type="button" id="community-post-btn" class="btn-action btn-post" onclick="submitCommunityPost()">Post</button>
-
-        </div>
-
-      </div>
-
+    <section id="page-community-create" class="page hidden" aria-hidden="true">
+      <textarea id="community-create-input" class="hidden"></textarea>
+      <p id="community-create-error" class="hidden"></p>
+      <button type="button" id="community-post-btn" class="hidden"></button>
+      <input type="file" id="community-image-input" class="hidden" accept="image/jpeg,image/png,image/webp" />
+      <div id="community-image-preview" class="hidden"></div>
+      <button type="button" id="community-image-clear" class="hidden"></button>
+      <button type="button" id="community-voice-btn" class="hidden"></button>
+      <p id="community-voice-status" class="hidden"></p>
+      <div id="community-voice-preview" class="hidden"><audio id="community-voice-playback"></audio><button type="button" id="community-voice-delete" class="hidden"></button></div>
     </section>
 
 
@@ -1038,6 +918,7 @@
 
 <script src="js/voice-recorder.js"></script>
 <script src="js/community.js"></script>
+<script src="js/discord-community.js"></script>
 <script src="js/community-notify.js"></script>
 <script src="js/join-access-modal.js"></script>
 <script src="js/skills.js"></script>

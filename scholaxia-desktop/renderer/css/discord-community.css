@@ -1,0 +1,47 @@
+/* Embed real Discord clone app in Scholaxia Community tab */
+
+.discord-embed-page {
+  padding: 0 !important;
+  max-width: none !important;
+  height: calc(100vh - var(--app-header-h, 56px));
+  overflow: hidden;
+  position: relative;
+  background: #313338;
+}
+
+.discord-community-frame {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+  background: #313338;
+}
+
+.discord-embed-status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+  color: #dbdee1;
+  background: #313338;
+}
+
+.discord-embed-status.hidden {
+  display: none !important;
+}
+
+.discord-embed-hint {
+  font-size: 0.88rem;
+  color: #949ba4;
+  max-width: 420px;
+  line-height: 1.45;
+}
+
+.discord-community-frame.hidden {
+  display: none !important;
+}

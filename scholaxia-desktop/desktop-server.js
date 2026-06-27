@@ -9,6 +9,7 @@ const path = require("path");
 const { URL } = require("url");
 
 const PORT = 17890;
+const DISCORD_PORT = 3001;
 const REMOTE_API = "https://scholaxia1.onrender.com";
 
 const MIME = {
@@ -71,6 +72,58 @@ function proxyApi(req, res) {
     proxyReq.on("error", () => {
       res.writeHead(502, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ detail: "API proxy error" }));
+    });
+
+    if (body) proxyReq.write(body);
+    proxyReq.end();
+  });
+}
+
+const SKIP_DISCORD_HEADERS = new Set([
+  "transfer-encoding",
+  "connection",
+  "x-frame-options",
+  "content-security-policy",
+  "content-security-policy-report-only",
+]);
+
+function proxyDiscord(req, res) {
+  const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
+  const targetPath = url.pathname + (url.search || "");
+
+  const chunks = [];
+  req.on("data", (chunk) => chunks.push(chunk));
+  req.on("end", () => {
+    const body = chunks.length ? Buffer.concat(chunks) : null;
+    const headers = {};
+    if (req.headers["content-type"]) headers["Content-Type"] = req.headers["content-type"];
+    if (req.headers.accept) headers.Accept = req.headers.accept;
+    if (req.headers.cookie) headers.Cookie = req.headers.cookie;
+
+    const proxyReq = http.request(
+      {
+        hostname: "127.0.0.1",
+        port: DISCORD_PORT,
+        path: targetPath,
+        method: req.method,
+        headers,
+      },
+      (proxyRes) => {
+        const outHeaders = { "X-Frame-Options": "SAMEORIGIN" };
+        Object.entries(proxyRes.headers).forEach(([key, value]) => {
+          if (!value || SKIP_DISCORD_HEADERS.has(key.toLowerCase())) return;
+          outHeaders[key] = value;
+        });
+        res.writeHead(proxyRes.statusCode || 502, outHeaders);
+        proxyRes.pipe(res);
+      }
+    );
+
+    proxyReq.on("error", () => {
+      res.writeHead(502, { "Content-Type": "text/html; charset=utf-8" });
+      res.end(
+        "<h2>Community server not running</h2><p>Run START-DISCORD.bat or npm run dev in discord-clone-nextjs</p>"
+      );
     });
 
     if (body) proxyReq.write(body);
@@ -155,6 +208,16 @@ function startDesktopServer() {
           return;
         }
         proxyApi(req, res);
+        return;
+      }
+
+      if (url.pathname.startsWith("/discord-app")) {
+        if (req.method === "OPTIONS") {
+          res.writeHead(204);
+          res.end();
+          return;
+        }
+        proxyDiscord(req, res);
         return;
       }
 

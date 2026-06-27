@@ -26,6 +26,8 @@ except ImportError:
 ROOT = os.path.dirname(os.path.abspath(__file__))
 RENDERER = os.path.join(ROOT, "renderer")
 PORT = 17890
+DISCORD_PORT = 3001
+DISCORD_DIR = os.path.normpath(os.path.join(ROOT, "..", "..", "discord-clone-nextjs"))
 REMOTE_API = "https://scholaxia1.onrender.com"
 
 
@@ -78,6 +80,46 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({"detail": f"API proxy error: {exc}"}).encode("utf-8"))
 
+    def _proxy_discord(self, method):
+        url = f"http://127.0.0.1:{DISCORD_PORT}{self.path}"
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        body = self.rfile.read(length) if length and method in ("POST", "PUT", "PATCH", "DELETE") else None
+        headers = {}
+        for header in ("Content-Type", "Accept", "Authorization", "Cookie"):
+            value = self.headers.get(header)
+            if value:
+                headers[header] = value
+        skip_response = {"transfer-encoding", "connection", "x-frame-options", "content-security-policy", "content-security-policy-report-only"}
+        req = urllib.request.Request(url, data=body, headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                data = resp.read()
+                self.send_response(resp.status)
+                for key, value in resp.headers.items():
+                    if key.lower() in skip_response:
+                        continue
+                    self.send_header(key, value)
+                self.send_header("X-Frame-Options", "SAMEORIGIN")
+                self.end_headers()
+                self.wfile.write(data)
+        except urllib.error.HTTPError as exc:
+            payload = exc.read()
+            self.send_response(exc.code)
+            ct = exc.headers.get("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Type", ct)
+            self.end_headers()
+            self.wfile.write(payload)
+        except Exception as exc:
+            self.send_response(502)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            msg = (
+                "<h2>Community server not running</h2>"
+                "<p>Start Discord: run START-DISCORD.bat or <code>npm run dev</code> in discord-clone-nextjs</p>"
+                f"<p><small>{exc}</small></p>"
+            ).encode("utf-8")
+            self.wfile.write(msg)
+
     def do_OPTIONS(self):
         if self.path.startswith("/api-proxy/"):
             self.send_response(204)
@@ -86,11 +128,18 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
             self.end_headers()
             return
+        if self.path.startswith("/discord-app"):
+            self.send_response(204)
+            self.end_headers()
+            return
         super().do_OPTIONS()
 
     def do_GET(self):
         if self.path.startswith("/api-proxy/"):
             self._proxy_api("GET")
+            return
+        if self.path.startswith("/discord-app"):
+            self._proxy_discord("GET")
             return
         super().do_GET()
 
@@ -98,11 +147,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if self.path.startswith("/api-proxy/"):
             self._proxy_api("POST")
             return
+        if self.path.startswith("/discord-app"):
+            self._proxy_discord("POST")
+            return
         super().do_POST()
 
     def do_PATCH(self):
         if self.path.startswith("/api-proxy/"):
             self._proxy_api("PATCH")
+            return
+        if self.path.startswith("/discord-app"):
+            self._proxy_discord("PATCH")
             return
         self.send_error(405)
 
@@ -110,11 +165,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if self.path.startswith("/api-proxy/"):
             self._proxy_api("PUT")
             return
+        if self.path.startswith("/discord-app"):
+            self._proxy_discord("PUT")
+            return
         self.send_error(405)
 
     def do_DELETE(self):
         if self.path.startswith("/api-proxy/"):
             self._proxy_api("DELETE")
+            return
+        if self.path.startswith("/discord-app"):
+            self._proxy_discord("DELETE")
             return
         self.send_error(405)
 
@@ -179,14 +240,78 @@ def wait_for_proxy(timeout_sec=15):
     return False
 
 
+def discord_project_ready():
+    return os.path.isdir(DISCORD_DIR) and os.path.isfile(os.path.join(DISCORD_DIR, "package.json"))
+
+
+def discord_port_listening():
+    try:
+        with socket.create_connection(("127.0.0.1", DISCORD_PORT), timeout=1):
+            return True
+    except OSError:
+        return False
+
+
+def start_discord_server():
+    """Start discord-clone-nextjs on port 3001 for Community iframe."""
+    if not discord_project_ready():
+        print(f"Discord clone not found at {DISCORD_DIR} — Community tab needs it.")
+        return False
+    if discord_port_listening():
+        print(f"Discord Community already running on port {DISCORD_PORT}.")
+        return True
+
+    npm_cmd = "npm.cmd" if sys.platform == "win32" else "npm"
+    print(f"Starting Discord Community on http://127.0.0.1:{DISCORD_PORT} …")
+    try:
+        subprocess.Popen(
+            [npm_cmd, "run", "dev", "--", "-p", str(DISCORD_PORT)],
+            cwd=DISCORD_DIR,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            shell=False,
+        )
+    except Exception as exc:
+        print(f"Could not start Discord Community: {exc}")
+        return False
+
+    deadline = time.time() + 45
+    while time.time() < deadline:
+        if discord_port_listening():
+            print(f"Discord Community ready — edit UI in discord-clone-nextjs/")
+            return True
+        time.sleep(0.5)
+    print(
+        f"Discord Community did not start in time. Run manually:\n"
+        f'  cd "{DISCORD_DIR}"\n'
+        f"  npm run dev -- -p {DISCORD_PORT}\n"
+    )
+    return False
+
+
+def discord_proxy_ready():
+    """True if /discord-app is forwarded (not 404 from static file server)."""
+    try:
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{PORT}/discord-app/scholaxia",
+            method="HEAD",
+        )
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            return resp.status < 500
+    except urllib.error.HTTPError as exc:
+        return exc.code != 404
+    except Exception:
+        return False
+
+
 def ensure_server():
     """Start the local server once; reuse it when Student + Teacher are both open."""
-    if proxy_is_ready():
+    if proxy_is_ready() and discord_proxy_ready():
         print(f"Scholaxia server already running on port {PORT} — opening another portal window.")
         return True
 
     if port_is_listening():
-        print("Replacing old desktop server (missing API proxy)…")
+        print("Replacing old desktop server (missing Community proxy)…")
         free_port(PORT)
         time.sleep(0.4)
 
@@ -239,6 +364,9 @@ def main():
             "Close all Scholaxia windows and try again.\n"
         )
         sys.exit(1)
+
+    if not is_teacher and not is_admin:
+        threading.Thread(target=start_discord_server, daemon=True).start()
 
     if is_teacher:
         page, title, bg = "teacher.html", "Scholaxia Teacher Portal", "#0a1410"
