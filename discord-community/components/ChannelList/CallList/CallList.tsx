@@ -3,10 +3,18 @@ import { Call, useStreamVideoClient } from '@stream-io/video-react-sdk';
 import { useCallback, useEffect, useState } from 'react';
 import { ChevronRight, PlusIcon, Speaker } from '../Icons';
 import Link from 'next/link';
+import { useEmbedMode } from '@/contexts/EmbedModeContext';
+import { useScholaxiaPath } from '@/hooks/useScholaxiaPath';
 
 export default function CallList(): JSX.Element {
   const { server, callId, setCall } = useDiscordContext();
   const client = useStreamVideoClient();
+  const embedded = useEmbedMode();
+  const createVoicePath = useScholaxiaPath({
+    createChannel: 'true',
+    isVoice: 'true',
+    category: 'Voice Channels',
+  });
 
   const [isOpen, setIsOpen] = useState<boolean>(true);
   const [calls, setCalls] = useState<Call[]>([]);
@@ -46,12 +54,11 @@ export default function CallList(): JSX.Element {
             Voice Channels
           </h2>
         </button>
-        <Link
-          className=''
-          href={`/?createChannel=true&isVoice=true&category=Voice Channels`}
-        >
-          <PlusIcon />
-        </Link>
+        {!embedded && (
+          <Link className='' href={createVoicePath}>
+            <PlusIcon />
+          </Link>
+        )}
       </div>
       {isOpen && (
         <div className='px-2'>

@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
 from typing import Optional
+import uuid
 from app.core.database import get_db
 from app.core.datetime_utils import naive_utc_now
 from app.core.deps import require_admin
@@ -12,6 +13,8 @@ from app.models.user import User, UserRole, TeacherProfile, StudentProfile, Kind
 from app.models.content import Book, LibraryTarget
 from app.models.cbt import CBTExam, CBTQuestion
 from app.models.community import CommunityPost, CommunityChannel
+from app.models.student_group import StudentGroup, StudentGroupMember
+from app.services.group_community import ensure_group_feed_post
 from app.services.media_service import generate_upload_signature, upload_file
 from app.services.student_cleanup import delete_student_user
 from app.services.user_cleanup import purge_all_user_accounts, delete_teacher_user
@@ -871,6 +874,76 @@ async def delete_live_class(
         raise HTTPException(status_code=404, detail="Class not found")
     await _clear_live_class_references(db, class_id)
     await db.flush()
+
+
+# ── Student group approval ────────────────────────────────────────────────────
+
+@router.get("/student-groups/pending")
+async def list_pending_student_groups(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(StudentGroup, User)
+        .join(User, User.id == StudentGroup.creator_id)
+        .where(StudentGroup.is_approved == False)  # noqa: E712
+        .order_by(StudentGroup.created_at.desc())
+    )
+    out = []
+    for grp, creator in result.all():
+        mem_count = await db.execute(
+            select(func.count()).select_from(StudentGroupMember).where(
+                StudentGroupMember.group_id == grp.id
+            )
+        )
+        out.append({
+            "id": str(grp.id),
+            "name": grp.name,
+            "description": grp.description or "",
+            "creator_name": creator.full_name or creator.email,
+            "creator_email": creator.email,
+            "is_community_listed": grp.is_community_listed,
+            "member_count": int(mem_count.scalar() or 0),
+            "created_at": grp.created_at.isoformat() if grp.created_at else None,
+        })
+    return out
+
+
+@router.post("/student-groups/{group_id}/approve")
+async def approve_student_group(
+    group_id: str,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    gid = uuid.UUID(group_id)
+    res = await db.execute(select(StudentGroup).where(StudentGroup.id == gid))
+    group = res.scalar_one_or_none()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found.")
+    if group.is_approved:
+        return {"message": "Group is already approved."}
+    group.is_approved = True
+    await db.flush()
+    if group.is_community_listed:
+        await ensure_group_feed_post(db, group)
+    return {"message": f'Group "{group.name}" is now active.'}
+
+
+@router.post("/student-groups/{group_id}/reject")
+async def reject_student_group(
+    group_id: str,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    gid = uuid.UUID(group_id)
+    res = await db.execute(select(StudentGroup).where(StudentGroup.id == gid))
+    group = res.scalar_one_or_none()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found.")
+    group.is_approved = False
+    group.is_community_listed = False
+    await db.flush()
+    return {"message": f'Group "{group.name}" was rejected and remains inactive.'}
 
 
 # ── Kind (Kids) Learners ──────────────────────────────────────────────────────

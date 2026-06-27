@@ -114,6 +114,7 @@ function showAdminPage(page) {
   else if (page === "live-subs") loadLiveSubscriptions();
   else if (page === "cbt") { initCbtBuilder(); loadCbt(); }
   else if (page === "recommendations") loadRecommendations();
+  else if (page === "student-groups") loadPendingStudentGroups();
   else if (page === "community") loadCommunityPosts();
 }
 
@@ -879,6 +880,61 @@ async function removeAllRecommendations() {
     loadRecommendations();
     alert("All recommendations removed.");
   } catch (e) { alert(e.message); }
+}
+
+/* ── Student group approval ── */
+async function loadPendingStudentGroups() {
+  var el = document.getElementById("student-groups-table");
+  if (!el) return;
+  el.innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    var rows = await adminApi("/api/v1/admin/student-groups/pending");
+    if (!rows || !rows.length) {
+      el.innerHTML = '<div class="empty-state">No groups waiting for approval.</div>';
+      return;
+    }
+    el.innerHTML =
+      '<table class="data-table"><thead><tr><th>Group</th><th>Creator</th><th>Members</th><th>Listed?</th><th>Date</th><th></th></tr></thead><tbody>' +
+      rows.map(function (g) {
+        return (
+          '<tr><td><strong>' + escHtml(g.name) + '</strong><br><span style="font-size:.8rem;color:#8aa896">' +
+          escHtml(g.description || "") + '</span></td>' +
+          '<td>' + escHtml(g.creator_name) + '<br><span style="font-size:.75rem;color:#6b8f75">' + escHtml(g.creator_email) + '</span></td>' +
+          '<td>' + (g.member_count || 0) + '</td>' +
+          '<td>' + (g.is_community_listed ? "Yes" : "No") + '</td>' +
+          '<td>' + fmtDate(g.created_at) + '</td>' +
+          '<td class="actions">' +
+          '<button class="btn-sm primary" onclick="approveStudentGroup(\'' + g.id + '\')">Approve</button> ' +
+          '<button class="btn-sm danger" onclick="rejectStudentGroup(\'' + g.id + '\')">Reject</button>' +
+          '</td></tr>'
+        );
+      }).join("") +
+      "</tbody></table>";
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + '</div>';
+  }
+}
+
+async function approveStudentGroup(id) {
+  if (!confirm("Approve this group? Students can chat once approved.")) return;
+  try {
+    var res = await adminApi("/api/v1/admin/student-groups/" + id + "/approve", { method: "POST" });
+    alert((res && res.message) || "Group approved.");
+    loadPendingStudentGroups();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+async function rejectStudentGroup(id) {
+  if (!confirm("Reject this group? It will stay inactive.")) return;
+  try {
+    var res = await adminApi("/api/v1/admin/student-groups/" + id + "/reject", { method: "POST" });
+    alert((res && res.message) || "Group rejected.");
+    loadPendingStudentGroups();
+  } catch (e) {
+    alert(e.message);
+  }
 }
 
 /* ── Community moderation ── */

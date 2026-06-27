@@ -1,8 +1,10 @@
 import { useChatContext } from 'stream-chat-react';
 import Image from 'next/image';
 import { useCallback, useEffect, useState } from 'react';
-import { DiscordServer } from '@/app/page';
+import { DiscordServer, SCHOLAXIA_SERVER_NAME } from '@/types/discord';
 import { useDiscordContext } from '@/contexts/DiscordContext';
+import { useEmbedMode } from '@/contexts/EmbedModeContext';
+import { useScholaxiaPath } from '@/hooks/useScholaxiaPath';
 import CreateServerForm from './CreateServerForm';
 import Link from 'next/link';
 import { Channel } from 'stream-chat';
@@ -10,6 +12,8 @@ import { Channel } from 'stream-chat';
 const ServerList = () => {
   const { client } = useChatContext();
   const { server: activeServer, changeServer } = useDiscordContext();
+  const embedded = useEmbedMode();
+  const createServerPath = useScholaxiaPath({ createServer: 'true' });
   const [serverList, setServerList] = useState<DiscordServer[]>([]);
 
   const loadServerList = useCallback(async (): Promise<void> => {
@@ -35,9 +39,20 @@ const ServerList = () => {
     const serverArray = Array.from(serverSet.values());
     setServerList(serverArray);
     if (serverArray.length > 0) {
-      changeServer(serverArray[0], client);
+      const scholaxiaServer = serverArray.find(
+        (entry) => entry.name === SCHOLAXIA_SERVER_NAME
+      );
+      changeServer(scholaxiaServer || serverArray[0], client);
+    } else if (embedded) {
+      changeServer(
+        {
+          name: SCHOLAXIA_SERVER_NAME,
+          image: 'https://getstream.io/random_png/?name=Scholaxia',
+        },
+        client
+      );
     }
-  }, [client, changeServer]);
+  }, [client, changeServer, embedded]);
 
   useEffect(() => {
     loadServerList();
@@ -47,9 +62,25 @@ const ServerList = () => {
     <div className='bg-dark-gray h-full flex flex-col items-center'>
       <button
         className={`block p-3 aspect-square sidebar-icon border-t-2 border-t-gray-300 ${
-          activeServer === undefined ? 'selected-icon' : ''
+          embedded
+            ? activeServer?.name === SCHOLAXIA_SERVER_NAME
+              ? 'selected-icon'
+              : ''
+            : activeServer === undefined
+              ? 'selected-icon'
+              : ''
         }`}
-        onClick={() => changeServer(undefined, client)}
+        onClick={() =>
+          embedded
+            ? changeServer(
+                {
+                  name: SCHOLAXIA_SERVER_NAME,
+                  image: 'https://getstream.io/random_png/?name=Scholaxia',
+                },
+                client
+              )
+            : changeServer(undefined, client)
+        }
       >
         <div className='rounded-icon discord-icon'></div>
       </button>
@@ -82,12 +113,14 @@ const ServerList = () => {
           );
         })}
       </div>
-      <Link
-        href={'/?createServer=true'}
-        className='flex items-center justify-center rounded-icon bg-white text-green-500 hover:bg-green-500 hover:text-white hover:rounded-xl transition-all duration-200 p-2 my-2 text-2xl font-light h-12 w-12'
-      >
-        <span className='inline-block'>+</span>
-      </Link>
+      {!embedded && (
+        <Link
+          href={createServerPath}
+          className='flex items-center justify-center rounded-icon bg-white text-green-500 hover:bg-green-500 hover:text-white hover:rounded-xl transition-all duration-200 p-2 my-2 text-2xl font-light h-12 w-12'
+        >
+          <span className='inline-block'>+</span>
+        </Link>
+      )}
       <CreateServerForm />
     </div>
   );

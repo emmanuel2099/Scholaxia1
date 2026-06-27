@@ -2,18 +2,19 @@ import Image from 'next/image';
 import { useState } from 'react';
 import { Gear, LeaveServer, Mic, Speaker } from '../Icons';
 import { useChatContext } from 'stream-chat-react';
-import { useClerk } from '@clerk/nextjs';
 import ChannelListMenuRow from '../TopBar/ChannelListMenuRow';
 import { useEmbedMode } from '@/contexts/EmbedModeContext';
 
 type BottomBarProps = {
   onSignOut: () => void;
   signOutLabel?: string;
+  showSignOut?: boolean;
 };
 
 function ChannelListBottomBarInner({
   onSignOut,
   signOutLabel = 'Sign out',
+  showSignOut = true,
 }: BottomBarProps): JSX.Element {
   const { client } = useChatContext();
   const [micActive, setMicActive] = useState(false);
@@ -24,7 +25,7 @@ function ChannelListBottomBarInner({
     <div className='mt-auto p-2 bg-light-gray w-full flex items-center space-x-3 relative'>
       <button
         className='flex flex-1 items-center space-x-2 p-1 pr-2 rounded-md hover:bg-hover-gray'
-        onClick={() => setMenuOpen((currentValue) => !currentValue)}
+        onClick={() => showSignOut && setMenuOpen((currentValue) => !currentValue)}
       >
         {client.user?.image && (
           <div
@@ -67,7 +68,7 @@ function ChannelListBottomBarInner({
       <button className='w-7 h-7 p-1 flex items-center justify-center relative rounded-md hover:bg-gray-300 transition-all duration-100 ease-in-out text-gray-700'>
         <Gear className='w-full h-full' />
       </button>
-      {menuOpen && (
+      {showSignOut && menuOpen && (
         <button
           className='absolute -top-12 -left-1 w-52 p-2 bg-white rounded-md shadow-md'
           onClick={() => onSignOut()}
@@ -84,26 +85,24 @@ function ChannelListBottomBarInner({
   );
 }
 
-function ChannelListBottomBarWithClerk(): JSX.Element {
-  const { signOut } = useClerk();
-  return <ChannelListBottomBarInner onSignOut={() => signOut()} />;
-}
-
-function ChannelListBottomBarEmbedded(): JSX.Element {
+function ChannelListBottomBarStandalone(): JSX.Element {
   return (
     <ChannelListBottomBarInner
-      signOutLabel='Back to Scholaxia'
       onSignOut={() => {
         if (typeof window !== 'undefined') {
-          window.top?.location.assign('/app.html');
+          window.location.assign('/app.html');
         }
       }}
     />
   );
 }
 
+function ChannelListBottomBarEmbedded(): JSX.Element {
+  return <ChannelListBottomBarInner showSignOut={false} onSignOut={() => {}} />;
+}
+
 export default function ChannelListBottomBar(): JSX.Element {
   const embedded = useEmbedMode();
   if (embedded) return <ChannelListBottomBarEmbedded />;
-  return <ChannelListBottomBarWithClerk />;
+  return <ChannelListBottomBarStandalone />;
 }

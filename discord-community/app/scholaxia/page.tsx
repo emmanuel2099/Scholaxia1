@@ -16,7 +16,16 @@ type Homestate = {
 };
 
 async function fetchStreamToken(userId: string, userName: string) {
+  const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '/discord-app';
   const body = JSON.stringify({ userId, name: userName });
+
+  const apiRes = await fetch(`${basePath}/api/scholaxia-token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body,
+  });
+  const apiData = await apiRes.json().catch(() => ({}));
+  if (apiRes.ok) return apiData;
 
   const localRes = await fetch('/community/stream-token', {
     method: 'POST',
@@ -27,7 +36,8 @@ async function fetchStreamToken(userId: string, userName: string) {
   if (localRes.ok) return localData;
 
   throw new Error(
-    localData.error ||
+    apiData.error ||
+      localData.error ||
       'Add STREAM_CHAT_SECRET to scholaxia-desktop/stream.env and restart Scholaxia.'
   );
 }
@@ -39,7 +49,6 @@ function ScholaxiaEmbedInner() {
 
   const userId = searchParams.get('userId') || '';
   const userName = searchParams.get('name') || 'Student';
-  const embedded = searchParams.get('embed') === '1';
 
   useEffect(() => {
     if (!userId) {
@@ -70,14 +79,7 @@ function ScholaxiaEmbedInner() {
 
   if (error) {
     return (
-      <div className={`flex flex-col bg-[#313338] text-white ${embedded ? 'h-full' : 'h-screen'}`}>
-        {!embedded && (
-          <div className='px-4 py-2 bg-[#1e1f22] border-b border-black/20'>
-            <a href='/app.html' className='text-sm text-[#5865f2] hover:underline'>
-              ← Back to Scholaxia
-            </a>
-          </div>
-        )}
+      <div className='flex h-full flex-col bg-[#313338] text-white'>
         <div className='flex flex-1 items-center justify-center p-6 text-center'>
           <div>
             <h1 className='text-lg font-bold mb-2'>Community unavailable</h1>
@@ -93,14 +95,7 @@ function ScholaxiaEmbedInner() {
 
   if (!state) {
     return (
-      <div className={`flex flex-col bg-[#313338] ${embedded ? 'h-full' : 'h-screen'}`}>
-        {!embedded && (
-          <div className='px-4 py-2 bg-[#1e1f22] border-b border-black/20'>
-            <a href='/app.html' className='text-sm text-[#5865f2] hover:underline'>
-              ← Back to Scholaxia
-            </a>
-          </div>
-        )}
+      <div className='flex h-full flex-col bg-[#313338]'>
         <div className='flex flex-1 items-center justify-center'>
           <LoadingIndicator />
         </div>
@@ -109,18 +104,9 @@ function ScholaxiaEmbedInner() {
   }
 
   return (
-    <div className={`flex flex-col ${embedded ? 'h-full' : 'h-screen'}`}>
-      {!embedded && (
-        <div className='px-4 py-2 bg-[#1e1f22] border-b border-black/20 shrink-0'>
-          <a href='/app.html' className='text-sm text-[#5865f2] hover:underline'>
-            ← Back to Scholaxia
-          </a>
-        </div>
-      )}
+    <div className='flex h-full flex-col'>
       <div className='flex-1 min-h-0'>
-        <EmbedModeProvider embedded={embedded}>
-          <MyChat {...state} embedded={embedded} />
-        </EmbedModeProvider>
+        <MyChat {...state} embedded={true} />
       </div>
     </div>
   );
@@ -128,14 +114,16 @@ function ScholaxiaEmbedInner() {
 
 export default function ScholaxiaEmbedPage() {
   return (
-    <Suspense
-      fallback={
-        <div className='flex h-full min-h-[200px] items-center justify-center bg-[#313338]'>
-          <LoadingIndicator />
-        </div>
-      }
-    >
-      <ScholaxiaEmbedInner />
-    </Suspense>
+    <EmbedModeProvider embedded={true}>
+      <Suspense
+        fallback={
+          <div className='flex h-full min-h-[200px] items-center justify-center bg-[#313338]'>
+            <LoadingIndicator />
+          </div>
+        }
+      >
+        <ScholaxiaEmbedInner />
+      </Suspense>
+    </EmbedModeProvider>
   );
 }

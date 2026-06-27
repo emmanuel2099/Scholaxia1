@@ -10,6 +10,7 @@ from app.core.database import get_db
 from app.core.deps import require_student
 from app.services.live_class_access import parse_uuid
 from app.services.group_community import ensure_group_feed_post
+from app.services.moderation_service import check_message_content
 from app.models.student_group import (
     StudentGroup,
     StudentGroupMember,
@@ -19,6 +20,14 @@ from app.models.student_group import (
     StudentGroupJoinStatus,
 )
 from app.models.user import User
+from app.models.community import (
+    CommunityPost,
+    CommunityChannel,
+    ChannelType,
+    PostLike,
+    PostVisibility,
+)
+from app.routers.community import POST_COMMENT_RE, _serialize_post
 
 router = APIRouter(prefix="/student-groups", tags=["Student Groups"])
 
@@ -38,12 +47,40 @@ class PromoteGroupRequest(BaseModel):
     is_community_listed: bool = True
 
 
+class UpdateGroupRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+
 class GroupMessageBody(BaseModel):
     content: str
 
 
+class GroupPostBody(BaseModel):
+    content: str
+    media_url: Optional[str] = None
+    media_type: Optional[str] = None
+
+
 class AddMemberBody(BaseModel):
     email: str
+
+
+def _group_dict(grp: StudentGroup, mem, pending, member_count: int, creator_name: str = "Student") -> dict:
+    return {
+        "id": str(grp.id),
+        "name": grp.name,
+        "description": grp.description,
+        "is_public": grp.is_public,
+        "is_community_listed": grp.is_community_listed,
+        "is_approved": grp.is_approved,
+        "is_member": mem is not None,
+        "is_admin": mem is not None and mem.role == StudentGroupMemberRole.admin,
+        "pending_request": pending,
+        "creator_name": creator_name,
+        "member_count": member_count,
+        "created_at": grp.created_at.isoformat() if grp.created_at else None,
+    }
 
 
 @router.post("/")
@@ -62,6 +99,7 @@ async def create_group(
         description=(payload.description or "").strip() or None,
         is_public=payload.is_public,
         is_community_listed=payload.is_community_listed,
+        is_approved=False,
     )
     db.add(group)
     await db.flush()
@@ -73,9 +111,12 @@ async def create_group(
         )
     )
     await db.flush()
-    if payload.is_community_listed:
-        await ensure_group_feed_post(db, group)
-    return {"id": str(group.id), "name": group.name, "message": "Group created — you are the admin."}
+    return {
+        "id": str(group.id),
+        "name": group.name,
+        "is_approved": False,
+        "message": "Group submitted — a Scholaxia admin must approve it before it becomes active.",
+    }
 
 
 @router.get("/mine")
@@ -98,6 +139,7 @@ async def my_groups(
             "role": mem.role.value,
             "is_public": grp.is_public,
             "is_community_listed": grp.is_community_listed,
+            "is_approved": grp.is_approved,
             "is_admin": mem.role == StudentGroupMemberRole.admin,
             "member_count": await _member_count(db, grp.id),
         })
@@ -115,6 +157,7 @@ async def community_listed_groups(
         select(StudentGroup).where(
             StudentGroup.is_public == True,  # noqa: E712
             StudentGroup.is_community_listed == True,  # noqa: E712
+            StudentGroup.is_approved == True,  # noqa: E712
         )
     )
     out = []
@@ -141,6 +184,7 @@ async def community_listed_groups(
             "description": grp.description,
             "is_member": member is not None,
             "is_admin": member is not None and member.role == StudentGroupMemberRole.admin,
+            "is_approved": grp.is_approved,
             "pending_request": pending.scalar_one_or_none() is not None,
             "creator_name": creator.full_name if creator else "Student",
             "member_count": await _member_count(db, grp.id),
@@ -160,6 +204,7 @@ async def discover_groups(
         select(StudentGroup).where(
             StudentGroup.is_public == True,  # noqa: E712
             StudentGroup.is_community_listed == True,  # noqa: E712
+            StudentGroup.is_approved == True,  # noqa: E712
         )
     )
     groups = []
@@ -203,6 +248,8 @@ async def request_join_group(
         raise HTTPException(status_code=404, detail="Group not found.")
     if not group.is_public:
         raise HTTPException(status_code=403, detail="This group is private.")
+    if not group.is_approved:
+        raise HTTPException(status_code=403, detail="This group is not active yet — waiting for admin approval.")
     existing = await db.execute(
         select(StudentGroupMember).where(
             StudentGroupMember.group_id == gid,
@@ -320,6 +367,51 @@ async def reject_join_request(
     return {"message": "Request rejected."}
 
 
+@router.patch("/{group_id}")
+async def update_group(
+    group_id: str,
+    payload: UpdateGroupRequest,
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    gid = parse_uuid(group_id)
+    uid = parse_uuid(current_user["sub"])
+    group = await _get_group_or_404(db, gid)
+    if str(group.creator_id) != str(uid) and not await _is_group_admin(db, gid, uid):
+        raise HTTPException(status_code=403, detail="Only the group creator can rename this group.")
+    name = (payload.name or "").strip() if payload.name is not None else None
+    if name is not None:
+        if not name:
+            raise HTTPException(status_code=400, detail="Group name cannot be empty.")
+        group.name = name
+    if payload.description is not None:
+        group.description = (payload.description or "").strip() or None
+    await db.flush()
+    return {"id": str(group.id), "name": group.name, "description": group.description, "message": "Group updated."}
+
+
+@router.delete("/{group_id}")
+async def delete_group(
+    group_id: str,
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    gid = parse_uuid(group_id)
+    uid = parse_uuid(current_user["sub"])
+    group = await _get_group_or_404(db, gid)
+    if str(group.creator_id) != str(uid):
+        raise HTTPException(status_code=403, detail="Only the group creator can delete this group.")
+    from sqlalchemy import delete as sql_delete
+
+    await db.execute(sql_delete(StudentGroupJoinRequest).where(StudentGroupJoinRequest.group_id == gid))
+    await db.execute(sql_delete(StudentGroupMessage).where(StudentGroupMessage.group_id == gid))
+    await db.execute(sql_delete(StudentGroupMember).where(StudentGroupMember.group_id == gid))
+    await db.execute(sql_delete(CommunityPost).where(CommunityPost.group_id == gid))
+    await db.execute(sql_delete(StudentGroup).where(StudentGroup.id == gid))
+    await db.flush()
+    return {"message": "Group deleted."}
+
+
 @router.patch("/{group_id}/community-list")
 async def promote_to_community(
     group_id: str,
@@ -335,6 +427,8 @@ async def promote_to_community(
     group = grp_res.scalar_one_or_none()
     if not group:
         raise HTTPException(status_code=404, detail="Group not found.")
+    if not group.is_approved:
+        raise HTTPException(status_code=403, detail="Group must be approved by admin before listing in Community.")
     group.is_community_listed = payload.is_community_listed
     group.is_public = True
     await db.flush()
@@ -364,6 +458,7 @@ async def get_group(
         "name": grp.name,
         "description": grp.description,
         "is_community_listed": grp.is_community_listed,
+        "is_approved": grp.is_approved,
         "is_member": mem is not None,
         "is_admin": mem is not None and mem.role == StudentGroupMemberRole.admin,
         "member_count": await _member_count(db, gid),
@@ -432,6 +527,120 @@ async def add_group_member(
     return {"message": f"{target.full_name or target.email} added to the group."}
 
 
+@router.get("/{group_id}/posts")
+async def list_group_posts(
+    group_id: str,
+    limit: int = 50,
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    gid = parse_uuid(group_id)
+    uid = parse_uuid(current_user["sub"])
+    group = await _get_group_or_404(db, gid)
+    if not await _get_membership(db, gid, uid):
+        raise HTTPException(status_code=403, detail="Join this group to view posts.")
+    if not group.is_approved:
+        raise HTTPException(status_code=403, detail="This group is waiting for admin approval.")
+
+    result = await db.execute(
+        select(CommunityPost)
+        .where(
+            CommunityPost.group_id == gid,
+            CommunityPost.is_deleted == False,  # noqa: E712
+        )
+        .order_by(CommunityPost.created_at.desc())
+        .limit(min(limit, 100))
+    )
+    posts = result.scalars().all()
+    posts = [p for p in posts if not POST_COMMENT_RE.match(p.content or "")]
+    posts = list(reversed(posts))
+
+    author_ids = list({str(p.author_id) for p in posts})
+    users_map = {}
+    if author_ids:
+        author_uuids = [parse_uuid(aid) for aid in author_ids]
+        users_result = await db.execute(select(User).where(User.id.in_(author_uuids)))
+        users_map = {str(u.id): u.full_name for u in users_result.scalars().all()}
+
+    post_ids = [str(p.id) for p in posts]
+    liked_ids: set[str] = set()
+    if post_ids:
+        post_uuids = [parse_uuid(pid) for pid in post_ids]
+        likes_result = await db.execute(
+            select(PostLike).where(
+                PostLike.post_id.in_(post_uuids),
+                PostLike.user_id == uid,
+            )
+        )
+        liked_ids = {str(like.post_id) for like in likes_result.scalars().all()}
+
+    role = current_user.get("role")
+    return [
+        _serialize_post(p, users_map, liked_ids, current_user["sub"], role)
+        for p in posts
+    ]
+
+
+@router.post("/{group_id}/posts", status_code=201)
+async def create_group_post(
+    group_id: str,
+    payload: GroupPostBody,
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    gid = parse_uuid(group_id)
+    uid = parse_uuid(current_user["sub"])
+    group = await _get_group_or_404(db, gid)
+    if not await _get_membership(db, gid, uid):
+        raise HTTPException(status_code=403, detail="Join this group to post.")
+    if not group.is_approved:
+        raise HTTPException(status_code=403, detail="This group is waiting for admin approval.")
+
+    text = (payload.content or "").strip()
+    if not text and not payload.media_url:
+        raise HTTPException(status_code=400, detail="Post cannot be empty.")
+
+    flagged, reason = await check_message_content(text or "")
+    if flagged:
+        raise HTTPException(status_code=400, detail=reason)
+
+    ch_res = await db.execute(
+        select(CommunityChannel).where(CommunityChannel.channel_type == ChannelType.general)
+    )
+    channel = ch_res.scalar_one_or_none()
+    if not channel:
+        raise HTTPException(status_code=503, detail="Community channel not configured.")
+
+    post = CommunityPost(
+        channel_id=channel.id,
+        author_id=uid,
+        group_id=gid,
+        content=text or ("Voice note" if payload.media_type == "audio" else ""),
+        media_url=payload.media_url,
+        media_type=payload.media_type,
+        visibility=PostVisibility.everyone,
+    )
+    db.add(post)
+    await db.flush()
+
+    user_res = await db.execute(select(User).where(User.id == uid))
+    user = user_res.scalar_one_or_none()
+    author_name = user.full_name if user else "Student"
+
+    return {
+        "id": str(post.id),
+        "channel_id": str(post.channel_id),
+        "author_id": str(uid),
+        "author_name": author_name,
+        "content": post.content,
+        "media_url": post.media_url,
+        "media_type": post.media_type,
+        "like_count": 0,
+        "liked_by_me": False,
+        "created_at": post.created_at.isoformat() if post.created_at else None,
+    }
+
+
 @router.get("/{group_id}/messages")
 async def list_group_messages(
     group_id: str,
@@ -443,6 +652,9 @@ async def list_group_messages(
     uid = parse_uuid(current_user["sub"])
     if not await _get_membership(db, gid, uid):
         raise HTTPException(status_code=403, detail="Join this group to open the chat room.")
+    group = await _get_group_or_404(db, gid)
+    if not group.is_approved:
+        raise HTTPException(status_code=403, detail="This group is waiting for admin approval.")
     result = await db.execute(
         select(StudentGroupMessage, User)
         .join(User, User.id == StudentGroupMessage.user_id)
@@ -474,9 +686,15 @@ async def send_group_message(
     uid = parse_uuid(current_user["sub"])
     if not await _get_membership(db, gid, uid):
         raise HTTPException(status_code=403, detail="Join this group to send messages.")
+    group = await _get_group_or_404(db, gid)
+    if not group.is_approved:
+        raise HTTPException(status_code=403, detail="This group is waiting for admin approval.")
     text = (payload.content or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
+    flagged, reason = await check_message_content(text)
+    if flagged:
+        raise HTTPException(status_code=400, detail=reason)
     msg = StudentGroupMessage(group_id=gid, user_id=uid, content=text)
     db.add(msg)
     await db.flush()

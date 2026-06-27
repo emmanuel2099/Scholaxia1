@@ -1,4 +1,5 @@
 import { StreamChat } from 'stream-chat';
+import { ensureScholaxiaChannel } from '@/lib/ensureScholaxiaChannel';
 
 const STREAM_API_KEY = process.env.STREAM_API_KEY || '7cu55d72xtjs';
 
@@ -6,7 +7,7 @@ export async function POST(request: Request) {
   const secret = process.env.STREAM_CHAT_SECRET;
   if (!secret) {
     return Response.json(
-      { error: 'STREAM_CHAT_SECRET is not set in discord-clone-nextjs/.env.local' },
+      { error: 'STREAM_CHAT_SECRET is not set. Add it to scholaxia-desktop/stream.env' },
       { status: 503 }
     );
   }
@@ -27,6 +28,8 @@ export async function POST(request: Request) {
     role: 'user',
     image: `https://getstream.io/random_png/?id=${userId}&name=${encodeURIComponent(name)}`,
   });
+
+  await ensureScholaxiaChannel(serverClient, userId);
 
   const token = serverClient.createToken(userId);
 

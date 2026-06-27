@@ -124,6 +124,10 @@
   }
 
   async function openGroupChat(groupId, meta) {
+    if (document.getElementById("discord-hub") && typeof window.discordSelectGroup === "function") {
+      window.discordSelectGroup(groupId, meta);
+      return;
+    }
     activeGroupId = groupId;
     activeGroupMeta = meta || null;
     localMessages = [];

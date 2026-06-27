@@ -2,7 +2,7 @@
 from app.models.user import User, StudentProfile, TeacherProfile, KindProfile
 from app.models.payment import Subscription, Payment
 from app.models.cbt import CBTExam, CBTQuestion, CBTSession, ExamProctorLog
-from app.models.community import CommunityChannel, CommunityMessage, AssignmentSubmission, MessageReport, CommunityPost, PostLike
+from app.models.community import CommunityChannel, CommunityMessage, AssignmentSubmission, MessageReport, CommunityPost, PostLike, PostReaction
 from app.models.live_class import LiveClass, ClassAttendance, LiveSessionRequest
 from app.models.content import Book, BookPurchase, SavedBook, BookReadProgress, Video, Note, Syllabus, BookRecommendation
 from app.models.notification import Notification

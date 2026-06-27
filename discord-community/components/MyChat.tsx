@@ -22,6 +22,7 @@ import { StreamVideo } from '@stream-io/video-react-sdk';
 import { useDiscordContext } from '@/contexts/DiscordContext';
 import MyCall from '@/components/MyCall/MyCall';
 import CustomChannelHeader from './MessageList/CustomChannelHeader/CustomChannelHeader';
+import ScholaxiaBoot from '@/components/ScholaxiaBoot';
 
 export default function MyChat({
   apiKey,
@@ -57,6 +58,7 @@ export default function MyChat({
   return (
     <StreamVideo client={videoClient}>
       <Chat client={chatClient} theme='str-chat__theme-light'>
+        {embedded && <ScholaxiaBoot />}
         <section className={`flex w-full layout ${embedded ? 'h-full' : 'h-screen w-screen'}`}>
           <ServerList />
           <ChannelList List={CustomChannelList} sendChannelsToList={true} />

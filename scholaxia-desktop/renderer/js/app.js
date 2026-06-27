@@ -821,10 +821,6 @@ function bindExamLockListeners() {
 }
 
 function showPage(page) {
-  if (page === "community" && typeof openDiscordCommunityPage === "function") {
-    openDiscordCommunityPage();
-    return;
-  }
   if (isCbtExamActive() && !examLockBypass) {
     alert("You are in an exam. Submit the exam to leave — other tabs (Sia, Community, etc.) are locked until then.");
     return;

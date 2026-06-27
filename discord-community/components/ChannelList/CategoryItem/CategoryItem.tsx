@@ -3,6 +3,8 @@ import { Channel } from 'stream-chat';
 import CustomChannelPreview from '../CustomChannelPreview';
 import { useState } from 'react';
 import { ChevronDown, PlusIcon } from '../Icons';
+import { useEmbedMode } from '@/contexts/EmbedModeContext';
+import { useScholaxiaPath } from '@/hooks/useScholaxiaPath';
 
 import './CategoryItem.css';
 import { DefaultStreamChatGenerics } from 'stream-chat-react';
@@ -19,6 +21,12 @@ export default function CategoryItem({
   channels,
 }: CategoryItemProps): JSX.Element {
   const [isOpen, setIsOpen] = useState(true);
+  const embedded = useEmbedMode();
+  const createChannelPath = useScholaxiaPath({
+    createChannel: 'true',
+    serverName,
+    category,
+  });
   return (
     <div className='mb-5'>
       <div className='flex items-center text-gray-500 p-2'>
@@ -37,12 +45,11 @@ export default function CategoryItem({
             {category}
           </span>
         </button>
-        <Link
-          className='inline-block create-button'
-          href={`/?createChannel=true&serverName=${serverName}&category=${category}`}
-        >
-          <PlusIcon />
-        </Link>
+        {!embedded && (
+          <Link className='inline-block create-button' href={createChannelPath}>
+            <PlusIcon />
+          </Link>
+        )}
       </div>
       {isOpen && (
         <div>

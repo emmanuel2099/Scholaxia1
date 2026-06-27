@@ -590,7 +590,7 @@ async def upload_community_file(
 
 # ── Posts (Feed) ──────────────────────────────────────────────────────────────
 
-from app.models.community import CommunityPost, PostLike
+from app.models.community import CommunityPost, PostLike, PostReaction
 
 
 class CreatePostRequest(BaseModel):
@@ -617,7 +617,31 @@ def _role_str(role) -> str:
     return str(role)
 
 
-def _serialize_post(p, users_map: dict, liked_ids: set, viewer_id: str, role) -> dict:
+ALLOWED_REACTION_EMOJIS = frozenset({"👍", "❤️", "😂", "🔥", "🎉"})
+
+
+async def _reactions_for_posts(db: AsyncSession, post_ids: list[str], viewer_id: str):
+    """Returns (counts_by_post, my_reaction_by_post)."""
+    counts: dict[str, dict[str, int]] = {}
+    mine: dict[str, str] = {}
+    if not post_ids:
+        return counts, mine
+    post_uuids = [parse_uuid(pid) for pid in post_ids]
+    viewer_uuid = parse_uuid(viewer_id)
+    res = await db.execute(
+        select(PostReaction).where(PostReaction.post_id.in_(post_uuids))
+    )
+    for row in res.scalars().all():
+        pid = str(row.post_id)
+        if pid not in counts:
+            counts[pid] = {}
+        counts[pid][row.emoji] = counts[pid].get(row.emoji, 0) + 1
+        if str(row.user_id) == str(viewer_uuid):
+            mine[pid] = row.emoji
+    return counts, mine
+
+
+def _serialize_post(p, users_map: dict, liked_ids: set, viewer_id: str, role, reactions=None, my_reaction=None) -> dict:
     role_name = _role_str(role)
     viewer_uuid = str(viewer_id)
     show_author = (
@@ -639,6 +663,8 @@ def _serialize_post(p, users_map: dict, liked_ids: set, viewer_id: str, role) ->
         "is_pinned": p.is_pinned,
         "like_count": p.like_count or 0,
         "liked_by_me": str(p.id) in liked_ids,
+        "reactions": reactions or {},
+        "my_reaction": my_reaction or "",
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }
 
@@ -665,6 +691,7 @@ async def _fetch_channel_posts(
         .where(
             CommunityPost.channel_id == channel_uuid,
             CommunityPost.is_deleted == False,  # noqa: E712
+            CommunityPost.group_id.is_(None),
         )
         .order_by(CommunityPost.created_at.desc())
         .limit(limit)
@@ -700,7 +727,19 @@ async def _fetch_channel_posts(
         liked_ids = {str(l.post_id) for l in likes_result.scalars().all()}
 
     viewer_id = current_user["sub"]
-    serialized = [_serialize_post(p, users_map, liked_ids, viewer_id, current_user.get("role")) for p in posts]
+    reaction_counts, my_reactions = await _reactions_for_posts(db, post_ids, viewer_id)
+    serialized = [
+        _serialize_post(
+            p,
+            users_map,
+            liked_ids,
+            viewer_id,
+            current_user.get("role"),
+            reaction_counts.get(str(p.id), {}),
+            my_reactions.get(str(p.id), ""),
+        )
+        for p in posts
+    ]
     return await _enrich_group_posts(serialized, viewer_id, db)
 
 
@@ -988,6 +1027,61 @@ async def toggle_like(
         post.like_count += 1
         await db.flush()
         return {"liked": True, "like_count": post.like_count}
+
+
+class ReactToPostRequest(BaseModel):
+    emoji: str = ""
+
+
+@router.post("/posts/{post_id}/react")
+async def react_to_post(
+    post_id: str,
+    payload: ReactToPostRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set or remove emoji reaction on a post (one emoji per user)."""
+    post_res = await db.execute(
+        select(CommunityPost).where(CommunityPost.id == parse_uuid(post_id), CommunityPost.is_deleted == False)  # noqa: E712
+    )
+    post = post_res.scalar_one_or_none()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post not found")
+
+    emoji = (payload.emoji or "").strip()
+    if emoji and emoji not in ALLOWED_REACTION_EMOJIS:
+        raise HTTPException(status_code=400, detail="Emoji not allowed.")
+
+    post_uuid = parse_uuid(post_id)
+    user_uuid = parse_uuid(current_user["sub"])
+    existing = await db.execute(
+        select(PostReaction).where(
+            PostReaction.post_id == post_uuid,
+            PostReaction.user_id == user_uuid,
+        )
+    )
+    reaction = existing.scalar_one_or_none()
+
+    if not emoji:
+        if reaction:
+            await db.delete(reaction)
+            await db.flush()
+    elif reaction:
+        if reaction.emoji == emoji:
+            await db.delete(reaction)
+            await db.flush()
+        else:
+            reaction.emoji = emoji
+            await db.flush()
+    else:
+        db.add(PostReaction(post_id=post_uuid, user_id=user_uuid, emoji=emoji))
+        await db.flush()
+
+    counts, mine = await _reactions_for_posts(db, [post_id], current_user["sub"])
+    return {
+        "reactions": counts.get(post_id, {}),
+        "my_reaction": mine.get(post_id, ""),
+    }
 
 
 # ── Pinned Posts ──────────────────────────────────────────────────────────────

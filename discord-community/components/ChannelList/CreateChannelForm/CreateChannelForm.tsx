@@ -4,6 +4,7 @@ import { useSearchParams } from 'next/navigation';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useChatContext } from 'stream-chat-react';
+import { useScholaxiaPath } from '@/hooks/useScholaxiaPath';
 import Link from 'next/link';
 import { CloseMark, Speaker } from '../Icons';
 import UserRow from './UserRow';
@@ -22,6 +23,7 @@ export default function CreateChannelForm(): JSX.Element {
 
   const dialogRef = useRef<HTMLDialogElement>(null);
   const router = useRouter();
+  const homePath = useScholaxiaPath();
 
   const { client } = useChatContext();
   const videoClient = useStreamVideoClient();
@@ -68,7 +70,7 @@ export default function CreateChannelForm(): JSX.Element {
     <dialog className='absolute z-10 space-y-2 rounded-xl' ref={dialogRef}>
       <div className='w-full flex items-center justify-between py-8 px-6'>
         <h2 className='text-3xl font-semibold text-gray-600'>Create Channel</h2>
-        <Link href='/'>
+        <Link href={homePath}>
           <CloseMark className='w-10 h-10 text-gray-400' />
         </Link>
       </div>
@@ -163,7 +165,7 @@ export default function CreateChannelForm(): JSX.Element {
         </div>
       </form>
       <div className='flex space-x-6 items-center justify-end p-6 bg-gray-200'>
-        <Link href={'/'} className='font-semibold text-gray-500'>
+        <Link href={homePath} className='font-semibold text-gray-500'>
           Cancel
         </Link>
         <button
@@ -220,6 +222,6 @@ export default function CreateChannelForm(): JSX.Element {
         }
     }
     setFormData(initialState);
-    router.replace('/');
+    router.replace(homePath);
   }
 }

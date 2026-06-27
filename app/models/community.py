@@ -125,6 +125,7 @@ class CommunityPost(Base):
         Enum(PostVisibility), default=PostVisibility.everyone, nullable=False
     )
     cbt_exam_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True)
+    group_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("student_groups.id"), nullable=True)
     is_pinned: Mapped[bool] = mapped_column(Boolean, default=False)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
     like_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -144,3 +145,14 @@ class PostLike(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     post: Mapped["CommunityPost"] = relationship("CommunityPost", back_populates="likes")
+
+
+class PostReaction(Base):
+    """One emoji reaction per user per post (general channel)."""
+    __tablename__ = "post_reactions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    post_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("community_posts.id"), index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), index=True)
+    emoji: Mapped[str] = mapped_column(String(16), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

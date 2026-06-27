@@ -97,7 +97,7 @@
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"/><path d="M5 19l1 2 1-2 2-1-2-1-1-2-1 2-2 1 2 1z"/></svg></span>
           <span class="nav-label">Tutor AI</span>
         </button>
-        <button type="button" class="nav-item topnav-btn" data-page="community" onclick="openDiscordCommunityPage()">
+        <button type="button" class="nav-item topnav-btn" data-page="community" onclick="showPage('community')">
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-1.9 5.4 8.5 8.5 0 0 1-13 0 8.38 8.38 0 0 1-1.9-5.4 8.5 8.5 0 0 1 13 0z"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/></svg></span>
           <span class="nav-label">Community</span>
           <span id="community-badge" class="nav-badge hidden">0</span>
@@ -550,19 +550,35 @@
 
 
 
-    <!-- Community opens Discord app directly (/discord-app/scholaxia) -->
+    <!-- Community — Discord-style UI (Scholaxia backend, no external chat SDK) -->
 
-    <section id="page-community" class="page discord-embed-page hidden" aria-hidden="true">
-      <div id="discord-embed-status" class="discord-embed-status">
-        <p>Opening Community…</p>
+    <section id="page-community" class="page discord-hub-page">
+      <div id="discord-hub" class="discord-hub" aria-label="Community">
+        <aside class="discord-rail" id="discord-rail" aria-label="Groups"></aside>
+        <aside class="discord-channels" id="discord-channels">
+          <header class="discord-channels-head" id="discord-channels-head">
+            <span id="discord-server-name">Scholaxia</span>
+          </header>
+          <nav class="discord-channels-list" id="discord-channels-list"></nav>
+        </aside>
+        <main class="discord-main">
+          <header class="discord-main-head" id="discord-main-head">
+            <span class="discord-channel-hash">#</span>
+            <span id="discord-channel-title">general</span>
+          </header>
+          <div id="discord-messages" class="discord-messages"></div>
+          <footer class="discord-composer" id="discord-composer">
+            <input type="text" id="discord-message-input" placeholder="Message #general" maxlength="2000" autocomplete="off" />
+            <button type="button" class="discord-send-btn" onclick="sendDiscordHubMessage()" aria-label="Send">Send</button>
+          </footer>
+        </main>
       </div>
+      <div id="discord-hub-status" class="discord-hub-status hidden" aria-hidden="true"></div>
     </section>
 
 
 
     <!-- Legacy pages kept hidden for script compatibility -->
-
-    <section id="page-groups" class="page hidden" aria-hidden="true"></section>
 
     <section id="page-group-chat" class="page hidden" aria-hidden="true">
       <div id="group-chat-messages"></div>

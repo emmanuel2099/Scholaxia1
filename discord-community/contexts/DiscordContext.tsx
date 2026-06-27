@@ -1,6 +1,6 @@
 'use client';
 
-import { DiscordServer } from '@/app/page';
+import { DiscordServer } from '@/types/discord';
 import { MemberRequest, StreamVideoClient } from '@stream-io/video-client';
 import { createContext, useCallback, useContext, useState } from 'react';
 import { Channel, ChannelFilters, StreamChat } from 'stream-chat';

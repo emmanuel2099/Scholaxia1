@@ -53,6 +53,7 @@
       <button class="nav-btn" data-page="live-subs" onclick="showAdminPage('live-subs')">&#127909; Live Subscriptions</button>
       <button class="nav-btn" data-page="cbt" onclick="showAdminPage('cbt')">&#128221; CBT Exams</button>
       <button class="nav-btn" data-page="recommendations" onclick="showAdminPage('recommendations')">&#128218; Recommendations</button>
+      <button class="nav-btn" data-page="student-groups" onclick="showAdminPage('student-groups')">&#128101; Student Groups</button>
       <button class="nav-btn" data-page="community" onclick="showAdminPage('community')">&#128172; Community</button>
     </nav>
     <div class="sidebar-foot">
@@ -219,6 +220,15 @@
         <p id="rec-form-error" class="error-msg"></p>
       </div>
       <div id="rec-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+    </section>
+
+    <section id="page-student-groups" class="admin-page">
+      <div class="page-head">
+        <h2>Student Groups — Pending Approval</h2>
+        <button class="btn-sm" onclick="loadPendingStudentGroups()">Refresh</button>
+      </div>
+      <p class="cbt-hint small">Students cannot activate groups until you approve them here.</p>
+      <div id="student-groups-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
     </section>
 
     <section id="page-community" class="admin-page">

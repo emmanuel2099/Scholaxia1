@@ -148,11 +148,9 @@
       loadGroupsPage();
       if (typeof loadCommunity === "function") loadCommunity();
       if (listInFeed && created && created.id) {
-        if (confirm("Group created and posted to the feed. Open chat room now?")) {
-          openGroupChat(created.id, { id: created.id, name: n, is_member: true, is_admin: true, member_count: 1 });
-        }
-      } else if (confirm("Group created. Open chat room now?")) {
-        openGroupChat(created.id, { id: created.id, name: n, is_member: true, is_admin: true, member_count: 1 });
+        alert((created.message || "Group submitted for admin approval.") + " You will be notified when it is active.");
+      } else {
+        alert((created && created.message) || "Group submitted for admin approval.");
       }
     } catch (e) {
       alert(e.message || "Could not create group.");
@@ -167,6 +165,7 @@
       });
       alert((res && res.message) || "Join request sent. The admin will approve you.");
       loadGroupsPage();
+      if (typeof refreshDiscordGroupsPanel === "function") refreshDiscordGroupsPanel();
       if (typeof loadCommunity === "function") loadCommunity();
     } catch (e) {
       alert(e.message || "Could not send request.");
@@ -182,6 +181,7 @@
       });
       alert("Group is now on the Community feed.");
       loadGroupsPage();
+      if (typeof refreshDiscordGroupsPanel === "function") refreshDiscordGroupsPanel();
       if (typeof loadCommunity === "function") loadCommunity();
     } catch (e) {
       alert(e.message || "Could not update group.");
@@ -208,6 +208,7 @@
       await api("/api/v1/student-groups/" + groupId + "/join-requests/" + reqs[idx].id + "/approve", { method: "POST" });
       alert("Student approved and added to the group.");
       loadGroupsPage();
+      if (typeof refreshDiscordGroupsPanel === "function") refreshDiscordGroupsPanel();
     } catch (e) {
       alert(e.message || "Could not load requests.");
     }

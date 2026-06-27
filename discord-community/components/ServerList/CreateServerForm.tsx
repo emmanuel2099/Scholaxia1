@@ -1,5 +1,8 @@
 import { useDiscordContext } from '@/contexts/DiscordContext';
 import { UserObject } from '@/model/UserObject';
+import { useScholaxiaPath } from '@/hooks/useScholaxiaPath';
+import { useEmbedMode } from '@/contexts/EmbedModeContext';
+import Link from 'next/link';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useRouter } from 'next/navigation';
@@ -21,6 +24,8 @@ const CreateServerForm = () => {
   const showCreateServerForm = params.get('createServer');
   const dialogRef = useRef<HTMLDialogElement>(null);
   const router = useRouter();
+  const homePath = useScholaxiaPath();
+  const embedded = useEmbedMode();
 
   // Data
   const { client } = useChatContext();
@@ -69,7 +74,7 @@ const CreateServerForm = () => {
         <h2 className='text-3xl font-semibold text-gray-600'>
           Create new server
         </h2>
-        <Link href='/'>
+        <Link href={homePath}>
           <CloseMark className='w-10 h-10 text-gray-400' />
         </Link>
       </div>
@@ -114,7 +119,7 @@ const CreateServerForm = () => {
         </div>
       </form>
       <div className='flex space-x-6 items-center justify-end p-6 bg-gray-200'>
-        <Link href={'/'} className='font-semibold text-gray-500'>
+        <Link href={homePath} className='font-semibold text-gray-500'>
           Cancel
         </Link>
         <button
@@ -166,7 +171,7 @@ const CreateServerForm = () => {
       formData.users.map((user) => user.id)
     );
     setFormData(initialState);
-    router.replace('/');
+    router.replace(homePath);
   }
 };
 export default CreateServerForm;

@@ -113,6 +113,27 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE live_classes ADD COLUMN IF NOT EXISTS school_group_id UUID NULL"
         ))
         await conn.execute(text(
+            "ALTER TABLE student_groups ADD COLUMN IF NOT EXISTS is_approved BOOLEAN NOT NULL DEFAULT TRUE"
+        ))
+        await conn.execute(text(
+            "UPDATE student_groups SET is_approved = TRUE WHERE is_approved IS NULL"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS group_id UUID NULL REFERENCES student_groups(id)"
+        ))
+        await conn.execute(text(
+            """
+            CREATE TABLE IF NOT EXISTS post_reactions (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                post_id UUID NOT NULL REFERENCES community_posts(id),
+                user_id UUID NOT NULL REFERENCES users(id),
+                emoji VARCHAR(16) NOT NULL,
+                created_at TIMESTAMP DEFAULT NOW(),
+                UNIQUE (post_id, user_id)
+            )
+            """
+        ))
+        await conn.execute(text(
             """
             CREATE TABLE IF NOT EXISTS kind_profiles (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

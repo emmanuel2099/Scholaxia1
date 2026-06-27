@@ -130,26 +130,24 @@ function renderGroupFeedCard(p) {
   var initial = name.charAt(0).toUpperCase();
   var actions = "";
   if (p.group_is_member) {
-    actions = '<button type="button" class="btn-action group-feed-btn" onclick="openGroupChat(\'' + safeGid + '\')">Open chat</button>';
+    actions = '<button type="button" class="discord-group-btn discord-group-btn-primary" onclick="openGroupChat(\'' + safeGid + '\')">Open chat</button>';
     if (p.group_is_admin) {
-      actions += '<button type="button" class="btn-sm" onclick="viewGroupRequests(\'' + safeGid + '\')">Manage requests</button>';
+      actions += '<button type="button" class="discord-group-btn discord-group-btn-secondary" onclick="viewGroupRequests(\'' + safeGid + '\')">Manage requests</button>';
     }
   } else if (p.group_pending_request) {
-    actions = '<span class="group-status-pill pending">Join request pending</span>';
+    actions = '<span class="discord-group-pill">Request pending</span>';
   } else {
-    actions = '<button type="button" class="btn-action group-feed-btn" onclick="requestJoinGroup(\'' + safeGid + '\')">Join group</button>';
+    actions = '<button type="button" class="discord-group-btn discord-group-btn-primary" onclick="requestJoinGroup(\'' + safeGid + '\')">Join group</button>';
   }
-  return '<article class="community-post group-feed-post">' +
-    '<div class="group-feed-banner"><span class="group-feed-tag">New group</span></div>' +
-    '<div class="post-top">' +
-    '<div class="post-avatar group-feed-avatar">' + escHtml(initial) + '</div>' +
-    '<div class="post-main">' +
-    '<div class="post-head"><strong>' + escHtml(name) + '</strong>' +
-    '<span>' + formatDate(p.created_at) + '</span></div>' +
-    '<p class="post-body group-feed-desc">' + escHtml(desc || "Tap join to request access — admin approves new members.") + '</p>' +
-    '<p class="group-feed-meta">' + escHtml(p.author_name || "Student") + ' started this group · ' + members + ' member' + (members === 1 ? '' : 's') + '</p>' +
-    '<div class="group-feed-actions">' + actions + '</div>' +
-    '</div></div></article>';
+  return '<article class="discord-group-card">' +
+    '<div class="discord-group-card-icon">' + escHtml(initial) + '</div>' +
+    '<div class="discord-group-card-body">' +
+    '<div class="discord-group-card-top"><strong>' + escHtml(name) + '</strong>' +
+    '<span class="discord-group-card-time">' + formatDate(p.created_at) + '</span></div>' +
+    '<p class="discord-group-card-desc">' + escHtml(desc || "Tap join to request access — admin approves new members.") + '</p>' +
+    '<p class="discord-group-card-meta">' + escHtml(p.author_name || "Student") + ' started this group · ' + members + ' member' + (members === 1 ? '' : 's') + '</p>' +
+    '<div class="discord-group-card-actions">' + actions + '</div>' +
+    '</div></article>';
 }
 
 function parsePostComment(content) {
@@ -244,7 +242,43 @@ function postInteractId(p) {
   return String(p.id || "");
 }
 
+var communityPostUiMode = "emoji"; // "emoji" for #general, "comments" for announcements/groups
+
+function renderEmojiReactions(p) {
+  var interactId = postInteractId(p);
+  if (!interactId || interactId.indexOf("orphan") === 0) return "";
+  var emojis = ["👍", "❤️", "😂", "🔥", "🎉"];
+  var counts = p.reactions || {};
+  var mine = p.my_reaction || "";
+  var safeId = interactId.replace(/'/g, "\\'");
+  return (
+    '<div class="post-emoji-reactions">' +
+    emojis
+      .map(function (em) {
+        var active = mine === em ? " active" : "";
+        var n = counts[em] || 0;
+        return (
+          '<button type="button" class="emoji-react-btn' +
+          active +
+          '" onclick="reactToCommunityPost(\'' +
+          safeId +
+          "', '" +
+          em +
+          '\')" title="React">' +
+          em +
+          (n ? '<span class="emoji-react-count">' + n + "</span>" : "") +
+          "</button>"
+        );
+      })
+      .join("") +
+    "</div>"
+  );
+}
+
 function renderPostActions(p) {
+  if (window.communityPostUiMode === "emoji") {
+    return renderEmojiReactions(p);
+  }
   var interactId = postInteractId(p);
   var domId = postCardDomId(p);
   if (!interactId || interactId.indexOf("orphan") === 0) return "";
@@ -270,7 +304,7 @@ function renderCommunityPosts(posts, targetEl) {
   var feed = targetEl || document.getElementById("community-feed");
   if (!feed) return;
   if (!posts || !posts.length) {
-    feed.innerHTML = '<div class="empty">No posts yet. Tap the send button below to share something!</div>';
+    feed.innerHTML = '<div class="empty">No posts yet. Write something below — tap an emoji to react!</div>';
     return;
   }
   feed.innerHTML = posts.map(function (p) {
@@ -292,13 +326,14 @@ function renderCommunityPosts(posts, targetEl) {
         '<p>' + escHtml(c.content) + '</p>' +
         '</div></div>';
     }).join("");
-    var commentsBlock = commentsHtml
+    var commentsBlock = commentsHtml && window.communityPostUiMode !== "emoji"
       ? '<div class="post-comments" id="post-comments-' + escHtml(domId) + '">' + commentsHtml + '</div>'
       : "";
     var bodyHtml = body
       ? '<p class="post-body">' + escHtml(body) + '</p>'
       : (p.media_type === "audio" ? '<p class="post-body voice-label">&#127908; Voice message</p>' : "");
-    return '<article class="community-post">' +
+    var interactId = postInteractId(p);
+    return '<article class="community-post" data-post-id="' + escHtml(interactId) + '">' +
       '<div class="post-top">' +
       '<div class="post-avatar">' + escHtml(initial) + '</div>' +
       '<div class="post-main">' +
@@ -376,7 +411,9 @@ function prependNewPost(posts, newPost) {
   return [newPost].concat(list);
 }
 
-async function fetchCommunityPosts() {
+async function fetchCommunityPosts(opts) {
+  opts = opts || {};
+  var includeGroups = opts.includeGroups !== false;
   await ensureCommunityChannel();
   var channelId = communityChannelId;
   var apiFn = typeof apiRetry === "function" ? apiRetry : api;
@@ -388,7 +425,9 @@ async function fetchCommunityPosts() {
     });
   });
   var commentsPromise = channelId ? fetchPostComments() : Promise.resolve({});
-  var listedPromise = apiFn("/api/v1/student-groups/community-listed", { attempts: 2 }).catch(function () { return []; });
+  var listedPromise = includeGroups
+    ? apiFn("/api/v1/student-groups/community-listed", { attempts: 2 }).catch(function () { return []; })
+    : Promise.resolve([]);
 
   var results = await Promise.all([feedPromise, commentsPromise, listedPromise]);
   var posts = results[0] || [];
@@ -398,6 +437,7 @@ async function fetchCommunityPosts() {
   posts = (posts || []).filter(function (p) { return !isPostComment(p.content); });
   posts = attachComments(posts, commentsByPost);
 
+  if (includeGroups) {
   var seenGroups = {};
   posts.forEach(function (p) {
     var gid = groupPostIdFromPost(p);
@@ -424,6 +464,9 @@ async function fetchCommunityPosts() {
       comments: [],
     });
   });
+  } else {
+    posts = posts.filter(function (p) { return !isGroupPost(p); });
+  }
   posts.sort(function (a, b) {
     return new Date(b.created_at || 0) - new Date(a.created_at || 0);
   });
@@ -431,10 +474,6 @@ async function fetchCommunityPosts() {
 }
 
 function openCommunityCreate() {
-  if (typeof openDiscordCommunityPage === "function") {
-    openDiscordCommunityPage();
-    return;
-  }
   showPage("community-create");
 }
 
@@ -522,11 +561,68 @@ async function refreshCommunityComments(posts) {
 }
 
 async function loadCommunity(newPost) {
-  if (typeof openDiscordCommunityPage === "function") {
-    openDiscordCommunityPage();
-    return;
+  if (document.getElementById("discord-hub") && typeof loadDiscordCommunity === "function") {
+    if (newPost) {
+      await loadDiscordCommunity();
+      if (typeof discordSelectChannel === "function") discordSelectChannel("general");
+      var el = document.getElementById("discord-messages");
+      if (el) el.innerHTML = '<div id="community-feed" class="community-feed discord-posts-feed"></div>';
+      return loadCommunityPostsFeed(newPost);
+    }
+    return loadDiscordCommunity();
   }
   return loadCommunityLegacy(newPost);
+}
+
+async function loadCommunityPostsFeed(newPost) {
+  var feed = document.getElementById("community-feed");
+  if (!feed) return;
+  window.communityPostUiMode = window.communityPostUiMode || "emoji";
+
+  restoreCommunityChannelId();
+  var cached = loadCommunityCache();
+  var showingCache = false;
+  var cachedSocial = (cached && cached.posts || []).filter(function (p) { return !isGroupPost(p); });
+
+  if (cachedSocial.length) {
+    renderCommunityPosts(newPost ? prependNewPost(cachedSocial, newPost) : cachedSocial);
+    showingCache = true;
+    feed.classList.add("feed-refreshing");
+  } else if (newPost) {
+    renderCommunityPosts([newPost]);
+    showingCache = true;
+  } else {
+    showFeedSkeleton(feed);
+  }
+
+  try {
+    if (typeof warmScholaxiaApi === "function") await warmScholaxiaApi().catch(function () {});
+    var channelId = await ensureCommunityChannel();
+    if (!channelId) {
+      feed.classList.remove("feed-refreshing");
+      if (!showingCache) feed.innerHTML = '<div class="empty">Community is not set up yet.</div>';
+      return;
+    }
+    var posts = await fetchCommunityPosts({ includeGroups: false });
+    if (newPost) posts = prependNewPost(posts, newPost);
+    posts = mergePostsWithCache(posts, cachedSocial);
+    feed.classList.remove("feed-refreshing");
+    if (posts.length) {
+      saveCommunityCache(posts);
+      renderCommunityPosts(posts);
+    } else if (showingCache && cachedSocial.length) {
+      renderCommunityPosts(cachedSocial);
+    } else {
+      renderCommunityPosts([]);
+    }
+  } catch (e) {
+    feed.classList.remove("feed-refreshing");
+    if (showingCache) return;
+    var msg = /failed to fetch|timed out/i.test(e.message || "")
+      ? "Could not reach the server yet. Tap Refresh — the server may be waking up."
+      : e.message;
+    feed.innerHTML = '<div class="empty">' + escHtml(msg) + '</div>';
+  }
 }
 
 async function loadCommunityLegacy(newPost) {
@@ -729,6 +825,52 @@ async function submitCommunityComment(postId, domId) {
   }
 }
 
+async function reactToCommunityPost(postId, emoji) {
+  if (!postId) return;
+  try {
+    var res = await api("/api/v1/community/posts/" + postId + "/react", {
+      method: "POST",
+      body: JSON.stringify({ emoji: emoji }),
+    });
+    var feed = document.getElementById("community-feed");
+    if (!feed) return;
+    var card = feed.querySelector('[data-post-id="' + postId + '"]');
+    if (!card) {
+      if (typeof loadCommunityPostsFeed === "function") loadCommunityPostsFeed();
+      return;
+    }
+    var bar = card.querySelector(".post-emoji-reactions");
+    if (bar && res) {
+      var emojis = ["👍", "❤️", "😂", "🔥", "🎉"];
+      var counts = res.reactions || {};
+      var mine = res.my_reaction || "";
+      var safeId = String(postId).replace(/'/g, "\\'");
+      bar.innerHTML = emojis
+        .map(function (em) {
+          var active = mine === em ? " active" : "";
+          var n = counts[em] || 0;
+          return (
+            '<button type="button" class="emoji-react-btn' +
+            active +
+            '" onclick="reactToCommunityPost(\'' +
+            safeId +
+            "', '" +
+            em +
+            '\')">' +
+            em +
+            (n ? '<span class="emoji-react-count">' + n + "</span>" : "") +
+            "</button>"
+          );
+        })
+        .join("");
+    }
+  } catch (e) {
+    alert(e.message || "Could not react.");
+  }
+}
+
+window.reactToCommunityPost = reactToCommunityPost;
+
 async function toggleCommunityLike(postId) {
   if (!postId || String(postId).indexOf("orphan") === 0 || String(postId).indexOf("group-feed-") === 0) return;
   var btn = document.querySelector('[data-like-id="' + postId + '"]');
@@ -759,8 +901,11 @@ async function toggleCommunityLike(postId) {
 }
 
 function showCommunityTab(tab) {
-  if (typeof openDiscordCommunityPage === "function") {
-    openDiscordCommunityPage();
+  if (document.getElementById("discord-hub") && typeof discordSelectChannel === "function") {
+    if (typeof discordSelectScholaxia === "function") discordSelectScholaxia();
+    if (tab === "announcements") discordSelectChannel("announcements");
+    else if (tab === "groups") discordSelectChannel("groups");
+    else discordSelectChannel(tab === "feed" || tab === "posts" ? "general" : "general");
     return;
   }
   communityActiveTab = tab;
@@ -786,6 +931,7 @@ function showCommunityTab(tab) {
 async function loadCommunityAnnouncements() {
   var el = document.getElementById("community-announcements");
   if (!el) return;
+  window.communityPostUiMode = "comments";
   el.innerHTML = '<div class="loading">Loading announcements…</div>';
   try {
     var posts = await api("/api/v1/community/announcements?limit=40");

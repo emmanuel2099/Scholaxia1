@@ -449,12 +449,12 @@ def discord_proxy_ready():
 
 def ensure_server():
     """Start the local server once; reuse it when Student + Teacher are both open."""
-    if proxy_is_ready() and discord_proxy_ready():
+    if proxy_is_ready():
         print(f"Scholaxia server already running on port {PORT} — opening another portal window.")
         return True
 
     if port_is_listening():
-        print("Replacing old desktop server (missing Community proxy)…")
+        print("Replacing old desktop server…")
         free_port(PORT)
         time.sleep(0.4)
 
@@ -463,11 +463,6 @@ def ensure_server():
 
     if not wait_for_proxy():
         return False
-
-    if discord_proxy_ready():
-        print(f"Community proxy ready — http://127.0.0.1:{PORT}/discord-app/")
-    else:
-        print(f"WARNING: Community proxy missing on port {PORT}. Close all Scholaxia windows and restart.")
 
     print(f"Scholaxia desktop ready — API proxy active on http://127.0.0.1:{PORT}/api-proxy")
     return True
@@ -513,14 +508,8 @@ def main():
         )
         sys.exit(1)
 
-    if not load_stream_config():
-        print(
-            "NOTE: Community chat needs STREAM_CHAT_SECRET.\n"
-            f'  Copy "{os.path.join(ROOT, "stream.env.example")}" to stream.env and add your GetStream secret.\n'
-        )
-
     if not is_teacher and not is_admin:
-        threading.Thread(target=start_discord_server, daemon=True).start()
+        pass  # Community uses Scholaxia APIs in-app — no Discord/Stream server needed
 
     if is_teacher:
         page, title, bg = "teacher.html", "Scholaxia Teacher Portal", "#0a1410"
