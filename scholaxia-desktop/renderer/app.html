@@ -18,6 +18,7 @@
   <link rel="stylesheet" href="css/app.css" />
   <link rel="stylesheet" href="css/discord-community.css" />
   <link rel="stylesheet" href="css/responsive.css" />
+  <script src="js/theme.js"></script>
 
 </head>
 
@@ -143,14 +144,14 @@
         <div class="topbar-toolbar">
           <button type="button" class="btn-refresh topbar-tool" onclick="refreshPage()">&#8635; Refresh</button>
           <button type="button" class="topbar-bell topbar-tool" id="topbar-bell" aria-label="Notifications" title="Notifications">&#128276;</button>
-          <div class="topbar-user topbar-tool">
+          <button type="button" class="topbar-user topbar-tool" id="topbar-user-chip" onclick="handleTopbarUserClick()" title="Account">
             <div class="user-avatar" id="user-avatar">S</div>
             <div class="topbar-user-meta">
               <strong id="header-user-name">Student</strong>
               <span id="header-user-handle">@student</span>
             </div>
-          </div>
-          <button type="button" class="btn-logout topbar-logout topbar-tool" onclick="handleAuthButton()">Sign out</button>
+          </button>
+          <button type="button" class="btn-logout topbar-logout topbar-tool" id="topbar-auth-btn" onclick="handleAuthButton()">Sign out</button>
         </div>
       </div>
     </header>
@@ -364,8 +365,12 @@
 
     <section id="page-access-code" class="page">
       <div class="info-banner">When your teacher hosts a class, your <strong>unique code</strong> appears here. <strong>Copy</strong> the code — when you tap <strong>Join Live</strong>, paste it once to enter the class.</div>
-      <div class="section-header">
+      <div class="section-header access-codes-header">
         <h2>Your codes</h2>
+        <div class="access-codes-toolbar">
+          <button type="button" class="btn-secondary btn-sm" onclick="clearOldAccessCodes()">Clear old codes</button>
+          <button type="button" class="btn-secondary btn-sm access-codes-clear-all" onclick="clearAllAccessCodes()">Clear all</button>
+        </div>
       </div>
       <div id="access-codes-list" class="access-codes-list"><div class="loading">Loading…</div></div>
     </section>
@@ -567,7 +572,6 @@
             <span id="discord-channel-title">general</span>
             <div class="discord-head-actions">
               <button type="button" id="discord-group-edit-btn" class="discord-head-btn hidden" onclick="discordEditGroupMenu()" title="Edit group">Edit group</button>
-              <button type="button" id="discord-theme-toggle" class="discord-head-btn" onclick="toggleDiscordTheme()" title="Light / dark mode">🌙</button>
             </div>
           </header>
           <div id="discord-messages" class="discord-messages"></div>
@@ -575,6 +579,7 @@
             <input type="text" id="discord-message-input" placeholder="Message #general" maxlength="2000" autocomplete="off" />
             <button type="button" class="discord-send-btn" onclick="sendDiscordHubMessage()" aria-label="Send">Send</button>
           </footer>
+          <p id="discord-composer-status" class="discord-composer-status hidden" aria-live="polite"></p>
         </main>
       </div>
       <div id="discord-hub-status" class="discord-hub-status hidden" aria-hidden="true"></div>
@@ -776,6 +781,17 @@
 
           <div class="profile-field"><label>Subscription</label><span id="pf-sub">—</span></div>
 
+        </div>
+
+        <div class="profile-theme-row">
+          <div class="profile-theme-copy">
+            <label>Appearance</label>
+            <p class="profile-theme-hint">Light or dark mode for the whole app</p>
+          </div>
+          <button type="button" id="profile-theme-toggle" class="theme-toggle-btn" onclick="toggleAppTheme()" aria-pressed="false">
+            <span id="profile-theme-icon" aria-hidden="true">🌙</span>
+            <span id="profile-theme-label">Switch to dark mode</span>
+          </button>
         </div>
 
       </div>

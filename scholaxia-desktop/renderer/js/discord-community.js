@@ -65,16 +65,6 @@
     } catch (e) { /* ignore */ }
   }
 
-  window.toggleDiscordTheme = function () {
-    var page = document.getElementById("page-community");
-    var btn = document.getElementById("discord-theme-toggle");
-    if (!page) return;
-    var next = page.getAttribute("data-community-theme") === "light" ? "dark" : "light";
-    page.setAttribute("data-community-theme", next);
-    try { localStorage.setItem("sia_community_theme", next); } catch (e) { /* ignore */ }
-    if (btn) btn.textContent = next === "light" ? "☀️" : "🌙";
-  };
-
   window.discordEditGroupMenu = function (groupId) {
     var gid = groupId || state.groupId;
     if (!gid) return;
@@ -84,12 +74,7 @@
   };
 
   function applySavedTheme() {
-    var page = document.getElementById("page-community");
-    var btn = document.getElementById("discord-theme-toggle");
-    var theme = "dark";
-    try { theme = localStorage.getItem("sia_community_theme") || "dark"; } catch (e) { /* ignore */ }
-    if (page) page.setAttribute("data-community-theme", theme);
-    if (btn) btn.textContent = theme === "light" ? "☀️" : "🌙";
+    if (typeof initAppTheme === "function") initAppTheme();
   }
 
   function formatTime(iso) {
@@ -615,7 +600,10 @@
     try {
       var chs = await apiFn()("/api/v1/community/channels", { attempts: 2 });
       (chs || []).forEach(function (c) {
-        if (c.type === "general") state.channels.general = c;
+        if (c.type === "general") {
+          state.channels.general = c;
+          if (c.id && typeof saveCommunityChannelId === "function") saveCommunityChannelId(c.id);
+        }
         if (c.type === "teacher_announcement") state.channels.announcements = c;
       });
     } catch (e) { /* optional */ }
@@ -656,6 +644,7 @@
     }
     state.groupMeta = meta || null;
     state.channel = "chat";
+    if (typeof markCommunityRead === "function") markCommunityRead();
     if (typeof showPage === "function") showPage("community");
     renderRail();
     renderChannelList();
@@ -665,6 +654,7 @@
 
   window.discordSelectChannel = function (channelId) {
     state.channel = channelId;
+    if (channelId === "general" && typeof markCommunityRead === "function") markCommunityRead();
     renderChannelList();
     updateHeader();
     refreshActivePanel(false);
@@ -677,9 +667,25 @@
 
   window.sendDiscordHubMessage = async function () {
     var input = document.getElementById("discord-message-input");
-    if (!input) return;
+    var sendBtn = document.querySelector(".discord-send-btn");
+    var statusEl = document.getElementById("discord-composer-status");
+    if (!input || input.disabled) return;
     var text = input.value.trim();
     if (!text) return;
+
+    function setSending(on) {
+      input.disabled = !!on;
+      if (sendBtn) {
+        sendBtn.disabled = !!on;
+        sendBtn.textContent = on ? "Sending…" : "Send";
+      }
+      if (statusEl) {
+        statusEl.textContent = on ? "Sending your post…" : "";
+        statusEl.classList.toggle("hidden", !on);
+        statusEl.classList.toggle("discord-composer-status-sending", !!on);
+        statusEl.classList.toggle("discord-composer-status-ok", false);
+      }
+    }
 
     if (state.server === "group") {
       if (!state.groupId || !state.groupMeta || !state.groupMeta.is_member || !state.groupMeta.is_approved) return;
@@ -699,22 +705,91 @@
     }
 
     if (state.channel !== "general") return;
+    var textToSend = text;
+    var pendingId = "pending-" + Date.now();
+    var optimisticPost = {
+      id: pendingId,
+      author_name: (typeof getUser === "function" && getUser().name) || "Student",
+      content: textToSend,
+      created_at: new Date().toISOString(),
+      like_count: 0,
+      liked_by_me: false,
+      comments: [],
+      _pending: true,
+    };
     input.value = "";
+    setSending(true);
+    if (typeof loadCommunityCache === "function" && typeof saveCommunityCache === "function") {
+      var pendingCache = loadCommunityCache();
+      var pendingList = typeof prependNewPost === "function"
+        ? prependNewPost((pendingCache && pendingCache.posts) || [], optimisticPost)
+        : [optimisticPost].concat((pendingCache && pendingCache.posts) || []);
+      var pendingSocial = pendingList.filter(function (p) {
+        return typeof isGroupPost === "function" ? !isGroupPost(p) : true;
+      });
+      saveCommunityCache(pendingSocial);
+      var feedEl = document.getElementById("community-feed");
+      if (feedEl && typeof renderCommunityPosts === "function") {
+        window.communityPostUiMode = "emoji";
+        renderCommunityPosts(pendingSocial);
+      }
+    }
     try {
       if (typeof ensureCommunityChannel === "function") await ensureCommunityChannel();
       var channelId =
         (state.channels.general && state.channels.general.id) ||
         (typeof communityChannelId !== "undefined" ? communityChannelId : null);
       if (!channelId) throw new Error("Community channel not available.");
-      await apiFn()("/api/v1/community/posts", {
+      var created = await apiFn()("/api/v1/community/posts", {
         method: "POST",
-        body: JSON.stringify({ channel_id: channelId, content: text }),
+        body: JSON.stringify({ channel_id: channelId, content: textToSend }),
         attempts: 3,
       });
-      await loadGeneralPostsPanel();
+      if (!created || !created.id) throw new Error("Post was not saved. Check your connection and try again.");
+      var newPost =
+        typeof normalizeCreatedPost === "function"
+          ? normalizeCreatedPost(created, textToSend, null, null)
+          : created;
+      if (typeof loadCommunityCache === "function" && typeof saveCommunityCache === "function") {
+        var cache = loadCommunityCache();
+        var merged = typeof prependNewPost === "function"
+          ? prependNewPost((cache && cache.posts) || [], newPost)
+          : [newPost].concat((cache && cache.posts) || []);
+        merged = merged.filter(function (p) { return p.id !== pendingId; });
+        var social = merged.filter(function (p) {
+          return typeof isGroupPost === "function" ? !isGroupPost(p) : true;
+        });
+        saveCommunityCache(social.length ? social : merged);
+      }
+      var feed = document.getElementById("community-feed");
+      if (feed && typeof renderCommunityPosts === "function") {
+        window.communityPostUiMode = "emoji";
+        var cached = typeof loadCommunityCache === "function" ? loadCommunityCache() : null;
+        var list = (cached && cached.posts) || [newPost];
+        renderCommunityPosts(list);
+      }
+      if (statusEl) {
+        statusEl.textContent = "Posted!";
+        statusEl.classList.remove("hidden", "discord-composer-status-sending");
+        statusEl.classList.add("discord-composer-status-ok");
+        setTimeout(function () {
+          statusEl.classList.add("hidden");
+          statusEl.classList.remove("discord-composer-status-ok");
+        }, 2000);
+      }
+      await loadGeneralPostsPanel(newPost, true);
     } catch (e) {
+      if (typeof loadCommunityCache === "function" && typeof saveCommunityCache === "function") {
+        var failCache = loadCommunityCache();
+        var cleaned = ((failCache && failCache.posts) || []).filter(function (p) { return p.id !== pendingId; });
+        if (cleaned.length) saveCommunityCache(cleaned);
+        else try { localStorage.removeItem(typeof COMMUNITY_POSTS_CACHE_KEY !== "undefined" ? COMMUNITY_POSTS_CACHE_KEY : "sia_community_posts_cache"); } catch (err) { /* ignore */ }
+        if (typeof renderCommunityPosts === "function") renderCommunityPosts(cleaned);
+      }
       alert(errMsg(e) || "Post blocked or could not send.");
-      input.value = text;
+      input.value = textToSend;
+    } finally {
+      setSending(false);
     }
   };
 

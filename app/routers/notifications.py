@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from pydantic import BaseModel
+from typing import Optional
 from app.core.database import get_db
 from app.core.deps import get_current_user
-from app.models.notification import Notification, DeviceToken
+from app.services.live_class_access import parse_uuid
+from app.models.notification import Notification, DeviceToken, NotificationType
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
 
@@ -51,6 +53,55 @@ async def mark_all_read(
         .values(is_read=True)
     )
     return {"message": "All notifications marked as read"}
+
+
+class MarkTypesReadRequest(BaseModel):
+    types: Optional[list[str]] = None
+
+
+@router.post("/mark-types-read")
+async def mark_types_read(
+    payload: MarkTypesReadRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Mark unread notifications of given types as read (e.g. community after opening a group)."""
+    type_names = payload.types or ["community_mention", "announcement"]
+    allowed = {t.value for t in NotificationType}
+    valid = [t for t in type_names if t in allowed]
+    if not valid:
+        return {"message": "No valid types", "marked": 0}
+    enum_types = [NotificationType(t) for t in valid]
+    result = await db.execute(
+        update(Notification)
+        .where(
+            Notification.user_id == current_user["sub"],
+            Notification.is_read == False,  # noqa: E712
+            Notification.type.in_(enum_types),
+        )
+        .values(is_read=True)
+    )
+    return {"message": "Marked as read", "marked": result.rowcount or 0}
+
+
+@router.post("/{notification_id}/read")
+async def mark_notification_read(
+    notification_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Mark a single notification as read (updates badge counter)."""
+    nid = parse_uuid(notification_id)
+    uid = parse_uuid(current_user["sub"])
+    result = await db.execute(
+        select(Notification).where(Notification.id == nid, Notification.user_id == uid)
+    )
+    row = result.scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    row.is_read = True
+    await db.flush()
+    return {"message": "Marked as read", "id": str(row.id)}
 
 
 @router.post("/device-token")

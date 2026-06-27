@@ -43,6 +43,9 @@
     try {
       if (lastTopPostId) localStorage.setItem("sia_community_last_post", lastTopPostId);
     } catch (e) { /* ignore */ }
+    if (typeof markCommunityNotificationsRead === "function") {
+      markCommunityNotificationsRead();
+    }
   }
 
   async function checkCommunityUpdates() {

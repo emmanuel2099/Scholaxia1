@@ -220,8 +220,37 @@
     } catch (e) { /* ignore */ }
   }
 
+  async function markNotificationRead(id) {
+    if (!id) return;
+    var n = notifications.find(function (x) { return x.id === id; });
+    if (n && n.is_read) return;
+    if (n) n.is_read = true;
+    updateBadge();
+    if (typeof currentPage !== "undefined" && currentPage === "notifications") {
+      renderNotificationsList();
+    }
+    try {
+      await api("/api/v1/notifications/" + id + "/read", { method: "POST" });
+    } catch (e) { /* keep local read state */ }
+  }
+
+  async function markCommunityNotificationsRead() {
+    notifications.forEach(function (n) {
+      var t = String(n.type || "").toLowerCase();
+      if (t.indexOf("community") >= 0 || t.indexOf("announcement") >= 0) n.is_read = true;
+    });
+    updateBadge();
+    try {
+      await api("/api/v1/notifications/mark-types-read", {
+        method: "POST",
+        body: JSON.stringify({ types: ["community_mention", "announcement"] }),
+      });
+    } catch (e) { /* local badge already cleared */ }
+  }
+
   function notifAction(n) {
     stopRing();
+    if (n && n.id && !n.is_read) markNotificationRead(n.id);
     var t = String(n.type || "").toLowerCase();
     var data = {};
     try {
@@ -238,7 +267,10 @@
       return;
     }
     if (t.indexOf("community") >= 0 || t.indexOf("announcement") >= 0) {
+      markCommunityNotificationsRead();
+      if (typeof markCommunityRead === "function") markCommunityRead();
       if (typeof showPage === "function") showPage("community");
+      if (typeof loadDiscordCommunity === "function") loadDiscordCommunity();
       return;
     }
     if (typeof showPage === "function") showPage("access-code");
@@ -345,6 +377,8 @@
     fetchNotifications();
   };
   window.markAllNotificationsRead = markAllRead;
+  window.markNotificationRead = markNotificationRead;
+  window.markCommunityNotificationsRead = markCommunityNotificationsRead;
   window.stopNotificationRing = stopRingWithSnooze;
   window.scholaxiaNotifyRefresh = fetchNotifications;
   window.scholaxiaSyncLiveRing = syncRingWithLiveStatus;

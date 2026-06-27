@@ -97,7 +97,29 @@
     accessCodePollTimer = setInterval(refreshAccessCodeBadge, 45000);
   }
 
+  async function clearAccessCodes(mode) {
+    var label = mode === "all"
+      ? "Remove every access code from this list?"
+      : "Remove codes you already used and codes for classes that have ended?";
+    if (!confirm(label)) return;
+    try {
+      var res = await api("/api/v1/live-classes/access-codes/clear", {
+        method: "POST",
+        body: JSON.stringify({ mode: mode }),
+      });
+      var n = (res && res.removed) || 0;
+      alert(n ? "Cleared " + n + " code(s)." : "Nothing to clear.");
+      await loadAccessCodesPage();
+    } catch (e) {
+      alert(e.message || "Could not clear codes.");
+    }
+  }
+
+  window.clearOldAccessCodes = function () { clearAccessCodes("old"); };
+  window.clearAllAccessCodes = function () { clearAccessCodes("all"); };
+
   window.loadAccessCodesPage = loadAccessCodesPage;
+  window.loadAccessCodes = loadAccessCodesPage;
   window.refreshAccessCodeBadge = refreshAccessCodeBadge;
   window.startAccessCodePoll = startAccessCodePoll;
 })();

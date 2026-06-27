@@ -244,14 +244,16 @@ body:has(.app-shell-sidebar) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 14px 28px;
+  gap: 12px;
+  padding: 14px 20px;
   min-height: 68px;
   background: #fff;
   border-bottom: 1px solid #e8ece9;
   position: sticky;
   top: 0;
   z-index: 30;
+  flex-wrap: wrap;
+  overflow: visible;
 }
 
 .sidebar-toggle {
@@ -273,6 +275,10 @@ body:has(.app-shell-sidebar) {
   font-family: "Plus Jakarta Sans", sans-serif;
   color: #0f3320;
   letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: min(42vw, 320px);
 }
 
 .topbar-exam-pill {
@@ -289,12 +295,16 @@ body:has(.app-shell-sidebar) {
   display: flex;
   align-items: center;
   flex-shrink: 0;
+  max-width: 100%;
+  margin-left: auto;
 }
 
 .topbar-toolbar {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  flex-wrap: nowrap;
+  overflow: visible;
 }
 
 .topbar-tool {
@@ -479,6 +489,17 @@ body:has(.app-shell-sidebar) {
   border: 1px solid #e5e7eb;
   background: #fafafa;
   min-width: 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  max-width: 200px;
+  -webkit-appearance: none;
+  appearance: none;
+  text-align: left;
+}
+
+.topbar-user:hover {
+  background: #f3f4f6;
 }
 
 .topbar-user .user-avatar {
@@ -513,22 +534,37 @@ body:has(.app-shell-sidebar) {
   color: #6b7280;
 }
 
-.topbar-logout {
-  width: auto;
-  padding: 0 14px;
+.topbar-logout.btn-logout,
+.app-topbar .topbar-logout {
+  width: auto !important;
+  min-width: 92px;
+  padding: 0 16px !important;
   margin: 0;
   border: 1px solid #d1d5db;
   background: #fff;
-  color: #374151;
+  color: #374151 !important;
   border-radius: 10px;
-  font-size: 0.78rem;
-  font-weight: 600;
+  font-size: 0.82rem;
+  font-weight: 700;
   cursor: pointer;
-  display: inline-flex;
+  display: inline-flex !important;
   align-items: center;
   justify-content: center;
-  line-height: 1;
+  line-height: 1.2;
   white-space: nowrap;
+  flex-shrink: 0;
+  -webkit-text-fill-color: currentColor;
+}
+
+.topbar-logout-primary {
+  background: linear-gradient(135deg, #1a5c3a, #2d9b83) !important;
+  border-color: transparent !important;
+  color: #fff !important;
+  box-shadow: 0 4px 14px rgba(26, 92, 58, 0.35);
+}
+
+.topbar-logout-primary:hover {
+  filter: brightness(1.06);
 }
 
 .topbar-logout:hover { background: #f9fafb; }
@@ -1634,6 +1670,26 @@ body:has(.app-shell-topnav) { overflow: auto; height: auto; }
 .topnav-btn .nav-badge { margin-left: 6px; }
 
 .access-codes-list { display: flex; flex-direction: column; gap: 12px; }
+.access-codes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.access-codes-toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.access-codes-clear-all {
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+html[data-app-theme="dark"] .access-codes-clear-all {
+  color: #fca5a5;
+  border-color: #7f1d1d;
+}
 .access-code-card {
   background: #fff;
   border: 1px solid #d8e0dc;
@@ -3067,14 +3123,18 @@ body.exam-lock-active .main-content-topnav {
   .dash-hero-row { grid-template-columns: 1fr; }
   .dash-actions-grid { grid-template-columns: repeat(2, 1fr); }
 }
-@media (max-width: 900px) {
+@media (max-width: 1100px) {
   .topbar-user-meta { display: none; }
-  .topbar-user { padding-right: 4px; }
+  .topbar-user { max-width: 48px; padding-right: 8px; }
+  .app-topbar .btn-refresh { padding: 0 12px; }
+}
+@media (max-width: 900px) {
   .dash-stats-row { grid-template-columns: 1fr; }
 }
 @media (max-width: 768px) {
-  .app-topbar { padding: 12px 16px; }
-  .topbar-logout { display: none; }
+  .app-topbar { padding: 12px 14px; }
+  .app-topbar-left h1 { font-size: 1.1rem; max-width: 36vw; }
+  .topbar-exam-pill { display: none; }
 }
 @media (max-width: 600px) {
   .dash-actions-grid { grid-template-columns: 1fr; }
@@ -3446,5 +3506,364 @@ body.exam-lock-active .main-content-topnav {
   .contact-layout { grid-template-columns: 1fr; }
   .contact-hero { padding: 22px 20px; }
   .contact-hero h2 { font-size: 1.35rem; }
+}
+
+/* ── Profile theme toggle ── */
+.profile-theme-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #e2e8e5;
+}
+.profile-theme-copy label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #5a7268;
+  margin-bottom: 4px;
+}
+.profile-theme-hint {
+  margin: 0;
+  font-size: 0.88rem;
+  color: #6b8578;
+}
+.theme-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid #d1d5db;
+  background: #f8faf9;
+  color: #1a3d28;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.theme-toggle-btn:hover {
+  background: #eef5f0;
+  border-color: #b8d9c6;
+}
+
+/* ── App-wide dark theme ── */
+html[data-app-theme="dark"] body,
+body[data-app-theme="dark"] {
+  background: #313338;
+  color: #f2f3f5;
+}
+html[data-app-theme="dark"] body:has(.app-shell-sidebar),
+html[data-app-theme="dark"] .app-shell-sidebar {
+  background: #313338;
+}
+html[data-app-theme="dark"] .app-sidebar {
+  background: #1e1f22;
+  border-right-color: #2b2d31;
+}
+html[data-app-theme="dark"] .sidebar-brand-text,
+html[data-app-theme="dark"] .nav-item {
+  color: #dbdee1;
+}
+html[data-app-theme="dark"] .nav-item:hover {
+  background: #2b2d31;
+  color: #fff;
+}
+html[data-app-theme="dark"] .nav-item.active {
+  background: #5865f2;
+  color: #fff;
+}
+html[data-app-theme="dark"] .sidebar-edge-toggle {
+  background: #2b2d31;
+  border-color: #3f4147;
+  color: #dbdee1;
+}
+html[data-app-theme="dark"] .app-topbar {
+  background: #2b2d31;
+  border-bottom-color: #1e1f22;
+}
+html[data-app-theme="dark"] .app-topbar-left h1 {
+  color: #f2f3f5;
+}
+html[data-app-theme="dark"] .topbar-exam-pill {
+  background: #404249;
+  color: #57f287;
+}
+html[data-app-theme="dark"] .app-topbar .btn-refresh {
+  background: #404249;
+  border-color: #4e5058;
+  color: #dbdee1;
+}
+html[data-app-theme="dark"] .app-topbar .btn-refresh:hover {
+  background: #4e5058;
+}
+html[data-app-theme="dark"] .topbar-bell {
+  background: #404249;
+  border-color: #4e5058;
+}
+html[data-app-theme="dark"] .topbar-bell:hover {
+  background: #4e5058;
+}
+html[data-app-theme="dark"] .topbar-user {
+  background: #404249;
+  border-color: #4e5058;
+}
+html[data-app-theme="dark"] .topbar-user-meta strong {
+  color: #f2f3f5 !important;
+}
+html[data-app-theme="dark"] .topbar-user-meta span {
+  color: #b5bac1 !important;
+}
+.app-topbar .topbar-logout.btn-logout:not(.topbar-logout-primary) {
+  color: #dc2626 !important;
+  border-color: #dc2626;
+  background: #fff;
+}
+
+.app-topbar .topbar-logout.btn-logout:not(.topbar-logout-primary):hover {
+  background: #fef2f2;
+}
+
+html[data-app-theme="dark"] .app-topbar .topbar-logout.btn-logout:not(.topbar-logout-primary) {
+  background: #ed4245 !important;
+  border-color: #ed4245 !important;
+  color: #fff !important;
+  -webkit-text-fill-color: #fff !important;
+}
+html[data-app-theme="dark"] .app-topbar .topbar-logout.btn-logout:not(.topbar-logout-primary):hover {
+  background: #c03537 !important;
+  border-color: #c03537 !important;
+}
+html[data-app-theme="dark"] .topbar-logout-primary {
+  background: linear-gradient(135deg, #5865f2, #4752c4) !important;
+  color: #fff !important;
+  box-shadow: 0 4px 14px rgba(88, 101, 242, 0.35);
+}
+html[data-app-theme="dark"] .topbar-user:hover {
+  background: #4e5058;
+}
+html[data-app-theme="dark"] .notif-badge {
+  border-color: #2b2d31;
+}
+html[data-app-theme="dark"] .app-main-wrap {
+  background: #313338;
+}
+html[data-app-theme="dark"] .sidebar-topbar,
+html[data-app-theme="dark"] .student-topbar {
+  background: #2b2d31;
+  color: #f2f3f5;
+  border-bottom-color: #1e1f22;
+}
+html[data-app-theme="dark"] .sidebar-topbar h1,
+html[data-app-theme="dark"] .page-head-bar h1,
+html[data-app-theme="dark"] .topbar h1,
+html[data-app-theme="dark"] .dash-greeting h2,
+html[data-app-theme="dark"] h2,
+html[data-app-theme="dark"] h3,
+html[data-app-theme="dark"] h4 {
+  color: #f2f3f5;
+}
+html[data-app-theme="dark"] .sidebar-topbar p,
+html[data-app-theme="dark"] .dash-greeting p,
+html[data-app-theme="dark"] .section-sub,
+html[data-app-theme="dark"] .meta,
+html[data-app-theme="dark"] .main-content-sidebar > .page > p,
+html[data-app-theme="dark"] .about-contact-page > p {
+  color: #b5bac1;
+}
+html[data-app-theme="dark"] .main-content-sidebar {
+  background: #313338;
+}
+html[data-app-theme="dark"] .profile-card,
+html[data-app-theme="dark"] .setup-card,
+html[data-app-theme="dark"] .card,
+html[data-app-theme="dark"] .dash-hero-card,
+html[data-app-theme="dark"] .dash-side-card,
+html[data-app-theme="dark"] .dash-stat-card,
+html[data-app-theme="dark"] .empty-state-premium,
+html[data-app-theme="dark"] .study-mat-card,
+html[data-app-theme="dark"] .live-empty-state,
+html[data-app-theme="dark"] .live-plan-card,
+html[data-app-theme="dark"] .about-block,
+html[data-app-theme="dark"] .contact-form-card,
+html[data-app-theme="dark"] .contact-info-card,
+html[data-app-theme="dark"] .skills-hero,
+html[data-app-theme="dark"] .skill-card,
+html[data-app-theme="dark"] .sia-chat-wrap,
+html[data-app-theme="dark"] .request-box,
+html[data-app-theme="dark"] .skill-phase,
+html[data-app-theme="dark"] .skill-live-card {
+  background: #2b2d31;
+  border-color: #1e1f22;
+  color: #f2f3f5;
+}
+html[data-app-theme="dark"] .profile-field label {
+  color: #949ba4;
+}
+html[data-app-theme="dark"] .profile-field span,
+html[data-app-theme="dark"] .profile-header h2 {
+  color: #f2f3f5;
+}
+html[data-app-theme="dark"] .profile-theme-row {
+  border-top-color: #3f4147;
+}
+html[data-app-theme="dark"] .profile-theme-copy label,
+html[data-app-theme="dark"] .profile-theme-hint {
+  color: #949ba4;
+}
+html[data-app-theme="dark"] .theme-toggle-btn {
+  background: #404249;
+  border-color: #4e5058;
+  color: #dbdee1;
+}
+html[data-app-theme="dark"] .theme-toggle-btn:hover {
+  background: #4e5058;
+}
+html[data-app-theme="dark"] .loading,
+html[data-app-theme="dark"] .empty {
+  color: #949ba4;
+}
+html[data-app-theme="dark"] .btn-secondary {
+  background: #404249;
+  border-color: #4e5058;
+  color: #dbdee1;
+}
+html[data-app-theme="dark"] .info-banner {
+  background: rgba(250, 208, 80, 0.12);
+  border-color: rgba(250, 208, 80, 0.25);
+  color: #f0d080;
+}
+html[data-app-theme="dark"] select,
+html[data-app-theme="dark"] input[type="text"],
+html[data-app-theme="dark"] input[type="email"],
+html[data-app-theme="dark"] input[type="password"],
+html[data-app-theme="dark"] textarea {
+  background: #1e1f22;
+  border-color: #3f4147;
+  color: #f2f3f5;
+}
+html[data-app-theme="dark"] .page-hero {
+  background: linear-gradient(135deg, #2b2d31 0%, #1e1f22 100%);
+  border-color: #3f4147;
+}
+html[data-app-theme="dark"] .page-hero h2,
+html[data-app-theme="dark"] .page-hero p {
+  color: #f2f3f5;
+}
+html[data-app-theme="dark"] .hero-eyebrow {
+  color: #57f287;
+}
+html[data-app-theme="dark"] .sidebar-user-name {
+  color: #f2f3f5;
+}
+html[data-app-theme="dark"] .sidebar-user-meta {
+  color: #949ba4;
+}
+
+/* Dark mode — page-specific text on card surfaces */
+html[data-app-theme="dark"] .live-empty-state h3,
+html[data-app-theme="dark"] .live-empty-state p,
+html[data-app-theme="dark"] .empty-state-premium h3,
+html[data-app-theme="dark"] .empty-state-premium p,
+html[data-app-theme="dark"] .about-contact-page h2,
+html[data-app-theme="dark"] .about-block h3,
+html[data-app-theme="dark"] .about-block p,
+html[data-app-theme="dark"] .contact-form-card h3,
+html[data-app-theme="dark"] .contact-form-sub,
+html[data-app-theme="dark"] .contact-info-card h3,
+html[data-app-theme="dark"] .contact-info-card p,
+html[data-app-theme="dark"] .skills-hero h2,
+html[data-app-theme="dark"] .skills-hero > p,
+html[data-app-theme="dark"] .skill-card-summary h3,
+html[data-app-theme="dark"] .skill-subtitle,
+html[data-app-theme="dark"] .skill-description,
+html[data-app-theme="dark"] .skill-card-body h4,
+html[data-app-theme="dark"] .skill-outcomes,
+html[data-app-theme="dark"] .live-plan-card h3,
+html[data-app-theme="dark"] .live-plan-meta,
+html[data-app-theme="dark"] .live-plan-group-title,
+html[data-app-theme="dark"] .request-box h3,
+html[data-app-theme="dark"] .request-box p,
+html[data-app-theme="dark"] .sia-welcome,
+html[data-app-theme="dark"] .section-header h2 {
+  color: #f2f3f5;
+}
+html[data-app-theme="dark"] .live-empty-state p,
+html[data-app-theme="dark"] .empty-state-premium p,
+html[data-app-theme="dark"] .about-block p,
+html[data-app-theme="dark"] .contact-form-sub,
+html[data-app-theme="dark"] .contact-info-card p,
+html[data-app-theme="dark"] .skills-hero > p,
+html[data-app-theme="dark"] .skill-subtitle,
+html[data-app-theme="dark"] .skill-description,
+html[data-app-theme="dark"] .live-plan-meta,
+html[data-app-theme="dark"] .request-box p,
+html[data-app-theme="dark"] .sia-welcome {
+  color: #b5bac1;
+}
+html[data-app-theme="dark"] .skills-payment-banner {
+  background: rgba(87, 242, 135, 0.08);
+  border-color: rgba(87, 242, 135, 0.2);
+}
+html[data-app-theme="dark"] .skills-payment-banner strong {
+  color: #57f287;
+}
+html[data-app-theme="dark"] .skills-payment-banner p {
+  color: #b5bac1;
+}
+html[data-app-theme="dark"] .live-plan-hint,
+html[data-app-theme="dark"] .live-plan-active {
+  background: rgba(87, 242, 135, 0.1);
+  border-color: rgba(87, 242, 135, 0.25);
+  color: #c8f0d4;
+}
+html[data-app-theme="dark"] .live-plan-features {
+  color: #dbdee1;
+}
+html[data-app-theme="dark"] .skill-installment {
+  background: rgba(87, 242, 135, 0.08);
+  color: #b5bac1;
+}
+html[data-app-theme="dark"] .skill-fee,
+html[data-app-theme="dark"] .skill-meta-row,
+html[data-app-theme="dark"] .live-plan-cat,
+html[data-app-theme="dark"] .live-plan-badge {
+  color: #57f287;
+}
+html[data-app-theme="dark"] .skill-phase ul,
+html[data-app-theme="dark"] .skill-live-empty {
+  color: #b5bac1;
+}
+html[data-app-theme="dark"] .sia-bubble {
+  background: #383a40;
+  border-color: #4e5058;
+  color: #f2f3f5;
+}
+html[data-app-theme="dark"] .sia-bubble .sia-h {
+  color: #57f287;
+}
+html[data-app-theme="dark"] .contact-info-icon {
+  background: #404249;
+  color: #57f287;
+}
+html[data-app-theme="dark"] .contact-info-card a {
+  color: #57f287;
+}
+html[data-app-theme="dark"] .contact-topic {
+  background: #383a40;
+  border-color: #4e5058;
+  color: #dbdee1;
+}
+html[data-app-theme="dark"] .contact-topic.active {
+  background: #1a5c3a;
+  border-color: #57f287;
+  color: #fff;
+}
+html[data-app-theme="dark"] .loading {
+  color: #949ba4;
 }
 

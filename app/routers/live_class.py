@@ -176,6 +176,39 @@ async def mark_access_codes_read(
     return {"message": "Marked as read"}
 
 
+class ClearAccessCodesRequest(BaseModel):
+    mode: str = "old"  # old = used or class ended; all = remove every code
+
+
+@router.post("/access-codes/clear")
+async def clear_access_codes(
+    payload: ClearAccessCodesRequest,
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove old or all access code entries from the student's Access Code tab."""
+    sid = parse_uuid(current_user["sub"])
+    result = await db.execute(
+        select(LiveClassAccessCodeDelivery, LiveClass)
+        .join(LiveClass, LiveClass.id == LiveClassAccessCodeDelivery.live_class_id)
+        .where(LiveClassAccessCodeDelivery.student_id == sid)
+    )
+    rows = result.all()
+    removed = 0
+    now = naive_utc_now()
+    for delivery, live_class in rows:
+        if payload.mode == "all":
+            await db.delete(delivery)
+            removed += 1
+            continue
+        ended = live_class.end_time is not None and live_class.end_time < now
+        if delivery.is_used or ended:
+            await db.delete(delivery)
+            removed += 1
+    await db.flush()
+    return {"message": "Access codes cleared", "removed": removed}
+
+
 @router.post("/join-by-code")
 async def join_class_by_code(
     payload: JoinByCodeRequest,

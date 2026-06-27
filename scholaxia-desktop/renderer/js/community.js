@@ -292,9 +292,47 @@ function renderEmojiReactions(p) {
   );
 }
 
+function renderCommentControls(p) {
+  var interactId = postInteractId(p);
+  var domId = postCardDomId(p);
+  if (!interactId || interactId.indexOf("orphan") === 0) return "";
+  var safeInteract = interactId.replace(/'/g, "\\'");
+  var safeDom = domId.replace(/'/g, "\\'");
+  var count = (p.comments || []).length;
+  return (
+    '<div class="post-actions post-actions-inline">' +
+    '<button type="button" class="post-action-btn post-comment-btn" onclick="toggleCommentBox(\'' +
+    safeDom +
+    "', '" +
+    safeInteract +
+    '\')" title="Comment">' +
+    '<span class="action-icon" aria-hidden="true">&#128172;</span>' +
+    '<span class="comment-count">' +
+    (count || "") +
+    "</span></button></div>" +
+    '<div class="comment-compose" id="comment-box-' +
+    escHtml(domId) +
+    '">' +
+    '<input type="text" id="comment-input-' +
+    escHtml(domId) +
+    '" placeholder="Write a comment…" ' +
+    "onkeydown=\"if(event.key==='Enter')submitCommunityComment('" +
+    safeInteract +
+    "', '" +
+    safeDom +
+    '\')" />' +
+    '<button type="button" class="btn-action btn-comment" onclick="submitCommunityComment(\'' +
+    safeInteract +
+    "', '" +
+    safeDom +
+    '\')">Reply</button>' +
+    "</div>"
+  );
+}
+
 function renderPostActions(p) {
   if (window.communityPostUiMode === "emoji") {
-    return renderEmojiReactions(p);
+    return renderEmojiReactions(p) + renderCommentControls(p);
   }
   var interactId = postInteractId(p);
   var domId = postCardDomId(p);
@@ -336,21 +374,28 @@ function renderCommunityPosts(posts, targetEl) {
     }
     var initial = (p.author_name || "S").charAt(0).toUpperCase();
     var commentsHtml = (p.comments || []).map(function (c) {
-      return '<div class="post-comment">' +
+      var pending = c._pending ? " post-comment-pending" : "";
+      return '<div class="post-comment' + pending + '">' +
         '<div class="comment-avatar">' + escHtml((c.author_name || "S").charAt(0).toUpperCase()) + '</div>' +
         '<div class="comment-body">' +
         '<strong>' + escHtml(c.author_name || "Student") + '</strong>' +
         '<p>' + escHtml(c.content) + '</p>' +
         '</div></div>';
     }).join("");
-    var commentsBlock = commentsHtml && window.communityPostUiMode !== "emoji"
-      ? '<div class="post-comments" id="post-comments-' + escHtml(domId) + '">' + commentsHtml + '</div>'
-      : "";
+    var commentsBlock =
+      '<div class="post-comments' +
+      (commentsHtml ? " open" : "") +
+      '" id="post-comments-' +
+      escHtml(domId) +
+      '">' +
+      commentsHtml +
+      "</div>";
     var bodyHtml = body
       ? '<p class="post-body">' + escHtml(body) + '</p>'
       : (p.media_type === "audio" ? '<p class="post-body voice-label">&#127908; Voice message</p>' : "");
     var interactId = postInteractId(p);
-    return '<article class="community-post" data-post-id="' + escHtml(interactId) + '">' +
+    var pendingClass = p._pending ? " community-post-pending" : "";
+    return '<article class="community-post' + pendingClass + '" data-post-id="' + escHtml(interactId) + '">' +
       '<div class="post-top">' +
       '<div class="post-avatar">' + escHtml(initial) + '</div>' +
       '<div class="post-main">' +
@@ -435,19 +480,20 @@ async function fetchCommunityPosts(opts) {
   var channelId = communityChannelId;
   var apiFn = typeof apiRetry === "function" ? apiRetry : api;
 
-  var feedPromise = apiFn("/api/v1/community/feed?limit=50", { attempts: 3 }).catch(function (e1) {
-    if (!channelId) return [];
-    return apiFn("/api/v1/community/posts?channel_id=" + channelId + "&limit=50", { attempts: 2 }).catch(function () {
-      return [];
-    });
-  });
+  var posts;
+  try {
+    posts = await apiFn("/api/v1/community/feed?limit=50", { attempts: 3 });
+  } catch (e1) {
+    if (!channelId) throw e1;
+    posts = await apiFn("/api/v1/community/posts?channel_id=" + channelId + "&limit=50", { attempts: 2 });
+  }
   var commentsPromise = channelId ? fetchPostComments() : Promise.resolve({});
   var listedPromise = includeGroups
     ? apiFn("/api/v1/student-groups/community-listed", { attempts: 2 }).catch(function () { return []; })
     : Promise.resolve([]);
 
-  var results = await Promise.all([feedPromise, commentsPromise, listedPromise]);
-  var posts = results[0] || [];
+  var results = await Promise.all([Promise.resolve(posts), commentsPromise, listedPromise]);
+  posts = results[0] || [];
   var commentsByPost = results[1] || {};
   var listed = results[2] || [];
 
@@ -624,22 +670,32 @@ async function loadCommunityPostsFeed(newPost, opts) {
       if (!showingCache) feed.innerHTML = '<div class="empty">Community is not set up yet.</div>';
       return;
     }
-    var apiFn = opts.silent && typeof api === "function" ? api : (typeof apiRetry === "function" ? apiRetry : api);
-    var posts = await fetchCommunityPostsFast({ includeGroups: false, apiFn: apiFn, attempts: opts.silent ? 1 : 2 });
+    var apiFn = typeof apiRetry === "function" ? apiRetry : api;
+    var attempts = opts.attempts != null ? opts.attempts : (opts.silent ? 2 : 3);
+    var posts = await fetchCommunityPostsFast({ includeGroups: false, apiFn: apiFn, attempts: attempts });
     if (newPost) posts = prependNewPost(posts, newPost);
     posts = mergePostsWithCache(posts, cachedSocial);
     feed.classList.remove("feed-refreshing");
+    posts = posts.filter(function (p) { return !p._pending; });
     if (posts.length) {
       saveCommunityCache(posts);
       renderCommunityPosts(posts);
     } else if (showingCache && cachedSocial.length) {
-      renderCommunityPosts(cachedSocial);
-    } else {
+      renderCommunityPosts(newPost ? prependNewPost(cachedSocial, newPost) : cachedSocial);
+    } else if (!opts.silent) {
       renderCommunityPosts([]);
     }
   } catch (e) {
     feed.classList.remove("feed-refreshing");
-    if (showingCache) return;
+    if (showingCache && newPost) {
+      renderCommunityPosts(prependNewPost(cachedSocial, newPost));
+      saveCommunityCache(prependNewPost(cachedSocial, newPost));
+      return;
+    }
+    if (showingCache || cachedSocial.length) {
+      renderCommunityPosts(cachedSocial);
+      return;
+    }
     if (newPost) {
       renderCommunityPosts([newPost]);
       return;
@@ -656,16 +712,19 @@ async function fetchCommunityPostsFast(opts) {
   var attempts = { attempts: opts.attempts || 2, skipWarm: true };
   await ensureCommunityChannel();
   var channelId = communityChannelId;
-  var feedPromise = apiFn("/api/v1/community/feed?limit=50", attempts).catch(function () {
-    if (!channelId) return [];
-    return apiFn("/api/v1/community/posts?channel_id=" + channelId + "&limit=50", attempts).catch(function () { return []; });
-  });
+  var posts;
+  try {
+    posts = await apiFn("/api/v1/community/feed?limit=50", attempts);
+  } catch (feedErr) {
+    if (!channelId) throw feedErr;
+    posts = await apiFn("/api/v1/community/posts?channel_id=" + channelId + "&limit=50", attempts);
+  }
   var commentsPromise = channelId ? fetchPostCommentsFast(apiFn) : Promise.resolve({});
   var listedPromise = includeGroups
     ? apiFn("/api/v1/student-groups/community-listed", { attempts: 1, skipWarm: true }).catch(function () { return []; })
     : Promise.resolve([]);
-  var results = await Promise.all([feedPromise, commentsPromise, listedPromise]);
-  var posts = results[0] || [];
+  var results = await Promise.all([Promise.resolve(posts), commentsPromise, listedPromise]);
+  posts = results[0] || [];
   var commentsByPost = results[1] || {};
   var listed = results[2] || [];
   posts = (posts || []).filter(function (p) { return !isPostComment(p.content); });
@@ -905,6 +964,23 @@ async function submitCommunityComment(postId, domId) {
   }
   var parentId = normalizePostId(postId);
   var replyBtn = input.parentElement && input.parentElement.querySelector(".btn-comment");
+  var pendingId = "pending-" + Date.now();
+  var optimisticComment = {
+    id: pendingId,
+    author_name: getUser().name || "Student",
+    content: text,
+    created_at: new Date().toISOString(),
+    _pending: true,
+  };
+  input.value = "";
+  var box = document.getElementById("comment-box-" + (domId || postId));
+  if (box) box.classList.add("open");
+  var list = document.getElementById("post-comments-" + (domId || postId));
+  if (list) list.classList.add("open");
+  var cachedPosts = (loadCommunityCache() || {}).posts || [];
+  var updated = appendCommentToPosts(cachedPosts, parentId, optimisticComment);
+  saveCommunityCache(updated);
+  renderCommunityPosts(updated);
   if (replyBtn) { replyBtn.disabled = true; replyBtn.textContent = "Sending…"; }
   try {
     var created = await api("/api/v1/community/posts", {
@@ -914,23 +990,35 @@ async function submitCommunityComment(postId, domId) {
         content: "@post:" + parentId + " " + text,
       }),
     });
-    input.value = "";
-    var box = document.getElementById("comment-box-" + (domId || postId));
-    if (box) box.classList.add("open");
-    var list = document.getElementById("post-comments-" + (domId || postId));
-    if (list) list.classList.add("open");
     var comment = {
-      id: created.id || "",
+      id: created.id || pendingId,
       author_name: created.author_name || getUser().name || "Student",
       content: text,
       created_at: created.created_at || new Date().toISOString(),
     };
-    var cachedPosts = (loadCommunityCache() || {}).posts || [];
-    var updated = appendCommentToPosts(cachedPosts, parentId, comment);
+    updated = (loadCommunityCache() || {}).posts || updated;
+    updated = updated.map(function (p) {
+      if (normalizePostId(p.id) !== parentId) return p;
+      var comments = (p.comments || []).filter(function (c) { return c.id !== pendingId; });
+      if (comments.some(function (c) { return c.id === comment.id; })) return p;
+      return Object.assign({}, p, { comments: comments.concat([comment]) });
+    });
     saveCommunityCache(updated);
     renderCommunityPosts(updated);
+    if (box) box.classList.add("open");
+    if (list) list.classList.add("open");
     refreshCommunityComments(updated).catch(function () { /* background sync */ });
   } catch (e) {
+    updated = (loadCommunityCache() || {}).posts || updated;
+    updated = updated.map(function (p) {
+      if (normalizePostId(p.id) !== parentId) return p;
+      return Object.assign({}, p, {
+        comments: (p.comments || []).filter(function (c) { return c.id !== pendingId; }),
+      });
+    });
+    saveCommunityCache(updated);
+    renderCommunityPosts(updated);
+    input.value = text;
     alert(e.message || "Could not post comment.");
   } finally {
     if (replyBtn) { replyBtn.disabled = false; replyBtn.textContent = "Reply"; }

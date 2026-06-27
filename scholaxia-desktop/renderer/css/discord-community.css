@@ -328,6 +328,35 @@
   cursor: not-allowed;
 }
 
+.discord-composer-status {
+  margin: 0;
+  padding: 0 16px 12px;
+  font-size: 0.82rem;
+  color: #949ba4;
+}
+
+.discord-composer-status.hidden {
+  display: none !important;
+}
+
+.discord-composer-status-sending {
+  color: #949ba4;
+}
+
+.discord-composer-status-ok {
+  color: #57f287;
+}
+
+.community-post-pending {
+  opacity: 0.65;
+}
+
+.community-post-pending .post-head span::after {
+  content: " · sending…";
+  font-weight: 500;
+  color: #949ba4;
+}
+
 /* Groups channel */
 .discord-groups-panel {
   padding: 0 4px 24px;
@@ -618,6 +647,40 @@
   margin-top: 10px;
 }
 
+.post-actions-inline {
+  margin-top: 8px;
+}
+
+.post-actions-inline .post-comment-btn {
+  background: #404249;
+  color: #dbdee1;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+html[data-app-theme="light"] .post-actions-inline .post-comment-btn {
+  background: #e3e5e8;
+  color: #060607;
+}
+
+.post-comment-pending {
+  opacity: 0.75;
+}
+
+.discord-posts-feed .comment-compose.open {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.discord-posts-feed .post-comments.open {
+  display: block;
+  margin-top: 8px;
+}
+
 .emoji-react-btn {
   background: #404249;
   border: 1px solid #1e1f22;
@@ -713,73 +776,88 @@
 }
 
 /* Light mode */
-#page-community[data-community-theme="light"] {
+html[data-app-theme="light"] {
   background: #f2f3f5;
 }
 
-#page-community[data-community-theme="light"] .discord-hub-page,
-#page-community[data-community-theme="light"] .discord-hub {
+html[data-app-theme="light"] .discord-hub-page,
+html[data-app-theme="light"] .discord-hub {
   background: #f2f3f5;
 }
 
-#page-community[data-community-theme="light"] .discord-rail {
+html[data-app-theme="light"] .discord-rail {
   background: #e3e5e8;
 }
 
-#page-community[data-community-theme="light"] .discord-channels {
+html[data-app-theme="light"] .discord-channels {
   background: #f2f3f5;
 }
 
-#page-community[data-community-theme="light"] .discord-channels-head,
-#page-community[data-community-theme="light"] .discord-main-head {
+html[data-app-theme="light"] .discord-channels-head,
+html[data-app-theme="light"] .discord-main-head {
   color: #060607;
   border-color: #dbdee1;
 }
 
-#page-community[data-community-theme="light"] .discord-ch-item {
+html[data-app-theme="light"] .discord-ch-item {
   color: #4e5058;
 }
 
-#page-community[data-community-theme="light"] .discord-ch-item.active,
-#page-community[data-community-theme="light"] .discord-ch-item:hover {
+html[data-app-theme="light"] .discord-ch-item.active,
+html[data-app-theme="light"] .discord-ch-item:hover {
   background: #e3e5e8;
   color: #060607;
 }
 
-#page-community[data-community-theme="light"] .discord-main {
+html[data-app-theme="light"] .discord-main {
   background: #fff;
 }
 
-#page-community[data-community-theme="light"] .discord-posts-feed .community-post {
+html[data-app-theme="light"] .discord-posts-feed .post-comment {
+  background: #f2f3f5;
+}
+
+html[data-app-theme="light"] .discord-posts-feed .post-comment strong,
+html[data-app-theme="light"] .discord-posts-feed .comment-body p {
+  color: #060607 !important;
+}
+
+html[data-app-theme="light"] .discord-posts-feed .comment-compose input {
+  background: #e3e5e8;
+  color: #060607;
+  border-color: #dbdee1;
+}
+
+html[data-app-theme="light"] .discord-posts-feed .community-post {
   background: #f2f3f5;
   border-color: #e3e5e8;
 }
 
-#page-community[data-community-theme="light"] .discord-posts-feed .post-head strong,
-#page-community[data-community-theme="light"] .discord-posts-feed .post-body,
-#page-community[data-community-theme="light"] .discord-posts-feed .comment-body p {
+html[data-app-theme="light"] .discord-posts-feed .post-head strong,
+html[data-app-theme="light"] .discord-posts-feed .post-body,
+html[data-app-theme="light"] .discord-posts-feed .comment-body p {
   color: #060607 !important;
 }
 
-#page-community[data-community-theme="light"] .discord-posts-feed .post-head span {
+html[data-app-theme="light"] .discord-posts-feed .post-head span {
   color: #4e5058 !important;
 }
 
-#page-community[data-community-theme="light"] .discord-composer input {
+html[data-app-theme="light"] .discord-composer input {
   background: #e3e5e8;
   color: #060607;
 }
 
-#page-community[data-community-theme="light"] .discord-group-card {
+html[data-app-theme="light"] .discord-group-card {
   background: #fff;
   border-color: #e3e5e8;
 }
 
-#page-community[data-community-theme="light"] .discord-group-card-top strong {
+html[data-app-theme="light"] .discord-group-card-top strong {
   color: #060607;
 }
 
-#page-community[data-community-theme="light"] .discord-group-card-desc {
+html[data-app-theme="light"] .discord-group-card-desc {
   color: #4e5058;
 }
 

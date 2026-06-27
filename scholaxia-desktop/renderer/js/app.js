@@ -591,14 +591,34 @@ function handleAuthButton() {
   else goToLogin(currentPage || "dashboard");
 }
 
+function handleTopbarUserClick() {
+  if (isStudentLoggedIn()) showPage("profile");
+  else goToLogin(currentPage || "dashboard");
+}
+
+function setTopbarAuthButton(loggedIn) {
+  var btn = document.getElementById("topbar-auth-btn") || document.querySelector(".btn-logout.topbar-logout");
+  if (!btn) return;
+  if (loggedIn) {
+    btn.textContent = "Sign out";
+    btn.setAttribute("aria-label", "Sign out");
+    btn.title = "Sign out";
+    btn.classList.remove("topbar-logout-primary");
+  } else {
+    btn.textContent = "Sign in";
+    btn.setAttribute("aria-label", "Sign in to Scholaxia");
+    btn.title = "Sign in to Scholaxia";
+    btn.classList.add("topbar-logout-primary");
+  }
+}
+
 function initUserUI() {
   const loggedIn = isStudentLoggedIn();
-  const logoutBtn = document.querySelector(".btn-logout");
   if (!loggedIn) {
     const nameEl = document.getElementById("header-user-name");
     const handleEl = document.getElementById("header-user-handle");
     if (nameEl) nameEl.textContent = "Guest";
-    if (handleEl) handleEl.textContent = "Sign in to unlock";
+    if (handleEl) handleEl.textContent = "Tap to sign in";
     const examEl = document.getElementById("sidebar-exam");
     if (examEl) examEl.textContent = "Browse";
     const av = document.getElementById("user-avatar");
@@ -609,10 +629,7 @@ function initUserUI() {
     if (pn) pn.textContent = "Guest";
     const pe = document.getElementById("profile-email");
     if (pe) pe.textContent = "Sign in to access your account";
-    if (logoutBtn) {
-      logoutBtn.textContent = "Sign in";
-      logoutBtn.setAttribute("aria-label", "Sign in");
-    }
+    setTopbarAuthButton(false);
     applyGuestNavLocks();
     return;
   }
@@ -629,10 +646,7 @@ function initUserUI() {
   document.getElementById("profile-avatar").textContent = initial;
   document.getElementById("profile-name").textContent = user.name;
   document.getElementById("profile-email").textContent = user.email;
-  if (logoutBtn) {
-    logoutBtn.textContent = "Sign out";
-    logoutBtn.setAttribute("aria-label", "Sign out");
-  }
+  setTopbarAuthButton(true);
   applyGuestNavLocks();
 }
 
@@ -885,6 +899,7 @@ function showPage(page) {
 if (typeof window !== "undefined") {
   window.showPage = showPage;
   window.handleAuthButton = handleAuthButton;
+  window.handleTopbarUserClick = handleTopbarUserClick;
   window.quickDashAction = quickDashAction;
 }
 
@@ -1752,6 +1767,7 @@ async function loadProfile() {
     const levelSel = document.getElementById("setup-level");
     if (levelSel && p.education_level) levelSel.value = p.education_level;
     selectedSubjects = [...(p.selected_subjects || [])];
+    if (typeof updateThemeToggleUi === "function") updateThemeToggleUi(typeof getAppTheme === "function" ? getAppTheme() : "light");
     if (allSubjects.length) renderSubjectPicker();
     else loadSubjects().then(() => renderSubjectPicker());
   } catch (e) {
@@ -1798,6 +1814,7 @@ function toggleSubject(subject, max) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  if (typeof initAppTheme === "function") initAppTheme();
   if (typeof warmScholaxiaApi === "function") warmScholaxiaApi();
   const sel = document.getElementById("setup-exam-type");
   if (sel) sel.addEventListener("change", () => { selectedSubjects = []; renderSubjectPicker(); });
