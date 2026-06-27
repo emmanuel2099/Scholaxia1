@@ -51,18 +51,29 @@ def _parse_env_file(path):
 
 
 def load_stream_config():
-    global STREAM_CHAT_SECRET
+    global STREAM_API_KEY, STREAM_CHAT_SECRET
+    placeholders = {"", "your_stream_chat_secret_here", "your_secret_here", "your_secret_from_getstream.io", "your_api_key_here"}
     for path in (
         os.path.join(ROOT, "stream.env"),
         os.path.join(DISCORD_DIR, ".env.local"),
     ):
         env = _parse_env_file(path)
         secret = env.get("STREAM_CHAT_SECRET", "").strip()
-        if secret:
+        api_key = env.get("STREAM_API_KEY", "").strip()
+        if secret and secret not in placeholders:
             STREAM_CHAT_SECRET = secret
+            if api_key and api_key not in placeholders:
+                STREAM_API_KEY = api_key
             return secret
-    STREAM_CHAT_SECRET = os.environ.get("STREAM_CHAT_SECRET", "").strip()
-    return STREAM_CHAT_SECRET
+    secret = os.environ.get("STREAM_CHAT_SECRET", "").strip()
+    api_key = os.environ.get("STREAM_API_KEY", "").strip()
+    if secret and secret not in placeholders:
+        STREAM_CHAT_SECRET = secret
+        if api_key and api_key not in placeholders:
+            STREAM_API_KEY = api_key
+        return secret
+    STREAM_CHAT_SECRET = ""
+    return ""
 
 
 def b64url(data: bytes) -> str:
@@ -70,8 +81,8 @@ def b64url(data: bytes) -> str:
 
 
 def make_stream_token(user_id: str, secret: str) -> str:
-    header = b64url(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
-    payload = b64url(json.dumps({"user_id": user_id}).encode())
+    header = b64url(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode())
+    payload = b64url(json.dumps({"user_id": user_id}, separators=(",", ":")).encode())
     signing_input = f"{header}.{payload}".encode()
     sig = b64url(hmac.new(secret.encode(), signing_input, hashlib.sha256).digest())
     return f"{header}.{payload}.{sig}"
@@ -365,6 +376,7 @@ def start_discord_server():
     secret = load_stream_config()
     if secret:
         env["STREAM_CHAT_SECRET"] = secret
+        env["STREAM_API_KEY"] = STREAM_API_KEY
     try:
         subprocess.Popen(
             [npm_cmd, "run", "dev", "--", "-p", str(DISCORD_PORT)],

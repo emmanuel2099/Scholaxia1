@@ -39,7 +39,7 @@
     );
   }
 
-  function showStatus(message, hint) {
+  function showStatus(message, hint, extraHtml) {
     var status = document.getElementById("discord-embed-status");
     var frame = document.getElementById("discord-community-frame");
     if (frame) frame.classList.add("hidden");
@@ -48,6 +48,7 @@
     status.innerHTML =
       "<p>" + (message || "Loading Community…") + "</p>" +
       (hint ? '<p class="discord-embed-hint">' + hint + "</p>" : "") +
+      (extraHtml || "") +
       '<button type="button" class="btn-action btn-sm" style="margin-top:8px" onclick="loadDiscordCommunity(true)">Retry</button>';
   }
 
@@ -57,6 +58,27 @@
     if (status) status.classList.add("hidden");
     if (frame) frame.classList.remove("hidden");
   }
+
+  function setupHelpHtml() {
+    return (
+      '<ol class="discord-embed-hint" style="text-align:left;max-width:420px;margin:12px auto 0;padding-left:20px;line-height:1.6">' +
+      "<li>Go to <strong>dashboard.getstream.io</strong> (free account)</li>" +
+      "<li>Open your app → <strong>Chat</strong> → copy the <strong>Secret</strong></li>" +
+      "<li>Create file: <code>scholaxia-desktop/stream.env</code></li>" +
+      "<li>Add line: <code>STREAM_CHAT_SECRET=your_secret</code></li>" +
+      "<li>Restart Scholaxia (<code>python run_desktop.py</code>)</li>" +
+      "</ol>" +
+      '<p style="margin-top:10px"><button type="button" class="btn-action btn-sm" onclick="openStreamSetupHelp()">Open setup guide</button></p>'
+    );
+  }
+
+  window.openStreamSetupHelp = function () {
+    showStatus(
+      "Stream Chat setup (one time)",
+      "Community needs a free GetStream secret on your PC.",
+      setupHelpHtml()
+    );
+  };
 
   window.openDiscordCommunityPage = function () {
     if (typeof showPage === "function") showPage("community");
@@ -79,33 +101,63 @@
       loadTimer = null;
     }
 
-    showStatus("Loading Community…", "Discord chat loads inside this tab.");
+    showStatus("Loading Community…", "Checking Stream Chat setup…");
 
-    frame.onload = function () {
-      if (loadTimer) {
-        clearTimeout(loadTimer);
-        loadTimer = null;
-      }
-      hideStatusShowFrame();
-    };
+    fetch("/community/stream-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: scholaxiaUserId(), name: scholaxiaUserName() }),
+    })
+      .then(function (res) {
+        return res.json().then(function (data) {
+          return { ok: res.ok, data: data };
+        });
+      })
+      .then(function (result) {
+        if (!result.ok) {
+          showStatus(
+            "Community needs Stream Chat setup",
+            result.data.error || "Missing STREAM_CHAT_SECRET.",
+            setupHelpHtml()
+          );
+          return;
+        }
 
-    if (frame.getAttribute("data-src") === path && frame.src) {
-      hideStatusShowFrame();
-      return;
-    }
+        showStatus("Loading Community…", "Discord chat loads inside this tab.");
 
-    frame.setAttribute("data-src", path);
-    frame.src = path;
+        frame.onload = function () {
+          if (loadTimer) {
+            clearTimeout(loadTimer);
+            loadTimer = null;
+          }
+          hideStatusShowFrame();
+        };
 
-    loadTimer = setTimeout(function () {
-      var status = document.getElementById("discord-embed-status");
-      if (status && !status.classList.contains("hidden")) {
+        if (frame.getAttribute("data-src") === path && frame.src) {
+          hideStatusShowFrame();
+          return;
+        }
+
+        frame.setAttribute("data-src", path);
+        frame.src = path;
+
+        loadTimer = setTimeout(function () {
+          var status = document.getElementById("discord-embed-status");
+          if (status && !status.classList.contains("hidden")) {
+            showStatus(
+              "Community is taking longer than expected.",
+              "Ensure Discord is running on port 3001, then click Retry."
+            );
+          }
+        }, 15000);
+      })
+      .catch(function () {
         showStatus(
-          "Community is taking longer than expected.",
-          "Check scholaxia-desktop/stream.env has STREAM_CHAT_SECRET, then restart Scholaxia."
+          "Cannot reach Community server.",
+          "Close Scholaxia fully and run python run_desktop.py again.",
+          setupHelpHtml()
         );
-      }
-    }, 15000);
+      });
   };
 
   window.discordSelectHomeChannel = function () { loadDiscordCommunity(); };
