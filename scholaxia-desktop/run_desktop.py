@@ -15,6 +15,9 @@ import socket
 import subprocess
 import urllib.error
 import urllib.request
+import base64
+import hashlib
+import hmac
 
 try:
     import webview
@@ -29,6 +32,52 @@ PORT = 17890
 DISCORD_PORT = 3001
 DISCORD_DIR = os.path.normpath(os.path.join(ROOT, "..", "..", "discord-clone-nextjs"))
 REMOTE_API = "https://scholaxia1.onrender.com"
+STREAM_API_KEY = "7cu55d72xtjs"
+STREAM_CHAT_SECRET = ""
+
+
+def _parse_env_file(path):
+    values = {}
+    if not os.path.isfile(path):
+        return values
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, val = line.partition("=")
+            values[key.strip()] = val.strip().strip('"').strip("'")
+    return values
+
+
+def load_stream_config():
+    global STREAM_CHAT_SECRET
+    for path in (
+        os.path.join(ROOT, "stream.env"),
+        os.path.join(DISCORD_DIR, ".env.local"),
+    ):
+        env = _parse_env_file(path)
+        secret = env.get("STREAM_CHAT_SECRET", "").strip()
+        if secret:
+            STREAM_CHAT_SECRET = secret
+            return secret
+    STREAM_CHAT_SECRET = os.environ.get("STREAM_CHAT_SECRET", "").strip()
+    return STREAM_CHAT_SECRET
+
+
+def b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
+def make_stream_token(user_id: str, secret: str) -> str:
+    header = b64url(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
+    payload = b64url(json.dumps({"user_id": user_id}).encode())
+    signing_input = f"{header}.{payload}".encode()
+    sig = b64url(hmac.new(secret.encode(), signing_input, hashlib.sha256).digest())
+    return f"{header}.{payload}.{sig}"
+
+
+load_stream_config()
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -120,7 +169,53 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             ).encode("utf-8")
             self.wfile.write(msg)
 
+    def _community_stream_token(self):
+        secret = load_stream_config()
+        if not secret:
+            self.send_response(503)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(
+                json.dumps(
+                    {
+                        "error": "Add STREAM_CHAT_SECRET to scholaxia-desktop/stream.env (from getstream.io dashboard)."
+                    }
+                ).encode("utf-8")
+            )
+            return
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        body = {}
+        if length:
+            try:
+                body = json.loads(self.rfile.read(length).decode("utf-8"))
+            except Exception:
+                body = {}
+        user_id = str(body.get("userId") or "").strip()
+        name = str(body.get("name") or "Student").strip() or "Student"
+        if not user_id:
+            self.send_response(400)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "userId required"}).encode("utf-8"))
+            return
+        token = make_stream_token(user_id, secret)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(
+            json.dumps(
+                {"userId": user_id, "token": token, "apiKey": STREAM_API_KEY, "name": name}
+            ).encode("utf-8")
+        )
+
     def do_OPTIONS(self):
+        if self.path.split("?", 1)[0] == "/community/stream-token":
+            self.send_response(204)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+            self.end_headers()
+            return
         if self.path.startswith("/api-proxy/"):
             self.send_response(204)
             self.send_header("Access-Control-Allow-Origin", "*")
@@ -144,6 +239,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self):
+        if self.path.split("?", 1)[0] == "/community/stream-token":
+            self._community_stream_token()
+            return
         if self.path.startswith("/api-proxy/"):
             self._proxy_api("POST")
             return
@@ -263,6 +361,10 @@ def start_discord_server():
 
     npm_cmd = "npm.cmd" if sys.platform == "win32" else "npm"
     print(f"Starting Discord Community on http://127.0.0.1:{DISCORD_PORT} …")
+    env = os.environ.copy()
+    secret = load_stream_config()
+    if secret:
+        env["STREAM_CHAT_SECRET"] = secret
     try:
         subprocess.Popen(
             [npm_cmd, "run", "dev", "--", "-p", str(DISCORD_PORT)],
@@ -270,6 +372,7 @@ def start_discord_server():
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             shell=False,
+            env=env,
         )
     except Exception as exc:
         print(f"Could not start Discord Community: {exc}")
@@ -292,11 +395,10 @@ def start_discord_server():
 def discord_proxy_ready():
     """True if /discord-app is forwarded (not 404 from static file server)."""
     try:
-        req = urllib.request.Request(
+        with urllib.request.urlopen(
             f"http://127.0.0.1:{PORT}/discord-app/scholaxia",
-            method="HEAD",
-        )
-        with urllib.request.urlopen(req, timeout=3) as resp:
+            timeout=3,
+        ) as resp:
             return resp.status < 500
     except urllib.error.HTTPError as exc:
         return exc.code != 404
@@ -320,6 +422,11 @@ def ensure_server():
 
     if not wait_for_proxy():
         return False
+
+    if discord_proxy_ready():
+        print(f"Community proxy ready — http://127.0.0.1:{PORT}/discord-app/")
+    else:
+        print(f"WARNING: Community proxy missing on port {PORT}. Close all Scholaxia windows and restart.")
 
     print(f"Scholaxia desktop ready — API proxy active on http://127.0.0.1:{PORT}/api-proxy")
     return True
@@ -364,6 +471,12 @@ def main():
             "Close all Scholaxia windows and try again.\n"
         )
         sys.exit(1)
+
+    if not load_stream_config():
+        print(
+            "NOTE: Community chat needs STREAM_CHAT_SECRET.\n"
+            f'  Copy "{os.path.join(ROOT, "stream.env.example")}" to stream.env and add your GetStream secret.\n'
+        )
 
     if not is_teacher and not is_admin:
         threading.Thread(target=start_discord_server, daemon=True).start()
