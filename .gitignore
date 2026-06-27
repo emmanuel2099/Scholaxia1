@@ -27,6 +27,11 @@ Thumbs.db
 # Logs
 *.log
 
+# Discord Community (Next.js) — source is tracked, deps/build are not
+discord-community/node_modules/
+discord-community/.next/
+discord-community/.env.local
+
 # Flutter/Dart (if present locally)
 .dart_tool/
 .flutter-plugins-dependencies

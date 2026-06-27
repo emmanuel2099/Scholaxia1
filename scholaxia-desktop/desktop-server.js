@@ -122,7 +122,7 @@ function proxyDiscord(req, res) {
     proxyReq.on("error", () => {
       res.writeHead(502, { "Content-Type": "text/html; charset=utf-8" });
       res.end(
-        "<h2>Community server not running</h2><p>Run START-DISCORD.bat or npm run dev in discord-clone-nextjs</p>"
+        "<h2>Community server not running</h2><p>Run START-DISCORD.bat or npm run dev in scholaxia/discord-community</p>"
       );
     });
 

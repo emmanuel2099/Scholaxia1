@@ -1,9 +1,9 @@
 @echo off
 title Scholaxia Discord Community
-cd /d "%~dp0..\..\discord-clone-nextjs"
+cd /d "%~dp0..\discord-community"
 if not exist "package.json" (
-  echo Discord clone not found. Expected folder:
-  echo   %~dp0..\..\discord-clone-nextjs
+  echo Discord Community not found. Expected folder:
+  echo   %~dp0..\discord-community
   pause
   exit /b 1
 )
@@ -20,6 +20,6 @@ if not exist "..\scholaxia-desktop\stream.env" (
   )
 )
 echo Starting Discord Community on http://127.0.0.1:3001
-echo Edit UI in this folder — Scholaxia student app embeds it in Community tab.
+echo Edit UI in scholaxia\discord-community
 echo.
 call npm run dev -- -p 3001

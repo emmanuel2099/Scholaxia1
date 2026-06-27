@@ -431,8 +431,8 @@ async function fetchCommunityPosts() {
 }
 
 function openCommunityCreate() {
-  if (document.getElementById("discord-community-frame")) {
-    if (typeof loadDiscordCommunity === "function") loadDiscordCommunity(false);
+  if (typeof openDiscordCommunityPage === "function") {
+    openDiscordCommunityPage();
     return;
   }
   showPage("community-create");
@@ -522,8 +522,9 @@ async function refreshCommunityComments(posts) {
 }
 
 async function loadCommunity(newPost) {
-  if (document.getElementById("discord-community-frame") && typeof loadDiscordCommunity === "function") {
-    return loadDiscordCommunity(false);
+  if (typeof openDiscordCommunityPage === "function") {
+    openDiscordCommunityPage();
+    return;
   }
   return loadCommunityLegacy(newPost);
 }
@@ -758,8 +759,8 @@ async function toggleCommunityLike(postId) {
 }
 
 function showCommunityTab(tab) {
-  if (document.getElementById("discord-community-frame") && typeof loadDiscordCommunity === "function") {
-    loadDiscordCommunity(false);
+  if (typeof openDiscordCommunityPage === "function") {
+    openDiscordCommunityPage();
     return;
   }
   communityActiveTab = tab;

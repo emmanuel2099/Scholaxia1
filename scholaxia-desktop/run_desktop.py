@@ -30,7 +30,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 RENDERER = os.path.join(ROOT, "renderer")
 PORT = 17890
 DISCORD_PORT = 3001
-DISCORD_DIR = os.path.normpath(os.path.join(ROOT, "..", "..", "discord-clone-nextjs"))
+DISCORD_DIR = os.path.normpath(os.path.join(ROOT, "..", "discord-community"))
 REMOTE_API = "https://scholaxia1.onrender.com"
 STREAM_API_KEY = "7cu55d72xtjs"
 STREAM_CHAT_SECRET = ""
@@ -175,7 +175,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             msg = (
                 "<h2>Community server not running</h2>"
-                "<p>Start Discord: run START-DISCORD.bat or <code>npm run dev</code> in discord-clone-nextjs</p>"
+                "<p>Start Discord: run START-DISCORD.bat or <code>npm run dev</code> in scholaxia/discord-community</p>"
                 f"<p><small>{exc}</small></p>"
             ).encode("utf-8")
             self.wfile.write(msg)
@@ -361,14 +361,43 @@ def discord_port_listening():
         return False
 
 
+def sync_discord_env_file():
+    """Write scholaxia-desktop/stream.env into discord-community/.env.local for Next.js."""
+    secret = load_stream_config()
+    if not secret or not os.path.isdir(DISCORD_DIR):
+        return
+    env_local = os.path.join(DISCORD_DIR, ".env.local")
+    content = f"STREAM_API_KEY={STREAM_API_KEY}\nSTREAM_CHAT_SECRET={STREAM_CHAT_SECRET}\n"
+    try:
+        with open(env_local, "w", encoding="utf-8") as f:
+            f.write(content)
+    except Exception:
+        pass
+
+
 def start_discord_server():
-    """Start discord-clone-nextjs on port 3001 for Community iframe."""
+    """Start discord-community on port 3001 for Community tab."""
     if not discord_project_ready():
-        print(f"Discord clone not found at {DISCORD_DIR} — Community tab needs it.")
+        print(f"Discord Community not found at {DISCORD_DIR} — Community tab needs it.")
         return False
+    sync_discord_env_file()
     if discord_port_listening():
         print(f"Discord Community already running on port {DISCORD_PORT}.")
+        sync_discord_env_file()
         return True
+
+    node_modules = os.path.join(DISCORD_DIR, "node_modules")
+    if not os.path.isdir(node_modules):
+        npm_cmd = "npm.cmd" if sys.platform == "win32" else "npm"
+        print("Installing Discord Community dependencies (first run)…")
+        try:
+            subprocess.run(
+                [npm_cmd, "install", "--legacy-peer-deps"],
+                cwd=DISCORD_DIR,
+                check=False,
+            )
+        except Exception as exc:
+            print(f"Could not install Discord Community deps: {exc}")
 
     npm_cmd = "npm.cmd" if sys.platform == "win32" else "npm"
     print(f"Starting Discord Community on http://127.0.0.1:{DISCORD_PORT} …")
@@ -393,7 +422,7 @@ def start_discord_server():
     deadline = time.time() + 45
     while time.time() < deadline:
         if discord_port_listening():
-            print(f"Discord Community ready — edit UI in discord-clone-nextjs/")
+            print(f"Discord Community ready — edit UI in scholaxia/discord-community/")
             return True
         time.sleep(0.5)
     print(

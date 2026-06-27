@@ -97,7 +97,7 @@
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"/><path d="M5 19l1 2 1-2 2-1-2-1-1-2-1 2-2 1 2 1z"/></svg></span>
           <span class="nav-label">Tutor AI</span>
         </button>
-        <button type="button" class="nav-item topnav-btn" data-page="community" onclick="showPage('community')">
+        <button type="button" class="nav-item topnav-btn" data-page="community" onclick="openDiscordCommunityPage()">
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-1.9 5.4 8.5 8.5 0 0 1-13 0 8.38 8.38 0 0 1-1.9-5.4 8.5 8.5 0 0 1 13 0z"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/></svg></span>
           <span class="nav-label">Community</span>
           <span id="community-badge" class="nav-badge hidden">0</span>
@@ -550,23 +550,12 @@
 
 
 
-    <!-- Community — real Discord clone app (iframe) -->
+    <!-- Community opens Discord app directly (/discord-app/scholaxia) -->
 
-    <section id="page-community" class="page discord-embed-page">
-
+    <section id="page-community" class="page discord-embed-page hidden" aria-hidden="true">
       <div id="discord-embed-status" class="discord-embed-status">
-        <p>Starting Scholaxia Community (Discord)…</p>
-        <p class="discord-embed-hint">Opens on the same server (port 17890) — Discord runs behind /discord-app</p>
-        <button type="button" class="btn-action btn-sm" onclick="loadDiscordCommunity(true)">Retry</button>
+        <p>Opening Community…</p>
       </div>
-
-      <iframe
-        id="discord-community-frame"
-        class="discord-community-frame hidden"
-        title="Scholaxia Community"
-        allow="microphone; camera; clipboard-write"
-      ></iframe>
-
     </section>
 
 
