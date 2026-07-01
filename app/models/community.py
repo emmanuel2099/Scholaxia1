@@ -121,8 +121,9 @@ class CommunityPost(Base):
     media_url: Mapped[str] = mapped_column(String(500), nullable=True)
     media_type: Mapped[str] = mapped_column(String(50), nullable=True)  # image | pdf | video | doc
     is_anonymous: Mapped[bool] = mapped_column(Boolean, default=False)
-    visibility: Mapped[PostVisibility] = mapped_column(
-        Enum(PostVisibility), default=PostVisibility.everyone, nullable=False
+    # Stored as VARCHAR in PostgreSQL (see app/main.py startup migration).
+    visibility: Mapped[str] = mapped_column(
+        String(20), default=PostVisibility.everyone.value, nullable=False
     )
     cbt_exam_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True)
     group_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("student_groups.id"), nullable=True)

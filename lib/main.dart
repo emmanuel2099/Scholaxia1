@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'screens/splash/splash_screen.dart';
@@ -7,10 +10,34 @@ import 'theme/app_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await themeNotifier.load();
-  await LocalNotificationService.instance.init();
-  await FirebasePushService.instance.init();
+
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    debugPrint('FlutterError: ${details.exception}');
+  };
+
+  // Paint the splash immediately; defer heavy plugin init so release builds
+  // don't sit on the white Android launch screen if a plugin fails.
   runApp(const ScholaxiaApp());
+  unawaited(_bootstrap());
+}
+
+Future<void> _bootstrap() async {
+  try {
+    await themeNotifier.load();
+  } catch (e, st) {
+    debugPrint('Theme load failed: $e\n$st');
+  }
+  try {
+    await LocalNotificationService.instance.init();
+  } catch (e, st) {
+    debugPrint('Local notifications init failed: $e\n$st');
+  }
+  try {
+    await FirebasePushService.instance.init();
+  } catch (e, st) {
+    debugPrint('Firebase init failed: $e\n$st');
+  }
 }
 
 class ScholaxiaApp extends StatefulWidget {

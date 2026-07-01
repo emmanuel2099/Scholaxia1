@@ -13,12 +13,16 @@ class LocalNotificationService {
 
   Future<void> init() async {
     if (_initialized) return;
-    const android = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const ios = DarwinInitializationSettings();
-    await _plugin.initialize(
-      const InitializationSettings(android: android, iOS: ios),
-    );
-    _initialized = true;
+    try {
+      const android = AndroidInitializationSettings('@mipmap/ic_launcher');
+      const ios = DarwinInitializationSettings();
+      await _plugin.initialize(
+        const InitializationSettings(android: android, iOS: ios),
+      );
+      _initialized = true;
+    } catch (e, st) {
+      debugPrint('LocalNotificationService init failed: $e\n$st');
+    }
   }
 
   Future<void> seedKnownNotifications(ApiService api) async {

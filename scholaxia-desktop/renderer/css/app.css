@@ -1563,6 +1563,27 @@ body:has(.app-shell-topnav) { overflow: auto; height: auto; }
   border: 1px solid #d0ddd6;
 }
 
+.btn-sm {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid #d0ddd6;
+  background: #f8faf9;
+  color: #1a3d28;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.btn-sm:hover {
+  background: #eef5f0;
+  border-color: #b8d9c6;
+}
+.btn-sm.primary {
+  background: linear-gradient(135deg, #1a5c3a, #228b52);
+  border-color: #1a5c3a;
+  color: #fff;
+}
+
 .btn-submit-exam { background: #c0392b; color: #fff; }
 
 .loading, .empty {
@@ -1719,6 +1740,28 @@ html[data-app-theme="dark"] .access-codes-clear-all {
   color: #1a4d32;
 }
 .access-code-used { font-size: 0.78rem; color: #6b8f75; margin-top: 6px; }
+
+.empty-state {
+  text-align: center;
+  padding: 36px 28px;
+  background: #fff;
+  border: 1px dashed #d1d5db;
+  border-radius: 16px;
+  max-width: 520px;
+  margin: 0 auto;
+}
+.empty-state h3 {
+  margin: 0 0 10px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #0f3320;
+}
+.empty-state p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: #6b7280;
+}
 
 .groups-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
 .group-card {
@@ -3696,7 +3739,9 @@ html[data-app-theme="dark"] .skill-card,
 html[data-app-theme="dark"] .sia-chat-wrap,
 html[data-app-theme="dark"] .request-box,
 html[data-app-theme="dark"] .skill-phase,
-html[data-app-theme="dark"] .skill-live-card {
+html[data-app-theme="dark"] .skill-live-card,
+html[data-app-theme="dark"] .access-code-card,
+html[data-app-theme="dark"] .empty-state {
   background: #2b2d31;
   border-color: #1e1f22;
   color: #f2f3f5;
@@ -3865,5 +3910,48 @@ html[data-app-theme="dark"] .contact-topic.active {
 }
 html[data-app-theme="dark"] .loading {
   color: #949ba4;
+}
+
+/* Access Code tab — dark mode */
+html[data-app-theme="dark"] .access-code-card-new {
+  border-color: #57f287;
+  box-shadow: 0 0 0 1px rgba(87, 242, 135, 0.25);
+}
+html[data-app-theme="dark"] .access-code-card-head strong {
+  color: #f2f3f5;
+}
+html[data-app-theme="dark"] .access-code-meta {
+  color: #b5bac1;
+}
+html[data-app-theme="dark"] .access-code-value code {
+  color: #57f287;
+}
+html[data-app-theme="dark"] .access-code-pill {
+  background: rgba(87, 242, 135, 0.15);
+  color: #57f287;
+}
+html[data-app-theme="dark"] .access-code-used {
+  color: #949ba4;
+}
+html[data-app-theme="dark"] .access-code-card .btn-sm {
+  background: #404249;
+  border-color: #4e5058;
+  color: #dbdee1;
+}
+html[data-app-theme="dark"] .access-code-card .btn-sm:hover {
+  background: #4e5058;
+  color: #fff;
+}
+html[data-app-theme="dark"] .empty-state h3 {
+  color: #f2f3f5;
+}
+html[data-app-theme="dark"] .empty-state p {
+  color: #b5bac1;
+}
+html[data-app-theme="dark"] .empty-state strong {
+  color: #dbdee1;
+}
+html[data-app-theme="dark"] .access-codes-header h2 {
+  color: #f2f3f5;
 }
 

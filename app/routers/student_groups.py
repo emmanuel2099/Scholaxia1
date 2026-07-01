@@ -618,7 +618,7 @@ async def create_group_post(
         content=text or ("Voice note" if payload.media_type == "audio" else ""),
         media_url=payload.media_url,
         media_type=payload.media_type,
-        visibility=PostVisibility.everyone,
+        visibility=PostVisibility.everyone.value,
     )
     db.add(post)
     await db.flush()

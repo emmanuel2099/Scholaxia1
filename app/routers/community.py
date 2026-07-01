@@ -700,10 +700,7 @@ async def _fetch_channel_posts(
     if role_name not in ("teacher", "admin") and not is_announcement:
         # Use string literals — PostgreSQL enum + SQLAlchemy `.in_([Enum, ...])` 500s for students.
         query = query.where(
-            or_(
-                CommunityPost.visibility == "everyone",
-                CommunityPost.visibility == "class_only",
-            )
+            CommunityPost.visibility.in_(["everyone", "class_only"])
         )
 
     result = await db.execute(query)
@@ -917,7 +914,7 @@ async def create_post(
         author_id=current_user["sub"],
         content=payload.content,
         is_anonymous=payload.is_anonymous,
-        visibility=payload.visibility,
+        visibility=payload.visibility.value,
         media_url=payload.media_url,
         media_type=payload.media_type,
         cbt_exam_id=payload.cbt_exam_id,

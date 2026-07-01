@@ -48,7 +48,7 @@ async def ensure_group_feed_post(db: AsyncSession, group: StudentGroup) -> Commu
         channel_id=channel.id,
         author_id=group.creator_id,
         content=group_post_content(gid, group.name, group.description),
-        visibility=PostVisibility.everyone,
+        visibility=PostVisibility.everyone.value,
     )
     db.add(post)
     await db.flush()
