@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 import '../../api/api_service.dart';
+import '../../services/chat_persistence_service.dart';
+import '../../services/sia_voice_service.dart';
 import '../../theme/app_theme.dart';
 
 class KindSiaScreen extends StatefulWidget {
@@ -10,27 +13,114 @@ class KindSiaScreen extends StatefulWidget {
 }
 
 class _KindSiaScreenState extends State<KindSiaScreen> {
+  static const _chatChannel = 'kind_sia';
+
   final _api = ApiService();
   final _input = TextEditingController();
   final _scroll = ScrollController();
   final _messages = <_Msg>[];
   bool _loading = false;
+  bool _voiceOn = true;
+  bool _listening = false;
   String _subject = 'General';
   List<String> _subjects = ['General'];
+  final _speech = SpeechToText();
 
   @override
   void initState() {
     super.initState();
+    SiaVoiceService.instance.init();
+    _bootstrap();
+  }
+
+  Future<void> _speakAi(String text) async {
+    if (!_voiceOn || text.trim().isEmpty) return;
+    await SiaVoiceService.instance.speak(text);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _toggleListen() async {
+    if (_loading) return;
+    if (_listening) {
+      await _speech.stop();
+      if (mounted) setState(() => _listening = false);
+      return;
+    }
+    final ok = await _speech.initialize();
+    if (!ok) return;
+    if (mounted) setState(() => _listening = true);
+    await _speech.listen(
+      onResult: (r) {
+        _input.text = r.recognizedWords;
+        if (r.finalResult && mounted) {
+          setState(() => _listening = false);
+          _send();
+        }
+      },
+    );
+  }
+
+  Future<void> _bootstrap() async {
+    final saved = await ChatPersistenceService.instance.load(_chatChannel);
+    if (!mounted) return;
+    if (saved.isNotEmpty) {
+      setState(() {
+        _messages
+          ..clear()
+          ..addAll(saved.map((m) => _Msg(isAi: m.isAi, text: m.text)));
+      });
+      _scrollToBottom();
+    } else {
+      setState(() {
+        _messages.add(_defaultWelcome());
+      });
+    }
     _loadSubjects();
-    _messages.add(const _Msg(
-      isAi: true,
-      text:
-          "Hi! I'm Sia — your friendly learning buddy. Ask me about homework, school, or anything you're curious about!",
-    ));
+  }
+
+  _Msg _defaultWelcome() => const _Msg(
+        isAi: true,
+        text:
+            "Hi! I'm Sia — your friendly learning buddy. Ask me about homework, school, or anything you're curious about!",
+      );
+
+  Future<void> _persistChat() async {
+    await ChatPersistenceService.instance.save(
+      _chatChannel,
+      _messages
+          .map((m) => StoredChatMessage(isAi: m.isAi, text: m.text))
+          .toList(),
+    );
+  }
+
+  Future<void> _clearChat() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Clear chat?'),
+        content: const Text('Delete your Sia chat on this device?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Clear', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    await ChatPersistenceService.instance.clear(_chatChannel);
+    setState(() {
+      _messages
+        ..clear()
+        ..add(_defaultWelcome());
+    });
+    await _persistChat();
   }
 
   @override
   void dispose() {
+    SiaVoiceService.instance.stop();
     _input.dispose();
     _scroll.dispose();
     super.dispose();
@@ -52,6 +142,7 @@ class _KindSiaScreenState extends State<KindSiaScreen> {
     });
     _input.clear();
     _scrollToBottom();
+    await _persistChat();
     try {
       final reply = await _api.kindSiaChat(
         question: text,
@@ -61,10 +152,13 @@ class _KindSiaScreenState extends State<KindSiaScreen> {
       if (mounted) {
         setState(() => _messages.add(_Msg(isAi: true, text: reply)));
         _scrollToBottom();
+        await _persistChat();
+        await _speakAi(reply);
       }
     } on ApiException catch (e) {
       if (mounted) {
         setState(() => _messages.add(_Msg(isAi: true, text: e.message)));
+        await _persistChat();
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -92,8 +186,8 @@ class _KindSiaScreenState extends State<KindSiaScreen> {
         'content': m.text,
       });
     }
-    if (history.length > 10) {
-      return history.sublist(history.length - 10);
+    if (history.length > 14) {
+      return history.sublist(history.length - 14);
     }
     return history;
   }
@@ -156,6 +250,21 @@ class _KindSiaScreenState extends State<KindSiaScreen> {
                           ),
                         ],
                       ),
+                    ),
+                    if (_messages.length > 1)
+                      IconButton(
+                        onPressed: _clearChat,
+                        icon: Icon(Icons.delete_outline_rounded,
+                            color: Colors.white.withOpacity(0.9)),
+                        tooltip: 'Clear chat',
+                      ),
+                    IconButton(
+                      onPressed: () => setState(() => _voiceOn = !_voiceOn),
+                      icon: Icon(
+                        _voiceOn ? Icons.volume_up_rounded : Icons.volume_off_rounded,
+                        color: Colors.white.withOpacity(0.9),
+                      ),
+                      tooltip: _voiceOn ? 'Voice on' : 'Voice off',
                     ),
                     Container(
                       padding: const EdgeInsets.symmetric(
@@ -237,6 +346,28 @@ class _KindSiaScreenState extends State<KindSiaScreen> {
             ),
             child: Row(
               children: [
+                GestureDetector(
+                  onTap: _toggleListen,
+                  child: Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      color: _listening
+                          ? context.accentColor.withOpacity(0.2)
+                          : context.surfColor,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: _listening ? context.accentColor : context.borderColor,
+                      ),
+                    ),
+                    child: Icon(
+                      _listening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                      color: _listening ? context.accentColor : context.greyColor,
+                      size: 20,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
                 Expanded(
                   child: TextField(
                     controller: _input,

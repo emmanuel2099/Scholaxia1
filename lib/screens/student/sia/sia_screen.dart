@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 import '../../../api/api_service.dart';
+import '../../../services/chat_persistence_service.dart';
+import '../../../services/sia_voice_service.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/student_ui.dart';
 
@@ -10,18 +13,170 @@ class SiaScreen extends StatefulWidget {
 }
 
 class _SiaScreenState extends State<SiaScreen> {
+  static const _chatChannel = 'student_sia';
+
   final _inputCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
   final _api = ApiService();
   String _subject = 'Physics';
-  final _subjects = ['Physics', 'Mathematics', 'Biology', 'Chemistry', 'English'];
+  List<String> _subjects = ['Physics', 'Mathematics', 'Biology', 'Chemistry', 'English'];
+  String? _educationLevel;
   bool _loading = false;
-  final List<_Msg> _messages = [
-    const _Msg(isAi: true, text: "Hi! I'm Sia, your AI tutor. Ask me anything about your subjects — JAMB, WAEC, NECO and more.", time: '09:00 AM'),
-  ];
+  bool _voiceOn = true;
+  bool _listening = false;
+  List<_Msg> _messages = [];
+  final _speech = SpeechToText();
 
   @override
-  void dispose() { _inputCtrl.dispose(); _scrollCtrl.dispose(); super.dispose(); }
+  void initState() {
+    super.initState();
+    SiaVoiceService.instance.init();
+    _bootstrap();
+  }
+
+  @override
+  void dispose() {
+    SiaVoiceService.instance.stop();
+    _inputCtrl.dispose();
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _speakAi(String text) async {
+    if (!_voiceOn || text.trim().isEmpty) return;
+    if (mounted) setState(() {});
+    await SiaVoiceService.instance.speak(text);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _toggleListen() async {
+    if (_loading) return;
+    if (_listening) {
+      await _speech.stop();
+      if (mounted) setState(() => _listening = false);
+      return;
+    }
+    final ok = await _speech.initialize();
+    if (!ok) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Microphone not available on this device.')),
+        );
+      }
+      return;
+    }
+    if (mounted) setState(() => _listening = true);
+    await _speech.listen(
+      onResult: (r) {
+        _inputCtrl.text = r.recognizedWords;
+        if (r.finalResult && mounted) {
+          setState(() => _listening = false);
+          _send();
+        }
+      },
+      listenMode: ListenMode.confirmation,
+    );
+  }
+
+  Future<void> _bootstrap() async {
+    final saved = await ChatPersistenceService.instance.load(_chatChannel);
+    if (!mounted) return;
+    if (saved.isNotEmpty) {
+      setState(() {
+        _messages = saved
+            .map((m) => _Msg(isAi: m.isAi, text: m.text, time: m.time ?? ''))
+            .toList();
+      });
+      _scrollToEnd();
+    } else {
+      setState(() {
+        _messages = [_defaultWelcome()];
+      });
+    }
+    await _loadProfile();
+  }
+
+  _Msg _defaultWelcome() => _Msg(
+        isAi: true,
+        text:
+            "Hi! I'm Sia, your AI tutor. Ask me anything — I'll teach what you want at your level.",
+        time: _now(),
+      );
+
+  Future<void> _persistChat() async {
+    await ChatPersistenceService.instance.save(
+      _chatChannel,
+      _messages
+          .map((m) => StoredChatMessage(isAi: m.isAi, text: m.text, time: m.time))
+          .toList(),
+    );
+  }
+
+  Future<void> _clearChat() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Clear chat?'),
+        content: const Text(
+          'This will delete your Sia conversation on this device. This cannot be undone.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Clear', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    await ChatPersistenceService.instance.clear(_chatChannel);
+    setState(() => _messages = [_defaultWelcome()]);
+    await _persistChat();
+    await _loadProfile();
+  }
+
+  void _scrollToEnd() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollCtrl.hasClients) {
+        _scrollCtrl.jumpTo(_scrollCtrl.position.maxScrollExtent);
+      }
+    });
+  }
+
+  Future<void> _loadProfile() async {
+    try {
+      final p = await _api.getStudentProfile();
+      if (!mounted) return;
+      final subjects = p.subjects.isNotEmpty
+          ? p.subjects
+          : _subjects;
+      final level = p.educationLevel;
+      final name = p.fullName.split(' ').first;
+      setState(() {
+        _subjects = subjects;
+        if (!subjects.contains(_subject)) {
+          _subject = subjects.first;
+        }
+        _educationLevel = (level != null && level.isNotEmpty) ? level : null;
+        final onlyWelcome = _messages.length == 1 &&
+            _messages.first.isAi &&
+            (_messages.first.text.contains("I'm Sia") ||
+                _messages.first.text.startsWith('Hi '));
+        if (onlyWelcome) {
+          final subjText = subjects.take(3).join(', ');
+          final levelText = _educationLevel != null ? ' ($_educationLevel)' : '';
+          _messages[0] = _Msg(
+            isAi: true,
+            text: subjText.isEmpty
+                ? "Hi $name! I'm Sia$levelText. Ask me anything you want to learn today."
+                : "Hi $name! I'm Sia$levelText. I know you study $subjText — but ask me about anything. What should we work on?",
+            time: _now(),
+          );
+        }
+      });
+    } catch (_) {}
+  }
 
   Future<void> _send() async {
     final text = _inputCtrl.text.trim();
@@ -32,28 +187,41 @@ class _SiaScreenState extends State<SiaScreen> {
       _inputCtrl.clear();
       _loading = true;
     });
+    await _persistChat();
     try {
       final history = _buildHistory();
       final r = await _api.siaAsk(
         question: text,
         subject: _subject,
+        educationLevel: _educationLevel,
         conversationHistory: history,
         tutorMode: 'smart',
       );
-      if (mounted) setState(() {
-        _messages.add(_Msg(isAi: true, text: r.sia, time: _now()));
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _messages.add(_Msg(isAi: true, text: r.sia, time: _now()));
+          _loading = false;
+        });
+        await _persistChat();
+        _scrollToEnd();
+        await _speakAi(r.sia);
+      }
     } on ApiException catch (e) {
-      if (mounted) setState(() {
-        _messages.add(_Msg(isAi: true, text: 'Sorry, I ran into an issue: ${e.message}', time: _now()));
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _messages.add(_Msg(isAi: true, text: 'Sorry, I ran into an issue: ${e.message}', time: _now()));
+          _loading = false;
+        });
+        await _persistChat();
+      }
     } catch (_) {
-      if (mounted) setState(() {
-        _messages.add(_Msg(isAi: true, text: 'Something went wrong. Please try again.', time: _now()));
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _messages.add(_Msg(isAi: true, text: 'Something went wrong. Please try again.', time: _now()));
+          _loading = false;
+        });
+        await _persistChat();
+      }
     }
   }
 
@@ -68,14 +236,14 @@ class _SiaScreenState extends State<SiaScreen> {
   List<Map<String, dynamic>> _buildHistory() {
     final history = <Map<String, dynamic>>[];
     for (final m in _messages) {
-      if (m.text.startsWith("Hi! I'm Sia")) continue;
+      if (m.isAi && m.text.contains("I'm Sia") && _messages.indexOf(m) == 0) continue;
       history.add({
         'role': m.isAi ? 'assistant' : 'user',
         'content': m.text,
       });
     }
-    if (history.length > 12) {
-      return history.sublist(history.length - 12);
+    if (history.length > 14) {
+      return history.sublist(history.length - 14);
     }
     return history;
   }
@@ -89,6 +257,7 @@ class _SiaScreenState extends State<SiaScreen> {
           _buildHeader(context),
           Expanded(child: _buildMessages(context)),
           if (_loading) _buildThinking(context),
+          if (SiaVoiceService.instance.isSpeaking) _buildSpeaking(context),
           _buildQuickChips(context),
           _buildInput(context),
         ]),
@@ -139,6 +308,21 @@ class _SiaScreenState extends State<SiaScreen> {
             ],
           ),
         ),
+        IconButton(
+          onPressed: _messages.length <= 1 ? null : _clearChat,
+          icon: Icon(Icons.delete_outline_rounded,
+              color: Colors.white.withOpacity(0.9), size: 22),
+          tooltip: 'Clear chat',
+        ),
+        IconButton(
+          onPressed: () => setState(() => _voiceOn = !_voiceOn),
+          icon: Icon(
+            _voiceOn ? Icons.volume_up_rounded : Icons.volume_off_rounded,
+            color: Colors.white.withOpacity(0.9),
+            size: 22,
+          ),
+          tooltip: _voiceOn ? 'Voice on' : 'Voice off',
+        ),
       ]),
     );
   }
@@ -186,6 +370,11 @@ class _SiaScreenState extends State<SiaScreen> {
           Row(children: [
             Text(m.time, style: TextStyle(color: context.greyColor, fontSize: 10)),
             const SizedBox(width: 8),
+            GestureDetector(
+              onTap: () => _speakAi(m.text),
+              child: Icon(Icons.volume_up_rounded, size: 14, color: context.accentColor),
+            ),
+            const SizedBox(width: 8),
             Icon(Icons.thumb_up_outlined, size: 14, color: context.greyColor),
             const SizedBox(width: 8),
             Icon(Icons.thumb_down_outlined, size: 14, color: context.greyColor),
@@ -227,6 +416,18 @@ class _SiaScreenState extends State<SiaScreen> {
           Text(m.time, style: TextStyle(color: context.greyColor, fontSize: 10)),
         ]),
       ),
+    );
+  }
+
+  Widget _buildSpeaking(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+      child: Row(children: [
+        const SizedBox(width: 38),
+        Icon(Icons.graphic_eq_rounded, color: context.accentColor, size: 16),
+        const SizedBox(width: 6),
+        Text('Sia is speaking...', style: TextStyle(color: context.accentColor, fontSize: 12)),
+      ]),
     );
   }
 
@@ -278,11 +479,29 @@ class _SiaScreenState extends State<SiaScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
-            Container(
+            GestureDetector(
+              onTap: _messages.length <= 1 ? null : _clearChat,
+              child: Container(
               width: 32, height: 32,
               decoration: BoxDecoration(color: context.surfColor, borderRadius: BorderRadius.circular(8), border: Border.all(color: context.borderColor)),
-              child: Icon(Icons.history, size: 16, color: context.greyColor),
-            ),
+              child: Icon(Icons.delete_outline_rounded, size: 16, color: context.greyColor),
+            )),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: _toggleListen,
+              child: Container(
+              width: 32, height: 32,
+              decoration: BoxDecoration(
+                color: _listening ? context.accentColor.withOpacity(0.2) : context.surfColor,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: _listening ? context.accentColor : context.borderColor),
+              ),
+              child: Icon(
+                _listening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                size: 16,
+                color: _listening ? context.accentColor : context.greyColor,
+              ),
+            )),
             const SizedBox(width: 8),
             Expanded(
               child: Container(

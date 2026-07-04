@@ -15,6 +15,7 @@ For languages not supported by ElevenLabs, we fall back to gTTS (Google TTS).
 
 import httpx
 import io
+import re
 from app.core.config import settings
 
 ELEVENLABS_TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
@@ -29,6 +30,22 @@ ELEVENLABS_SUPPORTED_LANGUAGES = {
 }
 
 
+def prepare_speech_text(text: str, max_len: int = 3500) -> str:
+    """Strip markdown and trim for natural TTS."""
+    if not text:
+        return ""
+    t = re.sub(r"```[\s\S]*?```", " ", text)
+    t = re.sub(r"`([^`]+)`", r"\1", t)
+    t = re.sub(r"\*\*([^*]+)\*\*", r"\1", t)
+    t = re.sub(r"\*([^*]+)\*", r"\1", t)
+    t = re.sub(r"^#+\s*", "", t, flags=re.MULTILINE)
+    t = re.sub(r"\s+", " ", t).strip()
+    if len(t) > max_len:
+        cut = t[:max_len].rsplit(" ", 1)[0]
+        t = f"{cut}..."
+    return t
+
+
 async def text_to_speech(text: str, language: str = "english") -> bytes:
     """
     Convert text to audio bytes (MP3).
@@ -36,16 +53,19 @@ async def text_to_speech(text: str, language: str = "english") -> bytes:
 
     Uses ElevenLabs for supported languages, falls back to gTTS for others.
     """
+    clean = prepare_speech_text(text)
+    if not clean:
+        return b""
+
     if not settings.ELEVENLABS_API_KEY:
-        # Fallback to gTTS if ElevenLabs not configured
-        return await _gtts_fallback(text, language)
+        return await _gtts_fallback(clean, language)
 
     lang = language.lower()
 
     if lang in ELEVENLABS_SUPPORTED_LANGUAGES:
-        return await _elevenlabs_tts(text)
+        return await _elevenlabs_tts(clean)
     else:
-        return await _gtts_fallback(text, language)
+        return await _gtts_fallback(clean, language)
 
 
 async def _elevenlabs_tts(text: str) -> bytes:
@@ -56,9 +76,9 @@ async def _elevenlabs_tts(text: str) -> bytes:
         "text": text,
         "model_id": settings.ELEVENLABS_MODEL_ID,
         "voice_settings": {
-            "stability": 0.5,         # consistent, not too robotic
-            "similarity_boost": 0.75, # stays close to Sia's voice
-            "style": 0.3,             # slight warmth
+            "stability": 0.55,
+            "similarity_boost": 0.80,
+            "style": 0.25,
             "use_speaker_boost": True,
         },
     }

@@ -45,9 +45,11 @@ class ApiEndpoints {
   static const String siaNotes = '$_v1/sia/notes';
   static const String siaAbout = '$_v1/sia/about';
   static const String siaLanguages = '$_v1/sia/languages';
+  static const String siaSpeak = '$_v1/sia/speak';
 
   // Teacher AI
   static const String teacherAiAsk = '$_v1/teacher-ai/ask';
+  static const String teacherAiSpeak = '$_v1/teacher-ai/speak';
 
   // CBT
   static const String cbtExams = '$_v1/cbt/exams';

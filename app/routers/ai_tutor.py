@@ -14,7 +14,7 @@ from typing import Optional, List
 import io, base64
 
 from app.core.database import get_db
-from app.core.deps import require_student
+from app.core.deps import require_student, require_student_or_kind
 from app.models.user import User, StudentProfile
 from app.models.sia_note import SiaNote
 from app.services.ai_service import (
@@ -451,7 +451,7 @@ class SpeakRequest(BaseModel):
 @router.post("/speak")
 async def sia_speak(
     payload: SpeakRequest,
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
 ):
     """
     Convert any Sia text response to audio (MP3).

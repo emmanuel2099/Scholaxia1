@@ -7,8 +7,10 @@ Does NOT assist students. Cannot be used to get exam answers.
 """
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 from typing import Literal, Optional, List
+import io
 
 from app.core.deps import require_teacher
 from app.ai.prompt_builder import (
@@ -110,4 +112,34 @@ async def teacher_ask_ai(
         result=result,
         task=task,
         subject=payload.subject,
+    )
+
+
+class SpeakRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=5000)
+    language: str = "english"
+
+
+@router.post("/speak")
+async def teacher_ai_speak(
+    payload: SpeakRequest,
+    current_user: dict = Depends(require_teacher),
+):
+    """Convert Teacher AI text to audio (same clear female Sia voice)."""
+    from app.services.tts_service import text_to_speech
+
+    audio_bytes = await text_to_speech(text=payload.text, language=payload.language)
+    if not audio_bytes:
+        raise HTTPException(
+            status_code=503,
+            detail="Voice service unavailable. Please read the text response.",
+        )
+
+    return StreamingResponse(
+        io.BytesIO(audio_bytes),
+        media_type="audio/mpeg",
+        headers={
+            "Content-Disposition": "inline; filename=teacher_ai_response.mp3",
+            "Cache-Control": "no-store",
+        },
     )

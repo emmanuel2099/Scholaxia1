@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 import '../../../api/api_service.dart';
+import '../../../services/chat_persistence_service.dart';
+import '../../../services/sia_voice_service.dart';
 import '../../../theme/app_theme.dart';
 import '../teacher_shared.dart';
 
@@ -11,22 +14,112 @@ class TeacherAiScreen extends StatefulWidget {
 }
 
 class _TeacherAiScreenState extends State<TeacherAiScreen> {
+  static const _chatChannel = 'teacher_ai';
+
   final _api = ApiService();
   final _inputCtrl = TextEditingController();
   final _scrollCtrl = ScrollController();
   final _messages = <_AiMsg>[];
   bool _loading = false;
+  bool _voiceOn = true;
+  bool _listening = false;
   int _unread = 0;
   String? _teacherName;
+  final _speech = SpeechToText();
 
   @override
   void initState() {
     super.initState();
-    _loadProfile();
+    SiaVoiceService.instance.init();
+    _bootstrap();
+  }
+
+  Future<void> _speakAi(String text) async {
+    if (!_voiceOn || text.trim().isEmpty) return;
+    await SiaVoiceService.instance.speak(text);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _toggleListen() async {
+    if (_loading) return;
+    if (_listening) {
+      await _speech.stop();
+      if (mounted) setState(() => _listening = false);
+      return;
+    }
+    final ok = await _speech.initialize();
+    if (!ok) return;
+    if (mounted) setState(() => _listening = true);
+    await _speech.listen(
+      onResult: (r) {
+        _inputCtrl.text = r.recognizedWords;
+        if (r.finalResult && mounted) {
+          setState(() => _listening = false);
+          _send();
+        }
+      },
+    );
+  }
+
+  Future<void> _bootstrap() async {
+    final saved = await ChatPersistenceService.instance.load(_chatChannel);
+    if (mounted && saved.isNotEmpty) {
+      setState(() {
+        _messages.addAll(saved.map((m) => _AiMsg(
+              role: m.role ?? (m.isAi ? 'assistant' : 'user'),
+              text: m.text,
+            )));
+      });
+      _scrollToEnd();
+    }
+    await _loadProfile();
+  }
+
+  Future<void> _persistChat() async {
+    if (_messages.isEmpty) return;
+    await ChatPersistenceService.instance.save(
+      _chatChannel,
+      _messages
+          .map((m) => StoredChatMessage(
+                isAi: m.role != 'user',
+                text: m.text,
+                role: m.role,
+              ))
+          .toList(),
+    );
+  }
+
+  Future<void> _clearChat() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Clear chat?'),
+        content: const Text('Delete your Teacher AI conversation on this device?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Clear', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    await ChatPersistenceService.instance.clear(_chatChannel);
+    setState(() => _messages.clear());
+  }
+
+  void _scrollToEnd() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollCtrl.hasClients) {
+        _scrollCtrl.jumpTo(_scrollCtrl.position.maxScrollExtent);
+      }
+    });
   }
 
   @override
   void dispose() {
+    SiaVoiceService.instance.stop();
     _inputCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();
@@ -64,10 +157,13 @@ class _TeacherAiScreenState extends State<TeacherAiScreen> {
           _messages.add(_AiMsg(role: 'assistant', text: greeting));
           _loading = false;
         });
+        await _persistChat();
+        await _speakAi(greeting);
       }
       return;
     }
 
+    await _persistChat();
     try {
       final res = await _api.teacherAiAsk(
         task: 'general',
@@ -79,10 +175,14 @@ class _TeacherAiScreenState extends State<TeacherAiScreen> {
       final reply = res['result']?.toString() ?? 'No response.';
       if (mounted) {
         setState(() => _messages.add(_AiMsg(role: 'assistant', text: reply)));
+        await _persistChat();
+        await _speakAi(reply);
+        _scrollToEnd();
       }
     } on ApiException catch (e) {
       if (mounted) {
         setState(() => _messages.add(_AiMsg(role: 'assistant', text: e.message)));
+        await _persistChat();
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -110,8 +210,8 @@ class _TeacherAiScreenState extends State<TeacherAiScreen> {
         'content': m.text,
       });
     }
-    if (history.length > 10) {
-      return history.sublist(history.length - 10);
+    if (history.length > 14) {
+      return history.sublist(history.length - 14);
     }
     return history;
   }
@@ -144,8 +244,32 @@ class _TeacherAiScreenState extends State<TeacherAiScreen> {
                           fontSize: 22,
                           fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
-                  Text('Ask anything about teaching, classes, or your students.',
-                      style: TextStyle(color: context.greyColor, fontSize: 13)),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Ask anything about teaching, classes, or your students.',
+                          style: TextStyle(color: context.greyColor, fontSize: 13),
+                        ),
+                      ),
+                      if (_messages.isNotEmpty)
+                        TextButton.icon(
+                          onPressed: _clearChat,
+                          icon: Icon(Icons.delete_outline_rounded,
+                              size: 18, color: context.greyColor),
+                          label: Text('Clear',
+                              style: TextStyle(color: context.greyColor, fontSize: 12)),
+                        ),
+                      IconButton(
+                        onPressed: () => setState(() => _voiceOn = !_voiceOn),
+                        icon: Icon(
+                          _voiceOn ? Icons.volume_up_rounded : Icons.volume_off_rounded,
+                          color: context.accentColor,
+                        ),
+                        tooltip: _voiceOn ? 'Voice on' : 'Voice off',
+                      ),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -184,6 +308,28 @@ class _TeacherAiScreenState extends State<TeacherAiScreen> {
               ),
               child: Row(
                 children: [
+                  GestureDetector(
+                    onTap: _toggleListen,
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: _listening
+                            ? accent.withOpacity(0.2)
+                            : context.surfColor,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: _listening ? accent : context.borderColor,
+                        ),
+                      ),
+                      child: Icon(
+                        _listening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                        color: _listening ? accent : context.greyColor,
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: TextField(
                       controller: _inputCtrl,

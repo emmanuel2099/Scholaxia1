@@ -96,7 +96,7 @@ class Settings(BaseSettings):
     AI_LOCAL_MODEL_NAME: str = "mistralai/Mistral-7B-Instruct-v0.3"
     AI_LOCAL_DEVICE: str = "cpu"
 
-    # ElevenLabs (Sia Voice)
+    # ElevenLabs (Sia Voice) — clear female tutor voice (Rachel)
     ELEVENLABS_API_KEY: str = ""
     ELEVENLABS_VOICE_ID: str = "21m00Tcm4TlvDq8ikWAM"
     ELEVENLABS_MODEL_ID: str = "eleven_multilingual_v2"

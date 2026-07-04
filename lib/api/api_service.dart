@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -460,6 +461,24 @@ class ApiService {
       }),
     );
     return SiaResponse.fromJson(_parseMap(res));
+  }
+
+  /// Fetch MP3 audio for Sia / Kind / Teacher AI voice playback.
+  Future<Uint8List?> fetchVoiceAudio(
+    String text, {
+    String language = 'english',
+  }) async {
+    final role = (await getRole())?.toLowerCase();
+    final endpoint = role == 'teacher'
+        ? ApiEndpoints.teacherAiSpeak
+        : ApiEndpoints.siaSpeak;
+    final res = await http.post(
+      _uri(endpoint),
+      headers: await _authHeaders(),
+      body: jsonEncode({'text': text, 'language': language}),
+    );
+    if (res.statusCode != 200) return null;
+    return res.bodyBytes;
   }
 
   // ── Teacher AI ─────────────────────────────────────────────────────────────
