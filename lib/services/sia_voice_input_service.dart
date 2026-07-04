@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
@@ -7,16 +10,20 @@ class SiaVoiceInputService {
   SiaVoiceInputService._();
   static final instance = SiaVoiceInputService._();
 
+  /// Windows plugin crashes app (native thread bug). Use text input on desktop.
+  static bool get isMicSupported =>
+      !Platform.isWindows && !Platform.isLinux;
+
   final _speech = SpeechToText();
   bool _initialized = false;
   String _lastWords = '';
-  bool _finalSent = false;
-  void Function(String finalText)? _onFinal;
-  void Function(String status)? _onStatus;
+  int _session = 0;
 
   String get lastWords => _lastWords;
 
   Future<bool> ensureReady(BuildContext context) async {
+    if (!isMicSupported) return false;
+
     final perm = await Permission.microphone.request();
     if (!perm.isGranted) {
       if (context.mounted) {
@@ -31,17 +38,8 @@ class SiaVoiceInputService {
 
     if (!_initialized) {
       _initialized = await _speech.initialize(
-        onError: (err) => debugPrint('SiaVoiceInput error: $err'),
-        onStatus: (status) {
-          _onStatus?.call(status);
-          if ((status == 'done' || status == 'notListening') && !_finalSent) {
-            final words = _lastWords.trim();
-            if (words.isNotEmpty) {
-              _finalSent = true;
-              _onFinal?.call(words);
-            }
-          }
-        },
+        onError: (_) {},
+        onStatus: (_) {},
       );
     }
 
@@ -57,32 +55,44 @@ class SiaVoiceInputService {
     return _initialized;
   }
 
+  void _runOnUi(void Function() fn) {
+    SchedulerBinding.instance.scheduleFrameCallback((_) => fn());
+  }
+
   Future<void> startListening({
     required void Function(String partial) onPartial,
-    required void Function(String finalText) onFinal,
-    void Function(String status)? onStatus,
+    void Function(String finalText)? onFinal,
   }) async {
+    if (!isMicSupported) return;
+
+    _session++;
+    final session = _session;
     _lastWords = '';
-    _finalSent = false;
-    _onFinal = onFinal;
-    _onStatus = onStatus;
+
+    if (_speech.isListening) {
+      await _speech.stop();
+      await Future.delayed(const Duration(milliseconds: 200));
+    }
 
     await _speech.listen(
       onResult: (result) {
-        final words = result.recognizedWords.trim();
-        if (words.isNotEmpty) {
-          _lastWords = words;
-          onPartial(words);
-        }
-        if (result.finalResult && words.isNotEmpty && !_finalSent) {
-          _finalSent = true;
-          onFinal(words);
-        }
+        if (session != _session) return;
+        _runOnUi(() {
+          if (session != _session) return;
+          final words = result.recognizedWords.trim();
+          if (words.isNotEmpty) {
+            _lastWords = words;
+            onPartial(words);
+          }
+          if (onFinal != null && result.finalResult && words.isNotEmpty) {
+            onFinal(words);
+          }
+        });
       },
       listenOptions: SpeechListenOptions(
         listenMode: ListenMode.dictation,
         partialResults: true,
-        pauseFor: const Duration(seconds: 3),
+        pauseFor: const Duration(seconds: 5),
         listenFor: const Duration(seconds: 60),
         localeId: 'en_US',
         cancelOnError: false,
@@ -91,14 +101,17 @@ class SiaVoiceInputService {
   }
 
   Future<String> stopAndCapture() async {
+    if (!isMicSupported) return '';
     if (_speech.isListening) {
       await _speech.stop();
     }
-    await Future.delayed(const Duration(milliseconds: 350));
+    _session++;
+    await Future.delayed(const Duration(milliseconds: 400));
     return _lastWords.trim();
   }
 
   Future<void> stop() async {
+    _session++;
     if (_speech.isListening) {
       await _speech.stop();
     }

@@ -803,6 +803,69 @@ async function seedCbt() {
   } catch (e) { alert(e.message); }
 }
 
+async function importCbtFile() {
+  var err = document.getElementById("cbt-import-error");
+  var ok = document.getElementById("cbt-import-success");
+  var btn = document.getElementById("btn-import-cbt");
+  var input = document.getElementById("cbt-import-file");
+  err.textContent = "";
+  ok.textContent = "";
+
+  if (!input || !input.files || !input.files[0]) {
+    err.textContent = "Choose a .json or .csv file first.";
+    return;
+  }
+
+  var file = input.files[0];
+  var name = (file.name || "").toLowerCase();
+  var fields = {
+    title: document.getElementById("cbt-import-title").value.trim(),
+    subject: document.getElementById("cbt-import-subject").value.trim(),
+    exam_type: document.getElementById("cbt-import-type").value,
+    duration_minutes: parseInt(document.getElementById("cbt-import-duration").value, 10) || 60,
+    is_published: document.getElementById("cbt-import-publish").checked,
+    skip_duplicates: document.getElementById("cbt-import-skip-dup").checked,
+  };
+
+  if (name.endsWith(".csv") && (!fields.title || !fields.subject)) {
+    err.textContent = "For CSV files, enter title and subject above (or put them in a JSON file).";
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = "Uploading…";
+  try {
+    var r = await uploadCbtExamFile(file, fields);
+    if (!r) return;
+    var lines = [];
+    if (r.created_count) {
+      lines.push("Created " + r.created_count + " exam(s):");
+      (r.created || []).forEach(function (e) {
+        lines.push("• " + e.title + " (" + e.total_questions + " questions)");
+      });
+    }
+    if (r.skipped_count) {
+      lines.push("Skipped " + r.skipped_count + " duplicate title(s).");
+    }
+    ok.textContent = lines.join(" ");
+    input.value = "";
+    loadCbt();
+  } catch (e) {
+    err.textContent = e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Upload & create exam(s)";
+  }
+}
+
+async function downloadCbtTemplate() {
+  try {
+    await downloadCbtImportTemplate();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
 /* ── Recommendations ── */
 async function loadRecommendations() {
   var el = document.getElementById("rec-table");

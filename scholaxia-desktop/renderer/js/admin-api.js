@@ -109,3 +109,48 @@ async function uploadCbtImage(file) {
   if (!res.ok) throw new Error(formatApiError(data.detail) || "Image upload failed");
   return data.image_url;
 }
+
+async function uploadCbtExamFile(file, fields) {
+  var fd = new FormData();
+  fd.append("file", file);
+  if (fields.title) fd.append("title", fields.title);
+  if (fields.subject) fd.append("subject", fields.subject);
+  if (fields.exam_type) fd.append("exam_type", fields.exam_type);
+  if (fields.duration_minutes != null) fd.append("duration_minutes", String(fields.duration_minutes));
+  fd.append("is_published", fields.is_published ? "true" : "false");
+  fd.append("skip_duplicates", fields.skip_duplicates ? "true" : "false");
+  var res = await fetch(API_BASE + "/api/v1/admin/cbt/import", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + getAdminToken() },
+    body: fd,
+    signal: fetchTimeout(120000),
+  });
+  var data = await res.json().catch(function () { return {}; });
+  if (res.status === 401) {
+    clearAdminSession();
+    window.location.href = "admin.html";
+    return null;
+  }
+  if (!res.ok) throw new Error(formatApiError(data.detail) || "CBT import failed (" + res.status + ")");
+  return data;
+}
+
+async function downloadCbtImportTemplate() {
+  var res = await fetch(API_BASE + "/api/v1/admin/cbt/import-template", {
+    headers: { Authorization: "Bearer " + getAdminToken() },
+    signal: fetchTimeout(60000),
+  });
+  if (!res.ok) {
+    var data = await res.json().catch(function () { return {}; });
+    throw new Error(formatApiError(data.detail) || "Could not download template");
+  }
+  var blob = await res.blob();
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url;
+  a.download = "cbt_exam_template.json";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}

@@ -1,9 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
 from typing import Optional
+import json
 import uuid
 from app.core.database import get_db
 from app.core.datetime_utils import naive_utc_now
@@ -16,6 +18,7 @@ from app.models.community import CommunityPost, CommunityChannel
 from app.models.student_group import StudentGroup, StudentGroupMember
 from app.services.group_community import ensure_group_feed_post
 from app.services.media_service import generate_upload_signature, upload_file
+from app.services.cbt_import import CBT_IMPORT_TEMPLATE, parse_cbt_file
 from app.services.student_cleanup import delete_student_user
 from app.services.user_cleanup import purge_all_user_accounts, delete_teacher_user
 
@@ -274,13 +277,11 @@ class CBTExamResponse(BaseModel):
     scheduled_end: Optional[datetime] = None
 
 
-@router.post("/cbt/exams", response_model=CBTExamResponse, status_code=201)
-async def create_cbt_exam(
+async def _persist_cbt_exam(
+    db: AsyncSession,
     payload: CBTExamCreate,
-    current_user: dict = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
-):
-    """Admin creates a CBT exam with all questions in one call."""
+    created_by: str,
+) -> CBTExam:
     if not payload.questions:
         raise HTTPException(status_code=400, detail="At least one question required")
 
@@ -290,7 +291,7 @@ async def create_cbt_exam(
         exam_type=payload.exam_type.upper(),
         duration_minutes=payload.duration_minutes,
         total_questions=len(payload.questions),
-        created_by=current_user["sub"],
+        created_by=created_by,
         is_published=payload.is_published,
         is_school_exam=payload.is_school_exam,
         ai_locked=payload.ai_locked,
@@ -304,26 +305,53 @@ async def create_cbt_exam(
 
     for q in payload.questions:
         if q.correct_option.upper() not in ("A", "B", "C", "D"):
-            raise HTTPException(status_code=400, detail=f"correct_option must be A/B/C/D, got: {q.correct_option}")
-        db.add(CBTQuestion(
-            exam_id=exam.id,
-            question_text=q.question_text,
-            option_a=q.option_a, option_b=q.option_b,
-            option_c=q.option_c, option_d=q.option_d,
-            correct_option=q.correct_option.upper(),
-            explanation=q.explanation,
-            topic=q.topic,
-            image_url=q.image_url,
-        ))
+            raise HTTPException(
+                status_code=400,
+                detail=f"correct_option must be A/B/C/D, got: {q.correct_option}",
+            )
+        db.add(
+            CBTQuestion(
+                exam_id=exam.id,
+                question_text=q.question_text,
+                option_a=q.option_a,
+                option_b=q.option_b,
+                option_c=q.option_c,
+                option_d=q.option_d,
+                correct_option=q.correct_option.upper(),
+                explanation=q.explanation,
+                topic=q.topic,
+                image_url=q.image_url,
+            )
+        )
 
     await db.flush()
+    return exam
+
+
+def _exam_to_response(exam: CBTExam) -> CBTExamResponse:
     return CBTExamResponse(
-        id=str(exam.id), title=exam.title, subject=exam.subject,
-        exam_type=exam.exam_type, duration_minutes=exam.duration_minutes,
-        total_questions=exam.total_questions, is_published=exam.is_published,
+        id=str(exam.id),
+        title=exam.title,
+        subject=exam.subject,
+        exam_type=exam.exam_type,
+        duration_minutes=exam.duration_minutes,
+        total_questions=exam.total_questions,
+        is_published=exam.is_published,
         is_school_exam=exam.is_school_exam,
-        scheduled_start=exam.scheduled_start, scheduled_end=exam.scheduled_end,
+        scheduled_start=exam.scheduled_start,
+        scheduled_end=exam.scheduled_end,
     )
+
+
+@router.post("/cbt/exams", response_model=CBTExamResponse, status_code=201)
+async def create_cbt_exam(
+    payload: CBTExamCreate,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin creates a CBT exam with all questions in one call."""
+    exam = await _persist_cbt_exam(db, payload, current_user["sub"])
+    return _exam_to_response(exam)
 
 
 @router.get("/cbt/exams", response_model=list[CBTExamResponse])
@@ -377,6 +405,98 @@ async def delete_cbt_exam(
     for q in q_res.scalars().all():
         await db.delete(q)
     await db.delete(exam)
+
+
+@router.get("/cbt/import-template")
+async def cbt_import_template(current_user: dict = Depends(require_admin)):
+    """Download a sample JSON file for bulk CBT upload."""
+    body = json.dumps(CBT_IMPORT_TEMPLATE, indent=2)
+    return Response(
+        content=body,
+        media_type="application/json",
+        headers={"Content-Disposition": 'attachment; filename="cbt_exam_template.json"'},
+    )
+
+
+@router.post("/cbt/import")
+async def import_cbt_file(
+    file: UploadFile = File(...),
+    title: Optional[str] = Form(None),
+    subject: Optional[str] = Form(None),
+    exam_type: Optional[str] = Form(None),
+    duration_minutes: Optional[int] = Form(30),
+    is_published: str = Form("true"),
+    skip_duplicates: str = Form("true"),
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Upload a .json or .csv CBT file. Questions are saved as normal exams in the database
+    and appear in the student app like any other CBT (not as a downloadable file).
+    """
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large. Maximum size is 10MB.")
+
+    defaults = {
+        "title": (title or "").strip() or None,
+        "subject": (subject or "").strip() or None,
+        "exam_type": (exam_type or "JAMB").strip().upper(),
+        "duration_minutes": duration_minutes or 30,
+        "is_published": is_published.strip().lower() in {"1", "true", "yes", "on"},
+    }
+    skip_dup = skip_duplicates.strip().lower() in {"1", "true", "yes", "on"}
+
+    try:
+        exam_payloads = parse_cbt_file(file.filename or "upload.json", content, defaults)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    created: list[dict] = []
+    skipped: list[str] = []
+
+    for raw in exam_payloads:
+        if skip_dup:
+            existing = await db.execute(
+                select(CBTExam).where(CBTExam.title == raw["title"])
+            )
+            if existing.scalar_one_or_none():
+                skipped.append(raw["title"])
+                continue
+
+        payload = CBTExamCreate(
+            title=raw["title"],
+            subject=raw["subject"],
+            exam_type=raw["exam_type"],
+            duration_minutes=raw["duration_minutes"],
+            is_published=raw.get("is_published", True),
+            is_school_exam=raw.get("is_school_exam", False),
+            questions=[CBTQuestionCreate(**q) for q in raw["questions"]],
+        )
+        exam = await _persist_cbt_exam(db, payload, current_user["sub"])
+        created.append(
+            {
+                "id": str(exam.id),
+                "title": exam.title,
+                "subject": exam.subject,
+                "exam_type": exam.exam_type,
+                "total_questions": exam.total_questions,
+                "is_published": exam.is_published,
+            }
+        )
+
+    if not created and skipped:
+        raise HTTPException(
+            status_code=409,
+            detail=f"All exams already exist: {', '.join(skipped)}",
+        )
+
+    return {
+        "created": created,
+        "created_count": len(created),
+        "skipped": skipped,
+        "skipped_count": len(skipped),
+    }
 
 
 @router.post("/seed-cbt")

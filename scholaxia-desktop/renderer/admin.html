@@ -145,6 +145,35 @@
         </button>
       </div>
 
+      <div class="panel" style="margin-bottom:16px">
+        <h3>Upload CBT file</h3>
+        <p class="cbt-hint small">
+          Upload a <strong>.json</strong> or <strong>.csv</strong> file. Questions are saved as normal exams in the database —
+          students see them in the app CBT list, not as a file download.
+        </p>
+        <div class="form-grid">
+          <label><span>JSON file</span>
+            <input id="cbt-import-file" type="file" accept=".json,.csv,application/json,text/csv" />
+          </label>
+          <label><span>Title (CSV only)</span><input id="cbt-import-title" placeholder="JAMB Physics Mock 1" /></label>
+          <label><span>Subject (CSV only)</span><input id="cbt-import-subject" placeholder="Physics" /></label>
+          <label><span>Exam board (CSV only)</span>
+            <select id="cbt-import-type"><option>JAMB</option><option>WAEC</option><option>NECO</option></select>
+          </label>
+          <label><span>Duration (minutes, CSV)</span><input id="cbt-import-duration" type="number" value="60" min="5" max="300" /></label>
+        </div>
+        <div class="form-row" style="margin:8px 0">
+          <label class="chk-label"><input type="checkbox" id="cbt-import-publish" checked /> Publish immediately</label>
+          <label class="chk-label"><input type="checkbox" id="cbt-import-skip-dup" checked /> Skip if title already exists</label>
+        </div>
+        <div class="cbt-actions">
+          <button type="button" class="btn-primary" id="btn-import-cbt" onclick="importCbtFile()">Upload &amp; create exam(s)</button>
+          <button type="button" class="btn-sm" onclick="downloadCbtTemplate()">Download JSON template</button>
+        </div>
+        <p id="cbt-import-error" class="error-msg"></p>
+        <p id="cbt-import-success" class="cbt-hint small" style="color:#2d8a5e"></p>
+      </div>
+
       <div class="panel cbt-builder">
         <div id="cbt-mode-hint" class="cbt-hint practice-hint">
           Practice exams for JAMB / WAEC / NECO — students can take these anytime to prepare.

@@ -1420,7 +1420,7 @@ class SiaResponse {
   });
 
   factory SiaResponse.fromJson(Map<String, dynamic> json) => SiaResponse(
-        sia: json['sia'] as String? ?? '',
+        sia: json['sia']?.toString() ?? '',
         board: SiaBoardItem.listFromJson(json['board']),
         student: json['student'] as String?,
         level: json['level'] as String?,
