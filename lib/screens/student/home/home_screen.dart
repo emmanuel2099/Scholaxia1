@@ -1,10 +1,12 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../api/api_service.dart';
-import '../../../services/live_class_ring_service.dart';
+import '../../../services/access_code_service.dart';
 import '../../../theme/app_theme.dart';
+import '../../../widgets/student_ui.dart';
 import '../cbt/cbt_screen.dart';
 import '../classes/classes_screen.dart';
-import '../classes/live_class_screen.dart';
+import '../../../utils/live_join_helper.dart';
 import '../community/community_screen.dart';
 import '../notifications/notifications_screen.dart';
 import '../sia/sia_screen.dart';
@@ -23,20 +25,32 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _loadingFeed = true;
   String? _joiningClassId;
   int _unreadNotifications = 0;
+  Timer? _livePollTimer;
 
   static const _cardColors = [
-    Color(0xFF22C55E),
+    Color(0xFF7C3AED),
     Color(0xFF8B5CF6),
-    Color(0xFF3B82F6),
-    Color(0xFFF97316),
+    Color(0xFF9333EA),
+    Color(0xFFA855F7),
   ];
 
   @override
   void initState() {
     super.initState();
+    AccessCodeService.instance.onCodeReceived = _loadHomeFeed;
     _loadProfile();
     _loadHomeFeed();
     _loadNotificationBadge();
+    _livePollTimer = Timer.periodic(const Duration(seconds: 25), (_) => _loadHomeFeed());
+  }
+
+  @override
+  void dispose() {
+    _livePollTimer?.cancel();
+    if (AccessCodeService.instance.onCodeReceived == _loadHomeFeed) {
+      AccessCodeService.instance.onCodeReceived = null;
+    }
+    super.dispose();
   }
 
   Future<void> _loadNotificationBadge() async {
@@ -47,7 +61,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadProfile() async {
     try {
       final p = await _api.getStudentProfile().timeout(const Duration(seconds: 12));
-      if (mounted) setState(() => _profile = p);
+      if (mounted) {
+        setState(() => _profile = p);
+        _loadHomeFeed();
+      }
     } catch (_) {}
   }
 
@@ -81,29 +98,62 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) setState(() => _loadingFeed = true);
 
     try {
-      // Use endpoints confirmed on server; /home/feed currently returns 404.
       final results = await Future.wait([
         _safeCall(_api.getRecommendationsFeed()),
         _safeCall(_api.listLiveClasses(status: 'live')),
-        _safeCall(_api.listLiveClasses(status: 'upcoming')),
+        _safeCall(_api.myAccessCodes()),
       ]);
 
       final recsDirect = results[0] as List<dynamic>?;
-      final live = results[1] as List<dynamic>?;
-      final upcoming = results[2] as List<dynamic>?;
+      final liveRaw = results[1] as List<dynamic>?;
+      final accessData = results[2] as Map<String, dynamic>?;
 
       final recs = recsDirect ?? <dynamic>[];
-      final sessions = _dedupeSessions(_toMaps([...?live, ...?upcoming]));
+
+      // Join codes keyed by class id (only for currently live classes).
+      final codeByClass = <String, String>{};
+      if (accessData != null) {
+        final codes = (accessData['codes'] as List?) ?? [];
+        for (final raw in codes) {
+          if (raw is! Map) continue;
+          final c = Map<String, dynamic>.from(raw);
+          if (c['is_class_live'] == false || c['is_used'] == true) continue;
+          final classId = c['class_id']?.toString() ?? '';
+          final joinCode = c['join_code']?.toString() ?? '';
+          if (classId.isNotEmpty && joinCode.isNotEmpty) {
+            codeByClass[classId] = joinCode;
+          }
+        }
+      }
+
+      // Only classes the teacher has actually started (is_live = true).
+      final liveNow = _toMaps(liveRaw ?? [])
+          .where((s) => s['is_live'] == true)
+          .map((s) {
+            final copy = Map<String, dynamic>.from(s);
+            final id = _field(copy, ['id', 'class_id']);
+            final code = codeByClass[id];
+            if (code != null && code.isNotEmpty) {
+              copy['join_code'] = code;
+            }
+            return copy;
+          })
+          .toList();
 
       if (mounted) {
         setState(() {
           _recommendations = _toMaps(recs);
-          _liveSessions = sessions;
+          _liveSessions = _dedupeSessions(liveNow);
         });
       }
     } finally {
       if (mounted) setState(() => _loadingFeed = false);
     }
+  }
+
+  bool _isLiveSession(Map<String, dynamic> m) {
+    if (m['is_live'] == true) return true;
+    return _field(m, ['status'], '').toLowerCase() == 'live';
   }
 
   String _field(Map<String, dynamic> m, List<String> keys, [String fallback = '']) {
@@ -139,42 +189,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _joinSession(Map<String, dynamic> session) async {
     final classId = _field(session, ['id', 'class_id', 'uuid', 'live_class_id']);
-    if (classId.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('This session is missing a class ID.')),
-        );
-      }
-      return;
-    }
-
-    setState(() => _joiningClassId = classId);
+    setState(() => _joiningClassId = classId.isNotEmpty ? classId : 'join');
     try {
-      LiveClassRingService.instance.stop();
-      await _api.joinLiveClass(classId);
-      final userId = await _api.getUserId() ?? 'student';
-      if (!mounted) return;
-      await Navigator.push(
+      final code = _field(session, ['join_code']);
+      await joinLiveWithAccessCode(
         context,
-        MaterialPageRoute(
-          builder: (_) => LiveClassScreen(
-            classId: classId,
-            subject: _field(session, ['subject'], 'General'),
-            topic: _field(session, ['title', 'topic', 'name'], 'Live Class'),
-            userId: userId,
-          ),
-        ),
+        _api,
+        initialCode: code.isNotEmpty ? code : null,
       );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              e is ApiException ? e.message : 'Could not join session. Try again.',
-            ),
-          ),
-        );
-      }
     } finally {
       if (mounted) setState(() => _joiningClassId = null);
     }
@@ -195,11 +217,23 @@ class _HomeScreenState extends State<HomeScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _header(context, name),
+                _statsRow(context),
+                const SizedBox(height: 8),
+                StudentFeatureBanner(
+                  title: 'Ask Sia anything',
+                  subtitle: 'Your 24/7 AI tutor for JAMB, WAEC & NECO — get instant explanations.',
+                  buttonLabel: 'Start chatting',
+                  icon: Icons.auto_awesome_rounded,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const SiaScreen()),
+                  ),
+                ),
                 _recommended(context),
                 _quickAccess(context),
                 _recentPerformance(context),
                 _todaySessions(context),
-                const SizedBox(height: 100),
+                const SizedBox(height: 110),
               ],
             ),
           ),
@@ -209,69 +243,210 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _header(BuildContext ctx, String name) {
+    final exam = _profile?.examType ?? 'JAMB';
     return Container(
-      color: ctx.headerColor,
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: ctx.accentColor,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(Icons.school_rounded,
-                color: ctx.isDark ? AppColors.background : Colors.white, size: 20),
-          ),
-          const Spacer(),
-          GestureDetector(
-            onTap: () async {
-              await Navigator.push(
-                ctx,
-                MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-              );
-              if (mounted) _loadNotificationBadge();
-            },
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: ctx.bgColor,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: ctx.borderColor),
-                  ),
-                  child: Icon(Icons.notifications_outlined, color: ctx.textColor, size: 20),
-                ),
-                if (_unreadNotifications > 0)
-                  Positioned(
-                    right: 4,
-                    top: 4,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                      decoration: BoxDecoration(
-                        color: ctx.accentColor,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        _unreadNotifications > 9 ? '9+' : '$_unreadNotifications',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: ctx.isDark ? AppColors.background : Colors.white,
-                          fontSize: 9,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.fromLTRB(22, 22, 22, 26),
+      decoration: BoxDecoration(
+        gradient: AppGradients.hero(ctx),
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF7C3AED).withOpacity(0.35),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
           ),
         ],
+      ),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            right: -30,
+            top: -30,
+            child: Container(
+              width: 140,
+              height: 140,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withOpacity(0.07),
+              ),
+            ),
+          ),
+          Positioned(
+            left: -40,
+            bottom: -20,
+            child: Container(
+              width: 100,
+              height: 100,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withOpacity(0.05),
+              ),
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: Colors.white.withOpacity(0.3)),
+                    ),
+                    child: const Icon(Icons.school_rounded,
+                        color: Colors.white, size: 24),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Scholaxia',
+                            style: TextStyle(
+                                color: Colors.white.withOpacity(0.75),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.5)),
+                        Text('Hello, $name 👋',
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800)),
+                      ],
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () async {
+                      await Navigator.push(
+                        ctx,
+                        MaterialPageRoute(
+                            builder: (_) => const NotificationsScreen()),
+                      );
+                      if (mounted) _loadNotificationBadge();
+                    },
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                                color: Colors.white.withOpacity(0.25)),
+                          ),
+                          child: const Icon(Icons.notifications_outlined,
+                              color: Colors.white, size: 22),
+                        ),
+                        if (_unreadNotifications > 0)
+                          Positioned(
+                            right: 2,
+                            top: 2,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 5, vertical: 2),
+                              constraints: const BoxConstraints(
+                                  minWidth: 18, minHeight: 18),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFBBF24),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: Colors.white, width: 2),
+                              ),
+                              child: Text(
+                                _unreadNotifications > 9
+                                    ? '9+'
+                                    : '$_unreadNotifications',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Color(0xFF1E1B2E),
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.emoji_events_outlined,
+                        color: Color(0xFFFBBF24), size: 16),
+                    const SizedBox(width: 6),
+                    Text(
+                      '$exam prep mode',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'Ready to level up today?',
+                style: TextStyle(
+                    color: Colors.white.withOpacity(0.9),
+                    fontSize: 15,
+                    height: 1.4),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statsRow(BuildContext context) {
+    final liveCount = '${_liveSessions.length}';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+      child: SizedBox(
+        height: 110,
+        child: Row(
+          children: [
+            const StudentStatCard(
+              icon: Icons.local_fire_department_rounded,
+              value: '7',
+              label: 'Day streak',
+              gradient: [Color(0xFF7C3AED), Color(0xFF9333EA)],
+            ),
+            const SizedBox(width: 10),
+            const StudentStatCard(
+              icon: Icons.quiz_rounded,
+              value: '84%',
+              label: 'CBT avg',
+              gradient: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+            ),
+            const SizedBox(width: 10),
+            StudentStatCard(
+              icon: Icons.videocam_rounded,
+              value: liveCount,
+              label: 'Live today',
+              gradient: const [Color(0xFFA855F7), Color(0xFFD946EF)],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -280,35 +455,39 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('Recommended for You',
-                  style: TextStyle(
-                      color: context.textColor, fontSize: 16, fontWeight: FontWeight.bold)),
-              GestureDetector(
-                onTap: _loadHomeFeed,
-                child: Text('Refresh',
-                    style: TextStyle(
-                        color: context.accentColor, fontSize: 13, fontWeight: FontWeight.w600)),
-              ),
-            ],
-          ),
+        StudentSectionTitle(
+          title: 'Recommended for You',
+          action: 'Refresh',
+          onAction: _loadHomeFeed,
         ),
         SizedBox(
-          height: 150,
+          height: 188,
           child: _loadingFeed
               ? Center(child: CircularProgressIndicator(color: context.accentColor))
               : _recommendations.isEmpty
-                  ? Center(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Text(
-                          'No recommendations yet. Complete a CBT or ask Sia to get personalized picks.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: context.greyColor, fontSize: 13),
+                  ? Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(24),
+                        decoration: BoxDecoration(
+                          color: context.cardColor,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: context.borderColor),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.lightbulb_outline_rounded,
+                                color: context.accentColor, size: 36),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Complete a CBT or chat with Sia to unlock personalized picks.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                  color: context.greyColor, fontSize: 13),
+                            ),
+                          ],
                         ),
                       ),
                     )
@@ -316,7 +495,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                       scrollDirection: Axis.horizontal,
                       itemCount: _recommendations.length,
-                      separatorBuilder: (_, __) => const SizedBox(width: 12),
+                      separatorBuilder: (_, __) => const SizedBox(width: 14),
                       itemBuilder: (_, i) {
                         final item = _recommendations[i];
                         final subject = _field(item, ['subject', 'category'], 'Study');
@@ -341,50 +520,102 @@ class _HomeScreenState extends State<HomeScreen> {
     Color color,
   ) {
     return Container(
-      width: 160,
-      padding: const EdgeInsets.all(12),
+      width: 176,
       decoration: BoxDecoration(
         color: context.cardColor,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: context.borderColor),
+        boxShadow: [
+          BoxShadow(
+            color: color.withOpacity(context.isDark ? 0.12 : 0.1),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(subject,
-              style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 6),
-          Text(title,
-              style: TextStyle(
-                  color: context.textColor, fontSize: 13, fontWeight: FontWeight.bold),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis),
-          const Spacer(),
-          Row(
-            children: [
-              Icon(Icons.access_time, size: 12, color: context.greyColor),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(duration,
-                    style: TextStyle(color: context.greyColor, fontSize: 11),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis),
+          Container(
+            height: 56,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [color, color.withOpacity(0.7)],
               ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(3),
-            child: LinearProgressIndicator(
-              value: progress,
-              backgroundColor: color.withOpacity(0.1),
-              valueColor: AlwaysStoppedAnimation(color),
-              minHeight: 4,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(19)),
+            ),
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.25),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    subject.toUpperCase(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 4),
-          Text('${(progress * 100).toInt()}% Completed',
-              style: TextStyle(color: context.greyColor, fontSize: 10)),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: TextStyle(
+                          color: context.textColor,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          height: 1.25),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis),
+                  const Spacer(),
+                  Row(
+                    children: [
+                      Icon(Icons.schedule_rounded, size: 13, color: context.greyColor),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(duration,
+                            style: TextStyle(color: context.greyColor, fontSize: 11),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: LinearProgressIndicator(
+                      value: progress > 0 ? progress : null,
+                      backgroundColor: color.withOpacity(0.12),
+                      valueColor: AlwaysStoppedAnimation(color),
+                      minHeight: 5,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    progress > 0 ? '${(progress * 100).toInt()}% complete' : 'Not started',
+                    style: TextStyle(
+                        color: context.greyColor,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -392,91 +623,57 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _quickAccess(BuildContext ctx) {
     final items = [
-      {
-        'icon': Icons.chat_bubble_outline,
-        'label': 'Sia AI Tutor',
-        'sub': 'Get instant answers to tough questions.',
-        'color': const Color(0xFF22C55E),
-        'dest': const SiaScreen()
-      },
-      {
-        'icon': Icons.menu_book_outlined,
-        'label': 'CBT Practice',
-        'sub': 'Timed mock exams for JAMB & WAEC.',
-        'color': const Color(0xFF3B82F6),
-        'dest': const CbtScreen()
-      },
-      {
-        'icon': Icons.videocam_outlined,
-        'label': 'Live Classes',
-        'sub': 'Learn in real time with expert tutors.',
-        'color': const Color(0xFFF97316),
-        'dest': const ClassesScreen()
-      },
-      {
-        'icon': Icons.library_books_outlined,
-        'label': 'Library',
-        'sub': 'Access thousands of study materials.',
-        'color': const Color(0xFF8B5CF6),
-        'dest': const CommunityScreen()
-      },
+      (
+        Icons.auto_awesome_rounded,
+        'Sia AI Tutor',
+        'Instant answers & explanations.',
+        const [Color(0xFF7C3AED), Color(0xFF9333EA)],
+        const SiaScreen(),
+      ),
+      (
+        Icons.quiz_rounded,
+        'CBT Practice',
+        'Timed JAMB & WAEC mocks.',
+        const [Color(0xFF6366F1), Color(0xFF818CF8)],
+        const CbtScreen(),
+      ),
+      (
+        Icons.videocam_rounded,
+        'Live Classes',
+        'Learn with expert tutors.',
+        const [Color(0xFFA855F7), Color(0xFFD946EF)],
+        const ClassesScreen(),
+      ),
+      (
+        Icons.groups_rounded,
+        'Community',
+        'Connect with classmates.',
+        const [Color(0xFF8B5CF6), Color(0xFFA78BFA)],
+        const CommunityScreen(),
+      ),
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
-          child: Text('Quick Access',
-              style: TextStyle(color: ctx.textColor, fontSize: 16, fontWeight: FontWeight.bold)),
-        ),
+        const StudentSectionTitle(title: 'Quick Access'),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: GridView.count(
             crossAxisCount: 2,
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-            childAspectRatio: 1.15,
+            crossAxisSpacing: 14,
+            mainAxisSpacing: 14,
+            childAspectRatio: 0.92,
             children: items.map((a) {
-              final color = a['color'] as Color;
-              return GestureDetector(
+              return StudentQuickTile(
+                icon: a.$1,
+                label: a.$2,
+                subtitle: a.$3,
+                gradient: a.$4,
                 onTap: () => Navigator.push(
                   ctx,
-                  MaterialPageRoute(builder: (_) => a['dest'] as Widget),
-                ),
-                child: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: ctx.cardColor,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: ctx.borderColor),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: color.withOpacity(0.12),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Icon(a['icon'] as IconData, color: color, size: 17),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(a['label'] as String,
-                          style: TextStyle(
-                              color: ctx.textColor, fontSize: 12, fontWeight: FontWeight.w600),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis),
-                      Text(a['sub'] as String,
-                          style: TextStyle(color: ctx.greyColor, fontSize: 10, height: 1.25),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis),
-                    ],
-                  ),
+                  MaterialPageRoute(builder: (_) => a.$5),
                 ),
               );
             }).toList(),
@@ -490,32 +687,42 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('Recent Performance',
-                  style: TextStyle(
-                      color: context.textColor, fontSize: 16, fontWeight: FontWeight.bold)),
-              Text('Last 7 Days', style: TextStyle(color: context.greyColor, fontSize: 12)),
-            ],
-          ),
+        StudentSectionTitle(
+          title: 'Recent Performance',
+          action: 'Last 7 days',
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: context.cardColor,
-              borderRadius: BorderRadius.circular(14),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: context.isDark
+                    ? [const Color(0xFF1A1428), const Color(0xFF221A35)]
+                    : [Colors.white, const Color(0xFFF3EEFF)],
+              ),
+              borderRadius: BorderRadius.circular(22),
               border: Border.all(color: context.borderColor),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF7C3AED).withOpacity(0.08),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6),
+                ),
+              ],
             ),
             child: Column(
               children: [
-                _perfRow(context, 'Biology CBT Mock', '84/100', 'Excellent', context.accentColor),
-                Divider(height: 20, color: context.borderColor),
-                _perfRow(context, 'Use of English Prep', '72/100', 'Improving', const Color(0xFF3B82F6)),
+                _perfRow(context, 'Biology CBT Mock', '84/100', 'Excellent',
+                    const Color(0xFF7C3AED)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  child: Divider(height: 1, color: context.borderColor),
+                ),
+                _perfRow(context, 'Use of English Prep', '72/100', 'Improving',
+                    const Color(0xFF6366F1)),
               ],
             ),
           ),
@@ -525,33 +732,68 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _perfRow(BuildContext context, String title, String score, String tag, Color color) {
+    final pct = int.tryParse(score.split('/').first) ?? 0;
     return Row(
       children: [
+        SizedBox(
+          width: 48,
+          height: 48,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              CircularProgressIndicator(
+                value: pct / 100,
+                strokeWidth: 4,
+                backgroundColor: color.withOpacity(0.15),
+                valueColor: AlwaysStoppedAnimation(color),
+              ),
+              Text(
+                '$pct',
+                style: TextStyle(
+                  color: color,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 14),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(title,
                   style: TextStyle(
-                      color: context.textColor, fontSize: 13, fontWeight: FontWeight.w600)),
-              Text(score, style: TextStyle(color: context.greyColor, fontSize: 12)),
+                      color: context.textColor,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700)),
+              Text(score,
+                  style: TextStyle(color: context.greyColor, fontSize: 12)),
             ],
           ),
         ),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
+            gradient: LinearGradient(
+              colors: [color.withOpacity(0.15), color.withOpacity(0.08)],
+            ),
             borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: color.withOpacity(0.25)),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(tag == 'Excellent' ? Icons.trending_up : Icons.show_chart,
-                  color: color, size: 12),
+              Icon(
+                tag == 'Excellent' ? Icons.trending_up_rounded : Icons.show_chart_rounded,
+                color: color,
+                size: 14,
+              ),
               const SizedBox(width: 4),
               Text(tag,
-                  style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600)),
+                  style: TextStyle(
+                      color: color, fontSize: 11, fontWeight: FontWeight.w700)),
             ],
           ),
         ),
@@ -563,11 +805,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
-          child: Text('Today Live Sessions',
-              style: TextStyle(color: ctx.textColor, fontSize: 16, fontWeight: FontWeight.bold)),
-        ),
+        const StudentSectionTitle(title: 'Today\'s Live Sessions'),
         if (_loadingFeed)
           Padding(
             padding: const EdgeInsets.all(24),
@@ -578,15 +816,31 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Container(
               width: double.infinity,
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
                 color: ctx.cardColor,
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: ctx.borderColor),
               ),
-              child: Text(
-                'No live or upcoming sessions right now. Check back later or browse Live Classes.',
-                style: TextStyle(color: ctx.greyColor, fontSize: 13),
+              child: Column(
+                children: [
+                  Icon(Icons.videocam_off_outlined,
+                      color: ctx.greyColor, size: 40),
+                  const SizedBox(height: 12),
+                  Text(
+                    'No live sessions right now',
+                    style: TextStyle(
+                        color: ctx.textColor,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Check back later or browse Live Classes.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: ctx.greyColor, fontSize: 13),
+                  ),
+                ],
               ),
             ),
           )
@@ -598,57 +852,83 @@ class _HomeScreenState extends State<HomeScreen> {
             final time = _formatSessionTime(
               _field(s, ['start_time', 'scheduled_at', 'preferred_time']),
             );
-            final status = _field(s, ['status'], 'upcoming').toLowerCase();
-            final isLive = status == 'live';
+            final isLive = _isLiveSession(s);
             final joining = _joiningClassId == classId;
 
             return Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
               child: Container(
-                padding: const EdgeInsets.all(14),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: ctx.cardColor,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: ctx.borderColor),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isLive
+                        ? const Color(0xFFEF4444).withOpacity(0.4)
+                        : ctx.borderColor,
+                    width: isLive ? 1.5 : 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: (isLive ? const Color(0xFFEF4444) : const Color(0xFF7C3AED))
+                          .withOpacity(0.08),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
                 child: Row(
                   children: [
-                    Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        CircleAvatar(
-                          radius: 22,
-                          backgroundColor: ctx.accentColor.withOpacity(0.12),
-                          child: Icon(Icons.person_outline, color: ctx.accentColor, size: 20),
+                    Container(
+                      width: 52,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: isLive
+                              ? [const Color(0xFFEF4444), const Color(0xFFF97316)]
+                              : [const Color(0xFF7C3AED), const Color(0xFFA855F7)],
                         ),
-                        if (isLive)
-                          Positioned(
-                            right: -2,
-                            bottom: -2,
-                            child: Container(
-                              width: 10,
-                              height: 10,
-                              decoration: const BoxDecoration(
-                                color: Colors.red,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                          ),
-                      ],
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Icon(
+                        isLive ? Icons.sensors_rounded : Icons.person_outline,
+                        color: Colors.white,
+                        size: 26,
+                      ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 14),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          if (isLive)
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 6),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEF4444).withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Text(
+                                '● LIVE NOW',
+                                style: TextStyle(
+                                  color: Color(0xFFEF4444),
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
                           Text(title,
                               style: TextStyle(
                                   color: ctx.textColor,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600)),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 4),
                           Text(
-                            time.isNotEmpty ? 'with $teacher • $time' : 'with $teacher',
-                            style: TextStyle(color: ctx.greyColor, fontSize: 11),
+                            time.isNotEmpty ? '$teacher • $time' : teacher,
+                            style: TextStyle(color: ctx.greyColor, fontSize: 12),
                           ),
                         ],
                       ),
@@ -656,26 +936,37 @@ class _HomeScreenState extends State<HomeScreen> {
                     GestureDetector(
                       onTap: joining ? null : () => _joinSession(s),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 10),
                         decoration: BoxDecoration(
-                          color: ctx.accentColor,
-                          borderRadius: BorderRadius.circular(20),
+                          gradient: isLive
+                              ? const LinearGradient(
+                                  colors: [Color(0xFFEF4444), Color(0xFFF97316)])
+                              : AppGradients.primaryButton,
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF7C3AED).withOpacity(0.3),
+                              blurRadius: 8,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
                         ),
                         child: joining
-                            ? SizedBox(
-                                width: 16,
-                                height: 16,
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  color: ctx.isDark ? AppColors.background : Colors.white,
+                                  color: Colors.white,
                                 ),
                               )
                             : Text(
-                                isLive ? 'Join' : 'Reserve',
-                                style: TextStyle(
-                                  color: ctx.isDark ? AppColors.background : Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
+                                isLive ? 'Join Live' : 'Reserve',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
                                 ),
                               ),
                       ),

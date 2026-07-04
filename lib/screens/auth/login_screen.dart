@@ -151,45 +151,59 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final btnFg = context.isDark ? AppColors.background : Colors.white;
-
     return Scaffold(
       backgroundColor: context.bgColor,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const SizedBox(height: 48),
               Container(
-                width: 72,
-                height: 72,
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
                 decoration: BoxDecoration(
-                  color: context.isDark ? context.surfColor : const Color(0xFF1A1A1A),
-                  shape: BoxShape.circle,
-                  border: context.isDark
-                      ? Border.all(color: context.borderColor)
-                      : null,
+                  gradient: AppGradients.hero(context),
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(28),
+                    bottomRight: Radius.circular(28),
+                  ),
                 ),
-                child: Icon(Icons.school_rounded,
-                    color: context.isDark ? context.accentColor : Colors.white,
-                    size: 36),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 72,
+                      height: 72,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white.withOpacity(0.35)),
+                      ),
+                      child: const Icon(Icons.school_rounded,
+                          color: Colors.white, size: 36),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(_title,
+                        style: const TextStyle(
+                            fontSize: 26,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white)),
+                    const SizedBox(height: 8),
+                    Text(
+                      _subtitle,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.white.withOpacity(0.88),
+                          height: 1.5),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 24),
-              Text(_title,
-                  style: TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
-                      color: context.textColor)),
-              const SizedBox(height: 8),
-              Text(
-                _subtitle,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 14, color: context.greyColor, height: 1.5),
-              ),
-              const SizedBox(height: 32),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+              const SizedBox(height: 28),
               _label(context, 'EMAIL ADDRESS'),
               const SizedBox(height: 6),
               _field(
@@ -234,34 +248,42 @@ class _LoginScreenState extends State<LoginScreen> {
               SizedBox(
                 width: double.infinity,
                 height: 54,
-                child: ElevatedButton(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: _loading ? null : AppGradients.primaryButton,
+                    borderRadius: BorderRadius.circular(14),
+                    color: _loading ? context.greyColor.withOpacity(0.3) : null,
+                  ),
+                  child: ElevatedButton(
                   onPressed: _loading ? null : _login,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: context.accentColor,
-                    foregroundColor: btnFg,
-                    disabledBackgroundColor: context.greyColor.withOpacity(0.3),
+                    backgroundColor: Colors.transparent,
+                    foregroundColor: Colors.white,
+                    shadowColor: Colors.transparent,
+                    disabledBackgroundColor: Colors.transparent,
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(14)),
                     elevation: 0,
                   ),
                   child: _loading
-                      ? SizedBox(
+                      ? const SizedBox(
                           width: 22,
                           height: 22,
                           child: CircularProgressIndicator(
-                              strokeWidth: 2, color: btnFg))
-                      : Row(
+                              strokeWidth: 2, color: Colors.white))
+                      : const Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Text('Log In',
                                 style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,
-                                    color: btnFg)),
-                            const SizedBox(width: 8),
-                            Icon(Icons.arrow_forward_rounded, size: 18, color: btnFg),
+                                    color: Colors.white)),
+                            SizedBox(width: 8),
+                            Icon(Icons.arrow_forward_rounded, size: 18, color: Colors.white),
                           ],
                         ),
+                ),
                 ),
               ),
               const SizedBox(height: 24),
@@ -339,6 +361,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ],
               const SizedBox(height: 32),
+                  ],
+                ),
+              ),
             ],
           ),
         ),

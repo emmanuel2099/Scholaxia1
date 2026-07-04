@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import '../../../api/api_service.dart';
 import '../../../services/community_badge.dart';
 import '../../../theme/app_theme.dart';
+import '../../../widgets/student_ui.dart';
 import '../../../widgets/voice_note_player.dart';
 import 'new_post_screen.dart';
 import 'join_channel_screen.dart';
 import 'post_comments_sheet.dart';
+import '../groups/groups_panel.dart';
 
 class CommunityScreen extends StatefulWidget {
   const CommunityScreen({super.key});
@@ -33,11 +35,11 @@ class _CommunityScreenState extends State<CommunityScreen>
   @override
   void initState() {
     super.initState();
-    _tabCtrl = TabController(length: 2, vsync: this);
+    _tabCtrl = TabController(length: 3, vsync: this);
     _tabCtrl.addListener(() {
       if (!_tabCtrl.indexIsChanging && _tabCtrl.index != _tabIndex) {
         setState(() => _tabIndex = _tabCtrl.index);
-        if (_tabCtrl.index == 1) {
+        if (_tabCtrl.index == 2) {
           _loadAnnouncements();
           clearCommunityBadge(_api);
         }
@@ -334,6 +336,7 @@ class _CommunityScreenState extends State<CommunityScreen>
               controller: _tabCtrl,
               children: [
                 _buildGeneralTab(context),
+                const GroupsPanel(),
                 _buildAnnouncementsTab(),
               ],
             ),
@@ -348,6 +351,7 @@ class _CommunityScreenState extends State<CommunityScreen>
       color: context.headerColor,
       padding: const EdgeInsets.fromLTRB(20, 14, 20, 10),
       child: Row(children: [
+        const StudentBackButton(),
         Container(width: 32, height: 32,
           decoration: BoxDecoration(color: context.accentColor.withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
           child: Icon(Icons.school_outlined, color: context.accentColor, size: 18)),
@@ -368,7 +372,11 @@ class _CommunityScreenState extends State<CommunityScreen>
         labelStyle: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
         indicatorColor: context.accentColor,
         indicatorWeight: 2,
-        tabs: const [Tab(text: 'General'), Tab(text: 'Teacher Announcements')],
+        tabs: const [
+          Tab(text: 'General'),
+          Tab(text: 'Groups'),
+          Tab(text: 'Announcements'),
+        ],
       ),
     );
   }

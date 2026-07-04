@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../api/api_service.dart';
+import '../../services/access_code_service.dart';
 import '../../services/community_badge.dart';
 import '../../services/live_class_ring_service.dart';
 import '../../services/local_notification_service.dart';
@@ -10,6 +11,7 @@ import 'home/home_screen.dart';
 import 'sia/sia_screen.dart';
 import 'cbt/cbt_screen.dart';
 import 'community/community_screen.dart';
+import 'saved/saved_classes_screen.dart';
 import 'profile/profile_screen.dart';
 
 class StudentShell extends StatefulWidget {
@@ -24,27 +26,31 @@ class _StudentShellState extends State<StudentShell>
   int _currentIndex = 0;
   final _api = ApiService();
   Timer? _pollTimer;
+  final _savedKey = GlobalKey<SavedClassesScreenState>();
 
-  final List<Widget> _screens = const [
-    HomeScreen(),
-    SiaScreen(),
-    CbtScreen(),
-    CommunityScreen(),
-    ProfileScreen(),
+  final List<Widget> _screens = [
+    const HomeScreen(),
+    const SiaScreen(),
+    const CbtScreen(),
+    const SizedBox.shrink(),
+    const CommunityScreen(),
+    const ProfileScreen(),
   ];
 
   static const _navItems = [
-    _NavItem(icon: Icons.home_outlined, label: 'Home'),
-    _NavItem(icon: Icons.smart_toy_outlined, label: 'Sia'),
-    _NavItem(icon: Icons.quiz_outlined, label: 'CBT'),
-    _NavItem(icon: Icons.people_outline, label: 'Community'),
-    _NavItem(icon: Icons.person_outline, label: 'Profile'),
+    _NavItem(icon: Icons.home_rounded, activeIcon: Icons.home_rounded, label: 'Home'),
+    _NavItem(icon: Icons.auto_awesome_outlined, activeIcon: Icons.auto_awesome_rounded, label: 'Sia'),
+    _NavItem(icon: Icons.quiz_outlined, activeIcon: Icons.quiz_rounded, label: 'CBT'),
+    _NavItem(icon: Icons.video_library_outlined, activeIcon: Icons.video_library_rounded, label: 'Saved'),
+    _NavItem(icon: Icons.people_outline_rounded, activeIcon: Icons.people_rounded, label: 'Community'),
+    _NavItem(icon: Icons.person_outline_rounded, activeIcon: Icons.person_rounded, label: 'Profile'),
   ];
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _screens[3] = SavedClassesScreen(key: _savedKey);
     _ensureStudentRole();
     _startPolling();
     LocalNotificationService.instance.init().then((_) {
@@ -57,6 +63,7 @@ class _StudentShellState extends State<StudentShell>
     WidgetsBinding.instance.removeObserver(this);
     _pollTimer?.cancel();
     LiveClassRingService.instance.stop();
+    AccessCodeService.instance.detach();
     super.dispose();
   }
 
@@ -71,7 +78,7 @@ class _StudentShellState extends State<StudentShell>
 
   void _startPolling() {
     _poll(showAlerts: false);
-    _pollTimer = Timer.periodic(const Duration(seconds: 25), (_) {
+    _pollTimer = Timer.periodic(const Duration(seconds: 12), (_) {
       final backgrounded =
           WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed;
       _poll(showAlerts: backgrounded);
@@ -82,6 +89,7 @@ class _StudentShellState extends State<StudentShell>
     await refreshCommunityBadge(_api);
     await LocalNotificationService.instance.poll(_api, showAlerts: showAlerts);
     await LiveClassRingService.instance.syncWithLiveStatus(_api);
+    await AccessCodeService.instance.poll(_api);
     if (mounted) setState(() {});
   }
 
@@ -98,95 +106,130 @@ class _StudentShellState extends State<StudentShell>
 
   void _onTabTap(int i) {
     setState(() => _currentIndex = i);
-    if (i == 3) refreshCommunityBadge(_api);
+    if (i == 3) _savedKey.currentState?.reload();
+    if (i == 4) refreshCommunityBadge(_api);
   }
 
   @override
   Widget build(BuildContext context) {
+    AccessCodeService.instance.attach(context);
     return Scaffold(
       backgroundColor: context.bgColor,
+      extendBody: true,
       body: IndexedStack(index: _currentIndex, children: _screens),
       bottomNavigationBar: ValueListenableBuilder<int>(
         valueListenable: communityUnreadCount,
         builder: (context, communityBadge, _) {
-          return Container(
-            height: 68,
-            decoration: BoxDecoration(
-              color: context.headerColor,
-              border: Border(top: BorderSide(color: context.borderColor)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(context.isDark ? 0.2 : 0.04),
-                  blurRadius: 8,
-                  offset: const Offset(0, -2),
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(10, 0, 10, 16),
+            child: Container(
+              height: 72,
+              decoration: BoxDecoration(
+                color: context.isDark
+                    ? const Color(0xFF1A1428).withOpacity(0.95)
+                    : Colors.white.withOpacity(0.96),
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(
+                  color: context.isDark
+                      ? const Color(0xFF2D2640)
+                      : const Color(0xFFE9E5F5),
                 ),
-              ],
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: List.generate(_navItems.length, (i) {
-                final active = i == _currentIndex;
-                final activeColor = context.accentColor;
-                final inactiveColor = context.greyLColor;
-                final badge = i == 3 ? communityBadge : 0;
-                return GestureDetector(
-                  onTap: () => _onTabTap(i),
-                  behavior: HitTestBehavior.opaque,
-                  child: SizedBox(
-                    width: 60,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: active
-                                    ? activeColor.withOpacity(0.12)
-                                    : Colors.transparent,
-                                borderRadius: BorderRadius.circular(10),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF7C3AED).withOpacity(0.15),
+                    blurRadius: 24,
+                    offset: const Offset(0, 8),
+                  ),
+                  BoxShadow(
+                    color: Colors.black.withOpacity(context.isDark ? 0.3 : 0.06),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: List.generate(_navItems.length, (i) {
+                  final active = i == _currentIndex;
+                  final activeColor = context.accentColor;
+                  final inactiveColor = context.greyColor;
+                  final badge = i == 4 ? communityBadge : 0;
+                  final item = _navItems[i];
+                  return Expanded(
+                    child: GestureDetector(
+                    onTap: () => _onTabTap(i),
+                    behavior: HitTestBehavior.opaque,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 220),
+                      curve: Curves.easeOutCubic,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      decoration: BoxDecoration(
+                        color: active
+                            ? activeColor.withOpacity(0.12)
+                            : Colors.transparent,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Icon(
+                                active ? item.activeIcon : item.icon,
+                                color: active ? activeColor : inactiveColor,
+                                size: active ? 22 : 20,
                               ),
-                              child: Icon(_navItems[i].icon,
-                                  color: active ? activeColor : inactiveColor,
-                                  size: 22),
-                            ),
-                            if (badge > 0)
-                              Positioned(
-                                right: -2,
-                                top: -2,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 5, vertical: 1),
-                                  decoration: BoxDecoration(
-                                    color: Colors.red,
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Text(
-                                    badge > 9 ? '9+' : '$badge',
-                                    style: const TextStyle(
+                              if (badge > 0)
+                                Positioned(
+                                  right: -8,
+                                  top: -6,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 5, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      gradient: const LinearGradient(
+                                        colors: [
+                                          Color(0xFFEF4444),
+                                          Color(0xFFF97316),
+                                        ],
+                                      ),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                          color: Colors.white, width: 1.5),
+                                    ),
+                                    child: Text(
+                                      badge > 9 ? '9+' : '$badge',
+                                      style: const TextStyle(
                                         color: Colors.white,
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.bold),
+                                        fontSize: 8,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
                                   ),
                                 ),
+                            ],
+                          ),
+                          const SizedBox(height: 3),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              item.label,
+                              maxLines: 1,
+                              style: TextStyle(
+                                color: active ? activeColor : inactiveColor,
+                                fontSize: 9.5,
+                                fontWeight:
+                                    active ? FontWeight.w700 : FontWeight.w500,
                               ),
-                          ],
-                        ),
-                        const SizedBox(height: 2),
-                        Text(_navItems[i].label,
-                            style: TextStyle(
-                              color: active ? activeColor : inactiveColor,
-                              fontSize: 10,
-                              fontWeight:
-                                  active ? FontWeight.w600 : FontWeight.normal,
-                            )),
-                      ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                );
-              }),
+                  );
+                }),
+              ),
             ),
           );
         },
@@ -197,6 +240,11 @@ class _StudentShellState extends State<StudentShell>
 
 class _NavItem {
   final IconData icon;
+  final IconData activeIcon;
   final String label;
-  const _NavItem({required this.icon, required this.label});
+  const _NavItem({
+    required this.icon,
+    required this.activeIcon,
+    required this.label,
+  });
 }

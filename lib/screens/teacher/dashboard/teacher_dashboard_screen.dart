@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import '../../../api/api_service.dart';
 import '../../../theme/app_theme.dart';
+import '../../../widgets/student_ui.dart';
+import '../cbt/teacher_cbt_screen.dart';
 import '../teacher_shared.dart';
 
 class TeacherDashboardScreen extends StatefulWidget {
-  const TeacherDashboardScreen({super.key});
+  final void Function(int tabIndex)? onNavigate;
+
+  const TeacherDashboardScreen({super.key, this.onNavigate});
 
   @override
   State<TeacherDashboardScreen> createState() => _TeacherDashboardScreenState();
@@ -19,7 +23,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
   int _liveCount = 0;
   int _upcomingCount = 0;
   int _pendingGrading = 0;
-  int _materialCount = 0;
+  int _groupCount = 0;
   List<Map<String, dynamic>> _todayClasses = [];
 
   @override
@@ -37,12 +41,13 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
         _api.listLiveClasses(status: 'live'),
         _api.listLiveClasses(status: 'upcoming'),
         _api.teacherPendingAssignments(),
-        _api.teacherMaterials(),
+        _api.listSchoolGroups(),
       ]);
       final profile = results[0] as Map<String, dynamic>;
       final live = (results[2] as List).cast<dynamic>();
       final upcoming = (results[3] as List).cast<dynamic>();
       final pending = results[4] as List;
+      final groups = results[5] as List;
 
       final today = DateTime.now();
       final schedule = <Map<String, dynamic>>[];
@@ -70,7 +75,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
           _liveCount = live.length;
           _upcomingCount = upcoming.length;
           _pendingGrading = pending.length;
-          _materialCount = (results[5] as List).length;
+          _groupCount = groups.length;
           _todayClasses = schedule;
           _loading = false;
         });
@@ -90,109 +95,196 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
   @override
   Widget build(BuildContext context) {
     final firstName = _teacherName.split(' ').first;
-    final accent = context.accentColor;
     return Scaffold(
       backgroundColor: context.bgColor,
-      body: SafeArea(
-        child: RefreshIndicator(
-          color: accent,
-          onRefresh: _load,
-          child: _loading
-              ? Center(child: CircularProgressIndicator(color: accent))
-              : SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 16),
-                      TeacherTopBar(
-                        api: _api,
-                        teacherName: _teacherName,
-                        unreadCount: _unread,
-                      ),
-                      const SizedBox(height: 20),
-                      Text('${TeacherUtils.greeting()},',
-                          style: TextStyle(
-                              color: context.greyLColor, fontSize: 14)),
-                      RichText(
-                        text: TextSpan(
-                          style: TextStyle(
-                              fontSize: 26,
-                              fontWeight: FontWeight.bold,
-                              color: context.textColor),
-                          children: [
-                            TextSpan(text: firstName, style: TextStyle(color: accent)),
-                          ],
-                        ),
-                      ),
-                      if (_loadError != null) ...[
-                        const SizedBox(height: 12),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.red.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(10),
-                            border:
-                                Border.all(color: Colors.red.withOpacity(0.3)),
-                          ),
-                          child: Text(_loadError!,
-                              style: const TextStyle(
-                                  color: Colors.red, fontSize: 12)),
-                        ),
-                      ],
-                      const SizedBox(height: 6),
-                      Text(
-                        'You have $_liveCount live, $_upcomingCount upcoming classes and $_pendingGrading pending submissions.',
-                        style: TextStyle(
-                            color: context.greyColor,
-                            fontSize: 13,
-                            height: 1.5),
-                      ),
-                      const SizedBox(height: 20),
-                      Row(
+      body: _loading
+          ? Center(child: CircularProgressIndicator(color: context.accentColor))
+          : RefreshIndicator(
+              color: context.accentColor,
+              onRefresh: _load,
+              child: CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: SafeArea(
+                      bottom: false,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                              child: _StatCard(
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                            child: TeacherTopBar(
+                              api: _api,
+                              teacherName: _teacherName,
+                              unreadCount: _unread,
+                            ),
+                          ),
+                          TeacherHeroHeader(
+                            greeting: '${TeacherUtils.greeting()}, $firstName!',
+                            subtitle:
+                                '$_liveCount live · $_upcomingCount upcoming · $_pendingGrading to grade',
+                            badge: _liveCount > 0 ? '$_liveCount LIVE' : null,
+                          ),
+                          if (_loadError != null)
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                      color: Colors.red.withOpacity(0.3)),
+                                ),
+                                child: Text(_loadError!,
+                                    style: const TextStyle(
+                                        color: Colors.red, fontSize: 12)),
+                              ),
+                            ),
+                          const SizedBox(height: 20),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Row(
+                              children: [
+                                StudentStatCard(
+                                  icon: Icons.videocam_rounded,
                                   value: '$_liveCount',
-                                  label: 'Live Now',
-                                  icon: Icons.videocam_outlined,
-                                  color: accent)),
-                          const SizedBox(width: 10),
-                          Expanded(
-                              child: _StatCard(
+                                  label: 'Live now',
+                                  gradient: const [
+                                    Color(0xFFA855F7),
+                                    Color(0xFFD946EF),
+                                  ],
+                                ),
+                                const SizedBox(width: 12),
+                                StudentStatCard(
+                                  icon: Icons.event_rounded,
                                   value: '$_upcomingCount',
                                   label: 'Upcoming',
-                                  icon: Icons.event_outlined,
-                                  color: const Color(0xFF6C63FF))),
-                          const SizedBox(width: 10),
-                          Expanded(
-                              child: _StatCard(
-                                  value: '$_pendingGrading',
-                                  label: 'To Grade',
-                                  icon: Icons.pending_actions_outlined,
-                                  color: const Color(0xFFFF6B6B))),
+                                  gradient: const [
+                                    Color(0xFF6366F1),
+                                    Color(0xFF818CF8),
+                                  ],
+                                ),
+                                const SizedBox(width: 12),
+                                StudentStatCard(
+                                  icon: Icons.groups_rounded,
+                                  value: '$_groupCount',
+                                  label: 'Groups',
+                                  gradient: const [
+                                    Color(0xFF7C3AED),
+                                    Color(0xFF9333EA),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          StudentFeatureBanner(
+                            title: 'Host a live class',
+                            subtitle:
+                                'Go live from your phone — video, board, screen share, and chat.',
+                            buttonLabel: 'Open Classes',
+                            icon: Icons.videocam_rounded,
+                            onTap: () => widget.onNavigate?.call(1),
+                          ),
+                          _quickAccess(context),
+                          const StudentSectionTitle(title: "Today's Schedule"),
+                          if (_todayClasses.isEmpty)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 20),
+                              child: Text(
+                                'No classes scheduled for today.',
+                                style: TextStyle(color: context.greyColor),
+                              ),
+                            )
+                          else
+                            ..._todayClasses
+                                .map((c) => _scheduleItem(context, c)),
+                          const SizedBox(height: 110),
                         ],
                       ),
-                      const SizedBox(height: 24),
-                      Text("Today's Schedule",
-                          style: TextStyle(
-                              color: context.textColor,
-                              fontSize: 17,
-                              fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 12),
-                      if (_todayClasses.isEmpty)
-                        Text('No classes scheduled for today.',
-                            style: TextStyle(color: context.greyColor))
-                      else
-                        ..._todayClasses.map((c) => _scheduleItem(context, c)),
-                      const SizedBox(height: 100),
-                    ],
+                    ),
                   ),
-                ),
+                ],
+              ),
+            ),
+    );
+  }
+
+  Widget _quickAccess(BuildContext context) {
+    final items = [
+      (
+        Icons.school_rounded,
+        'Classes',
+        'Host or schedule live lessons.',
+        const [Color(0xFFA855F7), Color(0xFFD946EF)],
+        () => widget.onNavigate?.call(1),
+      ),
+      (
+        Icons.groups_rounded,
+        'Groups',
+        'Create school study groups.',
+        const [Color(0xFF6366F1), Color(0xFF818CF8)],
+        () => widget.onNavigate?.call(2),
+      ),
+      (
+        Icons.people_rounded,
+        'Community',
+        'Announcements & student chat.',
+        const [Color(0xFF8B5CF6), Color(0xFFA78BFA)],
+        () => widget.onNavigate?.call(3),
+      ),
+      (
+        Icons.grading_rounded,
+        'Grading',
+        'Score student submissions.',
+        const [Color(0xFFEF4444), Color(0xFFF87171)],
+        () => widget.onNavigate?.call(4),
+      ),
+      (
+        Icons.quiz_rounded,
+        'Exams',
+        'Create Scholaxia exams.',
+        const [Color(0xFFF59E0B), Color(0xFFFBBF24)],
+        () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const TeacherCbtScreen()),
         ),
       ),
+      (
+        Icons.auto_awesome_rounded,
+        'Sia AI',
+        'Lesson plans & quiz ideas.',
+        const [Color(0xFF7C3AED), Color(0xFF9333EA)],
+        () => widget.onNavigate?.call(5),
+      ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const StudentSectionTitle(title: 'Quick Access'),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisSpacing: 14,
+            mainAxisSpacing: 14,
+            childAspectRatio: 0.92,
+            children: items.map((a) {
+              return StudentQuickTile(
+                icon: a.$1,
+                label: a.$2,
+                subtitle: a.$3,
+                gradient: a.$4,
+                onTap: a.$5,
+              );
+            }).toList(),
+          ),
+        ),
+      ],
     );
   }
 
@@ -203,91 +295,77 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
     final color = TeacherUtils.subjectColor(subject, context);
     final time = TeacherUtils.formatDateTime(c['start_time']);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: context.cardColor,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(
-              color: isLive ? color.withOpacity(0.4) : context.borderColor),
+            color: isLive ? color.withOpacity(0.4) : context.borderColor,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.08),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+            ),
+          ],
         ),
         child: Row(
           children: [
             Container(
-              width: 4,
+              width: 44,
               height: 44,
               decoration: BoxDecoration(
-                  color: color, borderRadius: BorderRadius.circular(2)),
+                gradient: LinearGradient(
+                  colors: [color, color.withOpacity(0.7)],
+                ),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(
+                isLive ? Icons.videocam_rounded : Icons.event_rounded,
+                color: Colors.white,
+                size: 22,
+              ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(subject,
-                      style: TextStyle(
-                          color: context.textColor,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600)),
-                  Text(time,
-                      style: TextStyle(
-                          color: context.greyColor, fontSize: 12)),
+                  Text(
+                    subject,
+                    style: TextStyle(
+                      color: context.textColor,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Text(
+                    time,
+                    style: TextStyle(color: context.greyColor, fontSize: 12),
+                  ),
                 ],
               ),
             ),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
                 color: (isLive ? color : context.greyColor).withOpacity(0.15),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
                 isLive ? 'Live' : 'Upcoming',
                 style: TextStyle(
-                    color: isLive ? color : context.greyColor,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold),
+                  color: isLive ? color : context.greyColor,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _StatCard extends StatelessWidget {
-  final String value;
-  final String label;
-  final IconData icon;
-  final Color color;
-  const _StatCard(
-      {required this.value,
-      required this.label,
-      required this.icon,
-      required this.color});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: context.cardColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: context.borderColor),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: color, size: 22),
-          const SizedBox(height: 8),
-          Text(value,
-              style: TextStyle(
-                  color: color, fontSize: 22, fontWeight: FontWeight.bold)),
-          Text(label,
-              style: TextStyle(color: context.greyColor, fontSize: 11)),
-        ],
       ),
     );
   }

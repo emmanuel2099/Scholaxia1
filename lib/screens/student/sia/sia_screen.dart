@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../api/api_service.dart';
 import '../../../theme/app_theme.dart';
+import '../../../widgets/student_ui.dart';
 
 class SiaScreen extends StatefulWidget {
   const SiaScreen({super.key});
@@ -32,7 +33,13 @@ class _SiaScreenState extends State<SiaScreen> {
       _loading = true;
     });
     try {
-      final r = await _api.siaAsk(question: text, subject: _subject);
+      final history = _buildHistory();
+      final r = await _api.siaAsk(
+        question: text,
+        subject: _subject,
+        conversationHistory: history,
+        tutorMode: 'smart',
+      );
       if (mounted) setState(() {
         _messages.add(_Msg(isAi: true, text: r.sia, time: _now()));
         _loading = false;
@@ -58,6 +65,21 @@ class _SiaScreenState extends State<SiaScreen> {
     return '$h:$m $ampm';
   }
 
+  List<Map<String, dynamic>> _buildHistory() {
+    final history = <Map<String, dynamic>>[];
+    for (final m in _messages) {
+      if (m.text.startsWith("Hi! I'm Sia")) continue;
+      history.add({
+        'role': m.isAi ? 'assistant' : 'user',
+        'content': m.text,
+      });
+    }
+    if (history.length > 12) {
+      return history.sublist(history.length - 12);
+    }
+    return history;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -76,18 +98,47 @@ class _SiaScreenState extends State<SiaScreen> {
 
   Widget _buildHeader(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
       decoration: BoxDecoration(
-        color: context.headerColor,
-        border: Border(bottom: BorderSide(color: context.borderColor)),
+        gradient: AppGradients.hero(context),
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF7C3AED).withOpacity(0.25),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
       ),
       child: Row(children: [
-        Container(width: 36, height: 36,
-          decoration: BoxDecoration(color: context.accentColor, borderRadius: BorderRadius.circular(10)),
-          child: Icon(Icons.bolt, color: context.isDark ? AppColors.background : Colors.white, size: 20)),
-        const SizedBox(width: 10),
-        Text('Sia AI Tutor', style: TextStyle(color: context.textColor, fontSize: 17, fontWeight: FontWeight.bold)),
-        const Spacer(),
+        const StudentBackButton(lightOnGradient: true),
+        Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.white.withOpacity(0.3)),
+          ),
+          child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 22),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Sia AI Tutor',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800)),
+              Text('Always here to help you learn',
+                  style: TextStyle(
+                      color: Colors.white.withOpacity(0.85), fontSize: 12)),
+            ],
+          ),
+        ),
       ]),
     );
   }
@@ -109,8 +160,11 @@ class _SiaScreenState extends State<SiaScreen> {
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Container(width: 30, height: 30,
-          decoration: BoxDecoration(color: context.accentColor, shape: BoxShape.circle),
-          child: Icon(Icons.bolt, color: context.isDark ? AppColors.background : Colors.white, size: 16)),
+          decoration: BoxDecoration(
+            gradient: AppGradients.primaryButton,
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 16)),
         const SizedBox(width: 8),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
@@ -151,10 +205,23 @@ class _SiaScreenState extends State<SiaScreen> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: context.accentColor,
-              borderRadius: const BorderRadius.only(topLeft: Radius.circular(12), topRight: Radius.circular(12), bottomLeft: Radius.circular(12)),
+              gradient: AppGradients.primaryButton,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
+                bottomLeft: Radius.circular(16),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF7C3AED).withOpacity(0.25),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
             ),
-            child: Text(m.text, style: TextStyle(color: context.isDark ? AppColors.background : Colors.white, fontSize: 14, height: 1.5)),
+            child: Text(m.text,
+                style: const TextStyle(
+                    color: Colors.white, fontSize: 14, height: 1.5)),
           ),
           const SizedBox(height: 4),
           Text(m.time, style: TextStyle(color: context.greyColor, fontSize: 10)),

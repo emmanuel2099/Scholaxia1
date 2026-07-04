@@ -102,6 +102,10 @@ class ApiEndpoints {
       '$_v1/live-classes/$classId/students/$studentId/unmute';
   static String liveClassMute(String classId, String studentId) =>
       '$_v1/live-classes/$classId/students/$studentId/mute';
+  static String liveClassAllowCamera(String classId, String studentId) =>
+      '$_v1/live-classes/$classId/students/$studentId/allow-camera';
+  static String liveClassRevokeCamera(String classId, String studentId) =>
+      '$_v1/live-classes/$classId/students/$studentId/revoke-camera';
   static String liveClassRemove(String classId, String studentId) =>
       '$_v1/live-classes/$classId/students/$studentId/remove';
   static const String liveClassLivekitStatus = '$_v1/live-classes/livekit/status';
@@ -125,6 +129,33 @@ class ApiEndpoints {
   static const String liveClassHistory = '$_v1/live-classes/history/mine';
   static const String liveClassRequests = '$_v1/live-classes/requests';
   static const String liveClassRequestsMine = '$_v1/live-classes/requests/mine';
+  static const String liveClassAccessCodesMine = '$_v1/live-classes/access-codes/mine';
+  static const String liveClassAccessCodesMarkRead = '$_v1/live-classes/access-codes/mark-read';
+  static const String liveClassJoinByCode = '$_v1/live-classes/join-by-code';
+  static const String liveClassJoinPreview = '$_v1/live-classes/join-preview';
+
+  // Student groups
+  static const String studentGroups = '$_v1/student-groups/';
+  static const String studentGroupsMine = '$_v1/student-groups/mine';
+  static const String studentGroupsDiscover = '$_v1/student-groups/discover';
+  static const String studentGroupsCommunityListed = '$_v1/student-groups/community-listed';
+  static String studentGroup(String groupId) => '$_v1/student-groups/$groupId';
+  static String studentGroupMembers(String groupId) => '$_v1/student-groups/$groupId/members';
+  static String studentGroupMessages(String groupId) => '$_v1/student-groups/$groupId/messages';
+  static String studentGroupJoinRequest(String groupId) =>
+      '$_v1/student-groups/$groupId/join-request';
+  static String studentGroupJoinRequests(String groupId) =>
+      '$_v1/student-groups/$groupId/join-requests';
+  static String studentGroupApproveJoinRequest(String groupId, String requestId) =>
+      '$_v1/student-groups/$groupId/join-requests/$requestId/approve';
+  static String studentGroupCommunityList(String groupId) =>
+      '$_v1/student-groups/$groupId/community-list';
+
+  // School groups (teacher-assigned, no self-join)
+  static const String schoolGroupsMine = '$_v1/school-groups/mine';
+  static const String schoolGroupsCreate = '$_v1/school-groups/';
+  static String schoolGroup(String groupId) => '$_v1/school-groups/$groupId';
+  static const String schoolGroupsStudentMine = '$_v1/school-groups/student/mine';
 
   // Library
   static const String libraryStudent = '$_v1/library/student';

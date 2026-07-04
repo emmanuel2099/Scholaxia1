@@ -14,21 +14,27 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 /// Registers FCM device token with Scholaxia API for real push notifications.
+/// Android/iOS only — skipped on Windows/desktop/web.
 class FirebasePushService {
   FirebasePushService._();
+
   static final FirebasePushService instance = FirebasePushService._();
 
-  final _messaging = FirebaseMessaging.instance;
+  FirebaseMessaging? _messaging;
   bool _ready = false;
   String? _lastToken;
 
+  bool get _supported =>
+      !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+
   Future<void> init() async {
-    if (kIsWeb || _ready) return;
+    if (!_supported || _ready) return;
     try {
       await Firebase.initializeApp();
+      _messaging = FirebaseMessaging.instance;
       FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
-      await _messaging.requestPermission(
+      await _messaging!.requestPermission(
         alert: true,
         badge: true,
         sound: true,
@@ -39,7 +45,7 @@ class FirebasePushService {
         refreshCommunityBadge(ApiService());
       });
 
-      _messaging.onTokenRefresh.listen((token) => _registerToken(token));
+      _messaging!.onTokenRefresh.listen((token) => _registerToken(token));
 
       _ready = true;
     } catch (e) {
@@ -48,9 +54,9 @@ class FirebasePushService {
   }
 
   Future<void> registerAfterLogin() async {
-    if (kIsWeb || !_ready) return;
+    if (!_ready || _messaging == null) return;
     try {
-      final token = await _messaging.getToken();
+      final token = await _messaging!.getToken();
       if (token != null) await _registerToken(token);
     } catch (e) {
       debugPrint('FCM token registration failed: $e');

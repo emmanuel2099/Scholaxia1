@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/firebase_push_service.dart';
 import '../../api/api_service.dart';
+import '../../theme/app_theme.dart';
 import '../auth/exam_subject_setup_screen.dart';
 import '../auth/role_select_screen.dart';
 import '../onboarding/onboarding_screen.dart';
@@ -73,7 +74,9 @@ class _SplashScreenState extends State<SplashScreen>
         if (role == 'student') {
           api.ensureStudentProfile();
         }
-        FirebasePushService.instance.registerAfterLogin();
+        try {
+          await FirebasePushService.instance.registerAfterLogin();
+        } catch (_) {}
       } else {
         final seenOnboarding = await api.hasSeenOnboarding();
         if (!mounted) return;
@@ -97,14 +100,7 @@ class _SplashScreenState extends State<SplashScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFFB8F0CF), Color(0xFFF0FBF4), Colors.white],
-            stops: [0.0, 0.5, 1.0],
-          ),
-        ),
+        decoration: const BoxDecoration(gradient: AppGradients.splash),
         child: SafeArea(
           child: AnimatedBuilder(
             animation: _ctrl,
@@ -119,22 +115,35 @@ class _SplashScreenState extends State<SplashScreen>
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Container(
-                          width: 80,
-                          height: 80,
-                          decoration: const BoxDecoration(
-                            color: Color(0xFF22C55E),
+                          width: 88,
+                          height: 88,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
                             shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF7C3AED).withOpacity(0.35),
+                                blurRadius: 24,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
                           ),
                           child: const Icon(Icons.school_rounded,
-                              color: Colors.white, size: 42),
+                              color: Color(0xFF7C3AED), size: 44),
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 24),
                         const Text('Scholaxia',
                             style: TextStyle(
-                                fontSize: 32,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1A1A1A),
+                                fontSize: 34,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
                                 letterSpacing: 0.5)),
+                        const SizedBox(height: 8),
+                        Text('Learn smarter with Sia',
+                            style: TextStyle(
+                                fontSize: 15,
+                                color: Colors.white.withOpacity(0.9),
+                                fontWeight: FontWeight.w500)),
                       ],
                     ),
                   ),

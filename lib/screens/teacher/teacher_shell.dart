@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import 'ai/teacher_ai_screen.dart';
-import 'cbt/teacher_cbt_screen.dart';
 import 'classes/teacher_classes_screen.dart';
 import 'dashboard/teacher_dashboard_screen.dart';
 import 'grading/teacher_grading_screen.dart';
+import 'groups/teacher_groups_screen.dart';
 import 'notices/teacher_notices_screen.dart';
 import 'profile/teacher_profile_screen.dart';
 
@@ -18,87 +18,154 @@ class TeacherShell extends StatefulWidget {
 class _TeacherShellState extends State<TeacherShell> {
   int _currentIndex = 0;
 
-  final List<Widget> _screens = const [
-    TeacherDashboardScreen(),
-    TeacherClassesScreen(),
-    TeacherNoticesScreen(),
-    TeacherGradingScreen(),
-    TeacherCbtScreen(),
-    TeacherAiScreen(),
-    TeacherProfileScreen(embeddedInShell: true),
-  ];
+  void _goToTab(int i) => setState(() => _currentIndex = i);
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: context.bgColor,
-      body: IndexedStack(index: _currentIndex, children: _screens),
-      bottomNavigationBar: _buildBottomNav(context),
-    );
-  }
+    return ListenableBuilder(
+      listenable: themeNotifier,
+      builder: (context, _) {
+        final screens = [
+          TeacherDashboardScreen(onNavigate: _goToTab),
+          const TeacherClassesScreen(),
+          const TeacherGroupsScreen(),
+          const TeacherNoticesScreen(),
+          const TeacherGradingScreen(),
+          const TeacherAiScreen(),
+          const TeacherProfileScreen(embeddedInShell: true),
+        ];
 
-  Widget _buildBottomNav(BuildContext context) {
-    final accent = context.accentColor;
-    final muted = context.greyColor;
-    final items = [
-      _NavItem(icon: Icons.grid_view_rounded, label: 'Dashboard'),
-      _NavItem(icon: Icons.school_outlined, label: 'Classes'),
-      _NavItem(icon: Icons.campaign_outlined, label: 'Notices'),
-      _NavItem(icon: Icons.grading_outlined, label: 'Grading'),
-      _NavItem(icon: Icons.quiz_outlined, label: 'CBT'),
-      _NavItem(icon: Icons.smart_toy_outlined, label: 'AI'),
-      _NavItem(icon: Icons.person_outline, label: 'Profile'),
-    ];
+        const navItems = [
+          _NavItem(
+            icon: Icons.dashboard_outlined,
+            activeIcon: Icons.dashboard_rounded,
+            label: 'Home',
+          ),
+          _NavItem(
+            icon: Icons.school_outlined,
+            activeIcon: Icons.school_rounded,
+            label: 'Classes',
+          ),
+          _NavItem(
+            icon: Icons.groups_outlined,
+            activeIcon: Icons.groups_rounded,
+            label: 'Groups',
+          ),
+          _NavItem(
+            icon: Icons.people_outline_rounded,
+            activeIcon: Icons.people_rounded,
+            label: 'Community',
+          ),
+          _NavItem(
+            icon: Icons.grading_outlined,
+            activeIcon: Icons.grading_rounded,
+            label: 'Grading',
+          ),
+          _NavItem(
+            icon: Icons.auto_awesome_outlined,
+            activeIcon: Icons.auto_awesome_rounded,
+            label: 'AI',
+          ),
+          _NavItem(
+            icon: Icons.person_outline_rounded,
+            activeIcon: Icons.person_rounded,
+            label: 'Me',
+          ),
+        ];
 
-    return Container(
-      height: 68,
-      decoration: BoxDecoration(
-        color: context.headerColor,
-        border: Border(top: BorderSide(color: context.borderColor)),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: List.generate(items.length, (i) {
-          final isActive = i == _currentIndex;
-          return GestureDetector(
-            onTap: () => setState(() => _currentIndex = i),
-            behavior: HitTestBehavior.opaque,
-            child: SizedBox(
-              width: 48,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: isActive
-                          ? accent.withOpacity(0.15)
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Icon(items[i].icon,
-                        color: isActive ? accent : muted,
-                        size: 20),
+        return Scaffold(
+          backgroundColor: context.bgColor,
+          extendBody: true,
+          body: IndexedStack(index: _currentIndex, children: screens),
+          bottomNavigationBar: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+            child: Container(
+              height: 72,
+              decoration: BoxDecoration(
+                color: context.isDark
+                    ? const Color(0xFF1A1428).withOpacity(0.95)
+                    : Colors.white.withOpacity(0.96),
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(
+                  color: context.isDark
+                      ? const Color(0xFF2D2640)
+                      : const Color(0xFFE9E5F5),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF7C3AED).withOpacity(0.15),
+                    blurRadius: 24,
+                    offset: const Offset(0, 8),
                   ),
-                  const SizedBox(height: 2),
-                  Text(items[i].label,
-                      style: TextStyle(
-                          color: isActive ? accent : muted,
-                          fontSize: 9),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
                 ],
               ),
+              child: Row(
+                children: List.generate(navItems.length, (i) {
+                  final active = _currentIndex == i;
+                  final item = navItems[i];
+                  return Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _currentIndex = i),
+                      behavior: HitTestBehavior.opaque,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 220),
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        margin: const EdgeInsets.symmetric(horizontal: 2),
+                        decoration: BoxDecoration(
+                          color: active
+                              ? context.accentColor.withOpacity(0.12)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              active ? item.activeIcon : item.icon,
+                              color: active
+                                  ? context.accentColor
+                                  : context.greyColor,
+                              size: active ? 21 : 19,
+                            ),
+                            const SizedBox(height: 2),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                item.label,
+                                maxLines: 1,
+                                style: TextStyle(
+                                  color: active
+                                      ? context.accentColor
+                                      : context.greyColor,
+                                  fontSize: 8.5,
+                                  fontWeight: active
+                                      ? FontWeight.w700
+                                      : FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
             ),
-          );
-        }),
-      ),
+          ),
+        );
+      },
     );
   }
 }
 
 class _NavItem {
   final IconData icon;
+  final IconData activeIcon;
   final String label;
-  const _NavItem({required this.icon, required this.label});
+  const _NavItem({
+    required this.icon,
+    required this.activeIcon,
+    required this.label,
+  });
 }

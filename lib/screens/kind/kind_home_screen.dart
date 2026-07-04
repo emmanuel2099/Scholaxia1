@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import '../../api/api_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/student_ui.dart';
+import 'kind_learn_screen.dart';
 import 'kind_shared.dart';
 
 class KindHomeScreen extends StatefulWidget {
-  const KindHomeScreen({super.key});
+  final void Function(int tabIndex)? onNavigate;
+
+  const KindHomeScreen({super.key, this.onNavigate});
 
   @override
   State<KindHomeScreen> createState() => _KindHomeScreenState();
@@ -14,6 +18,7 @@ class _KindHomeScreenState extends State<KindHomeScreen> {
   final _api = ApiService();
   String _name = 'Friend';
   String _ageGroup = '';
+  int _liveCount = 0;
   bool _loading = true;
 
   @override
@@ -24,12 +29,22 @@ class _KindHomeScreenState extends State<KindHomeScreen> {
 
   Future<void> _load() async {
     try {
-      final p = await _api.getKindMe();
+      final results = await Future.wait([
+        _api.getKindMe(),
+        _api.listLiveClasses(status: 'live'),
+      ]);
+      final p = results[0] as Map<String, dynamic>;
+      final raw = results[1] as List<dynamic>;
+      final live = raw
+          .whereType<Map>()
+          .where((c) => c['is_live'] == true)
+          .length;
       if (!mounted) return;
       final full = p['full_name']?.toString() ?? 'Friend';
       setState(() {
         _name = full.split(' ').first;
         _ageGroup = p['age_group']?.toString() ?? '';
+        _liveCount = live;
         _loading = false;
       });
     } catch (_) {
@@ -37,161 +52,214 @@ class _KindHomeScreenState extends State<KindHomeScreen> {
     }
   }
 
+  void _openLearn() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const KindLearnScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: context.bgColor,
-      body: SafeArea(
-        child: _loading
-            ? Center(
-                child: CircularProgressIndicator(color: KidColors.accent))
-            : RefreshIndicator(
-                color: KidColors.accent,
-                onRefresh: _load,
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            color: KidColors.accent.withOpacity(0.2),
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Icon(Icons.child_care,
-                              color: KidColors.accent, size: 28),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Hi, $_name!',
-                                  style: TextStyle(
-                                      color: context.textColor,
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.bold)),
-                              Text(
-                                _ageGroup.isNotEmpty
-                                    ? 'Ages $_ageGroup · Kid learner'
-                                    : 'Welcome to Scholaxia Kids',
-                                style: TextStyle(
-                                    color: context.greyColor, fontSize: 13),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 28),
-                    Text('What do you want to do?',
-                        style: TextStyle(
-                            color: context.textColor,
-                            fontSize: 17,
-                            fontWeight: FontWeight.w600)),
-                    const SizedBox(height: 14),
-                    _card(
-                      context,
-                      icon: Icons.auto_awesome,
-                      title: 'Chat with Sia',
-                      subtitle: 'Ask anything — homework, stories, or fun facts.',
-                      color: KidColors.accent,
-                    ),
-                    const SizedBox(height: 12),
-                    _card(
-                      context,
-                      icon: Icons.menu_book_rounded,
-                      title: 'Learn something new',
-                      subtitle: 'Mini-lessons made just for your age.',
-                      color: KidColors.learn,
-                    ),
-                    const SizedBox(height: 12),
-                    _card(
-                      context,
-                      icon: Icons.quiz_outlined,
-                      title: 'Play a quiz',
-                      subtitle: 'Fun questions on topics you pick.',
-                      color: KidColors.quiz,
-                    ),
-                    const SizedBox(height: 24),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: KidColors.accent.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                            color: KidColors.accent.withOpacity(0.25)),
-                      ),
-                      child: Row(
+      body: _loading
+          ? Center(child: CircularProgressIndicator(color: context.accentColor))
+          : RefreshIndicator(
+              color: context.accentColor,
+              onRefresh: _load,
+              child: CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: SafeArea(
+                      bottom: false,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(Icons.shield_outlined,
-                              color: KidColors.accent, size: 22),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'Sia Kind is kid-safe — made for learners ages 3–12.',
-                              style: TextStyle(
-                                  color: context.greyLColor,
-                                  fontSize: 12,
-                                  height: 1.4),
+                          KindHeroHeader(
+                            greeting: 'Hi, $_name!',
+                            subtitle: _ageGroup.isNotEmpty
+                                ? 'Ages $_ageGroup · Ready to learn something fun today?'
+                                : 'Welcome back — pick an adventure below!',
+                            badge: 'KID SAFE',
+                          ),
+                          const SizedBox(height: 20),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Row(
+                              children: [
+                                StudentStatCard(
+                                  icon: Icons.videocam_rounded,
+                                  value: '$_liveCount',
+                                  label: 'Live now',
+                                  gradient: const [
+                                    Color(0xFFA855F7),
+                                    Color(0xFFD946EF),
+                                  ],
+                                ),
+                                const SizedBox(width: 12),
+                                StudentStatCard(
+                                  icon: Icons.auto_awesome_rounded,
+                                  value: 'Sia',
+                                  label: 'AI tutor',
+                                  gradient: const [
+                                    Color(0xFF7C3AED),
+                                    Color(0xFF9333EA),
+                                  ],
+                                ),
+                                const SizedBox(width: 12),
+                                StudentStatCard(
+                                  icon: Icons.menu_book_rounded,
+                                  value: 'Learn',
+                                  label: '& play',
+                                  gradient: const [
+                                    Color(0xFF10B981),
+                                    Color(0xFF34D399),
+                                  ],
+                                ),
+                              ],
                             ),
                           ),
+                          const SizedBox(height: 8),
+                          StudentFeatureBanner(
+                            title: 'Chat with Sia',
+                            subtitle:
+                                'Homework help, fun facts, and stories — made just for kids.',
+                            buttonLabel: 'Start chatting',
+                            icon: Icons.auto_awesome_rounded,
+                            onTap: () => widget.onNavigate?.call(1),
+                          ),
+                          _quickAccess(context),
+                          _kidSafeBanner(context),
+                          const SizedBox(height: 110),
                         ],
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-      ),
+            ),
     );
   }
 
-  Widget _card(
-    BuildContext context, {
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: context.cardColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: context.borderColor),
+  Widget _quickAccess(BuildContext context) {
+    final items = [
+      (
+        Icons.videocam_rounded,
+        'Live Class',
+        'Join your teacher\'s lesson.',
+        const [Color(0xFFA855F7), Color(0xFFD946EF)],
+        () => widget.onNavigate?.call(2),
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: color, size: 24),
+      (
+        Icons.groups_rounded,
+        'Groups',
+        'Study with friends.',
+        const [Color(0xFF6366F1), Color(0xFF818CF8)],
+        () => widget.onNavigate?.call(3),
+      ),
+      (
+        Icons.people_rounded,
+        'Community',
+        'See posts and connect.',
+        const [Color(0xFF8B5CF6), Color(0xFFA78BFA)],
+        () => widget.onNavigate?.call(4),
+      ),
+      (
+        Icons.menu_book_rounded,
+        'Learn',
+        'Mini-lessons for your age.',
+        const [Color(0xFF10B981), Color(0xFF34D399)],
+        _openLearn,
+      ),
+      (
+        Icons.quiz_rounded,
+        'Quiz',
+        'Fun questions on any topic.',
+        const [Color(0xFFF59E0B), Color(0xFFFBBF24)],
+        _openLearn,
+      ),
+      (
+        Icons.auto_awesome_rounded,
+        'Sia AI',
+        'Ask anything you\'re curious about.',
+        const [Color(0xFF7C3AED), Color(0xFF9333EA)],
+        () => widget.onNavigate?.call(1),
+      ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const StudentSectionTitle(title: 'Quick Access'),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisSpacing: 14,
+            mainAxisSpacing: 14,
+            childAspectRatio: 0.92,
+            children: items.map((a) {
+              return StudentQuickTile(
+                icon: a.$1,
+                label: a.$2,
+                subtitle: a.$3,
+                gradient: a.$4,
+                onTap: a.$5,
+              );
+            }).toList(),
           ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title,
-                    style: TextStyle(
-                        color: context.textColor,
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                Text(subtitle,
-                    style: TextStyle(
-                        color: context.greyColor, fontSize: 12, height: 1.35)),
-              ],
-            ),
+        ),
+      ],
+    );
+  }
+
+  Widget _kidSafeBanner(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 28, 20, 0),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: context.isDark
+                ? [const Color(0xFF1A1428), const Color(0xFF221A35)]
+                : [Colors.white, const Color(0xFFF3EEFF)],
           ),
-        ],
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: context.accentColor.withOpacity(0.2),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                gradient: AppGradients.primaryButton,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Icon(Icons.shield_rounded,
+                  color: Colors.white, size: 22),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                'Sia Kind is kid-safe — designed for learners ages 3–12.',
+                style: TextStyle(
+                  color: context.greyLColor,
+                  fontSize: 13,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

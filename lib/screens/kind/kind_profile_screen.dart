@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../api/api_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/student_ui.dart';
 import '../../widgets/theme_toggle_tile.dart';
 import '../auth/role_select_screen.dart';
-import 'kind_shared.dart';
 
 class KindProfileScreen extends StatefulWidget {
   const KindProfileScreen({super.key});
@@ -27,10 +27,12 @@ class _KindProfileScreenState extends State<KindProfileScreen> {
     setState(() => _loading = true);
     try {
       final p = await _api.getKindMe();
-      if (mounted) setState(() {
-        _profile = p;
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _profile = p;
+          _loading = false;
+        });
+      }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
@@ -52,113 +54,181 @@ class _KindProfileScreenState extends State<KindProfileScreen> {
     final email = _profile?['email']?.toString() ?? '';
     final age = _profile?['age_group']?.toString() ?? '';
     final parent = _profile?['parent_email']?.toString() ?? '';
+    final initial = name.isNotEmpty ? name[0].toUpperCase() : 'K';
 
     return Scaffold(
       backgroundColor: context.bgColor,
-      body: SafeArea(
-        child: _loading
-            ? Center(
-                child: CircularProgressIndicator(color: KidColors.accent))
-            : RefreshIndicator(
-                color: KidColors.accent,
-                onRefresh: _load,
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 100),
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  children: [
-                    Text('My Profile',
-                        style: TextStyle(
-                            color: context.textColor,
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 20),
-                    Center(
-                      child: CircleAvatar(
-                        radius: 40,
-                        backgroundColor: KidColors.accent.withOpacity(0.2),
-                        child: Text(
-                          name.isNotEmpty ? name[0].toUpperCase() : 'K',
-                          style: const TextStyle(
-                              color: KidColors.accent,
-                              fontSize: 32,
-                              fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    Center(
-                      child: Text(name,
-                          style: TextStyle(
-                              color: context.textColor,
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold)),
-                    ),
-                    if (age.isNotEmpty)
-                      Center(
-                        child: Text('Ages $age',
-                            style: TextStyle(
-                                color: context.greyColor, fontSize: 13)),
-                      ),
-                    const SizedBox(height: 24),
-                    _row(context, Icons.mail_outline, 'Email', email),
-                    if (parent.isNotEmpty)
-                      _row(context, Icons.family_restroom_outlined,
-                          'Parent email', parent),
-                    const SizedBox(height: 20),
-                    ThemeToggleTile(accentColor: KidColors.accent),
-                    const SizedBox(height: 24),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: OutlinedButton.icon(
-                        onPressed: _logout,
-                        icon: const Icon(Icons.logout, color: Colors.red),
-                        label: const Text('Log out',
-                            style: TextStyle(color: Colors.red)),
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: Colors.red),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-      ),
-    );
-  }
-
-  Widget _row(BuildContext context, IconData icon, String label, String value) {
-    if (value.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: context.cardColor,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: context.borderColor),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: KidColors.accent, size: 20),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      body: _loading
+          ? Center(
+              child: CircularProgressIndicator(color: context.accentColor))
+          : RefreshIndicator(
+              color: context.accentColor,
+              onRefresh: _load,
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(0, 0, 0, 110),
                 children: [
-                  Text(label,
-                      style: TextStyle(
-                          color: context.greyColor, fontSize: 11)),
-                  Text(value,
-                      style: TextStyle(
-                          color: context.textColor, fontSize: 14)),
+                  SafeArea(
+                    bottom: false,
+                    child: Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                      padding: const EdgeInsets.fromLTRB(22, 28, 22, 32),
+                      decoration: BoxDecoration(
+                        gradient: AppGradients.hero(context),
+                        borderRadius: BorderRadius.circular(28),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF7C3AED).withOpacity(0.35),
+                            blurRadius: 24,
+                            offset: const Offset(0, 12),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          Container(
+                            width: 80,
+                            height: 80,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white.withOpacity(0.2),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.4),
+                                width: 3,
+                              ),
+                            ),
+                            child: Center(
+                              child: Text(
+                                initial,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 34,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          Text(
+                            name,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          if (age.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text(
+                                'Ages $age · Kid learner',
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.8),
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const StudentSectionTitle(title: 'Account'),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Column(
+                      children: [
+                        if (email.isNotEmpty)
+                          _infoTile(context, Icons.mail_outline_rounded,
+                              'Email', email),
+                        if (parent.isNotEmpty)
+                          _infoTile(
+                              context,
+                              Icons.family_restroom_outlined,
+                              'Parent email',
+                              parent),
+                        const SizedBox(height: 8),
+                        ThemeToggleTile(accentColor: context.accentColor),
+                        const SizedBox(height: 20),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 50,
+                          child: OutlinedButton.icon(
+                            onPressed: _logout,
+                            icon: const Icon(Icons.logout_rounded,
+                                color: Color(0xFFEF4444)),
+                            label: const Text(
+                              'Log out',
+                              style: TextStyle(
+                                color: Color(0xFFEF4444),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              side: BorderSide(
+                                color: const Color(0xFFEF4444).withOpacity(0.5),
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
-          ],
-        ),
+    );
+  }
+
+  Widget _infoTile(
+      BuildContext context, IconData icon, String label, String value) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: context.cardColor,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: context.borderColor),
+        boxShadow: [
+          BoxShadow(
+            color: context.accentColor.withOpacity(0.06),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              gradient: AppGradients.primaryButton,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: Colors.white, size: 20),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    style: TextStyle(
+                        color: context.greyColor, fontSize: 11)),
+                const SizedBox(height: 2),
+                Text(value,
+                    style: TextStyle(
+                        color: context.textColor,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600)),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

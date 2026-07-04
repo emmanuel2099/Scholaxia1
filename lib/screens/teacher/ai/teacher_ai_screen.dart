@@ -72,8 +72,9 @@ class _TeacherAiScreenState extends State<TeacherAiScreen> {
       final res = await _api.teacherAiAsk(
         task: 'general',
         subject: 'General',
-        educationLevel: 'General',
+        educationLevel: 'SS2',
         details: text,
+        conversationHistory: _buildHistory(),
       );
       final reply = res['result']?.toString() ?? 'No response.';
       if (mounted) {
@@ -94,11 +95,25 @@ class _TeacherAiScreenState extends State<TeacherAiScreen> {
       'hi', 'hello', 'hey', 'hola', 'good morning', 'good afternoon',
       'good evening', 'gm', 'sup', 'yo',
     };
-    if (greetings.contains(t)) {
+    if (greetings.contains(t) && _messages.isEmpty) {
       return "Hello! I'm your Scholaxia teaching assistant. "
-          'What would you like help with — a lesson idea, assignment, quiz, or something else?';
+          'What would you like help with — a lesson plan, assignment, quiz, or something else?';
     }
     return null;
+  }
+
+  List<Map<String, dynamic>> _buildHistory() {
+    final history = <Map<String, dynamic>>[];
+    for (final m in _messages) {
+      history.add({
+        'role': m.role == 'user' ? 'user' : 'assistant',
+        'content': m.text,
+      });
+    }
+    if (history.length > 10) {
+      return history.sublist(history.length - 10);
+    }
+    return history;
   }
 
   @override

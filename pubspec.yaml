@@ -46,6 +46,8 @@ dependencies:
   firebase_messaging: ^15.1.6
 
   cupertino_icons: ^1.0.8
+  livekit_client: ^2.8.1
+  video_player: ^2.11.1
 
 dependency_overrides:
   record_platform_interface: 1.2.0
@@ -61,7 +63,7 @@ flutter_launcher_icons:
   android: true
   ios: true
   image_path: "asset/images/app_icon.png"
-  adaptive_icon_background: "#E8F5E9"
+  adaptive_icon_background: "#7C3AED"
   adaptive_icon_foreground: "asset/images/app_icon.png"
   remove_alpha_ios: true
 

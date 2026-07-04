@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../api/api_service.dart';
 import '../../../theme/app_theme.dart';
-import 'live_class_screen.dart';
+import '../../../widgets/student_ui.dart';
+import '../../../utils/live_join_helper.dart';
 
 class ClassesScreen extends StatefulWidget {
   const ClassesScreen({super.key});
@@ -123,41 +124,9 @@ class _ClassesScreenState extends State<ClassesScreen> {
 
   Future<void> _joinClass(Map<String, dynamic> session) async {
     final classId = _field(session, ['id', 'class_id', 'uuid']);
-    if (classId.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('This class is missing an ID.')),
-        );
-      }
-      return;
-    }
-
-    setState(() => _joiningId = classId);
+    setState(() => _joiningId = classId.isNotEmpty ? classId : 'join');
     try {
-      await _api.joinLiveClass(classId);
-      final userId = await _api.getUserId() ?? 'student';
-      if (!mounted) return;
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => LiveClassScreen(
-            classId: classId,
-            subject: _field(session, ['subject'], 'General'),
-            topic: _field(session, ['title', 'topic', 'name'], 'Live Class'),
-            userId: userId,
-          ),
-        ),
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              e is ApiException ? e.message : 'Could not join class. Try again.',
-            ),
-          ),
-        );
-      }
+      await joinLiveWithAccessCode(context, _api);
     } finally {
       if (mounted) setState(() => _joiningId = null);
     }
@@ -236,6 +205,7 @@ class _ClassesScreenState extends State<ClassesScreen> {
       padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
       child: Row(
         children: [
+          const StudentBackButton(),
           Container(
             width: 36,
             height: 36,
@@ -483,7 +453,7 @@ class _ClassesScreenState extends State<ClassesScreen> {
                                       color: ctx.isDark ? AppColors.background : Colors.white,
                                     ),
                                   )
-                                : const Text('Join Class',
+                                : const Text('Join Live',
                                     style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
                           ),
                         ],

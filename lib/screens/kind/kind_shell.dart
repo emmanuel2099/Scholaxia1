@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
+import 'kind_community_screen.dart';
+import 'kind_groups_screen.dart';
 import 'kind_home_screen.dart';
-import 'kind_learn_screen.dart';
+import 'kind_live_screen.dart';
 import 'kind_profile_screen.dart';
-import 'kind_shared.dart';
 import 'kind_sia_screen.dart';
 
-/// Kid learner app — separate from the student (exam prep) experience.
+/// Kid learner app — polished UI matching the student experience.
 class KindShell extends StatefulWidget {
   const KindShell({super.key});
 
@@ -17,64 +18,153 @@ class KindShell extends StatefulWidget {
 class _KindShellState extends State<KindShell> {
   int _index = 0;
 
+  void _goToTab(int i) => setState(() => _index = i);
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
       listenable: themeNotifier,
       builder: (context, _) {
         final screens = [
-          const KindHomeScreen(),
+          KindHomeScreen(onNavigate: _goToTab),
           const KindSiaScreen(),
-          const KindLearnScreen(),
+          const KindLiveScreen(),
+          const KindGroupsScreen(),
+          const KindCommunityScreen(),
           const KindProfileScreen(),
         ];
+
+        const navItems = [
+          _NavItem(
+            icon: Icons.home_outlined,
+            activeIcon: Icons.home_rounded,
+            label: 'Home',
+          ),
+          _NavItem(
+            icon: Icons.auto_awesome_outlined,
+            activeIcon: Icons.auto_awesome_rounded,
+            label: 'Sia',
+          ),
+          _NavItem(
+            icon: Icons.videocam_outlined,
+            activeIcon: Icons.videocam_rounded,
+            label: 'Live',
+          ),
+          _NavItem(
+            icon: Icons.groups_outlined,
+            activeIcon: Icons.groups_rounded,
+            label: 'Groups',
+          ),
+          _NavItem(
+            icon: Icons.people_outline_rounded,
+            activeIcon: Icons.people_rounded,
+            label: 'Community',
+          ),
+          _NavItem(
+            icon: Icons.person_outline_rounded,
+            activeIcon: Icons.person_rounded,
+            label: 'Me',
+          ),
+        ];
+
         return Scaffold(
           backgroundColor: context.bgColor,
+          extendBody: true,
           body: IndexedStack(index: _index, children: screens),
-          bottomNavigationBar: Container(
-            height: 68,
-            decoration: BoxDecoration(
-              color: context.headerColor,
-              border: Border(top: BorderSide(color: context.borderColor)),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _nav(context, 0, Icons.home_rounded, 'Home'),
-                _nav(context, 1, Icons.auto_awesome, 'Sia'),
-                _nav(context, 2, Icons.menu_book_rounded, 'Learn'),
-                _nav(context, 3, Icons.face_retouching_natural, 'Me'),
-              ],
+          bottomNavigationBar: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 0, 10, 16),
+            child: Container(
+              height: 72,
+              decoration: BoxDecoration(
+                color: context.isDark
+                    ? const Color(0xFF1A1428).withOpacity(0.95)
+                    : Colors.white.withOpacity(0.96),
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(
+                  color: context.isDark
+                      ? const Color(0xFF2D2640)
+                      : const Color(0xFFE9E5F5),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF7C3AED).withOpacity(0.15),
+                    blurRadius: 24,
+                    offset: const Offset(0, 8),
+                  ),
+                  BoxShadow(
+                    color: Colors.black.withOpacity(context.isDark ? 0.3 : 0.06),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: List.generate(navItems.length, (i) {
+                  final active = _index == i;
+                  final item = navItems[i];
+                  return Expanded(
+                    child: GestureDetector(
+                      onTap: () => setState(() => _index = i),
+                      behavior: HitTestBehavior.opaque,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 220),
+                        curve: Curves.easeOutCubic,
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        decoration: BoxDecoration(
+                          color: active
+                              ? context.accentColor.withOpacity(0.12)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              active ? item.activeIcon : item.icon,
+                              color: active
+                                  ? context.accentColor
+                                  : context.greyColor,
+                              size: active ? 22 : 20,
+                            ),
+                            const SizedBox(height: 3),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                item.label,
+                                maxLines: 1,
+                                style: TextStyle(
+                                  color: active
+                                      ? context.accentColor
+                                      : context.greyColor,
+                                  fontSize: 9.5,
+                                  fontWeight: active
+                                      ? FontWeight.w700
+                                      : FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ),
             ),
           ),
         );
       },
     );
   }
+}
 
-  Widget _nav(BuildContext context, int i, IconData icon, String label) {
-    final active = _index == i;
-    final accent = KidColors.accent;
-    final muted = context.greyColor;
-    return GestureDetector(
-      onTap: () => setState(() => _index = i),
-      behavior: HitTestBehavior.opaque,
-      child: SizedBox(
-        width: 72,
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: active ? accent : muted, size: 22),
-            const SizedBox(height: 2),
-            Text(label,
-                style: TextStyle(
-                  color: active ? accent : muted,
-                  fontSize: 10,
-                  fontWeight: active ? FontWeight.w600 : FontWeight.normal,
-                )),
-          ],
-        ),
-      ),
-    );
-  }
+class _NavItem {
+  final IconData icon;
+  final IconData activeIcon;
+  final String label;
+  const _NavItem({
+    required this.icon,
+    required this.activeIcon,
+    required this.label,
+  });
 }

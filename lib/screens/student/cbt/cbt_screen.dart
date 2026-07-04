@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../api/api_service.dart';
 import '../../../theme/app_theme.dart';
+import '../../../widgets/student_ui.dart';
 import 'cbt_exam_screen.dart';
 import 'cbt_sessions_screen.dart';
 
@@ -163,21 +164,34 @@ class _CbtScreenState extends State<CbtScreen> {
 
   Widget _buildHeader(BuildContext context) {
     return Container(
-      color: context.headerColor,
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.fromLTRB(20, 18, 16, 18),
+      decoration: BoxDecoration(
+        gradient: AppGradients.hero(context),
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF7C3AED).withOpacity(0.25),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
       child: Row(
         children: [
+          const StudentBackButton(lightOnGradient: true),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('CBT Practice',
+                const Text('CBT Practice',
                     style: TextStyle(
-                        color: context.textColor,
+                        color: Colors.white,
                         fontSize: 22,
-                        fontWeight: FontWeight.bold)),
-                Text('Master your exams with mock tests',
-                    style: TextStyle(color: context.greyColor, fontSize: 13)),
+                        fontWeight: FontWeight.w800)),
+                Text('Master JAMB, WAEC & NECO with mock tests',
+                    style: TextStyle(
+                        color: Colors.white.withOpacity(0.88), fontSize: 13)),
               ],
             ),
           ),
@@ -187,17 +201,18 @@ class _CbtScreenState extends State<CbtScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: context.accentColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white.withOpacity(0.3)),
               ),
-              child: Row(children: [
-                Icon(Icons.history, color: context.accentColor, size: 16),
-                const SizedBox(width: 6),
+              child: const Row(children: [
+                Icon(Icons.history_rounded, color: Colors.white, size: 16),
+                SizedBox(width: 6),
                 Text('History',
                     style: TextStyle(
-                        color: context.accentColor,
+                        color: Colors.white,
                         fontSize: 13,
-                        fontWeight: FontWeight.w600)),
+                        fontWeight: FontWeight.w700)),
               ]),
             ),
           ),

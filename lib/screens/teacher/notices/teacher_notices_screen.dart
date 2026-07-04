@@ -175,20 +175,21 @@ class _TeacherNoticesScreenState extends State<TeacherNoticesScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                     child: TeacherTopBar(
                       api: _api,
                       teacherName: _teacherName,
                       unreadCount: _unread,
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-                    child: Text('Community',
-                        style: TextStyle(
-                            color: context.textColor,
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold)),
+                  TeacherHeroHeader(
+                    greeting: 'Community',
+                    subtitle:
+                        'Post announcements and monitor student conversations.',
+                    icon: Icons.people_rounded,
+                    badge: _studentPosts.isNotEmpty
+                        ? '${_studentPosts.length} POSTS'
+                        : null,
                   ),
                   TabBar(
                     controller: _tabCtrl,
@@ -261,28 +262,35 @@ class _TeacherNoticesScreenState extends State<TeacherNoticesScreen>
     return RefreshIndicator(
       color: accent,
       onRefresh: _load,
-      child: ListView(
+      child: ListView.builder(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(20),
-        children: [
-          Text('Student posts in General channel',
-              style: TextStyle(color: context.greyColor, fontSize: 13)),
-          const SizedBox(height: 16),
-          if (_studentPosts.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 40),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
+        itemCount: _studentPosts.isEmpty ? 1 : _studentPosts.length,
+        itemBuilder: (context, i) {
+          if (_studentPosts.isEmpty) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 48),
               child: Center(
-                child: Text('No student posts yet.',
-                    style: TextStyle(color: context.greyColor)),
+                child: Column(
+                  children: [
+                    Icon(Icons.chat_bubble_outline,
+                        color: context.greyColor, size: 44),
+                    const SizedBox(height: 12),
+                    Text('No student posts yet',
+                        style: TextStyle(
+                            color: context.textColor,
+                            fontWeight: FontWeight.w700)),
+                  ],
+                ),
               ),
-            )
-          else
-            ..._studentPosts.map((p) => Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _StudentPostCard(post: p),
-                )),
-          const SizedBox(height: 80),
-        ],
+            );
+          }
+          final p = _studentPosts[i];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _StudentPostCard(post: p),
+          );
+        },
       ),
     );
   }
@@ -445,34 +453,79 @@ class _StudentPostCard extends StatelessWidget {
         TeacherUtils.relativeTime(post['created_at']?.toString() ?? '');
     final mediaUrl = post['media_url']?.toString() ?? '';
     final mediaType = post['media_type']?.toString() ?? '';
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: context.cardColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: context.borderColor),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(author,
-              style: TextStyle(
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        constraints: BoxConstraints(
+          maxWidth: MediaQuery.of(context).size.width * 0.85,
+        ),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              context.accentColor.withOpacity(0.12),
+              context.accentColor.withOpacity(0.06),
+            ],
+          ),
+          borderRadius: const BorderRadius.only(
+            topLeft: Radius.circular(18),
+            topRight: Radius.circular(18),
+            bottomLeft: Radius.circular(4),
+            bottomRight: Radius.circular(18),
+          ),
+          border: Border.all(color: context.accentColor.withOpacity(0.2)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 14,
+                  backgroundColor: context.accentColor.withOpacity(0.2),
+                  child: Text(
+                    author.isNotEmpty ? author[0].toUpperCase() : 'S',
+                    style: TextStyle(
+                      color: context.accentColor,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    author,
+                    style: TextStyle(
+                      color: context.textColor,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                Text(time,
+                    style: TextStyle(color: context.greyColor, fontSize: 10)),
+              ],
+            ),
+            if (content.isNotEmpty && !content.startsWith('@post:')) ...[
+              const SizedBox(height: 8),
+              Text(
+                content,
+                style: TextStyle(
                   color: context.textColor,
                   fontSize: 14,
-                  fontWeight: FontWeight.bold)),
-          if (content.isNotEmpty && !content.startsWith('@post:')) ...[
-            const SizedBox(height: 8),
-            Text(content,
-                style: TextStyle(
-                    color: context.greyLColor, fontSize: 13, height: 1.4)),
+                  height: 1.45,
+                ),
+              ),
+            ],
+            if (mediaUrl.isNotEmpty && mediaType == 'audio') ...[
+              const SizedBox(height: 10),
+              VoiceNotePlayer(mediaUrl: mediaUrl),
+            ],
           ],
-          if (mediaUrl.isNotEmpty && mediaType == 'audio') ...[
-            const SizedBox(height: 10),
-            VoiceNotePlayer(mediaUrl: mediaUrl),
-          ],
-          const SizedBox(height: 8),
-          Text(time, style: TextStyle(color: context.greyColor, fontSize: 11)),
-        ],
+        ),
       ),
     );
   }

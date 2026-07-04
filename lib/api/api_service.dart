@@ -273,11 +273,17 @@ class ApiService {
   Future<String> kindSiaChat({
     required String question,
     String subject = 'General',
+    List<Map<String, dynamic>>? conversationHistory,
   }) async {
     final res = await http.post(
       _uri(ApiEndpoints.kindSiaChat),
       headers: await _authHeaders(),
-      body: jsonEncode({'question': question, 'subject': subject}),
+      body: jsonEncode({
+        'question': question,
+        'subject': subject,
+        if (conversationHistory != null)
+          'conversation_history': conversationHistory,
+      }),
     );
     return _parseMap(res)['sia_kind']?.toString() ?? 'No reply.';
   }
@@ -463,6 +469,7 @@ class ApiService {
     required String subject,
     required String educationLevel,
     required String details,
+    List<Map<String, dynamic>>? conversationHistory,
   }) async {
     final res = await http.post(
       _uri(ApiEndpoints.teacherAiAsk),
@@ -472,6 +479,8 @@ class ApiService {
         'subject': subject,
         'education_level': educationLevel,
         'details': details,
+        if (conversationHistory != null)
+          'conversation_history': conversationHistory,
       }),
     );
     return _parseMap(res);
@@ -918,6 +927,65 @@ class ApiService {
     _parse(res);
   }
 
+  Future<void> allowLiveClassCamera(String classId, String studentId) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.liveClassAllowCamera(classId, studentId)),
+      headers: await _authHeaders(),
+    );
+    _parse(res);
+  }
+
+  Future<void> revokeLiveClassCamera(String classId, String studentId) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.liveClassRevokeCamera(classId, studentId)),
+      headers: await _authHeaders(),
+    );
+    _parse(res);
+  }
+
+  Future<List<dynamic>> listSchoolGroups() async {
+    final res = await http.get(
+      _uri(ApiEndpoints.schoolGroupsMine),
+      headers: await _authHeaders(),
+    );
+    return _parseList(res);
+  }
+
+  Future<Map<String, dynamic>> createSchoolGroup({
+    required String schoolName,
+    required String name,
+    List<String> studentIds = const [],
+  }) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.schoolGroupsCreate),
+      headers: await _authHeaders(),
+      body: jsonEncode({
+        'school_name': schoolName,
+        'name': name,
+        'student_ids': studentIds,
+      }),
+    );
+    return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> updateSchoolGroup(
+    String groupId, {
+    String? schoolName,
+    String? name,
+    List<String>? studentIds,
+  }) async {
+    final body = <String, dynamic>{};
+    if (schoolName != null) body['school_name'] = schoolName;
+    if (name != null) body['name'] = name;
+    if (studentIds != null) body['student_ids'] = studentIds;
+    final res = await http.patch(
+      _uri(ApiEndpoints.schoolGroup(groupId)),
+      headers: await _authHeaders(),
+      body: jsonEncode(body),
+    );
+    return _parseMap(res);
+  }
+
   Future<Map<String, dynamic>> getLiveKitStatus() async {
     final res = await http.get(
       _uri(ApiEndpoints.liveClassLivekitStatus),
@@ -944,6 +1012,160 @@ class ApiService {
 
     final res = await http.get(
       _uri(path, query),
+      headers: await _authHeaders(),
+    );
+    return _parseList(res);
+  }
+
+  Future<Map<String, dynamic>> myAccessCodes() async {
+    final res = await http.get(
+      _uri(ApiEndpoints.liveClassAccessCodesMine),
+      headers: await _authHeaders(),
+    );
+    return _parseMap(res);
+  }
+
+  Future<void> markAccessCodesRead() async {
+    await http.post(
+      _uri(ApiEndpoints.liveClassAccessCodesMarkRead),
+      headers: await _authHeaders(),
+    );
+  }
+
+  Future<Map<String, dynamic>> joinPreviewByCode(String code) async {
+    final normalized = code.trim().toUpperCase();
+    final res = await http.get(
+      _uri(ApiEndpoints.liveClassJoinPreview, {'code': normalized}),
+      headers: await _authHeaders(),
+    );
+    return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> joinLiveClassByCode(String code) async {
+    final normalized = code.trim().toUpperCase();
+    final res = await http.post(
+      _uri(ApiEndpoints.liveClassJoinByCode),
+      headers: await _authHeaders(),
+      body: jsonEncode({'code': normalized}),
+    );
+    return _parseMap(res);
+  }
+
+  // ── Student groups ──────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> createStudentGroup({
+    required String name,
+    String? description,
+    bool isPublic = true,
+    bool isCommunityListed = true,
+  }) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.studentGroups),
+      headers: await _authHeaders(),
+      body: jsonEncode({
+        'name': name.trim(),
+        if (description != null && description.trim().isNotEmpty)
+          'description': description.trim(),
+        'is_public': isPublic,
+        'is_community_listed': isCommunityListed,
+      }),
+    );
+    return _parseMap(res);
+  }
+
+  Future<List<dynamic>> myStudentGroups() async {
+    final res = await http.get(
+      _uri(ApiEndpoints.studentGroupsMine),
+      headers: await _authHeaders(),
+    );
+    return _parseList(res);
+  }
+
+  Future<List<dynamic>> discoverStudentGroups() async {
+    final res = await http.get(
+      _uri(ApiEndpoints.studentGroupsDiscover),
+      headers: await _authHeaders(),
+    );
+    return _parseList(res);
+  }
+
+  Future<List<dynamic>> communityListedGroups() async {
+    final res = await http.get(
+      _uri(ApiEndpoints.studentGroupsCommunityListed),
+      headers: await _authHeaders(),
+    );
+    return _parseList(res);
+  }
+
+  Future<Map<String, dynamic>> getStudentGroup(String groupId) async {
+    final res = await http.get(
+      _uri(ApiEndpoints.studentGroup(groupId)),
+      headers: await _authHeaders(),
+    );
+    return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> requestJoinStudentGroup(
+    String groupId, {
+    String? message,
+  }) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.studentGroupJoinRequest(groupId)),
+      headers: await _authHeaders(),
+      body: jsonEncode({
+        if (message != null && message.trim().isNotEmpty) 'message': message.trim(),
+      }),
+    );
+    return _parseMap(res);
+  }
+
+  Future<List<dynamic>> listGroupMembers(String groupId) async {
+    final res = await http.get(
+      _uri(ApiEndpoints.studentGroupMembers(groupId)),
+      headers: await _authHeaders(),
+    );
+    return _parseList(res);
+  }
+
+  Future<List<dynamic>> listGroupMessages(String groupId, {int limit = 120}) async {
+    final res = await http.get(
+      _uri(ApiEndpoints.studentGroupMessages(groupId), {'limit': '$limit'}),
+      headers: await _authHeaders(),
+    );
+    return _parseList(res);
+  }
+
+  Future<Map<String, dynamic>> sendGroupMessage(String groupId, String content) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.studentGroupMessages(groupId)),
+      headers: await _authHeaders(),
+      body: jsonEncode({'content': content.trim()}),
+    );
+    return _parseMap(res);
+  }
+
+  Future<List<dynamic>> listGroupJoinRequests(String groupId) async {
+    final res = await http.get(
+      _uri(ApiEndpoints.studentGroupJoinRequests(groupId)),
+      headers: await _authHeaders(),
+    );
+    return _parseList(res);
+  }
+
+  Future<Map<String, dynamic>> approveGroupJoinRequest(
+    String groupId,
+    String requestId,
+  ) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.studentGroupApproveJoinRequest(groupId, requestId)),
+      headers: await _authHeaders(),
+    );
+    return _parseMap(res);
+  }
+
+  Future<List<dynamic>> mySchoolGroups() async {
+    final res = await http.get(
+      _uri(ApiEndpoints.schoolGroupsStudentMine),
       headers: await _authHeaders(),
     );
     return _parseList(res);
