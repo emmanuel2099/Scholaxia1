@@ -116,6 +116,9 @@ async def ask_sia(
         tutor_mode=payload.tutor_mode or "smart",
     )
 
+    if answer.startswith("Sia is temporarily unavailable"):
+        raise HTTPException(status_code=503, detail=answer)
+
     board = extract_board_content(answer)
 
     return {

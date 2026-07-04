@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from app.core.database import get_db
-from app.core.deps import require_student
+from app.core.deps import require_student_or_kind
 from app.services.live_class_access import parse_uuid
 from app.services.group_community import ensure_group_feed_post
 from app.services.moderation_service import check_message_content
@@ -86,7 +86,7 @@ def _group_dict(grp: StudentGroup, mem, pending, member_count: int, creator_name
 @router.post("/")
 async def create_group(
     payload: CreateGroupRequest,
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     name = (payload.name or "").strip()
@@ -121,7 +121,7 @@ async def create_group(
 
 @router.get("/mine")
 async def my_groups(
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     uid = parse_uuid(current_user["sub"])
@@ -148,7 +148,7 @@ async def my_groups(
 
 @router.get("/community-listed")
 async def community_listed_groups(
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     """All groups listed in Community (including ones you created or joined)."""
@@ -196,7 +196,7 @@ async def community_listed_groups(
 
 @router.get("/discover")
 async def discover_groups(
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     uid = parse_uuid(current_user["sub"])
@@ -237,7 +237,7 @@ async def discover_groups(
 async def request_join_group(
     group_id: str,
     payload: JoinRequestBody,
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -281,7 +281,7 @@ async def request_join_group(
 @router.get("/{group_id}/join-requests")
 async def list_join_requests(
     group_id: str,
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -312,7 +312,7 @@ async def list_join_requests(
 async def approve_join_request(
     group_id: str,
     request_id: str,
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -345,7 +345,7 @@ async def approve_join_request(
 async def reject_join_request(
     group_id: str,
     request_id: str,
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -371,7 +371,7 @@ async def reject_join_request(
 async def update_group(
     group_id: str,
     payload: UpdateGroupRequest,
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -393,7 +393,7 @@ async def update_group(
 @router.delete("/{group_id}")
 async def delete_group(
     group_id: str,
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -416,7 +416,7 @@ async def delete_group(
 async def promote_to_community(
     group_id: str,
     payload: PromoteGroupRequest,
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -444,7 +444,7 @@ async def promote_to_community(
 @router.get("/{group_id}")
 async def get_group(
     group_id: str,
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -470,7 +470,7 @@ async def get_group(
 @router.get("/{group_id}/members")
 async def list_group_members(
     group_id: str,
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -499,7 +499,7 @@ async def list_group_members(
 async def add_group_member(
     group_id: str,
     payload: AddMemberBody,
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -531,7 +531,7 @@ async def add_group_member(
 async def list_group_posts(
     group_id: str,
     limit: int = 50,
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -585,7 +585,7 @@ async def list_group_posts(
 async def create_group_post(
     group_id: str,
     payload: GroupPostBody,
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -645,7 +645,7 @@ async def create_group_post(
 async def list_group_messages(
     group_id: str,
     limit: int = 80,
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -679,7 +679,7 @@ async def list_group_messages(
 async def send_group_message(
     group_id: str,
     payload: GroupMessageBody,
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)

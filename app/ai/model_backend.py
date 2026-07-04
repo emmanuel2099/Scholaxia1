@@ -16,6 +16,29 @@ from app.core.config import settings
 from app.ai.prompt_builder import SIA_SYSTEM_PROMPT
 
 
+def _any_api_key_configured() -> bool:
+    return bool(
+        settings.GEMINI_API_KEY
+        or settings.OPENAI_API_KEY
+        or settings.DEEPSEEK_API_KEY
+        or settings.GROQ_API_KEY
+    )
+
+
+def _gemini_extract_text(data: dict) -> str:
+    candidates = data.get("candidates") or []
+    if not candidates:
+        feedback = data.get("promptFeedback", {})
+        raise ValueError(f"Gemini blocked or empty: {feedback}")
+    parts = candidates[0].get("content", {}).get("parts") or []
+    if not parts:
+        raise ValueError("Gemini returned empty content")
+    text = parts[0].get("text", "").strip()
+    if len(text) < 2:
+        raise ValueError("Gemini returned too-short response")
+    return text
+
+
 # ── Gemini ────────────────────────────────────────────────────────────────────
 
 async def _infer_gemini(prompt: str, conversation_history: list = None,
@@ -64,7 +87,7 @@ async def _infer_gemini(prompt: str, conversation_history: list = None,
         )
         response.raise_for_status()
         data = response.json()
-        return data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        return _gemini_extract_text(data)
 
 
 # ── OpenAI ────────────────────────────────────────────────────────────────────
@@ -266,50 +289,59 @@ async def run_inference(prompt: str, conversation_history: list = None,
 
     Priority order (primary → fallbacks):
       gemini → openai → deepseek → groq
-
-    Any backend can be set as primary via AI_BACKEND env var.
-    All others with valid API keys are tried automatically on failure.
     """
+    if not _any_api_key_configured():
+        raise RuntimeError(
+            "Sia AI is not configured on the server. "
+            "An administrator must set GEMINI_API_KEY, OPENAI_API_KEY, or DEEPSEEK_API_KEY."
+        )
+
     backend = settings.AI_BACKEND.lower()
 
-    # ── Primary backend ───────────────────────────────────────────────────────
-    try:
-        if backend == "gemini":
-            return await _infer_gemini(prompt, conversation_history, image_base64,
-                                       system_prompt, max_tokens, temperature)
-        elif backend == "openai":
-            return await _infer_openai(prompt, conversation_history, image_base64,
-                                       system_prompt, max_tokens, temperature)
-        elif backend == "deepseek":
-            return await _infer_deepseek(prompt, conversation_history,
-                                         system_prompt, max_tokens, temperature)
-        elif backend == "groq":
-            return await _infer_groq(prompt, conversation_history, image_base64,
-                                     system_prompt, max_tokens, temperature)
-        elif backend == "hosted":
-            return await _infer_hosted(prompt)
-        elif backend == "local":
-            return await _infer_local(prompt)
-        else:
-            raise ValueError(f"Unknown AI_BACKEND: '{backend}'")
+    backends = {
+        "gemini": lambda: _infer_gemini(
+            prompt, conversation_history, image_base64, system_prompt, max_tokens, temperature
+        ),
+        "openai": lambda: _infer_openai(
+            prompt, conversation_history, image_base64, system_prompt, max_tokens, temperature
+        ),
+        "deepseek": lambda: _infer_deepseek(
+            prompt, conversation_history, system_prompt, max_tokens, temperature
+        ),
+        "groq": lambda: _infer_groq(
+            prompt, conversation_history, image_base64, system_prompt, max_tokens, temperature
+        ),
+        "hosted": lambda: _infer_hosted(prompt),
+        "local": lambda: _infer_local(prompt),
+    }
 
-    except Exception as primary_error:
-        # ── Fallback chain — priority order: gemini → openai → deepseek → groq ─
-        # Each backend is only tried if it has an API key and isn't the primary
-        fallback_chain = [
-            ("gemini",   settings.GEMINI_API_KEY,   lambda: _infer_gemini(prompt, conversation_history, image_base64, system_prompt, max_tokens, temperature)),
-            ("openai",   settings.OPENAI_API_KEY,   lambda: _infer_openai(prompt, conversation_history, image_base64, system_prompt, max_tokens, temperature)),
-            ("deepseek", settings.DEEPSEEK_API_KEY, lambda: _infer_deepseek(prompt, conversation_history, system_prompt, max_tokens, temperature)),
-            ("groq",     settings.GROQ_API_KEY,     lambda: _infer_groq(prompt, conversation_history, image_base64, system_prompt, max_tokens, temperature)),
-        ]
+    keys = {
+        "gemini": settings.GEMINI_API_KEY,
+        "openai": settings.OPENAI_API_KEY,
+        "deepseek": settings.DEEPSEEK_API_KEY,
+        "groq": settings.GROQ_API_KEY,
+    }
 
-        for name, api_key, fn in fallback_chain:
-            if name == backend or not api_key:
-                continue  # skip primary and unconfigured backends
-            try:
-                return await fn()
-            except Exception:
-                continue  # try next fallback
+    # Build try order: primary first, then fallbacks with keys
+    try_order = [backend] if backend in backends else ["gemini"]
+    for name in ("gemini", "openai", "deepseek", "groq"):
+        if name not in try_order and keys.get(name):
+            try_order.append(name)
 
-        # All backends failed — raise original error
-        raise primary_error
+    last_error = None
+    for name in try_order:
+        if name not in backends:
+            continue
+        if name in keys and not keys[name]:
+            continue
+        try:
+            result = await backends[name]()
+            if result and len(result.strip()) >= 2:
+                return result.strip()
+        except Exception as e:
+            last_error = e
+            continue
+
+    if last_error:
+        raise last_error
+    raise RuntimeError("All AI backends failed. Please try again in a moment.")

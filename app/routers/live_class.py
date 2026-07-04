@@ -10,7 +10,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional
 from app.core.database import get_db
 from app.core.datetime_utils import naive_utc_now, to_naive_utc
-from app.core.deps import require_teacher, require_teacher_or_admin, require_student, get_current_user, require_admin
+from app.core.deps import require_teacher, require_teacher_or_admin, require_student_or_kind, get_current_user, require_admin
 from app.core.config import settings
 from app.models.live_class import LiveClass, ClassAttendance, LiveSessionRequest, LiveSessionRequestStatus, LiveClassVisibility
 from app.models.school_group import SchoolGroup
@@ -125,42 +125,45 @@ class JoinByCodeRequest(BaseModel):
 
 @router.get("/access-codes/mine")
 async def my_access_codes(
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     """Access codes delivered to this student (Access Code tab)."""
     sid = parse_uuid(current_user["sub"])
     result = await db.execute(
-        select(LiveClassAccessCodeDelivery)
+        select(LiveClassAccessCodeDelivery, LiveClass)
+        .join(LiveClass, LiveClass.id == LiveClassAccessCodeDelivery.live_class_id)
         .where(LiveClassAccessCodeDelivery.student_id == sid)
         .order_by(LiveClassAccessCodeDelivery.created_at.desc())
         .limit(100)
     )
-    rows = result.scalars().all()
-    unread = sum(1 for r in rows if not r.is_read)
-    return {
-        "unread_count": unread,
-        "codes": [
-            {
-                "id": str(r.id),
-                "class_id": str(r.live_class_id),
-                "join_code": r.join_code,
-                "title": r.title,
-                "subject": r.subject,
-                "teacher_name": r.teacher_name,
-                "visibility": r.visibility,
-                "is_read": r.is_read,
-                "is_used": r.is_used,
-                "created_at": r.created_at.isoformat() if r.created_at else None,
-            }
-            for r in rows
-        ],
-    }
+    codes = []
+    unread = 0
+    for row, live_class in result.all():
+        if not live_class.is_live:
+            continue
+        entry = {
+            "id": str(row.id),
+            "class_id": str(row.live_class_id),
+            "join_code": row.join_code,
+            "title": row.title,
+            "subject": row.subject,
+            "teacher_name": row.teacher_name,
+            "visibility": row.visibility,
+            "is_read": row.is_read,
+            "is_used": row.is_used,
+            "is_class_live": bool(live_class.is_live),
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        }
+        codes.append(entry)
+        if not row.is_read:
+            unread += 1
+    return {"unread_count": unread, "codes": codes}
 
 
 @router.post("/access-codes/mark-read")
 async def mark_access_codes_read(
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     sid = parse_uuid(current_user["sub"])
@@ -183,7 +186,7 @@ class ClearAccessCodesRequest(BaseModel):
 @router.post("/access-codes/clear")
 async def clear_access_codes(
     payload: ClearAccessCodesRequest,
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     """Remove old or all access code entries from the student's Access Code tab."""
@@ -212,7 +215,7 @@ async def clear_access_codes(
 @router.post("/join-by-code")
 async def join_class_by_code(
     payload: JoinByCodeRequest,
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     """Join a live class using the unique access code for that class."""
@@ -498,21 +501,23 @@ async def _notify_for_class(
         )
         if vis == LiveClassVisibility.public.value:
             if live_now:
-                await send_all_students_notification(
-                    db,
-                    "Live class starting now",
-                    f"«{live_class.title}» is live — code {live_class.join_code} is in your Access Code tab.",
-                    "live_class",
-                    data,
+                await send_subject_notification(
+                    db=db,
+                    subject=live_class.subject,
+                    title="Live class starting now",
+                    body=f"«{live_class.title}» is live — copy your code from the app popup.",
+                    notification_type="live_class",
+                    data=data,
                 )
             else:
                 when = (start or live_class.start_time).strftime("%d %b %Y at %I:%M %p")
-                await send_all_students_notification(
-                    db,
-                    "Upcoming platform live class",
-                    f"«{live_class.title}» is scheduled for {when}.",
-                    "live_class",
-                    {**data, "start_time": (start or live_class.start_time).isoformat()},
+                await send_subject_notification(
+                    db=db,
+                    subject=live_class.subject,
+                    title="Upcoming platform live class",
+                    body=f"«{live_class.title}» is scheduled for {when}.",
+                    notification_type="live_class",
+                    data={**data, "start_time": (start or live_class.start_time).isoformat()},
                 )
         elif vis == LiveClassVisibility.private.value:
             title = "Private live class starting now" if live_now else "Private live class scheduled"
@@ -731,7 +736,7 @@ async def start_class(
 @router.post("/{class_id}/join")
 async def join_class(
     class_id: str,
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(LiveClass).where(LiveClass.id == class_id))
@@ -1146,16 +1151,7 @@ async def list_live_classes(
         query = query.where(LiveClass.subject == subject)
 
     if status == "live":
-        # Live now OR within scheduled window (started but teacher has not tapped Start yet)
-        query = query.where(
-            or_(
-                LiveClass.is_live == True,  # noqa: E712
-                and_(
-                    LiveClass.start_time <= now,
-                    or_(LiveClass.end_time > now, LiveClass.end_time.is_(None)),
-                ),
-            )
-        )
+        query = query.where(LiveClass.is_live == True)  # noqa: E712
     elif status == "upcoming":
         query = query.where(
             LiveClass.is_live == False,  # noqa: E712
@@ -1189,6 +1185,11 @@ async def list_live_classes(
             if ok:
                 visible.append(c)
         classes = visible
+    elif role == "kind":
+        classes = [
+            c for c in classes
+            if _class_visibility(c) == LiveClassVisibility.public.value
+        ]
 
     # Fetch teacher names
     teacher_ids = list({str(c.teacher_id) for c in classes})
@@ -1263,7 +1264,7 @@ def _request_dict(
 @router.post("/requests", status_code=201)
 async def create_session_request(
     payload: CreateSessionRequest,
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     """Student requests a live session on a subject."""
@@ -1297,7 +1298,7 @@ async def create_session_request(
 
 @router.get("/requests/mine")
 async def my_session_requests(
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     """Student's own live session requests."""
@@ -1534,6 +1535,14 @@ async def end_class(
     for att in att_res.scalars().all():
         att.left_at = naive_utc_now()
 
+    from sqlalchemy import delete as sql_delete
+
+    await db.execute(
+        sql_delete(LiveClassAccessCodeDelivery).where(
+            LiveClassAccessCodeDelivery.live_class_id == live_class.id
+        )
+    )
+
     try:
         from app.websockets.live_class_ws import broadcast as ws_broadcast
         await ws_broadcast(
@@ -1565,7 +1574,7 @@ async def end_class(
 @router.post("/{class_id}/leave")
 async def leave_class(
     class_id: str,
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     """Student leaves a live class — records left_at time."""

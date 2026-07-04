@@ -24,6 +24,15 @@ async def require_student(current_user: dict = Depends(get_current_user)):
     return current_user
 
 
+async def require_student_or_kind(current_user: dict = Depends(get_current_user)):
+    if current_user.get("role") not in ("student", "kind"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Students or kid learners only",
+        )
+    return current_user
+
+
 async def require_kind(current_user: dict = Depends(get_current_user)):
     if current_user.get("role") != "kind":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Kind learners only")

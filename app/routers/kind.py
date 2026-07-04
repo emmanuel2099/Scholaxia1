@@ -149,18 +149,26 @@ async def sia_kind_chat(
     """
     profile = await _get_kind_profile(current_user["sub"], db)
     name = await _get_child_name(current_user["sub"], db)
-    answer = await kind_chat(
-        question=payload.question,
-        subject=payload.subject,
-        user_id=current_user["sub"],
-        child_name=name,
-        age_group=profile.age_group,
-        grade_level=profile.grade_level,
-        language=payload.language or profile.preferred_language,
-        learning_goals=profile.learning_goals,
-        favorite_subjects=profile.favorite_subjects,
-        conversation_history=payload.conversation_history,
-    )
+    try:
+        answer = await kind_chat(
+            question=payload.question,
+            subject=payload.subject,
+            user_id=current_user["sub"],
+            child_name=name,
+            age_group=profile.age_group,
+            grade_level=profile.grade_level,
+            language=payload.language or profile.preferred_language,
+            learning_goals=profile.learning_goals,
+            favorite_subjects=profile.favorite_subjects,
+            conversation_history=payload.conversation_history,
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="Sia Kind could not respond right now. Please try again.",
+        )
     return {
         "sia_kind": answer,
         "subject": payload.subject,

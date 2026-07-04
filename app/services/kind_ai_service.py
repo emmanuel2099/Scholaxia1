@@ -41,13 +41,21 @@ async def kind_chat(
         learning_goals=learning_goals,
         favorite_subjects=favorite_subjects,
     )
-    raw = await run_inference(
-        prompt,
-        conversation_history=conversation_history,
-        system_prompt=KIND_MASTER_SYSTEM,
-        max_tokens=4096,
-        temperature=0.55,
-    )
+    try:
+        raw = await run_inference(
+            prompt,
+            conversation_history=conversation_history,
+            system_prompt=KIND_MASTER_SYSTEM,
+            max_tokens=4096,
+            temperature=0.45,
+        )
+    except RuntimeError as e:
+        return f"Sia Kind needs a moment — {str(e)[:100]}. Try again soon!"
+    except Exception:
+        return (
+            f"Sorry {child_name}, I couldn't answer that properly. "
+            "Can you ask again in different words?"
+        )
     answer = sanitize_output(raw)
     await record_interaction(student_id=user_id, subject=subject, question=question, answer=answer)
     return answer

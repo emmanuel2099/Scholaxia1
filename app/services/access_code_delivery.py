@@ -5,7 +5,7 @@ from sqlalchemy import select
 from app.models.live_class import LiveClass, LiveClassVisibility
 from app.models.live_class_access_code import LiveClassAccessCodeDelivery
 from app.models.school_group import SchoolGroup
-from app.models.user import User, StudentProfile, UserRole
+from app.models.user import User, StudentProfile
 from app.core.subjects import subject_matches
 
 
@@ -27,25 +27,22 @@ def _class_visibility(live_class: LiveClass) -> str:
 
 async def _recipient_ids(db: AsyncSession, live_class: LiveClass) -> list[str]:
     vis = _class_visibility(live_class)
-    if vis == LiveClassVisibility.public.value:
-        res = await db.execute(select(User.id).where(User.role == UserRole.student))
-        return [str(r[0]) for r in res.all()]
     if vis == LiveClassVisibility.private.value:
         return _parse_id_list(live_class.invited_student_ids)
     if vis == LiveClassVisibility.school_group.value and live_class.school_group_id:
         group_res = await db.execute(select(SchoolGroup).where(SchoolGroup.id == live_class.school_group_id))
         group = group_res.scalar_one_or_none()
         return group.member_ids() if group else []
-    res = await db.execute(select(StudentProfile.user_id, StudentProfile.subjects))
+
+    # Subject, public, and legacy: only students who selected this subject
+    res = await db.execute(select(StudentProfile))
     out = []
-    for uid, subj_raw in res.all():
-        try:
-            import json
-            subs = json.loads(subj_raw or "[]")
-        except (json.JSONDecodeError, TypeError):
-            subs = []
-        if subject_matches(live_class.subject, subs if isinstance(subs, list) else []):
-            out.append(str(uid))
+    for profile in res.scalars().all():
+        subs = list(profile.selected_subjects or [])
+        if not subs:
+            continue
+        if subject_matches(live_class.subject, subs):
+            out.append(str(profile.user_id))
     return out
 
 

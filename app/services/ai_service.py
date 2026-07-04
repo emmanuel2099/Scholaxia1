@@ -103,10 +103,18 @@ async def get_ai_response(question: str, subject: str, education_level: str,
             conversation_history=conversation_history,
             temperature=analysis["temperature"],
         )
+    except RuntimeError as e:
+        return (
+            f"Sia is temporarily unavailable ({str(e)[:120]}). "
+            f"Please try again shortly, {student_name}."
+        )
     except Exception as e:
         if "429" in str(e) or "rate limit" in str(e).lower():
             return f"I'm getting too many requests right now, {student_name}. Please wait a moment and try again."
-        raise
+        return (
+            f"I couldn't think that through properly, {student_name}. "
+            "Please rephrase your question or try again in a moment."
+        )
     answer = sanitize_output(raw)
     await record_interaction(student_id=student_id, subject=subject, question=question, answer=answer)
     return answer

@@ -6,7 +6,7 @@ from typing import Optional
 from datetime import datetime
 
 from app.core.database import get_db
-from app.core.deps import require_student, require_teacher, get_current_user
+from app.core.deps import require_student_or_kind, require_teacher, get_current_user
 from app.models.community import (
     CommunityChannel, CommunityMessage, MessageReport,
     AssignmentSubmission, AssignmentStatus, AssignmentFileType, ChannelType,
@@ -128,13 +128,27 @@ class JoinChannelRequest(BaseModel):
 @router.post("/join")
 async def join_channel(
     payload: JoinChannelRequest,
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Students join the General channel.
+    Students / kid learners join the General channel.
     Teacher Announcement channel cannot be joined — it's auto-visible to all.
     """
+    if current_user.get("role") == "kind":
+        channel_result = await db.execute(
+            select(CommunityChannel).where(CommunityChannel.id == payload.channel_id)
+        )
+        channel = channel_result.scalar_one_or_none()
+        if not channel:
+            raise HTTPException(status_code=404, detail="Channel not found")
+        if channel.channel_type == ChannelType.teacher_announcement:
+            raise HTTPException(
+                status_code=403,
+                detail="Teacher announcement channel is read-only — no need to join",
+            )
+        return {"message": f"Joined {channel.name}"}
+
     result = await db.execute(select(StudentProfile).where(StudentProfile.user_id == current_user["sub"]))
     profile = result.scalar_one_or_none()
     if not profile:
@@ -181,7 +195,7 @@ async def send_message(
     channel_id_str = str(channel.id)
 
     # Teacher announcement: only teachers/admins can post
-    if channel.is_readonly_for_students and role == UserRole.student:
+    if channel.is_readonly_for_students and role in (UserRole.student, "kind"):
         raise HTTPException(status_code=403, detail="Only teachers and admins can post in this channel")
 
     # Students must have joined the general channel
@@ -314,7 +328,7 @@ class AssignmentFileTypeConfirmRequest(BaseModel):
 @router.post("/assignments/confirm-type")
 async def confirm_assignment_file_type(
     payload: AssignmentFileTypeConfirmRequest,
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
 ):
     """
     Before submitting, the system asks: 'Send as PDF or plain image?'
@@ -338,7 +352,7 @@ async def confirm_assignment_file_type(
 @router.post("/assignments", status_code=201)
 async def submit_assignment(
     payload: SubmitAssignmentRequest,
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -382,7 +396,7 @@ async def submit_assignment(
 
 @router.get("/assignments/mine")
 async def my_assignments(
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     """Student views their own submissions and results (private)."""

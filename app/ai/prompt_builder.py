@@ -12,9 +12,7 @@ Built from the full Sia PRD:
 - Emotional intelligence
 """
 
-import re
-
-# ── Sia Core Identity & System Prompt ────────────────────────────────────────
+from app.ai.sia_accuracy import SIA_ACCURACY_FIRST, SIA_TUTOR_CORE
 
 SIA_SYSTEM_PROMPT = """
 You are Sia, the AI learning engine and gamification system powering Scholaxia — a global AI education ecosystem.
@@ -730,7 +728,11 @@ def build_sia_system_prompt(student_name: str, subject: str, education_level: st
                 f"- Recently studied: {', '.join(recent[:4]) if recent else 'just starting'}"
             )
     intel = f"\n{intelligence_context}" if intelligence_context else ""
-    return f"{SIA_SYSTEM_PROMPT}\n\n{context}\n{SIA_REASONING_BOOST}{memory_block}{intel}"
+    # Use focused tutor core — not the full gamification manifesto (too long, dilutes accuracy).
+    return (
+        f"{SIA_ACCURACY_FIRST}\n\n{SIA_TUTOR_CORE}\n\n{context}\n"
+        f"{SIA_REASONING_BOOST}{memory_block}{intel}"
+    )
 
 
 def build_chat_user_prompt(question: str, student_name: str = "there",
@@ -740,13 +742,7 @@ def build_chat_user_prompt(question: str, student_name: str = "there",
                            tutor_mode: str = "smart") -> str:
     """Slim user message — system prompt carries teaching rules."""
     history_block = ""
-    if conversation_history:
-        lines = []
-        for msg in conversation_history[-10:]:
-            role = "Sia" if msg.get("role") == "assistant" else student_name
-            content = str(msg.get("content", ""))[:400]
-            lines.append(f"{role}: {content}")
-        history_block = "\n\n--- CONVERSATION HISTORY ---\n" + "\n".join(lines) + "\n--- END ---"
+    # Conversation history is passed via the API (run_inference) — not duplicated here.
 
     level_block = ""
     if education_level and education_level.upper() not in ("UNKNOWN", ""):
@@ -1373,8 +1369,17 @@ def _is_casual_greeting(details: str) -> bool:
     }
 
 
-def build_teacher_prompt(task: str, subject: str, education_level: str, details: str) -> str:
+def build_teacher_system_prompt(task: str, subject: str, education_level: str) -> str:
+    from app.ai.sia_accuracy import SIA_ACCURACY_FIRST, TEACHER_AI_CORE
     instruction = TEACHER_TASK_PROFILES.get(task, TEACHER_TASK_PROFILES["general"])
+    return (
+        f"{SIA_ACCURACY_FIRST}\n\n{TEACHER_AI_CORE}\n\n"
+        f"Subject: {subject}\nLevel: {education_level}\nTask focus: {instruction}"
+    )
+
+
+def build_teacher_prompt(task: str, subject: str, education_level: str, details: str) -> str:
+    """User message only — system prompt is passed separately to the model."""
     if task == "general":
         closing = (
             "Reply conversationally. Match the length of the teacher's message. "
@@ -1382,13 +1387,8 @@ def build_teacher_prompt(task: str, subject: str, education_level: str, details:
         )
     else:
         closing = "Provide a professional, detailed, immediately usable response."
-    return f"""{TEACHER_SYSTEM_PROMPT}
-
-Subject: {subject}
-Student Level: {education_level}
-Task: {instruction}
-
-Teacher's request: {details}
+    return f"""Teacher's request:
+{details}
 
 {closing}
 """
