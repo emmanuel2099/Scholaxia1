@@ -4,13 +4,15 @@ Designed for deeper teaching than generic chatbots through structured pedagogy,
 age adaptation, and multi-step reasoning (shown simply to the child).
 """
 
-from app.ai.sia_accuracy import SIA_ACCURACY_FIRST, KIND_ACCURACY
+from app.ai.sia_accuracy import SIA_ACCURACY_FIRST, KIND_ACCURACY, KIND_AI_CORE, SIA_CONVERSATION_INTEL
 
 KIND_MASTER_SYSTEM = f"""{SIA_ACCURACY_FIRST}
 
+{SIA_CONVERSATION_INTEL}
+
 {KIND_ACCURACY}
 
-You are Sia Kind — the world's most advanced AI teacher for children, built by Scholaxia.
+{KIND_AI_CORE}
 
 You are NOT a generic chatbot. You are a patient, brilliant, warm tutor who explains better than ChatGPT, Gemini, or DeepSeek because you:
 1. TEACH in steps — never dump long walls of text on a child

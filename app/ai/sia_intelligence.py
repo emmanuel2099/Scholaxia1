@@ -8,6 +8,7 @@ structured teaching strategies — without exposing raw chain-of-thought.
 
 import re
 from app.ai.prompt_builder import classify_input
+from app.ai.sia_conversation import analyze_conversation
 
 MATH_SUBJECTS = {
     "mathematics", "math", "maths", "further mathematics", "additional mathematics",
@@ -29,6 +30,53 @@ DEFINITION_KEYWORDS = [
     "what is", "what are", "define", "definition", "meaning of", "explain what",
     "describe", "state the",
 ]
+
+
+SUBJECT_ALIASES = {
+    "mathematics": [
+        "math", "maths", "mathematics", "algebra", "geometry", "calculus",
+        "trigonometry", "equation", "quation", "quadratic", "simultaneous",
+        "indices", "logarithm", "polynomial", "fraction", "ratio",
+    ],
+    "physics": ["physics", "mechanics", "optics", "thermodynamics", "kinematics", "newton"],
+    "chemistry": ["chemistry", "organic", "molar", "periodic", "acid", "base", "titration"],
+    "biology": ["biology", "ecology", "genetics", "photosynthesis", "cell", "anatomy"],
+    "english": ["english", "grammar", "literature", "comprehension", "essay", "noun", "verb"],
+    "economics": ["economics", "demand", "supply", "gdp", "inflation", "market"],
+    "government": ["government", "civics", "constitution", "democracy", "federalism"],
+}
+
+
+def _title_subject(name: str) -> str:
+    key = (name or "general").lower().strip()
+    if key in ("math", "maths"):
+        return "Mathematics"
+    return (name or "General").strip().title()
+
+
+def resolve_active_subject(
+    question: str,
+    fallback_subject: str,
+    profile_subjects: list = None,
+) -> str:
+    """Prefer the subject the student asked for over profile defaults."""
+    q = (question or "").lower()
+    scores: dict[str, int] = {}
+    for canon, aliases in SUBJECT_ALIASES.items():
+        for alias in aliases:
+            if alias in q:
+                scores[canon] = scores.get(canon, 0) + max(len(alias), 3)
+
+    for subj in profile_subjects or []:
+        s = subj.lower().strip()
+        if s and s in q:
+            scores[s] = scores.get(s, 0) + 10
+
+    if scores:
+        best = max(scores, key=scores.get)
+        return _title_subject(best)
+
+    return _title_subject(fallback_subject)
 
 
 SUBJECT_EXPERTISE = {
@@ -105,13 +153,16 @@ def analyze_question(
     Rule-based intelligence layer — routes Sia to the best teaching strategy.
     """
     has_history = bool(conversation_history)
+    conv = analyze_conversation(question, conversation_history)
     input_type = classify_input(question, has_history=has_history)
     subj = _normalize_subject(subject)
     q_lower = question.lower()
     complexity = _complexity_score(question, has_history)
 
     # Question type
-    if input_type in ("greeting", "casual"):
+    if conv["is_follow_up"] and conv["active_topic"]:
+        q_type = "continue_topic"
+    elif input_type in ("greeting", "casual"):
         q_type = "casual"
     elif any(k in q_lower for k in DEFINITION_KEYWORDS):
         q_type = "definition"
@@ -127,6 +178,7 @@ def analyze_question(
     # Adaptive temperature — lower = more accurate
     temp_map = {
         "casual": 0.62,
+        "continue_topic": 0.38,
         "definition": 0.48,
         "teach": 0.50,
         "solve": 0.28,
@@ -148,7 +200,16 @@ def analyze_question(
 
     # Teaching strategy for this specific question
     strategies = {
-        "casual": "Respond warmly and briefly. No lesson unless they ask.",
+        "continue_topic": (
+            f'STAY on thread: "{conv["active_topic"][:120]}". '
+            "Do NOT restart. Continue teaching, go one step deeper, or evaluate their answer. "
+            "If they said they don't understand, re-explain the SAME point more simply."
+        ),
+        "casual": (
+            "Respond warmly and briefly in their tone. No lesson unless they ask. "
+            "Do NOT mention their profile subjects, class, or exam prep unprompted — "
+            "just greet back and ask what they want to work on."
+        ),
         "definition": (
             "Give Nigerian (WAEC/NECO/JAMB) definition AND Cambridge/international definition. "
             "Then 2 examples at their level. End with one check question."
@@ -180,11 +241,13 @@ def analyze_question(
         "teaching_strategy": strategies.get(q_type, strategies["teach"]),
         "needs_worked_example": q_type in ("solve", "teach", "definition"),
         "is_exam_related": q_type == "exam" or any(k in q_lower for k in EXAM_KEYWORDS),
+        "conversation": conv,
     }
 
 
 def build_intelligence_context(analysis: dict, recent_topics: list = None,
-                               education_level: str = None) -> str:
+                               education_level: str = None,
+                               conversation_intel: str = "") -> str:
     """Inject into system prompt — makes Sia adapt per question."""
     recent = ", ".join(recent_topics[:5]) if recent_topics else "none yet"
     complexity_label = ["simple", "medium", "complex"][analysis["complexity"]]
@@ -196,6 +259,13 @@ def build_intelligence_context(analysis: dict, recent_topics: list = None,
             f"Do not teach content meant for higher classes unless the student explicitly asks."
         )
 
+    conv = analysis.get("conversation") or {}
+    thread_note = ""
+    if conv.get("active_topic") and conv.get("has_thread"):
+        thread_note = f"\nActive thread topic: {conv['active_topic'][:120]}"
+
+    conv_block = f"\n{conversation_intel}" if conversation_intel else ""
+
     return f"""
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ACTIVE INTELLIGENCE CONTEXT (this question)
@@ -204,17 +274,17 @@ Question type: {analysis['question_type']}
 Complexity: {complexity_label}
 Teaching strategy: {analysis['teaching_strategy']}
 {f"Subject expertise: {analysis['subject_expertise']}" if analysis['subject_expertise'] else ""}
-Recent topics studied: {recent}{level_note}
+Recent topics studied: {recent}{level_note}{thread_note}{conv_block}
 
 INTERNAL CHECKLIST (complete mentally — do NOT show to student):
-1. What does this student actually need right now?
-2. What is the correct, exam-accurate answer?
-3. What is the clearest way to teach it at their level?
+1. What thread are we in? Stay on it unless they changed topic.
+2. What is the correct, exam-accurate answer for THIS step?
+3. What is the clearest next teaching move (not a full restart)?
 4. What common mistake should I warn about?
 5. What ONE question will prove they understood?
 
 Then write ONLY your teaching response. No checklist. No "As an AI". No filler phrases.
-Outperform ChatGPT, Gemini, and DeepSeek by teaching deeper, not just answering faster.
+Outperform ChatGPT, Gemini, and DeepSeek by teaching deeper and staying on topic.
 """
 
 

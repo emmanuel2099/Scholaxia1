@@ -16,6 +16,7 @@ from app.ai.prompt_builder import (
 from app.ai.sia_intelligence import (
     analyze_question, build_intelligence_context, extract_recent_topics,
 )
+from app.ai.sia_conversation import build_conversation_intel
 from app.ai.model_backend import run_inference
 from app.ai.safety_filter import is_educational, sanitize_output
 from app.ai.weakness_analyzer import record_interaction, get_weak_topics, get_student_history
@@ -68,7 +69,11 @@ async def _prepare_sia_context(
     """Build system prompt + analysis for any Sia call."""
     memory = await _get_memory(student_id, subject)
     analysis = analyze_question(question, subject, education_level, conversation_history)
-    intel = build_intelligence_context(analysis, memory.get("recent_topics"), education_level)
+    conv_intel = build_conversation_intel(question, conversation_history, audience="student")
+    intel = build_intelligence_context(
+        analysis, memory.get("recent_topics"), education_level,
+        conversation_intel=conv_intel,
+    )
     system = build_sia_system_prompt(
         student_name=student_name, subject=subject,
         education_level=education_level, language=language,

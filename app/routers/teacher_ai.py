@@ -18,6 +18,7 @@ from app.ai.prompt_builder import (
     _is_casual_greeting,
 )
 from app.ai.sia_accuracy import detect_teacher_task
+from app.ai.sia_conversation import analyze_conversation, build_conversation_intel
 from app.ai.model_backend import run_inference
 from app.ai.safety_filter import sanitize_output
 
@@ -66,6 +67,11 @@ async def teacher_ask_ai(
         subject=payload.subject,
         education_level=payload.education_level,
     )
+    conv_intel = build_conversation_intel(
+        payload.details, payload.conversation_history, audience="teacher",
+    )
+    if conv_intel:
+        system = f"{system}\n\n{conv_intel}"
     prompt = build_teacher_prompt(
         task=task,
         subject=payload.subject,
@@ -73,13 +79,16 @@ async def teacher_ask_ai(
         details=payload.details,
     )
 
+    conv = analyze_conversation(payload.details, payload.conversation_history)
+    temp = 0.38 if conv.get("is_follow_up") else (0.42 if task in ("quiz", "lesson_plan", "grading") else 0.50)
+
     try:
         raw_result = await run_inference(
             prompt,
             system_prompt=system,
             conversation_history=payload.conversation_history,
             max_tokens=8192,
-            temperature=0.42 if task in ("quiz", "lesson_plan", "grading") else 0.50,
+            temperature=temp,
         )
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))

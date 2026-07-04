@@ -12,7 +12,7 @@ Built from the full Sia PRD:
 - Emotional intelligence
 """
 
-from app.ai.sia_accuracy import SIA_ACCURACY_FIRST, SIA_TUTOR_CORE
+from app.ai.sia_accuracy import SIA_ACCURACY_FIRST, SIA_TUTOR_CORE, SIA_CONVERSATION_INTEL
 
 SIA_SYSTEM_PROMPT = """
 You are Sia, the AI learning engine and gamification system powering Scholaxia — a global AI education ecosystem.
@@ -237,6 +237,7 @@ CASUAL_PHRASES = [
     "how are you", "how r u", "how are u", "how u doing",
     "good morning", "good afternoon", "good evening", "good night",
     "what's up", "whats up", "how far", "how u dey", "how u day",
+    "how e be", "how body", "how you dey", "bro how", "how una dey",
     "e don do", "wetin dey", "na wa o", "i dey o",
 ]
 
@@ -273,7 +274,8 @@ def classify_input(text: str, has_history: bool = False) -> str:
 
 def detect_language_from_text(text: str) -> str:
     lower = text.lower().strip()
-    pidgin = ["how far", "how u dey", "how u day", "e don do", "wetin dey",
+    pidgin = ["how far", "how u dey", "how u day", "how e be", "how body", "how you dey",
+              "e don do", "wetin dey",
               "abeg na", "na wa o", "i dey o", "wahala dey", "no be so",
               "dem say", "make u", "abi o", "shey you", "how body"]
     if any(p in lower for p in pidgin):
@@ -334,6 +336,9 @@ Always read the conversation history before responding. You are in a CONVERSATIO
 - If the student is continuing a topic → continue with them, don't restart
 - If the student greets you → respond naturally, don't explain what a greeting is
 - If the student seems confused → slow down, try a different approach
+- LISTEN FIRST: teach what they asked for — profile subject is a default, not a lock
+- NEVER say "your profile says X but you asked Y" — just teach what they want at their class level
+- On casual chat: do not dump profile/exam info unless they ask to study something
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 HOW YOU TEACH — ACADEMIC SUBJECTS
@@ -462,8 +467,8 @@ DEFINITION RULE:
   Label them clearly. Then give examples relevant to the student's level.
 
 Student: {student_name}
-Subject: {subject}
-Level: {level}
+Profile subjects (defaults only — follow what they ask): {subject}
+Class level (for depth): {level}
 """
 
 # ── Advanced reasoning layer (makes Sia smarter than generic chatbots) ────────
@@ -480,10 +485,11 @@ Your advantages over ChatGPT/Gemini/DeepSeek:
 3. STEP-BY-STEP — never skip steps in math/science; show WHY each step works
 4. DUAL DEFINITIONS — Nigerian curriculum + international (Cambridge) when defining concepts
 5. CONVERSATION MEMORY — read full history; evaluate answers; never restart mid-lesson
-6. PERSONAL ADAPTATION — use weak/strong topics to focus teaching where it matters
-7. SOCRATIC METHOD — guide students to discover answers; don't just give solutions
-8. COMPREHENSION CHECK — end every lesson with ONE smart question that tests real understanding
-9. AFRICAN CONTEXT — use Nigerian/African examples first, then global ones
+6. TOPIC STICKINESS — one topic at a time; follow-ups continue the same thread
+7. PERSONAL ADAPTATION — use weak/strong topics to focus teaching where it matters
+8. SOCRATIC METHOD — guide students to discover answers; don't just give solutions
+9. COMPREHENSION CHECK — end every lesson with ONE smart question that tests real understanding
+10. AFRICAN CONTEXT — use Nigerian/African examples first, then global ones
 10. ACCURACY OVER SPEED — if unsure, reason carefully; never guess on exam content
 
 ANTI-PATTERNS (never do these — generic AIs do):
@@ -730,7 +736,7 @@ def build_sia_system_prompt(student_name: str, subject: str, education_level: st
     intel = f"\n{intelligence_context}" if intelligence_context else ""
     # Use focused tutor core — not the full gamification manifesto (too long, dilutes accuracy).
     return (
-        f"{SIA_ACCURACY_FIRST}\n\n{SIA_TUTOR_CORE}\n\n{context}\n"
+        f"{SIA_ACCURACY_FIRST}\n\n{SIA_CONVERSATION_INTEL}\n\n{SIA_TUTOR_CORE}\n\n{context}\n"
         f"{SIA_REASONING_BOOST}{memory_block}{intel}"
     )
 
@@ -748,9 +754,9 @@ def build_chat_user_prompt(question: str, student_name: str = "there",
     if education_level and education_level.upper() not in ("UNKNOWN", ""):
         subj = subject or "General"
         level_block = (
-            f"\n[TEACH AT {education_level.upper()} LEVEL ONLY — subject: {subj}. "
-            f"Remember what the student asked. Simplify or deepen based on {education_level}, "
-            f"not higher classes. Use subheadings and spaced paragraphs.]\n"
+            f"\n[Class depth: {education_level.upper()}. Active topic: whatever the student asked — "
+            f"profile default is {subj} but if they name another subject, teach THAT at {education_level} level. "
+            f"Do not argue with their choice. Use subheadings and spaced paragraphs.]\n"
         )
 
     code_block = ""
@@ -1370,10 +1376,10 @@ def _is_casual_greeting(details: str) -> bool:
 
 
 def build_teacher_system_prompt(task: str, subject: str, education_level: str) -> str:
-    from app.ai.sia_accuracy import SIA_ACCURACY_FIRST, TEACHER_AI_CORE
+    from app.ai.sia_accuracy import SIA_ACCURACY_FIRST, TEACHER_AI_CORE, SIA_CONVERSATION_INTEL
     instruction = TEACHER_TASK_PROFILES.get(task, TEACHER_TASK_PROFILES["general"])
     return (
-        f"{SIA_ACCURACY_FIRST}\n\n{TEACHER_AI_CORE}\n\n"
+        f"{SIA_ACCURACY_FIRST}\n\n{SIA_CONVERSATION_INTEL}\n\n{TEACHER_AI_CORE}\n\n"
         f"Subject: {subject}\nLevel: {education_level}\nTask focus: {instruction}"
     )
 

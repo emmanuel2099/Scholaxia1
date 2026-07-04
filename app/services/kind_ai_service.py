@@ -12,6 +12,7 @@ from app.ai.kind_prompt_builder import (
 )
 from app.ai.model_backend import run_inference
 from app.ai.safety_filter import is_educational, sanitize_output
+from app.ai.sia_conversation import analyze_conversation, build_conversation_intel
 from app.ai.weakness_analyzer import record_interaction
 
 
@@ -41,13 +42,19 @@ async def kind_chat(
         learning_goals=learning_goals,
         favorite_subjects=favorite_subjects,
     )
+    conv_intel = build_conversation_intel(question, conversation_history, audience="kind")
+    conv = analyze_conversation(question, conversation_history)
+    system = KIND_MASTER_SYSTEM
+    if conv_intel:
+        system = f"{system}\n\n{conv_intel}"
+    temp = 0.38 if conv.get("is_follow_up") else 0.45
     try:
         raw = await run_inference(
             prompt,
             conversation_history=conversation_history,
-            system_prompt=KIND_MASTER_SYSTEM,
+            system_prompt=system,
             max_tokens=4096,
-            temperature=0.45,
+            temperature=temp,
         )
     except RuntimeError as e:
         return f"Sia Kind needs a moment — {str(e)[:100]}. Try again soon!"

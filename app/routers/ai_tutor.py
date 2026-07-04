@@ -37,6 +37,7 @@ from app.services.ai_service import (
 )
 from app.ai.recommendation_engine import get_recommendations
 from app.ai.weakness_analyzer import get_student_history, get_weak_topics
+from app.ai.sia_intelligence import resolve_active_subject
 from app.ai.board_parser import extract_board_content
 from app.ai.model_backend import run_inference
 from app.ai.prompt_builder import build_prompt, detect_language_from_text
@@ -75,6 +76,16 @@ async def _get_student_level(user_id: str, db: AsyncSession) -> str:
     return profile.education_level if profile and profile.education_level else "UNKNOWN"
 
 
+async def _get_student_profile(user_id: str, db: AsyncSession) -> tuple[str, list]:
+    result = await db.execute(select(StudentProfile).where(StudentProfile.user_id == user_id))
+    profile = result.scalar_one_or_none()
+    if not profile:
+        return "UNKNOWN", []
+    level = profile.education_level or "UNKNOWN"
+    subjects = list(profile.selected_subjects or [])
+    return level, subjects
+
+
 def _validate_language(language: str):
     if language.lower() not in SUPPORTED_LANGUAGES:
         raise HTTPException(
@@ -103,11 +114,20 @@ async def ask_sia(
     """Ask Sia any educational question. Returns text + board content."""
     _validate_language(payload.language)
     student_name = await _get_student_name(current_user["sub"], db)
-    level = payload.education_level or await _get_student_level(current_user["sub"], db)
+    profile_level, profile_subjects = await _get_student_profile(current_user["sub"], db)
+    level = payload.education_level or profile_level
+    default_subject = (
+        profile_subjects[0] if profile_subjects else payload.subject
+    )
+    active_subject = resolve_active_subject(
+        payload.question,
+        payload.subject or default_subject,
+        profile_subjects,
+    )
 
     answer = await get_ai_response(
         question=payload.question,
-        subject=payload.subject,
+        subject=active_subject,
         education_level=level,
         language=payload.language,
         student_id=current_user["sub"],
