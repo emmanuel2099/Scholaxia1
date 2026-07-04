@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:speech_to_text/speech_to_text.dart';
 import '../../../api/api_service.dart';
 import '../../../services/chat_persistence_service.dart';
+import '../../../services/sia_voice_input_service.dart';
 import '../../../services/sia_voice_service.dart';
 import '../../../theme/app_theme.dart';
 import '../teacher_shared.dart';
@@ -23,13 +23,18 @@ class _TeacherAiScreenState extends State<TeacherAiScreen> {
   bool _loading = false;
   bool _voiceOn = true;
   bool _listening = false;
+  bool _isSpeaking = false;
+  String _voiceCaption = '';
   int _unread = 0;
   String? _teacherName;
-  final _speech = SpeechToText();
+  final _voiceInput = SiaVoiceInputService.instance;
 
   @override
   void initState() {
     super.initState();
+    SiaVoiceService.instance.onSpeakingChanged = (v) {
+      if (mounted) setState(() => _isSpeaking = v);
+    };
     SiaVoiceService.instance.init();
     _bootstrap();
   }
@@ -37,26 +42,46 @@ class _TeacherAiScreenState extends State<TeacherAiScreen> {
   Future<void> _speakAi(String text) async {
     if (!_voiceOn || text.trim().isEmpty) return;
     await SiaVoiceService.instance.speak(text);
-    if (mounted) setState(() {});
   }
 
   Future<void> _toggleListen() async {
     if (_loading) return;
+
     if (_listening) {
-      await _speech.stop();
-      if (mounted) setState(() => _listening = false);
+      final text = await _voiceInput.stopAndCapture();
+      setState(() {
+        _listening = false;
+        _voiceCaption = '';
+      });
+      if (text.isNotEmpty) await _sendText(text);
       return;
     }
-    final ok = await _speech.initialize();
-    if (!ok) return;
-    if (mounted) setState(() => _listening = true);
-    await _speech.listen(
-      onResult: (r) {
-        _inputCtrl.text = r.recognizedWords;
-        if (r.finalResult && mounted) {
-          setState(() => _listening = false);
-          _send();
-        }
+
+    final ready = await _voiceInput.ensureReady(context);
+    if (!ready || !mounted) return;
+
+    setState(() {
+      _listening = true;
+      _voiceCaption = 'Speak now — tap Voice again when done';
+      _inputCtrl.clear();
+    });
+
+    await _voiceInput.startListening(
+      onPartial: (words) {
+        if (!mounted) return;
+        setState(() {
+          _voiceCaption = words.isEmpty ? 'Speak now — tap Voice again when done' : words;
+          _inputCtrl.text = words;
+        });
+      },
+      onFinal: (words) async {
+        if (!mounted || !_listening) return;
+        setState(() {
+          _listening = false;
+          _voiceCaption = '';
+        });
+        await _voiceInput.stop();
+        if (words.isNotEmpty) await _sendText(words);
       },
     );
   }
@@ -120,6 +145,7 @@ class _TeacherAiScreenState extends State<TeacherAiScreen> {
   @override
   void dispose() {
     SiaVoiceService.instance.stop();
+    SiaVoiceInputService.instance.stop();
     _inputCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();
@@ -141,12 +167,15 @@ class _TeacherAiScreenState extends State<TeacherAiScreen> {
     } catch (_) {}
   }
 
-  Future<void> _send() async {
-    final text = _inputCtrl.text.trim();
+  Future<void> _send() async => _sendText(_inputCtrl.text.trim());
+
+  Future<void> _sendText(String text) async {
     if (text.isEmpty || _loading) return;
     setState(() {
       _messages.add(_AiMsg(role: 'user', text: text));
       _loading = true;
+      _listening = false;
+      _voiceCaption = '';
     });
     _inputCtrl.clear();
 
@@ -300,6 +329,42 @@ class _TeacherAiScreenState extends State<TeacherAiScreen> {
                 child: CircularProgressIndicator(
                     color: accent, strokeWidth: 2),
               ),
+            if (_isSpeaking)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.volume_up_rounded, color: accent, size: 16),
+                    const SizedBox(width: 6),
+                    Text('Teacher AI is speaking...',
+                        style: TextStyle(color: accent, fontSize: 12)),
+                  ],
+                ),
+              ),
+            if (_listening)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  color: accent.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: accent.withOpacity(0.45)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.mic_rounded, color: accent, size: 22),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _voiceCaption,
+                        style: TextStyle(color: context.textColor, fontSize: 14, height: 1.35),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             Container(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
               decoration: BoxDecoration(
@@ -311,21 +376,33 @@ class _TeacherAiScreenState extends State<TeacherAiScreen> {
                   GestureDetector(
                     onTap: _toggleListen,
                     child: Container(
-                      width: 40,
                       height: 40,
+                      padding: const EdgeInsets.symmetric(horizontal: 14),
                       decoration: BoxDecoration(
-                        color: _listening
-                            ? accent.withOpacity(0.2)
-                            : context.surfColor,
-                        shape: BoxShape.circle,
+                        color: _listening ? accent.withOpacity(0.18) : accent,
+                        borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: _listening ? accent : context.borderColor,
+                          color: _listening ? accent : Colors.transparent,
                         ),
                       ),
-                      child: Icon(
-                        _listening ? Icons.mic_rounded : Icons.mic_none_rounded,
-                        color: _listening ? accent : context.greyColor,
-                        size: 20,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _listening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                            color: _listening ? accent : (context.isDark ? Colors.black : Colors.white),
+                            size: 20,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            _listening ? 'Send' : 'Voice',
+                            style: TextStyle(
+                              color: _listening ? accent : (context.isDark ? Colors.black : Colors.white),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),

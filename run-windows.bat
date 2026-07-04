@@ -7,7 +7,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
-set PATH=C:\Users\EMMA\flutter\bin;%PATH%
+set PATH=D:\tmp;C:\Users\EMMA\flutter\bin;%PATH%
 set TEMP=D:\tmp\flutter-temp
 set TMP=D:\tmp\flutter-temp
 set PUB_CACHE=D:\pub-cache

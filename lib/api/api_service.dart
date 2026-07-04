@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_endpoints.dart';
+import '../models/sia_board_item.dart';
 
 // ── Errors ────────────────────────────────────────────────────────────────────
 
@@ -271,7 +272,7 @@ class ApiService {
     return ['General', 'Math', 'English', 'Science'];
   }
 
-  Future<String> kindSiaChat({
+  Future<KindSiaResponse> kindSiaChat({
     required String question,
     String subject = 'General',
     List<Map<String, dynamic>>? conversationHistory,
@@ -286,7 +287,11 @@ class ApiService {
           'conversation_history': conversationHistory,
       }),
     );
-    return _parseMap(res)['sia_kind']?.toString() ?? 'No reply.';
+    final data = _parseMap(res);
+    return KindSiaResponse(
+      text: data['sia_kind']?.toString() ?? 'No reply.',
+      board: SiaBoardItem.listFromJson(data['board']),
+    );
   }
 
   Future<String> kindSiaLearn({
@@ -1403,23 +1408,30 @@ class StudentProfile {
 
 class SiaResponse {
   final String sia;
-  final String? board;
+  final List<SiaBoardItem> board;
   final String? student;
   final String? level;
 
   const SiaResponse({
     required this.sia,
-    this.board,
+    this.board = const [],
     this.student,
     this.level,
   });
 
   factory SiaResponse.fromJson(Map<String, dynamic> json) => SiaResponse(
         sia: json['sia'] as String? ?? '',
-        board: json['board']?.toString(),
+        board: SiaBoardItem.listFromJson(json['board']),
         student: json['student'] as String?,
         level: json['level'] as String?,
       );
+}
+
+class KindSiaResponse {
+  final String text;
+  final List<SiaBoardItem> board;
+
+  const KindSiaResponse({required this.text, this.board = const []});
 }
 
 class CbtSession {

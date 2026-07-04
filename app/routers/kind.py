@@ -13,6 +13,7 @@ from app.core.database import get_db
 from app.core.deps import require_kind, get_current_user
 from app.models.user import User, KindProfile
 from app.ai.kind_prompt_builder import KIND_SUBJECTS, AGE_GROUPS
+from app.ai.board_parser import extract_board_content
 from app.services.kind_ai_service import kind_chat, kind_lesson, kind_quiz, kind_homework_help
 
 router = APIRouter(tags=["Kind — Young Learners"])
@@ -171,6 +172,7 @@ async def sia_kind_chat(
         )
     return {
         "sia_kind": answer,
+        "board": extract_board_content(answer),
         "subject": payload.subject,
         "age_group": profile.age_group,
         "engine": "sia-kind-multi-model",
