@@ -565,7 +565,29 @@ COMMUNITY_ALLOWED_MIME = {
     "audio/mp4": ("audio", "videos"),
     "audio/ogg": ("audio", "videos"),
     "audio/wav": ("audio", "videos"),
+    "audio/x-m4a": ("audio", "videos"),
+    "audio/aac": ("audio", "videos"),
 }
+
+_AUDIO_EXTENSIONS = (".m4a", ".aac", ".mp3", ".webm", ".ogg", ".wav")
+
+
+def _resolve_community_upload(
+    content_type: str | None, filename: str | None
+) -> tuple[str, str]:
+    ct = (content_type or "").split(";")[0].strip().lower()
+    if ct in COMMUNITY_ALLOWED_MIME:
+        return COMMUNITY_ALLOWED_MIME[ct]
+    name = (filename or "").lower()
+    if name.endswith(_AUDIO_EXTENSIONS):
+        return ("audio", "videos")
+    raise HTTPException(
+        status_code=400,
+        detail=(
+            f"Unsupported file type '{content_type}'. "
+            "Allowed: images, PDF, Word docs, and voice notes (.m4a, .webm, .mp3)."
+        ),
+    )
 
 
 @router.post("/upload")
@@ -579,17 +601,11 @@ async def upload_community_file(
     Returns file_url and file_type to include in the post body.
     Accepted: JPEG, PNG, WebP, PDF, DOC, DOCX, audio voice notes (max 20MB).
     """
-    if file.content_type not in COMMUNITY_ALLOWED_MIME:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported file type '{file.content_type}'. Allowed: image/jpeg, image/png, image/webp, application/pdf, .doc, .docx",
-        )
+    file_type, folder = _resolve_community_upload(file.content_type, file.filename)
 
     content = await file.read()
     if len(content) > 20 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large. Maximum size is 20MB.")
-
-    file_type, folder = COMMUNITY_ALLOWED_MIME[file.content_type]
 
     try:
         result = upload_file(content, folder)

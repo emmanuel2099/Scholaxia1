@@ -285,6 +285,7 @@ def _livekit_configured() -> bool:
 def _generate_livekit_token(
     room_name: str,
     identity: str,
+    
     display_name: str,
     can_publish: bool,
 ) -> str:
@@ -615,6 +616,7 @@ class CreateClassRequest(BaseModel):
     go_live_now: bool = False
     visibility: Optional[str] = "public"
     invited_student_ids: Optional[list[str]] = None
+    invited_student_emails: Optional[list[str]] = None
     school_group_id: Optional[str] = None
 
 
@@ -645,7 +647,36 @@ async def create_class(
     vis = (payload.visibility or LiveClassVisibility.public.value).lower()
     if vis not in {v.value for v in LiveClassVisibility}:
         vis = LiveClassVisibility.public.value
-    if vis == LiveClassVisibility.private.value and not (payload.invited_student_ids or []):
+
+    invited_ids: list[str] = [str(x).strip() for x in (payload.invited_student_ids or []) if str(x).strip()]
+    unresolved_emails: list[str] = []
+    if vis == LiveClassVisibility.private.value:
+        # Resolve any emails supplied by the teacher into student ids.
+        seen = set(invited_ids)
+        for raw in (payload.invited_student_emails or []):
+            email = str(raw).strip().lower()
+            if not email:
+                continue
+            res = await db.execute(
+                select(User).where(
+                    User.email == email,
+                    User.role == UserRole.student,
+                    User.is_active == True,  # noqa: E712
+                )
+            )
+            user = res.scalar_one_or_none()
+            if user and str(user.id) not in seen:
+                invited_ids.append(str(user.id))
+                seen.add(str(user.id))
+            elif not user:
+                unresolved_emails.append(email)
+        if unresolved_emails:
+            raise HTTPException(
+                status_code=400,
+                detail="No student found for: " + ", ".join(unresolved_emails),
+            )
+
+    if vis == LiveClassVisibility.private.value and not invited_ids:
         raise HTTPException(status_code=400, detail="Select at least one student for a private class.")
     if vis == LiveClassVisibility.school_group.value and not payload.school_group_id:
         raise HTTPException(status_code=400, detail="Select a school group for this class.")
@@ -677,7 +708,7 @@ async def create_class(
         room_id=room_id,
         join_code=join_code,
         visibility=vis,
-        invited_student_ids=json.dumps(payload.invited_student_ids or []) if vis == LiveClassVisibility.private.value else None,
+        invited_student_ids=json.dumps(invited_ids) if vis == LiveClassVisibility.private.value else None,
         school_group_id=school_group_uuid,
         is_live=is_live,
     )

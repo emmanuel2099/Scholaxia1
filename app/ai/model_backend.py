@@ -25,6 +25,19 @@ def _any_api_key_configured() -> bool:
     )
 
 
+def _resolve_system(system_prompt) -> str:
+    """Resolve the system prompt.
+
+    - None  → use Sia's default master system prompt (normal behaviour).
+    - ""    → RAW mode: send no system instructions at all, so the model
+              answers purely on its own.
+    - other → use the provided text.
+    """
+    if system_prompt is None:
+        return SIA_SYSTEM_PROMPT
+    return system_prompt
+
+
 def _gemini_extract_text(data: dict) -> str:
     candidates = data.get("candidates") or []
     if not candidates:
@@ -50,8 +63,9 @@ async def _infer_gemini(prompt: str, conversation_history: list = None,
 
     contents = []
 
-    # Gemini uses systemInstruction for the system prompt
-    system_instruction = {"parts": [{"text": system_prompt or SIA_SYSTEM_PROMPT}]}
+    # Gemini uses systemInstruction for the system prompt.
+    # Empty string ("") → RAW mode: omit systemInstruction entirely.
+    sys = _resolve_system(system_prompt)
 
     if conversation_history:
         for msg in conversation_history[-10:]:
@@ -78,7 +92,11 @@ async def _infer_gemini(prompt: str, conversation_history: list = None,
             },
             json={
                 "contents": contents,
-                "systemInstruction": system_instruction,
+                **(
+                    {"systemInstruction": {"parts": [{"text": sys}]}}
+                    if sys
+                    else {}
+                ),
                 "generationConfig": {
                     "maxOutputTokens": max_tokens or settings.AI_MAX_TOKENS,
                     "temperature": temperature if temperature is not None else settings.AI_TEMPERATURE,
@@ -96,7 +114,10 @@ async def _infer_openai(prompt: str, conversation_history: list = None,
                         image_base64: str = None, system_prompt: str = None,
                         max_tokens: int = None, temperature: float = None) -> str:
     """OpenAI GPT-4o — highest quality, paid."""
-    messages = [{"role": "system", "content": system_prompt or SIA_SYSTEM_PROMPT}]
+    sys = _resolve_system(system_prompt)
+    messages = []
+    if sys:
+        messages.append({"role": "system", "content": sys})
 
     if conversation_history:
         for msg in conversation_history[-10:]:
@@ -140,7 +161,10 @@ async def _infer_deepseek(prompt: str, conversation_history: list = None,
                           system_prompt: str = None, max_tokens: int = None,
                           temperature: float = None) -> str:
     """DeepSeek — very smart, cheap."""
-    messages = [{"role": "system", "content": system_prompt or SIA_SYSTEM_PROMPT}]
+    sys = _resolve_system(system_prompt)
+    messages = []
+    if sys:
+        messages.append({"role": "system", "content": sys})
 
     if conversation_history:
         for msg in conversation_history[-10:]:
@@ -175,7 +199,10 @@ async def _infer_groq(prompt: str, conversation_history: list = None,
                       image_base64: str = None, system_prompt: str = None,
                       max_tokens: int = None, temperature: float = None) -> str:
     """Groq — fast free tier, 30 req/min limit."""
-    messages = [{"role": "system", "content": system_prompt or SIA_SYSTEM_PROMPT}]
+    sys = _resolve_system(system_prompt)
+    messages = []
+    if sys:
+        messages.append({"role": "system", "content": sys})
 
     if conversation_history:
         for msg in conversation_history[-10:]:
