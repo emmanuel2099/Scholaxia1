@@ -3,7 +3,9 @@ import '../../../api/api_service.dart';
 import '../../../services/community_badge.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/student_ui.dart';
+import '../../../widgets/app_header_actions.dart';
 import '../../../widgets/voice_note_player.dart';
+import '../../../widgets/voice_note_recorder.dart';
 import 'new_post_screen.dart';
 import 'join_channel_screen.dart';
 import 'post_comments_sheet.dart';
@@ -19,6 +21,8 @@ class _CommunityScreenState extends State<CommunityScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabCtrl;
   final _api = ApiService();
+  final _messageCtrl = TextEditingController();
+  final _feedScroll = ScrollController();
   List<dynamic> _channels = [];
   List<dynamic> _posts = [];
   List<dynamic> _pinnedPosts = [];
@@ -26,11 +30,16 @@ class _CommunityScreenState extends State<CommunityScreen>
   bool _loadingChannels = true;
   bool _loadingPosts = false;
   bool _loadingAnnouncements = false;
+  bool _sendingMessage = false;
+  bool _recordingVoice = false;
+  List<int>? _voiceBytes;
+  String? _voiceFilename;
   int _tabIndex = 0;
   String _generalChannelId = '';
 
   String _generalChannelName = '';
   final Map<String, int> _commentCounts = {};
+  String? _myUserId;
 
   @override
   void initState() {
@@ -45,6 +54,9 @@ class _CommunityScreenState extends State<CommunityScreen>
         }
       }
     });
+    _api.getUserId().then((id) {
+      if (mounted) setState(() => _myUserId = id);
+    });
     _loadChannels();
     refreshCommunityBadge(_api);
   }
@@ -52,7 +64,38 @@ class _CommunityScreenState extends State<CommunityScreen>
   @override
   void dispose() {
     _tabCtrl.dispose();
+    _messageCtrl.dispose();
+    _feedScroll.dispose();
     super.dispose();
+  }
+
+  void _scrollFeedToBottom({bool animated = true}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_feedScroll.hasClients) return;
+      final target = _feedScroll.position.maxScrollExtent;
+      if (animated) {
+        _feedScroll.animateTo(
+          target,
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOut,
+        );
+      } else {
+        _feedScroll.jumpTo(target);
+      }
+    });
+  }
+
+  List<Map<String, dynamic>> _chronologicalPosts() {
+    final list = _posts
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+    list.sort((a, b) {
+      final at = a['created_at']?.toString() ?? '';
+      final bt = b['created_at']?.toString() ?? '';
+      return at.compareTo(bt);
+    });
+    return list;
   }
 
   Future<void> _loadChannels() async {
@@ -90,7 +133,13 @@ class _CommunityScreenState extends State<CommunityScreen>
         if (p is! Map) return false;
         return !isCommentPost(Map<String, dynamic>.from(p));
       }).toList();
-      if (mounted) setState(() { _posts = filtered; _loadingPosts = false; });
+      if (mounted) {
+        setState(() {
+          _posts = filtered.reversed.toList();
+          _loadingPosts = false;
+        });
+        _scrollFeedToBottom(animated: false);
+      }
       await _loadCommentCounts();
     } catch (_) {
       if (mounted) {
@@ -102,19 +151,106 @@ class _CommunityScreenState extends State<CommunityScreen>
     }
   }
 
-  void _prependPost(Map<String, dynamic> post) {
+  void _appendPost(Map<String, dynamic> post) {
     final id = post['id']?.toString() ?? '';
     setState(() {
-      _posts = [
-        post,
-        ..._posts.where((p) => (p as Map<String, dynamic>)['id']?.toString() != id),
-      ];
+      final kept = _posts
+          .where((p) => (p as Map<String, dynamic>)['id']?.toString() != id)
+          .toList();
+      _posts = [...kept, post];
+      _posts.sort((a, b) {
+        final at = (a as Map<String, dynamic>)['created_at']?.toString() ?? '';
+        final bt = (b as Map<String, dynamic>)['created_at']?.toString() ?? '';
+        return at.compareTo(bt);
+      });
     });
+    _scrollFeedToBottom();
+  }
+
+  Future<void> _sendQuickMessage() async {
+    final text = _messageCtrl.text.trim();
+    if ((text.isEmpty && _voiceBytes == null) ||
+        _sendingMessage ||
+        _generalChannelId.isEmpty) {
+      return;
+    }
+
+    setState(() => _sendingMessage = true);
+    try {
+      String? mediaUrl;
+      String? mediaType;
+      if (_voiceBytes != null && _voiceFilename != null) {
+        final upload =
+            await _api.communityUpload(_voiceBytes!, _voiceFilename!);
+        mediaUrl = upload['file_url'] as String?;
+        mediaType = 'audio';
+      }
+
+      final post = await _api.createPost(
+        channelId: _generalChannelId,
+        content: text.isEmpty ? 'Voice note' : text,
+        mediaUrl: mediaUrl,
+        mediaType: mediaType,
+      );
+      if (!mounted) return;
+      _messageCtrl.clear();
+      setState(() {
+        _voiceBytes = null;
+        _voiceFilename = null;
+      });
+      _appendPost(post);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      final msg = e.message.toLowerCase();
+      if (msg.contains('join') || msg.contains('member')) {
+        final joined = await Navigator.push(context, MaterialPageRoute(
+          builder: (_) => JoinChannelScreen(
+            channelId: _generalChannelId,
+            channelName:
+                _generalChannelName.isNotEmpty ? _generalChannelName : 'General',
+          ),
+        ));
+        if (joined == true && mounted) {
+          try {
+            String? mediaUrl;
+            String? mediaType;
+            if (_voiceBytes != null && _voiceFilename != null) {
+              final upload =
+                  await _api.communityUpload(_voiceBytes!, _voiceFilename!);
+              mediaUrl = upload['file_url'] as String?;
+              mediaType = 'audio';
+            }
+            final post = await _api.createPost(
+              channelId: _generalChannelId,
+              content: text.isEmpty ? 'Voice note' : text,
+              mediaUrl: mediaUrl,
+              mediaType: mediaType,
+            );
+            _messageCtrl.clear();
+            setState(() {
+              _voiceBytes = null;
+              _voiceFilename = null;
+            });
+            _appendPost(post);
+          } on ApiException catch (e2) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(e2.message), backgroundColor: Colors.red),
+            );
+          }
+        }
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _sendingMessage = false);
+    }
   }
 
   Future<void> _handleNewPostResult(dynamic result) async {
     if (result is Map<String, dynamic>) {
-      _prependPost(result);
+      _appendPost(result);
       return;
     }
     if (result == 'join_required') {
@@ -319,15 +455,8 @@ class _CommunityScreenState extends State<CommunityScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: context.bgColor,
-      floatingActionButton: _tabIndex == 0
-          ? FloatingActionButton(
-              onPressed: _generalChannelId.isEmpty ? null : _openNewPost,
-              backgroundColor: context.accentColor,
-              foregroundColor: context.isDark ? AppColors.background : Colors.white,
-              child: const Icon(Icons.send_rounded),
-            )
-          : null,
       body: SafeArea(
+        bottom: false,
         child: Column(children: [
           _buildHeader(context),
           _buildTabBar(context),
@@ -349,15 +478,18 @@ class _CommunityScreenState extends State<CommunityScreen>
   Widget _buildHeader(BuildContext context) {
     return Container(
       color: context.headerColor,
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 10),
+      padding: const EdgeInsets.fromLTRB(20, 14, 16, 10),
       child: Row(children: [
         const StudentBackButton(),
         Container(width: 32, height: 32,
           decoration: BoxDecoration(color: context.accentColor.withOpacity(0.12), borderRadius: BorderRadius.circular(8)),
           child: Icon(Icons.school_outlined, color: context.accentColor, size: 18)),
         const SizedBox(width: 8),
-        Text('Scholaxia',
-            style: TextStyle(color: context.textColor, fontSize: 18, fontWeight: FontWeight.bold)),
+        Expanded(
+          child: Text('Scholaxia',
+              style: TextStyle(color: context.textColor, fontSize: 18, fontWeight: FontWeight.bold)),
+        ),
+        const AppHeaderActions(),
       ]),
     );
   }
@@ -385,42 +517,193 @@ class _CommunityScreenState extends State<CommunityScreen>
     if (_loadingChannels) {
       return Center(child: CircularProgressIndicator(color: context.accentColor));
     }
-    return RefreshIndicator(
-      color: context.accentColor,
-      onRefresh: () async { await _loadChannels(); },
-      child: ListView(
-        padding: const EdgeInsets.all(16),
+    return Column(
+      children: [
+        Expanded(
+          child: RefreshIndicator(
+            color: context.accentColor,
+            onRefresh: () async {
+              await _loadChannels();
+            },
+            child: ListView(
+              controller: _feedScroll,
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              children: [
+                if (_pinnedPosts.isNotEmpty) ...[
+                  Text('Pinned Posts',
+                      style: TextStyle(
+                          color: context.textColor,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  ..._pinnedPosts.map((p) {
+                    final post = p as Map<String, dynamic>;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _buildPostFromApi(context, post, isPinned: true),
+                    );
+                  }),
+                  const SizedBox(height: 16),
+                ],
+                Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                  Text('Messages',
+                      style: TextStyle(
+                          color: context.textColor,
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold)),
+                  TextButton(
+                      onPressed: _loadPosts,
+                      child: Text('Refresh',
+                          style: TextStyle(color: context.accentColor, fontSize: 12))),
+                ]),
+                const SizedBox(height: 8),
+                if (_loadingPosts)
+                  Center(
+                      child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: CircularProgressIndicator(color: context.accentColor)))
+                else if (_posts.isEmpty)
+                  _buildEmptyFeed(context)
+                else
+                  ..._chronologicalPosts().map((post) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _buildPostFromApi(context, post),
+                    );
+                  }),
+              ],
+            ),
+          ),
+        ),
+        _buildMessageComposer(context),
+      ],
+    );
+  }
+
+  Widget _buildMessageComposer(BuildContext context) {
+    final hasText = _messageCtrl.text.trim().isNotEmpty;
+    final hasVoice = _voiceBytes != null;
+    final canSend = _generalChannelId.isNotEmpty &&
+        !_sendingMessage &&
+        (hasText || hasVoice);
+    final sendFg = context.isDark ? AppColors.background : Colors.white;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 88),
+      decoration: BoxDecoration(
+        color: context.headerColor,
+        border: Border(top: BorderSide(color: context.borderColor)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          if (_pinnedPosts.isNotEmpty) ...[
-            Text('Pinned Posts', style: TextStyle(color: context.textColor, fontSize: 15, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            ..._pinnedPosts.map((p) {
-              final post = p as Map<String, dynamic>;
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _buildPostFromApi(context, post, isPinned: true),
-              );
-            }),
-            const SizedBox(height: 16),
-          ],
-          Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text('Recent Activity', style: TextStyle(color: context.textColor, fontSize: 15, fontWeight: FontWeight.bold)),
-            TextButton(onPressed: _loadPosts, child: Text('Refresh', style: TextStyle(color: context.accentColor, fontSize: 12))),
-          ]),
-          const SizedBox(height: 8),
-          if (_loadingPosts)
-            Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator(color: context.accentColor)))
-          else if (_posts.isEmpty)
-            _buildEmptyFeed(context)
-          else
-            ..._posts.map((p) {
-              final post = p as Map<String, dynamic>;
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: _buildPostFromApi(context, post),
-              );
-            }),
-          const SizedBox(height: 80),
+          if (_recordingVoice)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text('Recording… tap stop when done',
+                  style: TextStyle(color: Colors.red.shade400, fontSize: 12)),
+            ),
+          if (hasVoice && !_recordingVoice)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(children: [
+                Icon(Icons.mic_rounded, color: context.accentColor, size: 16),
+                const SizedBox(width: 6),
+                Text('Voice note ready',
+                    style: TextStyle(color: context.greyColor, fontSize: 12)),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () => setState(() {
+                    _voiceBytes = null;
+                    _voiceFilename = null;
+                  }),
+                  child: Icon(Icons.close, color: context.greyColor, size: 18),
+                ),
+              ]),
+            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              IconButton(
+                onPressed: _generalChannelId.isEmpty ? null : _openNewPost,
+                tooltip: 'Photo post',
+                icon: Icon(Icons.add_circle_outline_rounded,
+                    color: context.accentColor),
+              ),
+              Expanded(
+                child: TextField(
+                  controller: _messageCtrl,
+                  minLines: 1,
+                  maxLines: 4,
+                  textInputAction: TextInputAction.send,
+                  onChanged: (_) => setState(() {}),
+                  onSubmitted: (_) => _sendQuickMessage(),
+                  style: TextStyle(color: context.textColor, fontSize: 15),
+                  decoration: InputDecoration(
+                    hintText: _generalChannelId.isEmpty
+                        ? 'Loading community…'
+                        : 'Write a message…',
+                    hintStyle: TextStyle(color: context.greyColor, fontSize: 14),
+                    filled: true,
+                    fillColor: context.surfColor,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(22),
+                      borderSide: BorderSide(color: context.borderColor),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(22),
+                      borderSide: BorderSide(color: context.borderColor),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(22),
+                      borderSide:
+                          BorderSide(color: context.accentColor, width: 1.5),
+                    ),
+                    suffixIcon: InlineVoiceMicButton(
+                      hasRecording: hasVoice,
+                      onRecordingChanged: (v) =>
+                          setState(() => _recordingVoice = v),
+                      onRecorded: (bytes, name) => setState(() {
+                        _voiceBytes = bytes;
+                        _voiceFilename = name;
+                        _recordingVoice = false;
+                      }),
+                      onCleared: () => setState(() {
+                        _voiceBytes = null;
+                        _voiceFilename = null;
+                      }),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Material(
+                color: canSend
+                    ? context.accentColor
+                    : context.greyColor.withOpacity(0.35),
+                borderRadius: BorderRadius.circular(22),
+                child: InkWell(
+                  onTap: canSend ? _sendQuickMessage : null,
+                  borderRadius: BorderRadius.circular(22),
+                  child: SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: _sendingMessage
+                        ? Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: sendFg,
+                            ),
+                          )
+                        : Icon(Icons.send_rounded, color: sendFg, size: 20),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -434,9 +717,93 @@ class _CommunityScreenState extends State<CommunityScreen>
         const SizedBox(height: 12),
         Text('No posts yet', style: TextStyle(color: context.textColor, fontSize: 15, fontWeight: FontWeight.w600)),
         const SizedBox(height: 6),
-        Text('Be the first to post in this channel!', style: TextStyle(color: context.greyColor, fontSize: 13)),
+        Text('Type a message below to start the conversation!',
+            style: TextStyle(color: context.greyColor, fontSize: 13)),
       ])),
     );
+  }
+
+  bool _canEditPost(Map<String, dynamic> post) {
+    final authorId = post['author_id']?.toString() ?? '';
+    if (_myUserId == null || _myUserId!.isEmpty || authorId.isEmpty) return false;
+    return authorId.toLowerCase() == _myUserId!.toLowerCase();
+  }
+
+  Future<void> _editPost(Map<String, dynamic> post) async {
+    final postId = post['id']?.toString() ?? '';
+    if (postId.isEmpty) return;
+    final ctrl = TextEditingController(text: post['content']?.toString() ?? '');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Edit message'),
+        content: TextField(
+          controller: ctrl,
+          maxLines: 4,
+          decoration: const InputDecoration(hintText: 'Update your message'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final text = ctrl.text.trim();
+    if (text.isEmpty) return;
+    try {
+      await _api.updateCommunityPost(postId: postId, content: text);
+      if (!mounted) return;
+      setState(() {
+        for (final list in [_posts, _pinnedPosts, _announcementPosts]) {
+          for (var i = 0; i < list.length; i++) {
+            if (list[i] is Map && list[i]['id']?.toString() == postId) {
+              list[i] = {...Map<String, dynamic>.from(list[i] as Map), 'content': text};
+            }
+          }
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e is ApiException ? e.message : 'Could not edit')),
+        );
+      }
+    }
+  }
+
+  Future<void> _confirmDeletePost(String postId) async {
+    if (postId.isEmpty) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete message?'),
+        content: const Text('This removes the message for everyone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await _api.deleteCommunityPost(postId);
+      if (!mounted) return;
+      setState(() {
+        _posts.removeWhere((p) => p is Map && p['id']?.toString() == postId);
+        _pinnedPosts.removeWhere((p) => p is Map && p['id']?.toString() == postId);
+        _announcementPosts.removeWhere((p) => p is Map && p['id']?.toString() == postId);
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e is ApiException ? e.message : 'Could not delete')),
+        );
+      }
+    }
   }
 
   Widget _buildPostFromApi(BuildContext context, Map<String, dynamic> post, {bool isPinned = false}) {
@@ -479,6 +846,18 @@ class _CommunityScreenState extends State<CommunityScreen>
             ]),
             Text(_formatTime(createdAt), style: TextStyle(color: context.greyColor, fontSize: 11)),
           ])),
+          if (_canEditPost(post))
+            PopupMenuButton<String>(
+              icon: Icon(Icons.more_vert, color: context.greyColor, size: 20),
+              onSelected: (v) {
+                if (v == 'edit') _editPost(post);
+                if (v == 'delete') _confirmDeletePost(postId);
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: 'edit', child: Text('Edit')),
+                PopupMenuItem(value: 'delete', child: Text('Delete')),
+              ],
+            ),
         ]),
         if (content.isNotEmpty &&
             !content.startsWith('@post:')) ...[

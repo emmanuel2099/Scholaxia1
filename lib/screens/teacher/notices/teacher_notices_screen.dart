@@ -15,11 +15,11 @@ class TeacherNoticesScreen extends StatefulWidget {
 
 class _TeacherNoticesScreenState extends State<TeacherNoticesScreen>
     with SingleTickerProviderStateMixin {
-  final _titleController = TextEditingController();
   final _bodyController = TextEditingController();
   final _api = ApiService();
   late TabController _tabCtrl;
   bool _sending = false;
+  bool _recordingVoice = false;
   bool _loading = true;
   String? _teacherName;
   int _unread = 0;
@@ -28,6 +28,8 @@ class _TeacherNoticesScreenState extends State<TeacherNoticesScreen>
   String _announcementChannelName = 'Teacher Announcements';
   List<Map<String, dynamic>> _sent = [];
   List<Map<String, dynamic>> _studentPosts = [];
+  Map<String, List<Map<String, dynamic>>> _comments = {};
+  Map<String, dynamic>? _replyingTo;
   List<int>? _voiceBytes;
   String? _voiceFilename;
 
@@ -35,13 +37,15 @@ class _TeacherNoticesScreenState extends State<TeacherNoticesScreen>
   void initState() {
     super.initState();
     _tabCtrl = TabController(length: 2, vsync: this);
+    _tabCtrl.addListener(() {
+      if (!_tabCtrl.indexIsChanging) setState(() {});
+    });
     _load();
   }
 
   @override
   void dispose() {
     _tabCtrl.dispose();
-    _titleController.dispose();
     _bodyController.dispose();
     super.dispose();
   }
@@ -75,6 +79,7 @@ class _TeacherNoticesScreenState extends State<TeacherNoticesScreen>
         final raw = await _api.listPosts(channelId: _announcementChannelId);
         posts = raw.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
       }
+      final comments = <String, List<Map<String, dynamic>>>{};
       if (_generalChannelId.isNotEmpty) {
         try {
           await _api.joinChannel(channelId: _generalChannelId);
@@ -85,6 +90,16 @@ class _TeacherNoticesScreenState extends State<TeacherNoticesScreen>
             .map((e) => Map<String, dynamic>.from(e))
             .where((p) => !isCommentPost(p))
             .toList();
+        try {
+          final rawC =
+              await _api.listAllPostComments(channelId: _generalChannelId);
+          for (final c in rawC.whereType<Map>()) {
+            final m = Map<String, dynamic>.from(c);
+            final pid = _commentPostId(m['content']?.toString() ?? '');
+            if (pid == null) continue;
+            comments.putIfAbsent(pid, () => []).add(m);
+          }
+        } catch (_) {}
       }
       final profile = await _api.getTeacherMe();
       final unread = await _api.unreadNotificationCount();
@@ -94,6 +109,7 @@ class _TeacherNoticesScreenState extends State<TeacherNoticesScreen>
           _unread = unread;
           _sent = posts;
           _studentPosts = studentPosts;
+          _comments = comments;
           _loading = false;
         });
         teacherUnreadCount.value = unread;
@@ -104,13 +120,22 @@ class _TeacherNoticesScreenState extends State<TeacherNoticesScreen>
   }
 
   Future<void> _sendNotice() async {
-    final title = _titleController.text.trim();
-    final body = _bodyController.text.trim();
+    final text = _bodyController.text.trim();
     final hasVoice = _voiceBytes != null && _voiceFilename != null;
-    if ((title.isEmpty || body.isEmpty) && !hasVoice) {
+    String title;
+    String body;
+    if (text.contains('\n')) {
+      final i = text.indexOf('\n');
+      title = text.substring(0, i).trim();
+      body = text.substring(i + 1).trim();
+    } else {
+      title = text;
+      body = text;
+    }
+    if (text.isEmpty && !hasVoice) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text('Fill in title and body, or record a voice note.')),
+            content: Text('Write a message or record a voice note.')),
       );
       return;
     }
@@ -140,7 +165,6 @@ class _TeacherNoticesScreenState extends State<TeacherNoticesScreen>
         mediaUrl: mediaUrl,
         mediaType: mediaType,
       );
-      _titleController.clear();
       _bodyController.clear();
       if (mounted) {
         setState(() {
@@ -163,12 +187,94 @@ class _TeacherNoticesScreenState extends State<TeacherNoticesScreen>
     }
   }
 
+  static String? _commentPostId(String content) {
+    final m = RegExp(r'^@post:(\S+)').firstMatch(content);
+    return m?.group(1);
+  }
+
+  Future<void> _sendStudentChat() async {
+    final text = _bodyController.text.trim();
+    final hasVoice = _voiceBytes != null && _voiceFilename != null;
+    if (text.isEmpty && !hasVoice) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Write a message or record a voice note.')),
+      );
+      return;
+    }
+    if (_generalChannelId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Student chat channel not found.')),
+      );
+      return;
+    }
+    final replyTo = _replyingTo;
+    setState(() => _sending = true);
+    try {
+      // Voice notes aren't supported on threaded replies, so send a normal
+      // reply for text and fall back to a post for voice.
+      if (replyTo != null && !hasVoice) {
+        final postId = replyTo['id']?.toString() ?? '';
+        final comment = await _api.addPostComment(
+          postId: postId,
+          channelId: _generalChannelId,
+          content: text,
+        );
+        _bodyController.clear();
+        if (mounted) {
+          setState(() {
+            _comments.putIfAbsent(postId, () => []).add(
+                  Map<String, dynamic>.from(comment),
+                );
+            _replyingTo = null;
+          });
+        }
+        return;
+      }
+
+      String? mediaUrl;
+      String? mediaType;
+      if (hasVoice) {
+        final res = await _api.communityUpload(_voiceBytes!, _voiceFilename!);
+        mediaUrl = res['file_url'] as String?;
+        mediaType = 'audio';
+      }
+      final content = hasVoice && text.isEmpty ? 'Voice message' : text;
+      final post = await _api.createPost(
+        channelId: _generalChannelId,
+        content: content,
+        isAnonymous: false,
+        visibility: 'everyone',
+        mediaUrl: mediaUrl,
+        mediaType: mediaType,
+      );
+      _bodyController.clear();
+      if (mounted) {
+        setState(() {
+          _studentPosts = [Map<String, dynamic>.from(post), ..._studentPosts];
+          _voiceBytes = null;
+          _voiceFilename = null;
+          _replyingTo = null;
+        });
+      }
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final accent = context.accentColor;
     return Scaffold(
       backgroundColor: context.bgColor,
+      resizeToAvoidBottomInset: true,
       body: SafeArea(
+        bottom: false,
         child: _loading
             ? Center(child: CircularProgressIndicator(color: accent))
             : Column(
@@ -205,55 +311,59 @@ class _TeacherNoticesScreenState extends State<TeacherNoticesScreen>
                     child: TabBarView(
                       controller: _tabCtrl,
                       children: [
-                        _announcementsTab(accent),
+                        _announcementsList(accent),
                         _studentChatTab(accent),
                       ],
                     ),
                   ),
+                  _composeBar(accent, chat: _tabCtrl.index == 1),
                 ],
               ),
       ),
     );
   }
 
-  Widget _announcementsTab(Color accent) {
+  Widget _announcementsList(Color accent) {
     return RefreshIndicator(
       color: accent,
       onRefresh: _load,
-      child: SingleChildScrollView(
+      child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 12),
-            Text('Post to $_announcementChannelName',
-                style: TextStyle(color: context.greyColor, fontSize: 13)),
-            const SizedBox(height: 16),
-            _composeCard(),
-            const SizedBox(height: 24),
-            Text('Sent Announcements',
-                style: TextStyle(
-                    color: context.textColor,
-                    fontSize: 17,
-                    fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            if (_sent.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 24),
-                child: Center(
-                  child: Text('No announcements sent yet.',
-                      style: TextStyle(color: context.greyColor)),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+        children: [
+          Text('Sent Announcements',
+              style: TextStyle(
+                  color: context.textColor,
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          if (_sent.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 48),
+              child: Center(
+                child: Column(
+                  children: [
+                    Icon(Icons.campaign_outlined,
+                        color: context.greyColor, size: 44),
+                    const SizedBox(height: 12),
+                    Text('No announcements sent yet.',
+                        style: TextStyle(
+                            color: context.textColor,
+                            fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 6),
+                    Text('Type below — first line is the title.',
+                        style: TextStyle(
+                            color: context.greyColor, fontSize: 13)),
+                  ],
                 ),
-              )
-            else
-              ..._sent.map((n) => Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: _NoticeCard(post: n),
-                  )),
-            const SizedBox(height: 80),
-          ],
-        ),
+              ),
+            )
+          else
+            ..._sent.map((n) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _NoticeCard(post: n),
+                )),
+        ],
       ),
     );
   }
@@ -286,96 +396,243 @@ class _TeacherNoticesScreenState extends State<TeacherNoticesScreen>
             );
           }
           final p = _studentPosts[i];
+          final author = p['author_name']?.toString() ?? '';
+          final isOwn = _teacherName != null &&
+              author.isNotEmpty &&
+              author == _teacherName;
+          final pid = p['id']?.toString() ?? '';
           return Padding(
             padding: const EdgeInsets.only(bottom: 12),
-            child: _StudentPostCard(post: p),
+            child: _StudentPostCard(
+              post: p,
+              isOwn: isOwn,
+              replies: _comments[pid] ?? const [],
+              teacherName: _teacherName,
+              onReply: () => setState(() => _replyingTo = p),
+              onEdit: isOwn ? () => _editTeacherPost(p) : null,
+              onDelete: isOwn ? () => _deleteTeacherPost(pid) : null,
+            ),
           );
         },
       ),
     );
   }
 
-  Widget _composeCard() {
+  Future<void> _editTeacherPost(Map<String, dynamic> post) async {
+    final postId = post['id']?.toString() ?? '';
+    if (postId.isEmpty) return;
+    final ctrl = TextEditingController(text: post['content']?.toString() ?? '');
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Edit message'),
+        content: TextField(controller: ctrl, maxLines: 4),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final text = ctrl.text.trim();
+    if (text.isEmpty) return;
+    try {
+      await _api.updateCommunityPost(postId: postId, content: text);
+      if (!mounted) return;
+      setState(() {
+        for (var i = 0; i < _studentPosts.length; i++) {
+          if (_studentPosts[i]['id']?.toString() == postId) {
+            _studentPosts[i] = {..._studentPosts[i], 'content': text};
+          }
+        }
+        for (var i = 0; i < _sent.length; i++) {
+          if (_sent[i]['id']?.toString() == postId) {
+            _sent[i] = {..._sent[i], 'content': text};
+          }
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e is ApiException ? e.message : 'Edit failed')),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteTeacherPost(String postId) async {
+    if (postId.isEmpty) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete message?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await _api.deleteCommunityPost(postId);
+      if (!mounted) return;
+      setState(() {
+        _studentPosts.removeWhere((p) => p['id']?.toString() == postId);
+        _sent.removeWhere((p) => p['id']?.toString() == postId);
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e is ApiException ? e.message : 'Delete failed')),
+        );
+      }
+    }
+  }
+
+  Widget _composeBar(Color accent, {bool chat = false}) {
+    final hasVoice = _voiceBytes != null;
+    final hasText = _bodyController.text.trim().isNotEmpty;
+    final canSend = !_sending && (hasText || hasVoice);
+    final sendFg = context.isDark ? AppColors.background : Colors.white;
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final navPad = bottomInset > 0 ? 12.0 : 88.0;
+
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.fromLTRB(12, 8, 12, navPad),
       decoration: BoxDecoration(
-        color: context.cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: context.borderColor),
+        color: context.headerColor,
+        border: Border(top: BorderSide(color: context.borderColor)),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text('Compose Announcement',
-              style: TextStyle(
-                  color: context.textColor,
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold)),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _titleController,
-            style: TextStyle(color: context.textColor),
-            decoration: InputDecoration(
-              hintText: 'Notice title...',
-              hintStyle: TextStyle(color: context.greyColor),
-              filled: true,
-              fillColor: context.surfColor,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
+          if (chat && _replyingTo != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                children: [
+                  Icon(Icons.reply_rounded, color: accent, size: 16),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Replying to ${_replyingTo!['author_name'] ?? 'student'}',
+                      style: TextStyle(color: accent, fontSize: 12),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => setState(() => _replyingTo = null),
+                    child: Icon(Icons.close, color: context.greyColor, size: 18),
+                  ),
+                ],
               ),
             ),
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _bodyController,
-            maxLines: 4,
-            style: TextStyle(color: context.textColor),
-            decoration: InputDecoration(
-              hintText: 'Write your message here...',
-              hintStyle: TextStyle(color: context.greyColor),
-              filled: true,
-              fillColor: context.surfColor,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
-              ),
+          if (_recordingVoice)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text('Recording… tap stop when done',
+                  style: TextStyle(color: Colors.red.shade400, fontSize: 12)),
             ),
-          ),
-          const SizedBox(height: 12),
-          VoiceNoteRecorder(
-            onRecorded: (bytes, name) => setState(() {
-              _voiceBytes = bytes;
-              _voiceFilename = name;
-            }),
-            onCleared: () => setState(() {
-              _voiceBytes = null;
-              _voiceFilename = null;
-            }),
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            height: 48,
-            child: ElevatedButton.icon(
-              onPressed: _sending ? null : _sendNotice,
-              icon: _sending
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.black),
-                    )
-                  : const Icon(Icons.send_rounded, size: 18),
-              label: const Text('Send Announcement',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: context.accentColor,
-                foregroundColor: Colors.black,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
+          if (hasVoice && !_recordingVoice)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(children: [
+                Icon(Icons.mic_rounded, color: accent, size: 16),
+                const SizedBox(width: 6),
+                Text('Voice note ready',
+                    style: TextStyle(color: context.greyColor, fontSize: 12)),
+                const Spacer(),
+                GestureDetector(
+                  onTap: () => setState(() {
+                    _voiceBytes = null;
+                    _voiceFilename = null;
+                  }),
+                  child: Icon(Icons.close, color: context.greyColor, size: 18),
+                ),
+              ]),
             ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Icon(chat ? Icons.chat_bubble_outline : Icons.campaign_outlined,
+                  color: accent, size: 22),
+              const SizedBox(width: 4),
+              Expanded(
+                child: TextField(
+                  controller: _bodyController,
+                  minLines: 1,
+                  maxLines: 4,
+                  onChanged: (_) => setState(() {}),
+                  textInputAction: TextInputAction.newline,
+                  style: TextStyle(color: context.textColor, fontSize: 15),
+                  decoration: InputDecoration(
+                    hintText: chat
+                        ? 'Message students…'
+                        : 'Title on first line, then message…',
+                    hintStyle:
+                        TextStyle(color: context.greyColor, fontSize: 14),
+                    filled: true,
+                    fillColor: context.surfColor,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(22),
+                      borderSide: BorderSide(color: context.borderColor),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(22),
+                      borderSide: BorderSide(color: context.borderColor),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(22),
+                      borderSide: BorderSide(color: accent, width: 1.5),
+                    ),
+                    suffixIcon: InlineVoiceMicButton(
+                      hasRecording: hasVoice,
+                      onRecordingChanged: (v) =>
+                          setState(() => _recordingVoice = v),
+                      onRecorded: (bytes, name) => setState(() {
+                        _voiceBytes = bytes;
+                        _voiceFilename = name;
+                      }),
+                      onCleared: () => setState(() {
+                        _voiceBytes = null;
+                        _voiceFilename = null;
+                      }),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Material(
+                color: canSend ? accent : context.surfColor,
+                borderRadius: BorderRadius.circular(22),
+                child: InkWell(
+                  onTap: canSend
+                      ? (chat ? _sendStudentChat : _sendNotice)
+                      : null,
+                  borderRadius: BorderRadius.circular(22),
+                  child: SizedBox(
+                    width: 46,
+                    height: 46,
+                    child: _sending
+                        ? Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: sendFg,
+                            ),
+                          )
+                        : Icon(Icons.send_rounded,
+                            color: canSend ? sendFg : context.greyColor,
+                            size: 22),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -443,37 +700,55 @@ class _NoticeCard extends StatelessWidget {
 
 class _StudentPostCard extends StatelessWidget {
   final Map<String, dynamic> post;
-  const _StudentPostCard({required this.post});
+  final bool isOwn;
+  final List<Map<String, dynamic>> replies;
+  final String? teacherName;
+  final VoidCallback? onReply;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
+  const _StudentPostCard({
+    required this.post,
+    this.isOwn = false,
+    this.replies = const [],
+    this.teacherName,
+    this.onReply,
+    this.onEdit,
+    this.onDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final author = post['author_name']?.toString() ?? 'Student';
+    final author =
+        isOwn ? 'You' : (post['author_name']?.toString() ?? 'Student');
     final content = post['content']?.toString() ?? '';
     final time =
         TeacherUtils.relativeTime(post['created_at']?.toString() ?? '');
     final mediaUrl = post['media_url']?.toString() ?? '';
     final mediaType = post['media_type']?.toString() ?? '';
-    return Align(
-      alignment: Alignment.centerLeft,
+    final bubble = Align(
+      alignment: isOwn ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         padding: const EdgeInsets.all(14),
         constraints: BoxConstraints(
           maxWidth: MediaQuery.of(context).size.width * 0.85,
         ),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              context.accentColor.withOpacity(0.12),
-              context.accentColor.withOpacity(0.06),
-            ],
-          ),
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(18),
-            topRight: Radius.circular(18),
-            bottomLeft: Radius.circular(4),
-            bottomRight: Radius.circular(18),
+          color: isOwn ? context.accentColor.withOpacity(0.22) : null,
+          gradient: isOwn
+              ? null
+              : LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    context.accentColor.withOpacity(0.12),
+                    context.accentColor.withOpacity(0.06),
+                  ],
+                ),
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(18),
+            topRight: const Radius.circular(18),
+            bottomLeft: Radius.circular(isOwn ? 18 : 4),
+            bottomRight: Radius.circular(isOwn ? 4 : 18),
           ),
           border: Border.all(color: context.accentColor.withOpacity(0.2)),
         ),
@@ -507,6 +782,22 @@ class _StudentPostCard extends StatelessWidget {
                 ),
                 Text(time,
                     style: TextStyle(color: context.greyColor, fontSize: 10)),
+                if (isOwn && (onEdit != null || onDelete != null))
+                  PopupMenuButton<String>(
+                    icon: Icon(Icons.more_vert,
+                        size: 18, color: context.greyColor),
+                    onSelected: (v) {
+                      if (v == 'edit') onEdit?.call();
+                      if (v == 'delete') onDelete?.call();
+                    },
+                    itemBuilder: (_) => [
+                      if (onEdit != null)
+                        const PopupMenuItem(value: 'edit', child: Text('Edit')),
+                      if (onDelete != null)
+                        const PopupMenuItem(
+                            value: 'delete', child: Text('Delete')),
+                    ],
+                  ),
               ],
             ),
             if (content.isNotEmpty && !content.startsWith('@post:')) ...[
@@ -526,6 +817,95 @@ class _StudentPostCard extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+
+    final sortedReplies = [...replies]..sort((a, b) =>
+        (a['created_at']?.toString() ?? '')
+            .compareTo(b['created_at']?.toString() ?? ''));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        bubble,
+        for (final r in sortedReplies)
+          Padding(
+            padding: const EdgeInsets.only(left: 24, top: 6),
+            child: _ReplyBubble(reply: r, teacherName: teacherName),
+          ),
+        if (!isOwn)
+          Padding(
+            padding: const EdgeInsets.only(left: 24, top: 4),
+            child: TextButton.icon(
+              onPressed: onReply,
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              icon: Icon(Icons.reply_rounded,
+                  size: 16, color: context.accentColor),
+              label: Text('Reply',
+                  style: TextStyle(color: context.accentColor, fontSize: 12)),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _ReplyBubble extends StatelessWidget {
+  final Map<String, dynamic> reply;
+  final String? teacherName;
+  const _ReplyBubble({required this.reply, this.teacherName});
+
+  String _replyText(String raw) {
+    final m = RegExp(r'^@post:\S+\s*').firstMatch(raw);
+    return m != null ? raw.substring(m.end).trim() : raw.trim();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final rawAuthor = reply['author_name']?.toString() ?? 'Student';
+    final isTeacher = teacherName != null &&
+        rawAuthor.isNotEmpty &&
+        rawAuthor == teacherName;
+    final author = isTeacher ? 'You' : rawAuthor;
+    final text = _replyText(reply['content']?.toString() ?? '');
+    final time =
+        TeacherUtils.relativeTime(reply['created_at']?.toString() ?? '');
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: isTeacher
+            ? context.accentColor.withOpacity(0.16)
+            : context.surfColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: context.borderColor),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(author,
+                  style: TextStyle(
+                    color: isTeacher ? context.accentColor : context.textColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  )),
+              const SizedBox(width: 8),
+              Text(time,
+                  style: TextStyle(color: context.greyColor, fontSize: 10)),
+            ],
+          ),
+          if (text.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(text,
+                style: TextStyle(
+                    color: context.textColor, fontSize: 13, height: 1.4)),
+          ],
+        ],
       ),
     );
   }

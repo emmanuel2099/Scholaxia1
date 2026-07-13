@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_endpoints.dart';
@@ -272,6 +273,21 @@ class ApiService {
     return ['General', 'Math', 'English', 'Science'];
   }
 
+  /// Admin-authored questions for a kids game (merged with built-in banks).
+  Future<List<Map<String, dynamic>>> kindGameQuestions(String gameId) async {
+    final res = await http.get(
+      _uri(ApiEndpoints.kindGameQuestions(gameId)),
+      headers: await _authHeaders(),
+    );
+    final data = _parseMap(res);
+    final raw = data['questions'];
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((e) => Map<String, dynamic>.from(e))
+        .toList();
+  }
+
   Future<KindSiaResponse> kindSiaChat({
     required String question,
     String subject = 'General',
@@ -306,7 +322,8 @@ class ApiService {
     return _parseMap(res)['sia_kind']?.toString() ?? 'No lesson.';
   }
 
-  Future<String> kindSiaQuiz({
+  /// Interactive kids quiz. Prefers structured `questions`; falls back to text.
+  Future<KindQuizResult> kindSiaQuiz({
     required String topic,
     String subject = 'General',
     int numQuestions = 5,
@@ -320,7 +337,44 @@ class ApiService {
         'num_questions': numQuestions,
       }),
     );
-    return _parseMap(res)['sia_kind']?.toString() ?? 'No quiz.';
+    final data = _parseMap(res);
+    final rawQs = data['questions'];
+    final questions = <KindQuizQuestion>[];
+    if (rawQs is List) {
+      for (final q in rawQs) {
+        if (q is! Map) continue;
+        final m = Map<String, dynamic>.from(q);
+        final optsRaw = m['options'];
+        final options = <String, String>{};
+        if (optsRaw is Map) {
+          for (final e in optsRaw.entries) {
+            options[e.key.toString().toUpperCase()] = e.value.toString();
+          }
+        }
+        if (options.isEmpty) continue;
+        questions.add(
+          KindQuizQuestion(
+            id: m['id']?.toString() ?? '${questions.length + 1}',
+            question: m['question']?.toString() ?? '',
+            options: options,
+            correct: (m['correct']?.toString() ?? '').toUpperCase(),
+          ),
+        );
+      }
+    }
+    // Client-side parse if server only returned plain text.
+    if (questions.isEmpty) {
+      questions.addAll(
+        KindQuizQuestion.parseFromText(data['sia_kind']?.toString() ?? ''),
+      );
+    }
+    return KindQuizResult(
+      intro: data['intro']?.toString() ??
+          data['sia_kind']?.toString() ??
+          'Tap an answer for each question!',
+      rawText: data['sia_kind']?.toString() ?? '',
+      questions: questions,
+    );
   }
 
   // ── Students ───────────────────────────────────────────────────────────────
@@ -408,10 +462,93 @@ class ApiService {
     return StudentProfile.fromJson(_parseMap(res));
   }
 
+  /// Upload an image then save it as the current user's profile picture.
+  Future<String> updateProfilePicture(List<int> bytes, String filename) async {
+    final uploaded = await communityUpload(bytes, filename);
+    final url = uploaded['file_url']?.toString() ?? '';
+    if (url.isEmpty) {
+      throw ApiException('Upload succeeded but no image URL returned.');
+    }
+    final res = await http.patch(
+      _uri(ApiEndpoints.profilePicture),
+      headers: await _authHeaders(),
+      body: jsonEncode({'profile_picture': url}),
+    );
+    final data = _parseMap(res);
+    return data['profile_picture']?.toString() ?? url;
+  }
+
   Future<Map<String, dynamic>> walletMe() async {
     final res = await http.get(
       _uri(ApiEndpoints.walletMe),
       headers: await _authHeaders(),
+    );
+    return _parseMap(res);
+  }
+
+  // ── Library ────────────────────────────────────────────────────────────────
+
+  Future<List<dynamic>> libraryStudentBooks({
+    String? subject,
+    String? examType,
+  }) async {
+    final query = <String, String>{};
+    if (subject != null && subject.isNotEmpty) query['subject'] = subject;
+    if (examType != null && examType.isNotEmpty) query['exam_type'] = examType;
+    final res = await http.get(
+      _uri(ApiEndpoints.libraryStudent, query.isEmpty ? null : query),
+      headers: await _authHeaders(),
+    );
+    return _parseList(res);
+  }
+
+  Future<Map<String, dynamic>> libraryReadBook(String bookId) async {
+    final res = await http.get(
+      _uri(ApiEndpoints.libraryRead(bookId)),
+      headers: await _authHeaders(),
+    );
+    return _parseMap(res);
+  }
+
+  // ── Marketplace ────────────────────────────────────────────────────────────
+
+  Future<List<dynamic>> marketplaceCategories() async {
+    final res = await http.get(_uri(ApiEndpoints.marketplaceCategories));
+    final data = _parseMap(res);
+    final raw = data['categories'];
+    return raw is List ? raw : const [];
+  }
+
+  Future<List<dynamic>> marketplaceProducts({String? category}) async {
+    final query = <String, String>{};
+    if (category != null && category.isNotEmpty && category != 'all') {
+      query['category'] = category;
+    }
+    final res = await http.get(
+      _uri(ApiEndpoints.marketplaceProducts, query.isEmpty ? null : query),
+      headers: await _authHeaders(),
+    );
+    return _parseList(res);
+  }
+
+  Future<Map<String, dynamic>> bookMarketplaceProduct({
+    required String productId,
+    required String fullName,
+    required String whatsapp,
+    required String phone,
+    required String email,
+    String? note,
+  }) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.marketplaceBookProduct(productId)),
+      headers: await _authHeaders(),
+      body: jsonEncode({
+        'full_name': fullName,
+        'whatsapp': whatsapp,
+        'phone': phone,
+        'email': email,
+        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+      }),
     );
     return _parseMap(res);
   }
@@ -591,6 +728,87 @@ class ApiService {
     return _parseMap(res);
   }
 
+  /// Full offline pack for an exam (metadata + questions, no answers). Used to
+  /// cache internal exams locally so they can be taken offline.
+  Future<Map<String, dynamic>> cbtDownloadExamRaw(String examId) async {
+    final res = await http.get(
+      _uri(ApiEndpoints.cbtExamDownload(examId)),
+      headers: await _authHeaders(),
+    );
+    return _parseMap(res);
+  }
+
+  // ── Internal exams (downloadable, offline, routed to subject teachers) ──────
+
+  Future<List<dynamic>> internalExamsForMe() async {
+    final res = await http.get(
+      _uri('/api/v1/cbt/internal-exams/for-me'),
+      headers: await _authHeaders(),
+    );
+    final data = _parseMap(res);
+    final raw = data['exams'];
+    return raw is List ? raw : const [];
+  }
+
+  Future<CbtResult> submitInternalExam({
+    required String examId,
+    required Map<String, String> answers,
+    bool isAutoSubmit = false,
+  }) async {
+    final res = await http.post(
+      _uri('/api/v1/cbt/internal-exams/$examId/submit'),
+      headers: await _authHeaders(),
+      body: jsonEncode({
+        'answers': answers,
+        'is_auto_submit': isAutoSubmit,
+      }),
+    );
+    return CbtResult.fromJson(_parseMap(res));
+  }
+
+  Future<List<dynamic>> teacherInternalSubmissions() async {
+    final res = await http.get(
+      _uri('/api/v1/cbt/internal-exams/submissions'),
+      headers: await _authHeaders(),
+    );
+    final data = _parseMap(res);
+    final raw = data['submissions'];
+    return raw is List ? raw : const [];
+  }
+
+  Future<Map<String, dynamic>> getAppVersion() async {
+    final res = await http.get(
+      _uri('/api/v1/app/version'),
+      headers: _jsonHeaders(),
+    );
+    return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> initSkillEnrollment(
+    String skillId, {
+    required String fullName,
+    required String phone,
+    String? email,
+    String? location,
+    String? preferredStart,
+    String? notes,
+  }) async {
+    final res = await http.post(
+      _uri('/api/v1/payments/flutterwave/skills/$skillId/init'),
+      headers: await _authHeaders(),
+      body: jsonEncode({
+        'full_name': fullName,
+        'phone': phone,
+        if (email != null && email.isNotEmpty) 'email': email,
+        if (location != null && location.isNotEmpty) 'location': location,
+        if (preferredStart != null && preferredStart.isNotEmpty)
+          'preferred_start': preferredStart,
+        if (notes != null && notes.isNotEmpty) 'notes': notes,
+      }),
+    );
+    return _parseMap(res);
+  }
+
   Future<List<dynamic>> cbtMySessions() async {
     final res = await http.get(
       _uri(ApiEndpoints.cbtMySessions),
@@ -711,12 +929,35 @@ class ApiService {
       request.headers['Authorization'] = 'Bearer $token';
     }
     request.files.add(
-      http.MultipartFile.fromBytes('file', bytes, filename: filename),
+      http.MultipartFile.fromBytes(
+        'file',
+        bytes,
+        filename: filename,
+        contentType: _communityUploadMime(filename),
+      ),
     );
 
     final streamed = await request.send();
     final res = await http.Response.fromStream(streamed);
     return _parseMap(res);
+  }
+
+  MediaType? _communityUploadMime(String filename) {
+    final lower = filename.toLowerCase();
+    if (lower.endsWith('.m4a') || lower.endsWith('.aac')) {
+      return MediaType('audio', 'mp4');
+    }
+    if (lower.endsWith('.mp3')) return MediaType('audio', 'mpeg');
+    if (lower.endsWith('.webm')) return MediaType('audio', 'webm');
+    if (lower.endsWith('.ogg')) return MediaType('audio', 'ogg');
+    if (lower.endsWith('.wav')) return MediaType('audio', 'wav');
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
+      return MediaType('image', 'jpeg');
+    }
+    if (lower.endsWith('.png')) return MediaType('image', 'png');
+    if (lower.endsWith('.webp')) return MediaType('image', 'webp');
+    if (lower.endsWith('.pdf')) return MediaType('application', 'pdf');
+    return null;
   }
 
   Future<List<dynamic>> listPosts({
@@ -758,6 +999,69 @@ class ApiService {
       }),
     );
     return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> updateCommunityPost({
+    required String postId,
+    required String content,
+  }) async {
+    final res = await http.patch(
+      _uri(ApiEndpoints.communityPostUpdate(postId)),
+      headers: await _authHeaders(),
+      body: jsonEncode({'content': content}),
+    );
+    return _parseMap(res);
+  }
+
+  Future<void> deleteCommunityPost(String postId) async {
+    final res = await http.delete(
+      _uri(ApiEndpoints.communityPostDelete(postId)),
+      headers: await _authHeaders(),
+    );
+    if (res.statusCode >= 400) _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> startGroupVoiceCall(String groupId) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.studentGroupCallStart(groupId)),
+      headers: await _authHeaders(),
+    );
+    return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>?> getActiveGroupCall(String groupId) async {
+    final res = await http.get(
+      _uri(ApiEndpoints.studentGroupCallActive(groupId)),
+      headers: await _authHeaders(),
+    );
+    if (res.statusCode == 204 || res.body.isEmpty) return null;
+    final data = _parseMap(res);
+    if (data['active'] == false) return null;
+    return data;
+  }
+
+  Future<Map<String, dynamic>> joinGroupVoiceCall(String groupId) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.studentGroupCallJoin(groupId)),
+      headers: await _authHeaders(),
+    );
+    return _parseMap(res);
+  }
+
+  Future<void> endGroupVoiceCall(String groupId) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.studentGroupCallEnd(groupId)),
+      headers: await _authHeaders(),
+    );
+    if (res.statusCode >= 400) _parseMap(res);
+  }
+
+  Future<void> declineGroupVoiceCall(String groupId) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.studentGroupCallDecline(groupId)),
+      headers: await _authHeaders(),
+    );
+    if (res.statusCode >= 400) _parseMap(res);
   }
 
   Future<Map<String, dynamic>> toggleLike(String postId) async {
@@ -842,6 +1146,10 @@ class ApiService {
     String? endTime,
     int? durationMinutes,
     bool goLiveNow = false,
+    String visibility = 'public',
+    List<String> invitedStudentIds = const [],
+    List<String> invitedStudentEmails = const [],
+    String? schoolGroupId,
   }) async {
     final res = await http.post(
       _uri(ApiEndpoints.liveClassCreate),
@@ -854,6 +1162,11 @@ class ApiService {
         if (endTime != null) 'end_time': endTime,
         if (durationMinutes != null) 'duration_minutes': durationMinutes,
         'go_live_now': goLiveNow,
+        'visibility': visibility,
+        if (visibility == 'private') 'invited_student_ids': invitedStudentIds,
+        if (visibility == 'private') 'invited_student_emails': invitedStudentEmails,
+        if (visibility == 'school_group' && schoolGroupId != null)
+          'school_group_id': schoolGroupId,
       }),
     );
     return _parseMap(res);
@@ -975,10 +1288,19 @@ class ApiService {
     return _parseList(res);
   }
 
+  Future<Map<String, dynamic>> getSchoolGroup(String groupId) async {
+    final res = await http.get(
+      _uri(ApiEndpoints.schoolGroup(groupId)),
+      headers: await _authHeaders(),
+    );
+    return _parseMap(res);
+  }
+
   Future<Map<String, dynamic>> createSchoolGroup({
     required String schoolName,
     required String name,
     List<String> studentIds = const [],
+    List<String> studentEmails = const [],
   }) async {
     final res = await http.post(
       _uri(ApiEndpoints.schoolGroupsCreate),
@@ -987,6 +1309,7 @@ class ApiService {
         'school_name': schoolName,
         'name': name,
         'student_ids': studentIds,
+        'student_emails': studentEmails,
       }),
     );
     return _parseMap(res);
@@ -997,11 +1320,13 @@ class ApiService {
     String? schoolName,
     String? name,
     List<String>? studentIds,
+    List<String>? studentEmails,
   }) async {
     final body = <String, dynamic>{};
     if (schoolName != null) body['school_name'] = schoolName;
     if (name != null) body['name'] = name;
     if (studentIds != null) body['student_ids'] = studentIds;
+    if (studentEmails != null) body['student_emails'] = studentEmails;
     final res = await http.patch(
       _uri(ApiEndpoints.schoolGroup(groupId)),
       headers: await _authHeaders(),
@@ -1024,7 +1349,7 @@ class ApiService {
     int offset = 0,
   }) async {
     final role = await getRole();
-    final path = role == 'student'
+    final path = (role == 'student' || role == 'kind')
         ? ApiEndpoints.liveClassRequestsMine
         : ApiEndpoints.liveClassRequests;
 
@@ -1039,6 +1364,34 @@ class ApiService {
       headers: await _authHeaders(),
     );
     return _parseList(res);
+  }
+
+  /// Book a live one-on-one session (student or kids).
+  Future<Map<String, dynamic>> createLiveSessionRequest({
+    required String subject,
+    String? topic,
+    String? message,
+    String? preferredTime,
+  }) async {
+    final body = <String, dynamic>{
+      'subject': subject,
+      if (topic != null && topic.trim().isNotEmpty) 'topic': topic.trim(),
+      if (message != null && message.trim().isNotEmpty)
+        'message': message.trim(),
+    };
+    // Preferred time as ISO if parseable, otherwise keep in message only.
+    if (preferredTime != null && preferredTime.trim().isNotEmpty) {
+      final parsed = DateTime.tryParse(preferredTime.trim());
+      if (parsed != null) {
+        body['preferred_time'] = parsed.toUtc().toIso8601String();
+      }
+    }
+    final res = await http.post(
+      _uri(ApiEndpoints.liveClassRequests),
+      headers: await _authHeaders(),
+      body: jsonEncode(body),
+    );
+    return _parseMap(res);
   }
 
   Future<Map<String, dynamic>> myAccessCodes() async {
@@ -1381,6 +1734,7 @@ class StudentProfile {
   final String? educationLevel;
   final List<String> subjects;
   final bool hasActiveSubscription;
+  final String? profilePicture;
 
   const StudentProfile({
     required this.fullName,
@@ -1389,6 +1743,7 @@ class StudentProfile {
     this.educationLevel,
     this.subjects = const [],
     this.hasActiveSubscription = false,
+    this.profilePicture,
   });
 
   factory StudentProfile.fromJson(Map<String, dynamic> json) {
@@ -1402,6 +1757,19 @@ class StudentProfile {
           ? rawSubjects.map((e) => e.toString()).toList()
           : const [],
       hasActiveSubscription: json['has_active_subscription'] == true,
+      profilePicture: json['profile_picture'] as String?,
+    );
+  }
+
+  StudentProfile copyWith({String? profilePicture}) {
+    return StudentProfile(
+      fullName: fullName,
+      email: email,
+      examType: examType,
+      educationLevel: educationLevel,
+      subjects: subjects,
+      hasActiveSubscription: hasActiveSubscription,
+      profilePicture: profilePicture ?? this.profilePicture,
     );
   }
 }
@@ -1432,6 +1800,71 @@ class KindSiaResponse {
   final List<SiaBoardItem> board;
 
   const KindSiaResponse({required this.text, this.board = const []});
+}
+
+class KindQuizQuestion {
+  final String id;
+  final String question;
+  final Map<String, String> options;
+  final String correct;
+
+  const KindQuizQuestion({
+    required this.id,
+    required this.question,
+    required this.options,
+    this.correct = '',
+  });
+
+  bool get hasAnswerKey => correct == 'A' || correct == 'B' || correct == 'C' || correct == 'D';
+
+  /// Parse plain-text quizzes shaped like Q1. ... A) ... B) ...
+  static List<KindQuizQuestion> parseFromText(String text) {
+    if (text.trim().isEmpty) return const [];
+    final out = <KindQuizQuestion>[];
+    final blocks = text.split(RegExp(r'(?=\n?\s*Q\d+[\.\)\:])'));
+    for (final block in blocks) {
+      final qm = RegExp(
+        r'Q(\d+)[\.\)\:]\s*(.+?)(?=\n\s*[A-D][\.\)])',
+        caseSensitive: false,
+        dotAll: true,
+      ).firstMatch(block);
+      if (qm == null) continue;
+      final options = <String, String>{};
+      for (final letter in ['A', 'B', 'C', 'D']) {
+        final om = RegExp(
+          '$letter[\\.\\)]\\s*(.+?)(?=\\n\\s*[A-D][\\.\\)]|\\n\\s*Q\\d+|\\Z)',
+          caseSensitive: false,
+          dotAll: true,
+        ).firstMatch(block);
+        if (om != null) {
+          options[letter] = om.group(1)!.trim();
+        }
+      }
+      if (options.length < 2) continue;
+      out.add(
+        KindQuizQuestion(
+          id: qm.group(1)!,
+          question: qm.group(2)!.trim(),
+          options: options,
+        ),
+      );
+    }
+    return out;
+  }
+}
+
+class KindQuizResult {
+  final String intro;
+  final String rawText;
+  final List<KindQuizQuestion> questions;
+
+  const KindQuizResult({
+    required this.intro,
+    this.rawText = '',
+    this.questions = const [],
+  });
+
+  bool get isInteractive => questions.isNotEmpty;
 }
 
 class CbtSession {

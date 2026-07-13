@@ -4,6 +4,8 @@ import '../../theme/app_theme.dart';
 import '../../widgets/student_ui.dart';
 import '../../widgets/theme_toggle_tile.dart';
 import '../auth/role_select_screen.dart';
+import '../student/profile/about_scholaxia_screen.dart';
+import 'kind_terms_screen.dart';
 
 class KindProfileScreen extends StatefulWidget {
   const KindProfileScreen({super.key});
@@ -70,7 +72,29 @@ class _KindProfileScreenState extends State<KindProfileScreen> {
                 children: [
                   SafeArea(
                     bottom: false,
-                    child: Container(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (Navigator.of(context).canPop())
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                            child: GestureDetector(
+                              onTap: () => Navigator.of(context).maybePop(),
+                              child: Container(
+                                width: 40,
+                                height: 40,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: context.cardColor,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: context.borderColor),
+                                ),
+                                child: Icon(Icons.arrow_back_rounded,
+                                    color: context.textColor, size: 20),
+                              ),
+                            ),
+                          ),
+                        Container(
                       width: double.infinity,
                       margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                       padding: const EdgeInsets.fromLTRB(22, 28, 22, 32),
@@ -132,6 +156,8 @@ class _KindProfileScreenState extends State<KindProfileScreen> {
                         ],
                       ),
                     ),
+                      ],
+                    ),
                   ),
                   const StudentSectionTitle(title: 'Account'),
                   Padding(
@@ -149,6 +175,31 @@ class _KindProfileScreenState extends State<KindProfileScreen> {
                               parent),
                         const SizedBox(height: 8),
                         ThemeToggleTile(accentColor: context.accentColor),
+                        const SizedBox(height: 16),
+                        _linkTile(
+                          context,
+                          Icons.info_outline_rounded,
+                          'About App',
+                          'Learn what Scholaxia Kids offers',
+                          () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const AboutScholaxiaScreen(),
+                            ),
+                          ),
+                        ),
+                        _linkTile(
+                          context,
+                          Icons.description_outlined,
+                          'Terms & Conditions',
+                          'Class bookings and app use rules',
+                          () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const KindTermsScreen(),
+                            ),
+                          ),
+                        ),
                         const SizedBox(height: 20),
                         SizedBox(
                           width: double.infinity,
@@ -180,6 +231,70 @@ class _KindProfileScreenState extends State<KindProfileScreen> {
                 ],
               ),
             ),
+    );
+  }
+
+  Widget _linkTile(
+    BuildContext context,
+    IconData icon,
+    String title,
+    String subtitle,
+    VoidCallback onTap,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Material(
+        color: context.cardColor,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(18),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: context.borderColor),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    gradient: AppGradients.primaryButton,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(icon, color: Colors.white, size: 20),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          color: context.textColor,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          color: context.greyColor,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.chevron_right_rounded, color: context.greyColor),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 

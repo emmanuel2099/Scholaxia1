@@ -158,3 +158,91 @@ class _VoiceNoteRecorderState extends State<VoiceNoteRecorder> {
     );
   }
 }
+
+/// Inline mic control for text fields (community chat, new post).
+class InlineVoiceMicButton extends StatefulWidget {
+  final void Function(List<int> bytes, String filename) onRecorded;
+  final VoidCallback? onCleared;
+  final void Function(bool recording)? onRecordingChanged;
+  final bool hasRecording;
+
+  const InlineVoiceMicButton({
+    super.key,
+    required this.onRecorded,
+    this.onCleared,
+    this.onRecordingChanged,
+    this.hasRecording = false,
+  });
+
+  @override
+  State<InlineVoiceMicButton> createState() => _InlineVoiceMicButtonState();
+}
+
+class _InlineVoiceMicButtonState extends State<InlineVoiceMicButton> {
+  final _recorder = AudioRecorder();
+  bool _recording = false;
+
+  @override
+  void dispose() {
+    _recorder.dispose();
+    super.dispose();
+  }
+
+  Future<bool> _ensureMic() async {
+    return (await Permission.microphone.request()).isGranted;
+  }
+
+  Future<void> _toggleRecord() async {
+    if (_recording) {
+      final path = await _recorder.stop();
+      widget.onRecordingChanged?.call(false);
+      if (path != null) {
+        final data = await File(path).readAsBytes();
+        if (mounted) {
+          setState(() => _recording = false);
+          widget.onRecorded(data, 'voice_note.m4a');
+        }
+      } else if (mounted) {
+        setState(() => _recording = false);
+      }
+      return;
+    }
+
+    if (!await _ensureMic()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Microphone permission is required.')),
+        );
+      }
+      return;
+    }
+
+    final dir = await getTemporaryDirectory();
+    final path =
+        '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+    await _recorder.start(
+      const RecordConfig(encoder: AudioEncoder.aacLc, bitRate: 128000),
+      path: path,
+    );
+    if (!mounted) return;
+    setState(() => _recording = true);
+    widget.onRecordingChanged?.call(true);
+    widget.onCleared?.call();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = context.accentColor;
+    final icon = _recording
+        ? Icons.stop_rounded
+        : (widget.hasRecording ? Icons.mic_rounded : Icons.mic_none_rounded);
+
+    return IconButton(
+      onPressed: _toggleRecord,
+      icon: Icon(icon, color: _recording ? Colors.red : accent, size: 22),
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+      tooltip: _recording ? 'Stop recording' : 'Record voice note',
+    );
+  }
+}

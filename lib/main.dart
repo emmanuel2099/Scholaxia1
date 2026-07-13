@@ -4,9 +4,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'screens/splash/splash_screen.dart';
+import 'services/app_update_service.dart';
 import 'services/firebase_push_service.dart';
 import 'services/local_notification_service.dart';
 import 'theme/app_theme.dart';
+
+final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -52,6 +55,12 @@ class _ScholaxiaAppState extends State<ScholaxiaApp> {
   void initState() {
     super.initState();
     themeNotifier.addListener(_onThemeChanged);
+    // Give the first screen a moment to mount, then check for a newer build.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(seconds: 2), () {
+        AppUpdateService.instance.checkForUpdate(appNavigatorKey);
+      });
+    });
   }
 
   @override
@@ -68,6 +77,7 @@ class _ScholaxiaAppState extends State<ScholaxiaApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Scholaxia',
+      navigatorKey: appNavigatorKey,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,

@@ -195,9 +195,8 @@ class _TeacherTopBarState extends State<TeacherTopBar> {
   @override
   Widget build(BuildContext context) {
     final accent = context.accentColor;
-    final initial = (widget.teacherName ?? 'T').trim().isNotEmpty
-        ? widget.teacherName!.trim()[0].toUpperCase()
-        : 'T';
+    final trimmedName = (widget.teacherName ?? '').trim();
+    final initial = trimmedName.isNotEmpty ? trimmedName[0].toUpperCase() : 'T';
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [

@@ -7,8 +7,9 @@ import '../teacher_shared.dart';
 
 class TeacherDashboardScreen extends StatefulWidget {
   final void Function(int tabIndex)? onNavigate;
+  final VoidCallback? onHostClass;
 
-  const TeacherDashboardScreen({super.key, this.onNavigate});
+  const TeacherDashboardScreen({super.key, this.onNavigate, this.onHostClass});
 
   @override
   State<TeacherDashboardScreen> createState() => _TeacherDashboardScreenState();
@@ -145,9 +146,11 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                           const SizedBox(height: 20),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Row(
-                              children: [
-                                StudentStatCard(
+                            child: SizedBox(
+                              height: 110,
+                              child: Row(
+                                children: [
+                                  StudentStatCard(
                                   icon: Icons.videocam_rounded,
                                   value: '$_liveCount',
                                   label: 'Live now',
@@ -178,14 +181,22 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
                                 ),
                               ],
                             ),
+                            ),
                           ),
+                          const SizedBox(height: 16),
                           StudentFeatureBanner(
                             title: 'Host a live class',
                             subtitle:
                                 'Go live from your phone — video, board, screen share, and chat.',
-                            buttonLabel: 'Open Classes',
+                            buttonLabel: 'Host Now',
                             icon: Icons.videocam_rounded,
-                            onTap: () => widget.onNavigate?.call(1),
+                            onTap: () {
+                              if (widget.onHostClass != null) {
+                                widget.onHostClass!();
+                              } else {
+                                widget.onNavigate?.call(1);
+                              }
+                            },
                           ),
                           _quickAccess(context),
                           const StudentSectionTitle(title: "Today's Schedule"),
@@ -244,7 +255,7 @@ class _TeacherDashboardScreenState extends State<TeacherDashboardScreen> {
       (
         Icons.quiz_rounded,
         'Exams',
-        'Create Scholaxia exams.',
+        'Review student exam scores.',
         const [Color(0xFFF59E0B), Color(0xFFFBBF24)],
         () => Navigator.push(
           context,

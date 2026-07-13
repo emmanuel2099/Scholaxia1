@@ -710,6 +710,188 @@ async def send_group_message(
     }
 
 
+# ── Group voice calls (WhatsApp-style, groups only) ───────────────────────────
+
+# In-memory active calls: group_id -> {caller_id, caller_name, room_id, started_at}
+_active_group_calls: dict[str, dict] = {}
+
+
+def _group_call_room(group_id: str) -> str:
+    return f"group-voice-{group_id}"
+
+
+async def _notify_group_members_call(
+    db: AsyncSession,
+    group_id,
+    caller_id,
+    caller_name: str,
+    group_name: str,
+):
+    from app.services.notification_service import send_user_notification
+    from datetime import datetime
+
+    members = await db.execute(
+        select(StudentGroupMember).where(StudentGroupMember.group_id == group_id)
+    )
+    for mem in members.scalars().all():
+        if str(mem.user_id) == str(caller_id):
+            continue
+        try:
+            await send_user_notification(
+                db,
+                user_id=str(mem.user_id),
+                title=f"Group call · {group_name}",
+                body=f"{caller_name} is calling the group. Tap to join.",
+                notification_type="group_call",
+                data={
+                    "type": "group_call",
+                    "group_id": str(group_id),
+                    "caller_id": str(caller_id),
+                    "caller_name": caller_name,
+                },
+            )
+        except Exception:
+            pass
+
+
+@router.post("/{group_id}/calls/start")
+async def start_group_voice_call(
+    group_id: str,
+    current_user: dict = Depends(require_student_or_kind),
+    db: AsyncSession = Depends(get_db),
+):
+    gid = parse_uuid(group_id)
+    uid = parse_uuid(current_user["sub"])
+    if not await _get_membership(db, gid, uid):
+        raise HTTPException(status_code=403, detail="Join this group to call.")
+    group = await _get_group_or_404(db, gid)
+    if not group.is_approved:
+        raise HTTPException(status_code=403, detail="Group not approved yet.")
+
+    key = str(gid)
+    existing = _active_group_calls.get(key)
+    if existing and existing.get("caller_id") != str(uid):
+        # Someone already calling — join that call instead of replacing.
+        pass
+    else:
+        user_res = await db.execute(select(User).where(User.id == uid))
+        user = user_res.scalar_one_or_none()
+        caller_name = (user.full_name if user else None) or current_user.get("email") or "Member"
+        from datetime import datetime, timezone
+        room_id = _group_call_room(key)
+        _active_group_calls[key] = {
+            "caller_id": str(uid),
+            "caller_name": caller_name,
+            "room_id": room_id,
+            "group_name": group.name,
+            "started_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await _notify_group_members_call(db, gid, uid, caller_name, group.name)
+
+    call = _active_group_calls[key]
+    from app.routers.live_class import _livekit_token_payload
+    display = current_user.get("email") or current_user.get("sub") or "user"
+    payload = _livekit_token_payload(
+        call["room_id"],
+        str(uid),
+        display,
+        can_publish=True,
+    )
+    return {
+        "active": True,
+        "group_id": key,
+        "group_name": call.get("group_name") or group.name,
+        "caller_id": call["caller_id"],
+        "caller_name": call["caller_name"],
+        "room_id": call["room_id"],
+        **payload,
+    }
+
+
+@router.get("/{group_id}/calls/active")
+async def get_active_group_call(
+    group_id: str,
+    current_user: dict = Depends(require_student_or_kind),
+    db: AsyncSession = Depends(get_db),
+):
+    gid = parse_uuid(group_id)
+    uid = parse_uuid(current_user["sub"])
+    if not await _get_membership(db, gid, uid):
+        raise HTTPException(status_code=403, detail="Not a member.")
+    call = _active_group_calls.get(str(gid))
+    if not call:
+        return {"active": False}
+    return {
+        "active": True,
+        "group_id": str(gid),
+        "group_name": call.get("group_name"),
+        "caller_id": call["caller_id"],
+        "caller_name": call["caller_name"],
+        "room_id": call["room_id"],
+        "started_at": call.get("started_at"),
+    }
+
+
+@router.post("/{group_id}/calls/join")
+async def join_group_voice_call(
+    group_id: str,
+    current_user: dict = Depends(require_student_or_kind),
+    db: AsyncSession = Depends(get_db),
+):
+    gid = parse_uuid(group_id)
+    uid = parse_uuid(current_user["sub"])
+    if not await _get_membership(db, gid, uid):
+        raise HTTPException(status_code=403, detail="Not a member.")
+    call = _active_group_calls.get(str(gid))
+    if not call:
+        raise HTTPException(status_code=404, detail="No active call.")
+    from app.routers.live_class import _livekit_token_payload
+    display = current_user.get("email") or current_user.get("sub") or "user"
+    payload = _livekit_token_payload(
+        call["room_id"],
+        str(uid),
+        display,
+        can_publish=True,
+    )
+    return {
+        "active": True,
+        "group_id": str(gid),
+        "group_name": call.get("group_name"),
+        "caller_id": call["caller_id"],
+        "caller_name": call["caller_name"],
+        "room_id": call["room_id"],
+        **payload,
+    }
+
+
+@router.post("/{group_id}/calls/end")
+async def end_group_voice_call(
+    group_id: str,
+    current_user: dict = Depends(require_student_or_kind),
+    db: AsyncSession = Depends(get_db),
+):
+    gid = parse_uuid(group_id)
+    uid = parse_uuid(current_user["sub"])
+    if not await _get_membership(db, gid, uid):
+        raise HTTPException(status_code=403, detail="Not a member.")
+    key = str(gid)
+    call = _active_group_calls.get(key)
+    if call:
+        # Any member can leave; caller (or alone) ending clears the call.
+        _active_group_calls.pop(key, None)
+    return {"active": False, "message": "Call ended"}
+
+
+@router.post("/{group_id}/calls/decline")
+async def decline_group_voice_call(
+    group_id: str,
+    current_user: dict = Depends(require_student_or_kind),
+    db: AsyncSession = Depends(get_db),
+):
+    # Decline is local — we just acknowledge; ring stops on client.
+    return {"declined": True}
+
+
 async def _is_group_admin(db: AsyncSession, group_id: uuid.UUID, user_id: uuid.UUID) -> bool:
     res = await db.execute(
         select(StudentGroupMember).where(

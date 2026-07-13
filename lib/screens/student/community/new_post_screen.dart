@@ -23,6 +23,7 @@ class _NewPostScreenState extends State<NewPostScreen> {
   String? _attachedFileType;
   String? _attachedFileName;
   bool _uploading = false;
+  bool _recordingVoice = false;
   List<int>? _voiceBytes;
   String? _voiceFilename;
 
@@ -288,12 +289,52 @@ class _NewPostScreenState extends State<NewPostScreen> {
                         border: InputBorder.none,
                         counterText: '${_textCtrl.text.length}/500',
                         counterStyle: TextStyle(color: context.greyColor, fontSize: 11),
+                        suffixIcon: InlineVoiceMicButton(
+                          hasRecording: _voiceBytes != null,
+                          onRecordingChanged: (v) =>
+                              setState(() => _recordingVoice = v),
+                          onRecorded: (bytes, name) => setState(() {
+                            _voiceBytes = bytes;
+                            _voiceFilename = name;
+                            _attachedFileUrl = null;
+                            _attachedFileType = null;
+                            _recordingVoice = false;
+                          }),
+                          onCleared: () => setState(() {
+                            _voiceBytes = null;
+                            _voiceFilename = null;
+                          }),
+                        ),
                       ),
                     ),
                   ),
                 ],
               ),
             ),
+            if (_recordingVoice)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text('Recording… tap stop when done',
+                    style: TextStyle(color: Colors.red.shade400, fontSize: 12)),
+              ),
+            if (_voiceBytes != null && !_recordingVoice)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Row(children: [
+                  Icon(Icons.mic_rounded, color: context.accentColor, size: 16),
+                  const SizedBox(width: 6),
+                  Text('Voice note ready',
+                      style: TextStyle(color: context.greyColor, fontSize: 12)),
+                  const Spacer(),
+                  GestureDetector(
+                    onTap: () => setState(() {
+                      _voiceBytes = null;
+                      _voiceFilename = null;
+                    }),
+                    child: Icon(Icons.close, color: context.greyColor, size: 18),
+                  ),
+                ]),
+              ),
             if (_uploading)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
@@ -360,21 +401,6 @@ class _NewPostScreenState extends State<NewPostScreen> {
                   Text('Photo', style: TextStyle(color: context.textColor, fontSize: 11)),
                 ],
               ),
-            ),
-            const SizedBox(height: 16),
-            VoiceNoteRecorder(
-              onRecorded: (bytes, name) {
-                setState(() {
-                  _voiceBytes = bytes;
-                  _voiceFilename = name;
-                  _attachedFileUrl = null;
-                  _attachedFileType = null;
-                });
-              },
-              onCleared: () => setState(() {
-                _voiceBytes = null;
-                _voiceFilename = null;
-              }),
             ),
             const SizedBox(height: 32),
           ],

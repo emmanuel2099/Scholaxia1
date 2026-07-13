@@ -14,6 +14,9 @@ class ApiEndpoints {
   static const String kindSiaChat = '$_v1/kind/sia/chat';
   static const String kindSiaLearn = '$_v1/kind/sia/learn';
   static const String kindSiaQuiz = '$_v1/kind/sia/quiz';
+  static String kindGameQuestions(String gameId) =>
+      '$_v1/kind/games/$gameId/questions';
+  static const String kindGamesCatalog = '$_v1/kind/games/catalog';
   static const String login = '$_v1/auth/login';
 
   // Students
@@ -23,6 +26,7 @@ class ApiEndpoints {
 
   // Profiles
   static const String profileMe = '$_v1/profiles/me';
+  static const String profilePicture = '$_v1/profiles/me/picture';
   static String studentProfile(String userId) => '$_v1/profiles/student/$userId';
   static String teacherProfile(String userId) => '$_v1/profiles/teacher/$userId';
   static const String teachersList = '$_v1/profiles/teachers';
@@ -82,9 +86,23 @@ class ApiEndpoints {
   static const String communityPostComments = '$_v1/community/post-comments';
   static const String communityAnnouncements = '$_v1/community/announcements';
   static String communityPostLike(String postId) => '$_v1/community/posts/$postId/like';
+  static String communityPostUpdate(String postId) => '$_v1/community/posts/$postId';
+  static String communityPostDelete(String postId) => '$_v1/community/posts/$postId';
   static String communityChannelPinned(String channelId) =>
       '$_v1/community/channels/$channelId/pinned';
   static String communityPostPin(String postId) => '$_v1/community/posts/$postId/pin';
+
+  // Student group voice calls
+  static String studentGroupCallStart(String groupId) =>
+      '$_v1/student-groups/$groupId/calls/start';
+  static String studentGroupCallActive(String groupId) =>
+      '$_v1/student-groups/$groupId/calls/active';
+  static String studentGroupCallJoin(String groupId) =>
+      '$_v1/student-groups/$groupId/calls/join';
+  static String studentGroupCallEnd(String groupId) =>
+      '$_v1/student-groups/$groupId/calls/end';
+  static String studentGroupCallDecline(String groupId) =>
+      '$_v1/student-groups/$groupId/calls/decline';
 
   // Home
   static const String homeFeed = '$_v1/home/feed';
@@ -162,6 +180,14 @@ class ApiEndpoints {
   // Library
   static const String libraryStudent = '$_v1/library/student';
   static String libraryRead(String bookId) => '$_v1/library/$bookId/read';
+
+  // Marketplace
+  static const String marketplaceCategories = '$_v1/marketplace/categories';
+  static const String marketplaceProducts = '$_v1/marketplace/products';
+  static String marketplaceProduct(String id) => '$_v1/marketplace/products/$id';
+  static String marketplaceBookProduct(String id) =>
+      '$_v1/marketplace/products/$id/book';
+  static const String marketplaceBookingsMine = '$_v1/marketplace/bookings/mine';
 
   // Wallet
   static const String walletMe = '$_v1/wallet/me';

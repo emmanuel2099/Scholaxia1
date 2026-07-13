@@ -817,10 +817,18 @@ async def join_class(
             ClassAttendance.is_removed == False,  # noqa: E712
         )
     )
-    if existing.scalar_one_or_none():
+    if (existing.scalar_one_or_none()):
         sid = current_user["sub"]
         att = await _active_attendance(db, live_class.id, sid)
-        can_pub = _can_publish_for_student(live_class.room_id, sid, att)
+        if att is not None and att.is_muted:
+            att.is_muted = False
+            await db.flush()
+        try:
+            from app.services.live_class_room import grant_mic
+            grant_mic(live_class.room_id, sid)
+        except Exception:
+            pass
+        can_pub = True
         payload = _livekit_token_payload(
             live_class.room_id,
             sid,
@@ -834,7 +842,7 @@ async def join_class(
             "subject": live_class.subject,
             "is_live": live_class.is_live,
             "end_time": live_class.end_time.isoformat() if live_class.end_time else None,
-            "mic_allowed": _mic_allowed_for(live_class.room_id, sid, att),
+            "mic_allowed": True,
             "camera_allowed": _camera_allowed_for(live_class.room_id, sid),
         }
 
@@ -844,16 +852,22 @@ async def join_class(
     attendance = ClassAttendance(
         live_class_id=live_class.id,
         student_id=student_uid,
-        is_muted=True,
+        is_muted=False,  # Open mic by default so teacher ↔ student can hear each other
     )
     db.add(attendance)
     await db.flush()
+
+    try:
+        from app.services.live_class_room import grant_mic
+        grant_mic(live_class.room_id, current_user["sub"])
+    except Exception:
+        pass
 
     payload = _livekit_token_payload(
         live_class.room_id,
         current_user["sub"],
         current_user.get("email") or "student",
-        can_publish=False,
+        can_publish=True,
     )
     sid = current_user["sub"]
 
@@ -863,10 +877,10 @@ async def join_class(
         "subject": live_class.subject,
         **teacher_meta,
         **payload,
-        "is_muted": True,
+        "is_muted": False,
         "is_live": live_class.is_live,
         "end_time": live_class.end_time.isoformat() if live_class.end_time else None,
-        "mic_allowed": has_mic_access(live_class.room_id, sid),
+        "mic_allowed": True,
         "camera_allowed": has_camera_access(live_class.room_id, sid),
     }
 

@@ -67,32 +67,11 @@ class _TeacherCbtScreenState extends State<TeacherCbtScreen> {
     }
   }
 
-  void _showCreateExamSheet() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: context.headerColor,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) => _CreateExamSheet(api: _api, onCreated: _load),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final accent = context.accentColor;
     return Scaffold(
       backgroundColor: context.bgColor,
-      floatingActionButton: _selectedTab == 'My Exams'
-          ? FloatingActionButton.extended(
-              onPressed: _showCreateExamSheet,
-              backgroundColor: accent,
-              foregroundColor: Colors.black,
-              icon: const Icon(Icons.add),
-              label: const Text('New Exam',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
-            )
-          : null,
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -119,7 +98,7 @@ class _TeacherCbtScreenState extends State<TeacherCbtScreen> {
                           fontWeight: FontWeight.bold)),
                   const SizedBox(height: 4),
                   Text(
-                      'Create school exams and review student scores.',
+                      'Review student scores for your school exams.',
                       style: TextStyle(color: context.greyColor, fontSize: 13)),
                   const SizedBox(height: 16),
                   SingleChildScrollView(
@@ -142,7 +121,8 @@ class _TeacherCbtScreenState extends State<TeacherCbtScreen> {
                             ),
                             child: Text(t,
                                 style: TextStyle(
-                                    color: sel ? Colors.black : context.greyLColor,
+                                    color:
+                                        sel ? Colors.black : context.greyLColor,
                                     fontSize: 13,
                                     fontWeight: sel
                                         ? FontWeight.bold
@@ -158,8 +138,7 @@ class _TeacherCbtScreenState extends State<TeacherCbtScreen> {
             const SizedBox(height: 8),
             Expanded(
               child: _loading
-                  ? Center(
-                      child: CircularProgressIndicator(color: accent))
+                  ? Center(child: CircularProgressIndicator(color: accent))
                   : _selectedTab == 'My Exams'
                       ? _examList()
                       : _resultsView(),
@@ -180,7 +159,7 @@ class _TeacherCbtScreenState extends State<TeacherCbtScreen> {
           children: [
             const SizedBox(height: 80),
             Center(
-              child: Text('No school exams yet. Tap New Exam to create one.',
+              child: Text('No school exams yet.',
                   style: TextStyle(color: context.greyColor),
                   textAlign: TextAlign.center),
             ),
@@ -193,7 +172,7 @@ class _TeacherCbtScreenState extends State<TeacherCbtScreen> {
       onRefresh: _load,
       child: ListView.separated(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
         itemCount: _exams.length,
         separatorBuilder: (_, __) => const SizedBox(height: 12),
         itemBuilder: (_, i) {
@@ -215,8 +194,7 @@ class _TeacherCbtScreenState extends State<TeacherCbtScreen> {
                         color: context.textColor,
                         fontSize: 15,
                         fontWeight: FontWeight.bold)),
-                Text(subject,
-                    style: TextStyle(color: color, fontSize: 12)),
+                Text(subject, style: TextStyle(color: color, fontSize: 12)),
                 const SizedBox(height: 8),
                 Row(
                   children: [
@@ -224,13 +202,15 @@ class _TeacherCbtScreenState extends State<TeacherCbtScreen> {
                         color: context.greyColor, size: 14),
                     const SizedBox(width: 4),
                     Text('${e['duration_minutes'] ?? '—'} mins',
-                        style: TextStyle(color: context.greyColor, fontSize: 12)),
+                        style:
+                            TextStyle(color: context.greyColor, fontSize: 12)),
                     const SizedBox(width: 12),
                     Icon(Icons.quiz_outlined,
                         color: context.greyColor, size: 14),
                     const SizedBox(width: 4),
                     Text('${e['total_questions'] ?? '—'} questions',
-                        style: TextStyle(color: context.greyColor, fontSize: 12)),
+                        style:
+                            TextStyle(color: context.greyColor, fontSize: 12)),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -255,7 +235,8 @@ class _TeacherCbtScreenState extends State<TeacherCbtScreen> {
 
   Widget _resultsView() {
     if (_loadingResults) {
-      return Center(child: CircularProgressIndicator(color: context.accentColor));
+      return Center(
+          child: CircularProgressIndicator(color: context.accentColor));
     }
     if (_selectedResults == null) {
       return ListView(
@@ -313,169 +294,13 @@ class _TeacherCbtScreenState extends State<TeacherCbtScreen> {
                   ),
                   Text('${r['percentage'] ?? r['score'] ?? 0}%',
                       style: TextStyle(
-                          color: context.accentColor, fontWeight: FontWeight.bold)),
+                          color: context.accentColor,
+                          fontWeight: FontWeight.bold)),
                 ],
               ),
             );
           }),
       ],
-    );
-  }
-}
-
-class _CreateExamSheet extends StatefulWidget {
-  final ApiService api;
-  final VoidCallback onCreated;
-  const _CreateExamSheet({required this.api, required this.onCreated});
-
-  @override
-  State<_CreateExamSheet> createState() => _CreateExamSheetState();
-}
-
-class _CreateExamSheetState extends State<_CreateExamSheet> {
-  final _titleCtrl = TextEditingController();
-  final _subjectCtrl = TextEditingController();
-  final _qCtrl = TextEditingController();
-  final _aCtrl = TextEditingController(text: 'Option A');
-  final _bCtrl = TextEditingController(text: 'Option B');
-  final _cCtrl = TextEditingController(text: 'Option C');
-  final _dCtrl = TextEditingController(text: 'Option D');
-  int _duration = 30;
-  bool _loading = false;
-
-  @override
-  void dispose() {
-    _titleCtrl.dispose();
-    _subjectCtrl.dispose();
-    _qCtrl.dispose();
-    _aCtrl.dispose();
-    _bCtrl.dispose();
-    _cCtrl.dispose();
-    _dCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    final title = _titleCtrl.text.trim();
-    final subject = _subjectCtrl.text.trim();
-    final question = _qCtrl.text.trim();
-    if (title.isEmpty || subject.isEmpty || question.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Title, subject, and question are required.')),
-      );
-      return;
-    }
-    setState(() => _loading = true);
-    final start = DateTime.now().toUtc();
-    final end = start.add(const Duration(days: 7));
-    try {
-      await widget.api.createSchoolExam(
-        title: title,
-        subject: subject,
-        durationMinutes: _duration,
-        scheduledStart: start,
-        scheduledEnd: end,
-        cameraRequired: false,
-        aiLocked: true,
-        blockMinimize: true,
-        questions: [
-          {
-            'question_text': question,
-            'option_a': _aCtrl.text.trim(),
-            'option_b': _bCtrl.text.trim(),
-            'option_c': _cCtrl.text.trim(),
-            'option_d': _dCtrl.text.trim(),
-            'correct_option': 'A',
-          },
-        ],
-      );
-      if (mounted) {
-        Navigator.pop(context);
-        widget.onCreated();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Exam published! Students were notified.')),
-        );
-      }
-    } on ApiException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
-        top: 20,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Create School Exam',
-                style: TextStyle(
-                    color: context.textColor,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold)),
-            const SizedBox(height: 16),
-            _field(_titleCtrl, 'Exam title'),
-            const SizedBox(height: 10),
-            _field(_subjectCtrl, 'Subject'),
-            const SizedBox(height: 10),
-            _field(_qCtrl, 'Sample question text'),
-            const SizedBox(height: 10),
-            _field(_aCtrl, 'Option A (correct)'),
-            const SizedBox(height: 8),
-            _field(_bCtrl, 'Option B'),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton(
-                onPressed: _loading ? null : _submit,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: context.accentColor,
-                  foregroundColor: Colors.black,
-                ),
-                child: _loading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Publish Exam',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _field(TextEditingController ctrl, String hint) {
-    return TextField(
-      controller: ctrl,
-      style: TextStyle(color: context.textColor),
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: TextStyle(color: context.greyColor),
-        filled: true,
-        fillColor: context.surfColor,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-      ),
     );
   }
 }

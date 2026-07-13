@@ -6,6 +6,7 @@ from app.models.community import CommunityChannel, CommunityMessage, AssignmentS
 from app.models.live_class import LiveClass, ClassAttendance, LiveSessionRequest
 from app.models.content import Book, BookPurchase, SavedBook, BookReadProgress, Video, Note, Syllabus, BookRecommendation
 from app.models.marketplace import MarketplaceProduct, MarketplaceBooking
+from app.models.kid_games import KidGameQuestion
 from app.models.notification import Notification
 from app.models.school_group import SchoolGroup
 from app.models.live_class_access_code import LiveClassAccessCodeDelivery

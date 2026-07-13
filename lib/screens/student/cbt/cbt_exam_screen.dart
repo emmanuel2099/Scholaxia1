@@ -11,6 +11,11 @@ class CbtExamScreen extends StatefulWidget {
   final String? sessionId;
   final List<CbtQuestion> questions;
 
+  /// When set, this is an internal (school) exam taken offline; on submit we
+  /// send answers to the internal-exam endpoint (scored server-side) instead of
+  /// the normal session submit.
+  final String? internalExamId;
+
   const CbtExamScreen({
     super.key,
     this.subject = 'BIOLOGY',
@@ -18,6 +23,7 @@ class CbtExamScreen extends StatefulWidget {
     this.durationSeconds = 7200,
     this.sessionId,
     this.questions = const [],
+    this.internalExamId,
   });
 
   @override
@@ -116,7 +122,18 @@ class _CbtExamScreenState extends State<CbtExamScreen> {
     setState(() => _isSubmitting = true);
 
     CbtResult? result;
-    if (widget.sessionId != null) {
+    String? submitError;
+    if (widget.internalExamId != null) {
+      try {
+        result = await _api.submitInternalExam(
+          examId: widget.internalExamId!,
+          answers: _answers,
+          isAutoSubmit: isAutoSubmit,
+        );
+      } catch (e) {
+        submitError = e.toString();
+      }
+    } else if (widget.sessionId != null) {
       try {
         result = await _api.cbtSubmit(
           sessionId: widget.sessionId!,
@@ -127,6 +144,22 @@ class _CbtExamScreenState extends State<CbtExamScreen> {
     }
 
     if (!mounted) return;
+    if (widget.internalExamId != null && result == null) {
+      // Offline or failed submit — let the student know it will be retried.
+      setState(() => _isSubmitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            submitError != null && submitError.contains('already')
+                ? 'You already submitted this exam.'
+                : 'Could not submit now. Reconnect and try again.',
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
+      Navigator.pop(context);
+      return;
+    }
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(

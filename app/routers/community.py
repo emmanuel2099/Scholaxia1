@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from datetime import datetime
 
@@ -1178,3 +1178,59 @@ async def pin_post(
 
     post.is_pinned = not post.is_pinned
     return {"post_id": post_id, "is_pinned": post.is_pinned}
+
+
+class PostUpdate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=5000)
+
+
+@router.patch("/posts/{post_id}")
+async def update_own_post(
+    post_id: str,
+    payload: PostUpdate,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Author (or teacher/admin) can edit a community chat post."""
+    result = await db.execute(select(CommunityPost).where(CommunityPost.id == post_id))
+    post = result.scalar_one_or_none()
+    if not post or post.is_deleted:
+        raise HTTPException(status_code=404, detail="Post not found")
+    uid = str(current_user["sub"])
+    role = current_user.get("role")
+    is_owner = str(post.author_id) == uid
+    if not is_owner and role not in ("teacher", "admin"):
+        raise HTTPException(status_code=403, detail="You can only edit your own messages")
+    text = payload.content.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Content required")
+    post.content = text
+    await db.flush()
+    return {
+        "id": str(post.id),
+        "content": post.content,
+        "author_id": str(post.author_id) if post.author_id else None,
+        "updated_at": post.updated_at.isoformat() if post.updated_at else None,
+        "message": "Post updated",
+    }
+
+
+@router.delete("/posts/{post_id}")
+async def delete_own_post(
+    post_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Author (or teacher/admin) can soft-delete a community chat post."""
+    result = await db.execute(select(CommunityPost).where(CommunityPost.id == post_id))
+    post = result.scalar_one_or_none()
+    if not post or post.is_deleted:
+        raise HTTPException(status_code=404, detail="Post not found")
+    uid = str(current_user["sub"])
+    role = current_user.get("role")
+    is_owner = str(post.author_id) == uid
+    if not is_owner and role not in ("teacher", "admin"):
+        raise HTTPException(status_code=403, detail="You can only delete your own messages")
+    post.is_deleted = True
+    await db.flush()
+    return {"message": "Post deleted", "id": post_id}

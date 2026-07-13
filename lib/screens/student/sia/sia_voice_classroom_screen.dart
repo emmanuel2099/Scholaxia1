@@ -58,10 +58,9 @@ class _SiaVoiceClassroomScreenState extends State<SiaVoiceClassroomScreen> {
   @override
   void initState() {
     super.initState();
-    final subs = widget.subjects.isNotEmpty ? widget.subjects : ['General'];
-    _subject = subs.contains(widget.initialSubject)
+    _subject = widget.initialSubject.isNotEmpty
         ? widget.initialSubject
-        : subs.first;
+        : 'General';
     _boardItems = _welcomeBoard();
   }
 
@@ -379,30 +378,6 @@ class _SiaVoiceClassroomScreenState extends State<SiaVoiceClassroomScreen> {
       ),
       child: Column(
         children: [
-          DropdownButtonFormField<String>(
-            value: subs.contains(_subject) ? _subject : subs.first,
-            dropdownColor: context.cardColor,
-            style: TextStyle(color: context.textColor),
-            decoration: InputDecoration(
-              labelText: 'Subject',
-              labelStyle: TextStyle(color: context.greyColor),
-              filled: true,
-              fillColor: context.surfColor,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: context.borderColor),
-              ),
-            ),
-            items: subs
-                .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                .toList(),
-            onChanged: (_asking || _listening)
-                ? null
-                : (v) {
-                    if (v != null) setState(() => _subject = v);
-                  },
-          ),
-          const SizedBox(height: 12),
           if (!_useMic) ...[
             TextField(
               controller: _windowsQuestionCtrl,

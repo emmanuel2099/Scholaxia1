@@ -4,6 +4,8 @@ import '../../api/api_service.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/live_join_helper.dart';
 import '../../widgets/student_ui.dart';
+import '../student/subscription/subscription_screen.dart';
+import 'kind_booking_screen.dart';
 import 'kind_shared.dart';
 
 class KindLiveScreen extends StatefulWidget {
@@ -165,6 +167,8 @@ class _KindLiveScreenState extends State<KindLiveScreen> {
                       )
                     else
                       ..._live.map((c) => _liveCard(context, c)),
+                    const StudentSectionTitle(title: 'Book live tutoring'),
+                    _subscriptionCard(context),
                     const SizedBox(height: 110),
                   ],
                 ),
@@ -172,6 +176,122 @@ class _KindLiveScreenState extends State<KindLiveScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _subscriptionCard(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: AppGradients.hero(context),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: context.accentColor.withOpacity(0.25),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Text('🎓', style: TextStyle(fontSize: 26)),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    'Pay-Per-Class Plan',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Book live one-on-one classes with a tutor. Bundle classes and save more.',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.9),
+                fontSize: 13,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 8),
+            _subLine('1 class — ₦5,000'),
+            _subLine('3 classes — ₦14,000 (save ₦1,000)'),
+            _subLine('5 classes — ₦22,500 (save ₦2,500)'),
+            _subLine('10 classes — ₦43,000 (save ₦7,000)'),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const KindBookingScreen(),
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: const Color(0xFF7C3AED),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+                child: const Text(
+                  'Choose package & book',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Center(
+              child: TextButton(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const SubscriptionScreen(),
+                  ),
+                ),
+                child: Text(
+                  'View full plan details',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.95),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _subLine(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(
+        children: [
+          const Icon(Icons.check_circle_rounded, color: Colors.white, size: 16),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(color: Colors.white, fontSize: 13),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -11,8 +11,7 @@ import 'home/home_screen.dart';
 import 'sia/sia_screen.dart';
 import 'cbt/cbt_screen.dart';
 import 'community/community_screen.dart';
-import 'saved/saved_classes_screen.dart';
-import 'profile/profile_screen.dart';
+import 'subscription/subscription_screen.dart';
 
 class StudentShell extends StatefulWidget {
   const StudentShell({super.key});
@@ -26,31 +25,27 @@ class _StudentShellState extends State<StudentShell>
   int _currentIndex = 0;
   final _api = ApiService();
   Timer? _pollTimer;
-  final _savedKey = GlobalKey<SavedClassesScreenState>();
 
   final List<Widget> _screens = [
     const HomeScreen(),
     const SiaScreen(),
     const CbtScreen(),
-    const SizedBox.shrink(),
     const CommunityScreen(),
-    const ProfileScreen(),
+    const SubscriptionScreen(),
   ];
 
   static const _navItems = [
     _NavItem(icon: Icons.home_rounded, activeIcon: Icons.home_rounded, label: 'Home'),
     _NavItem(icon: Icons.auto_awesome_outlined, activeIcon: Icons.auto_awesome_rounded, label: 'Sia'),
     _NavItem(icon: Icons.quiz_outlined, activeIcon: Icons.quiz_rounded, label: 'CBT'),
-    _NavItem(icon: Icons.video_library_outlined, activeIcon: Icons.video_library_rounded, label: 'Saved'),
     _NavItem(icon: Icons.people_outline_rounded, activeIcon: Icons.people_rounded, label: 'Community'),
-    _NavItem(icon: Icons.person_outline_rounded, activeIcon: Icons.person_rounded, label: 'Profile'),
+    _NavItem(icon: Icons.card_membership_outlined, activeIcon: Icons.card_membership_rounded, label: 'Subscribe'),
   ];
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _screens[3] = SavedClassesScreen(key: _savedKey);
     _ensureStudentRole();
     _startPolling();
     LocalNotificationService.instance.init().then((_) {
@@ -106,8 +101,7 @@ class _StudentShellState extends State<StudentShell>
 
   void _onTabTap(int i) {
     setState(() => _currentIndex = i);
-    if (i == 3) _savedKey.currentState?.reload();
-    if (i == 4) refreshCommunityBadge(_api);
+    if (i == 3) refreshCommunityBadge(_api);
   }
 
   @override
@@ -152,7 +146,7 @@ class _StudentShellState extends State<StudentShell>
                   final active = i == _currentIndex;
                   final activeColor = context.accentColor;
                   final inactiveColor = context.greyColor;
-                  final badge = i == 4 ? communityBadge : 0;
+                  final badge = i == 3 ? communityBadge : 0;
                   final item = _navItems[i];
                   return Expanded(
                     child: GestureDetector(

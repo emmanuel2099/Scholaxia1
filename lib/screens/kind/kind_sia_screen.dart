@@ -272,24 +272,6 @@ class _KindSiaScreenState extends State<KindSiaScreen> {
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: DropdownButtonFormField<String>(
-              value: _subject,
-              decoration: InputDecoration(
-                labelText: 'Subject',
-                filled: true,
-                fillColor: context.surfColor,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              items: _subjects
-                  .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                  .toList(),
-              onChanged: (v) {
-                if (v != null) setState(() => _subject = v);
-              },
-            ),
-          ),
           Expanded(
             child: ListView.builder(
               controller: _scroll,

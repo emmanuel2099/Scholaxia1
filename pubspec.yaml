@@ -50,6 +50,8 @@ dependencies:
   cupertino_icons: ^1.0.8
   livekit_client: ^2.8.1
   video_player: ^2.11.1
+  package_info_plus: ^8.1.1
+  url_launcher: ^6.3.1
 
 dependency_overrides:
   record_platform_interface: 1.2.0
@@ -82,6 +84,7 @@ flutter:
 
   assets:
     - asset/images/
+    - asset/sounds/live_class_ringtone.mp3
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

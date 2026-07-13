@@ -13,8 +13,8 @@ class CbtScreen extends StatefulWidget {
 }
 
 class _CbtScreenState extends State<CbtScreen> {
-  String _selectedType = 'All';
-  final _types = ['All', 'WAEC', 'JAMB', 'NECO'];
+  String _selectedType = 'JAMB';
+  final _types = ['JAMB', 'WAEC/NECO'];
   final _api = ApiService();
   bool _loadingExams = true;
   List<dynamic> _allExams = [];
@@ -31,8 +31,7 @@ class _CbtScreenState extends State<CbtScreen> {
     try {
       final data = await _api.cbtExamsForMe();
       final practice = (data['practice_exams'] as List?) ?? [];
-      final school = (data['school_exams'] as List?) ?? [];
-      final combined = [...practice, ...school];
+      final combined = [...practice];
       if (mounted) setState(() { _allExams = combined; _loadingExams = false; });
     } on ApiException catch (e) {
       if (mounted) {
@@ -75,11 +74,16 @@ class _CbtScreenState extends State<CbtScreen> {
   }
 
   List<dynamic> get _exams {
-    if (_selectedType == 'All') return _allExams;
     final filter = _selectedType.toUpperCase();
     return _allExams.where((e) {
-      final type = (e as Map<String, dynamic>)['exam_type']?.toString().toUpperCase() ?? '';
-      return type.contains(filter);
+      final type =
+          (e as Map<String, dynamic>)['exam_type']?.toString().toUpperCase() ??
+              '';
+      if (filter == 'JAMB') return type.contains('JAMB');
+      if (filter == 'WAEC/NECO') {
+        return type.contains('WAEC') || type.contains('NECO');
+      }
+      return true;
     }).toList();
   }
 
@@ -189,7 +193,7 @@ class _CbtScreenState extends State<CbtScreen> {
                         color: Colors.white,
                         fontSize: 22,
                         fontWeight: FontWeight.w800)),
-                Text('Master JAMB, WAEC & NECO with mock tests',
+                Text('JAMB & WAEC/NECO practice tests',
                     style: TextStyle(
                         color: Colors.white.withOpacity(0.88), fontSize: 13)),
               ],

@@ -17,8 +17,16 @@ class TeacherShell extends StatefulWidget {
 
 class _TeacherShellState extends State<TeacherShell> {
   int _currentIndex = 0;
+  int _hostClassNonce = 0;
 
   void _goToTab(int i) => setState(() => _currentIndex = i);
+
+  void _hostClass() {
+    setState(() {
+      _currentIndex = 1;
+      _hostClassNonce++;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -26,8 +34,11 @@ class _TeacherShellState extends State<TeacherShell> {
       listenable: themeNotifier,
       builder: (context, _) {
         final screens = [
-          TeacherDashboardScreen(onNavigate: _goToTab),
-          const TeacherClassesScreen(),
+          TeacherDashboardScreen(
+            onNavigate: _goToTab,
+            onHostClass: _hostClass,
+          ),
+          TeacherClassesScreen(hostClassNonce: _hostClassNonce),
           const TeacherGroupsScreen(),
           const TeacherNoticesScreen(),
           const TeacherGradingScreen(),

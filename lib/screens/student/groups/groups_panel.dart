@@ -16,10 +16,12 @@ class GroupsPanel extends StatefulWidget {
 
 class _GroupsPanelState extends State<GroupsPanel> {
   final _api = ApiService();
+  final _searchCtrl = TextEditingController();
   List<Map<String, dynamic>> _mine = [];
   List<Map<String, dynamic>> _discover = [];
   List<Map<String, dynamic>> _school = [];
   bool _loading = true;
+  String _query = '';
 
   final _nameCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
@@ -34,10 +36,29 @@ class _GroupsPanelState extends State<GroupsPanel> {
 
   @override
   void dispose() {
+    _searchCtrl.dispose();
     _nameCtrl.dispose();
     _descCtrl.dispose();
     super.dispose();
   }
+
+  bool _matchesQuery(Map<String, dynamic> g) {
+    final q = _query.trim().toLowerCase();
+    if (q.isEmpty) return true;
+    final name = g['name']?.toString().toLowerCase() ?? '';
+    final desc = g['description']?.toString().toLowerCase() ?? '';
+    final creator = g['creator_name']?.toString().toLowerCase() ?? '';
+    return name.contains(q) || desc.contains(q) || creator.contains(q);
+  }
+
+  List<Map<String, dynamic>> get _filteredMine =>
+      _mine.where(_matchesQuery).toList();
+
+  List<Map<String, dynamic>> get _filteredDiscover =>
+      _discover.where(_matchesQuery).toList();
+
+  List<Map<String, dynamic>> get _filteredSchool =>
+      _school.where(_matchesQuery).toList();
 
   Future<void> _load() async {
     setState(() => _loading = true);
@@ -236,55 +257,270 @@ class _GroupsPanelState extends State<GroupsPanel> {
       return Center(child: CircularProgressIndicator(color: context.accentColor));
     }
 
-    return RefreshIndicator(
-      color: context.accentColor,
-      onRefresh: _load,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        physics: const AlwaysScrollableScrollPhysics(),
-        children: [
-          _createCard(context),
-          const SizedBox(height: 20),
-          _sectionTitle(context, 'Your groups'),
-          const SizedBox(height: 8),
-          if (_mine.isEmpty)
-            _emptyHint(
-              context,
-              'You have not joined a group yet',
-              'Create one above or join from Discover groups below.',
-            )
-          else
-            ..._mine.map((g) => _studentGroupCard(context, g, isMineSection: true)),
-          const SizedBox(height: 20),
-          _sectionTitle(context, 'Discover groups'),
-          const SizedBox(height: 4),
-          Text(
-            'Open groups listed in Community — tap Join group to request access.',
-            style: TextStyle(color: context.greyColor, fontSize: 12),
+    final mine = _filteredMine;
+    final discover = _filteredDiscover;
+    final school = _filteredSchool;
+    final hasQuery = _query.trim().isNotEmpty;
+
+    return Stack(
+      children: [
+        RefreshIndicator(
+          color: context.accentColor,
+          onRefresh: _load,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+            physics: const AlwaysScrollableScrollPhysics(),
+            children: [
+              _searchField(context),
+              const SizedBox(height: 16),
+              _sectionTitle(context, 'Your groups'),
+              const SizedBox(height: 8),
+              if (mine.isEmpty)
+                _emptyHint(
+                  context,
+                  hasQuery
+                      ? 'No groups match “${_query.trim()}”'
+                      : 'You have not joined a group yet',
+                  hasQuery
+                      ? 'Try another name, or clear the search.'
+                      : 'Tap + below to create one, or join from Discover groups.',
+                )
+              else
+                ...mine.map(
+                    (g) => _studentGroupCard(context, g, isMineSection: true)),
+              const SizedBox(height: 20),
+              _sectionTitle(context, 'Discover groups'),
+              const SizedBox(height: 4),
+              Text(
+                'Open groups listed in Community — tap Join group to request access.',
+                style: TextStyle(color: context.greyColor, fontSize: 12),
+              ),
+              const SizedBox(height: 8),
+              if (discover.isEmpty)
+                _emptyHint(
+                  context,
+                  hasQuery
+                      ? 'No discover groups match “${_query.trim()}”'
+                      : 'No open groups right now',
+                  hasQuery
+                      ? 'Try a different search.'
+                      : 'Create one and list it in the feed for others to join.',
+                )
+              else
+                ...discover.map(
+                    (g) => _studentGroupCard(context, g, isMineSection: false)),
+              if (_school.isNotEmpty) ...[
+                const SizedBox(height: 20),
+                _sectionTitle(context, 'School groups'),
+                const SizedBox(height: 4),
+                Text(
+                  'Added by your school — live class codes appear in the access code popup.',
+                  style: TextStyle(color: context.greyColor, fontSize: 12),
+                ),
+                const SizedBox(height: 8),
+                if (school.isEmpty)
+                  _emptyHint(
+                    context,
+                    'No school groups match “${_query.trim()}”',
+                    'Try another search.',
+                  )
+                else
+                  ...school.map((g) => _schoolGroupCard(context, g)),
+              ],
+            ],
           ),
-          const SizedBox(height: 8),
-          if (_discover.isEmpty)
-            _emptyHint(
-              context,
-              'No open groups right now',
-              'Create one and list it in the feed for others to join.',
-            )
-          else
-            ..._discover.map((g) => _studentGroupCard(context, g, isMineSection: false)),
-          if (_school.isNotEmpty) ...[
-            const SizedBox(height: 20),
-            _sectionTitle(context, 'School groups'),
-            const SizedBox(height: 4),
-            Text(
-              'Added by your school — live class codes appear in the access code popup.',
-              style: TextStyle(color: context.greyColor, fontSize: 12),
+        ),
+        Positioned(
+          right: 20,
+          bottom: 88,
+          child: FloatingActionButton.extended(
+            onPressed: _showCreateSheet,
+            backgroundColor: context.accentColor,
+            icon: const Icon(Icons.add, color: Colors.white),
+            label: const Text(
+              'New group',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
             ),
-            const SizedBox(height: 8),
-            ..._school.map((g) => _schoolGroupCard(context, g)),
-          ],
-          const SizedBox(height: 80),
-        ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _searchField(BuildContext context) {
+    return TextField(
+      controller: _searchCtrl,
+      onChanged: (v) => setState(() => _query = v),
+      textInputAction: TextInputAction.search,
+      style: TextStyle(color: context.textColor),
+      decoration: InputDecoration(
+        hintText: 'Search groups by name…',
+        hintStyle: TextStyle(color: context.greyLColor),
+        prefixIcon: Icon(Icons.search_rounded, color: context.greyColor),
+        suffixIcon: _query.isEmpty
+            ? null
+            : IconButton(
+                tooltip: 'Clear',
+                onPressed: () {
+                  _searchCtrl.clear();
+                  setState(() => _query = '');
+                },
+                icon: Icon(Icons.close_rounded, color: context.greyColor),
+              ),
+        filled: true,
+        fillColor: context.cardColor,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: context.borderColor),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: context.borderColor),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: context.accentColor, width: 1.5),
+        ),
       ),
+    );
+  }
+
+  Future<void> _showCreateSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: context.cardColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: context.borderColor,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Create a group',
+                  style: TextStyle(
+                    color: context.textColor,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'New groups need admin approval before they become active.',
+                  style: TextStyle(color: context.greyColor, fontSize: 12),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: _nameCtrl,
+                  style: TextStyle(color: context.textColor),
+                  decoration: InputDecoration(
+                    hintText: 'Group name',
+                    hintStyle: TextStyle(color: context.greyLColor),
+                    filled: true,
+                    fillColor: context.surfColor,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _descCtrl,
+                  maxLines: 2,
+                  style: TextStyle(color: context.textColor),
+                  decoration: InputDecoration(
+                    hintText: 'Description (optional)',
+                    hintStyle: TextStyle(color: context.greyLColor),
+                    filled: true,
+                    fillColor: context.surfColor,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    SizedBox(
+                      height: 24,
+                      width: 24,
+                      child: Checkbox(
+                        value: _listInCommunity,
+                        onChanged: (v) =>
+                            setState(() => _listInCommunity = v ?? true),
+                        activeColor: context.accentColor,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'List for others to join after admin approval',
+                        style: TextStyle(color: context.textColor, fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _creating
+                        ? null
+                        : () async {
+                            await _createGroup();
+                            if (ctx.mounted) Navigator.pop(ctx);
+                          },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: context.accentColor,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: _creating
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text('Create group',
+                            style: TextStyle(fontWeight: FontWeight.w700)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -295,116 +531,6 @@ class _GroupsPanelState extends State<GroupsPanel> {
         color: context.textColor,
         fontSize: 15,
         fontWeight: FontWeight.w800,
-      ),
-    );
-  }
-
-  Widget _createCard(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: AppGradients.hero(context),
-        borderRadius: BorderRadius.circular(18),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF7C3AED).withOpacity(0.2),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Create a group',
-            style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w800),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'New groups need admin approval before they become active.',
-            style: TextStyle(color: Colors.white.withOpacity(0.88), fontSize: 12),
-          ),
-          const SizedBox(height: 14),
-          TextField(
-            controller: _nameCtrl,
-            style: const TextStyle(color: Colors.white),
-            decoration: InputDecoration(
-              hintText: 'Group name',
-              hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-              filled: true,
-              fillColor: Colors.white.withOpacity(0.15),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
-              ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            ),
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _descCtrl,
-            maxLines: 2,
-            style: const TextStyle(color: Colors.white),
-            decoration: InputDecoration(
-              hintText: 'Description (optional)',
-              hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-              filled: true,
-              fillColor: Colors.white.withOpacity(0.15),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
-              ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              SizedBox(
-                height: 24,
-                width: 24,
-                child: Checkbox(
-                  value: _listInCommunity,
-                  onChanged: (v) => setState(() => _listInCommunity = v ?? true),
-                  activeColor: Colors.white,
-                  checkColor: context.accentColor,
-                  side: BorderSide(color: Colors.white.withOpacity(0.6)),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'List for others to join after admin approval',
-                  style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 12),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _creating ? null : _createGroup,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: context.accentColor,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              child: _creating
-                  ? SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: context.accentColor,
-                      ),
-                    )
-                  : const Text('Create group', style: TextStyle(fontWeight: FontWeight.w700)),
-            ),
-          ),
-        ],
       ),
     );
   }

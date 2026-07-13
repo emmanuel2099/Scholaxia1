@@ -4,12 +4,16 @@ import '../../../api/api_service.dart';
 import '../../../services/access_code_service.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/student_ui.dart';
-import '../cbt/cbt_screen.dart';
+import '../../../widgets/app_header_actions.dart';
+import '../skills/skills_screen.dart';
 import '../classes/classes_screen.dart';
 import '../../../utils/live_join_helper.dart';
-import '../community/community_screen.dart';
+import '../saved/saved_classes_screen.dart';
 import '../notifications/notifications_screen.dart';
 import '../sia/sia_screen.dart';
+import '../cbt/internal_exams_screen.dart';
+import '../library/library_screen.dart';
+import '../marketplace/marketplace_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -321,59 +325,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     ),
                   ),
-                  GestureDetector(
-                    onTap: () async {
-                      await Navigator.push(
-                        ctx,
-                        MaterialPageRoute(
-                            builder: (_) => const NotificationsScreen()),
-                      );
-                      if (mounted) _loadNotificationBadge();
-                    },
-                    child: Stack(
-                      clipBehavior: Clip.none,
-                      children: [
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.15),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                                color: Colors.white.withOpacity(0.25)),
-                          ),
-                          child: const Icon(Icons.notifications_outlined,
-                              color: Colors.white, size: 22),
-                        ),
-                        if (_unreadNotifications > 0)
-                          Positioned(
-                            right: 2,
-                            top: 2,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 5, vertical: 2),
-                              constraints: const BoxConstraints(
-                                  minWidth: 18, minHeight: 18),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFBBF24),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: Colors.white, width: 2),
-                              ),
-                              child: Text(
-                                _unreadNotifications > 9
-                                    ? '9+'
-                                    : '$_unreadNotifications',
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: Color(0xFF1E1B2E),
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
+                  AppHeaderActions(
+                    lightOnGradient: true,
+                    onChanged: _loadNotificationBadge,
                   ),
                 ],
               ),
@@ -624,18 +578,18 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _quickAccess(BuildContext ctx) {
     final items = [
       (
-        Icons.auto_awesome_rounded,
-        'Sia AI Tutor',
-        'Instant answers & explanations.',
+        Icons.assignment_rounded,
+        'Internal Exam',
+        'Download & take teacher-set exams.',
         const [Color(0xFF7C3AED), Color(0xFF9333EA)],
-        const SiaScreen(),
+        const InternalExamsScreen(),
       ),
       (
-        Icons.quiz_rounded,
-        'CBT Practice',
-        'Timed JAMB & WAEC mocks.',
+        Icons.workspace_premium_rounded,
+        'Skills Training',
+        'Learn an income-earning skill.',
         const [Color(0xFF6366F1), Color(0xFF818CF8)],
-        const CbtScreen(),
+        const SkillsScreen(),
       ),
       (
         Icons.videocam_rounded,
@@ -645,11 +599,25 @@ class _HomeScreenState extends State<HomeScreen> {
         const ClassesScreen(),
       ),
       (
-        Icons.groups_rounded,
-        'Community',
-        'Connect with classmates.',
+        Icons.video_library_rounded,
+        'Saved Classes',
+        'Replay your saved lessons.',
         const [Color(0xFF8B5CF6), Color(0xFFA78BFA)],
-        const CommunityScreen(),
+        const SavedClassesScreen(),
+      ),
+      (
+        Icons.menu_book_rounded,
+        'Library',
+        'Read study books & materials.',
+        const [Color(0xFF0EA5E9), Color(0xFF38BDF8)],
+        const LibraryScreen(),
+      ),
+      (
+        Icons.storefront_rounded,
+        'Marketplace',
+        'Gadgets, laptops, clothes & more.',
+        const [Color(0xFFF59E0B), Color(0xFFFBBF24)],
+        const MarketplaceScreen(),
       ),
     ];
     return Column(

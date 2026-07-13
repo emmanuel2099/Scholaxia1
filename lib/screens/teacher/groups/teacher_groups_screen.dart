@@ -30,7 +30,7 @@ class _TeacherGroupsScreenState extends State<TeacherGroupsScreen> {
     try {
       final results = await Future.wait([
         _api.listSchoolGroups(),
-        _api.listLiveSessionRequests(status: 'approved'),
+        _api.listLiveSessionRequests(),
         _api.getTeacherMe(),
         _api.unreadNotificationCount(),
       ]);
@@ -58,8 +58,9 @@ class _TeacherGroupsScreenState extends State<TeacherGroupsScreen> {
   }
 
   Future<void> _showCreateSheet() async {
-    final schoolCtrl = TextEditingController();
+    final schoolCtrl = TextEditingController(text: 'Scholaxia');
     final nameCtrl = TextEditingController();
+    final emailsCtrl = TextEditingController();
     final selected = <String>{};
 
     await showModalBottomSheet<void>(
@@ -107,9 +108,17 @@ class _TeacherGroupsScreenState extends State<TeacherGroupsScreen> {
                     _field(ctx, schoolCtrl, 'School name', 'e.g. Greenfield Academy'),
                     const SizedBox(height: 12),
                     _field(ctx, nameCtrl, 'Group name', 'e.g. SS2 Physics A'),
+                    const SizedBox(height: 12),
+                    _field(
+                      ctx,
+                      emailsCtrl,
+                      'Student emails (optional)',
+                      'student1@email.com, student2@email.com',
+                      maxLines: 2,
+                    ),
                     const SizedBox(height: 16),
                     Text(
-                      'Add students',
+                      'Or pick assigned students',
                       style: TextStyle(
                         color: context.textColor,
                         fontWeight: FontWeight.w600,
@@ -118,7 +127,7 @@ class _TeacherGroupsScreenState extends State<TeacherGroupsScreen> {
                     const SizedBox(height: 8),
                     if (_students.isEmpty)
                       Text(
-                        'No approved students yet. Students request sessions first.',
+                        'No assigned students yet — add students by email above.',
                         style: TextStyle(color: context.greyColor, fontSize: 12),
                       )
                     else
@@ -162,10 +171,16 @@ class _TeacherGroupsScreenState extends State<TeacherGroupsScreen> {
                             return;
                           }
                           try {
+                            final emails = emailsCtrl.text
+                                .split(RegExp(r'[,;\s]+'))
+                                .map((e) => e.trim())
+                                .where((e) => e.contains('@'))
+                                .toList();
                             await _api.createSchoolGroup(
                               schoolName: school,
                               name: name,
                               studentIds: selected.toList(),
+                              studentEmails: emails,
                             );
                             if (ctx.mounted) Navigator.pop(ctx);
                             _load();
@@ -209,8 +224,9 @@ class _TeacherGroupsScreenState extends State<TeacherGroupsScreen> {
     nameCtrl.dispose();
   }
 
-  Widget _field(
-      BuildContext ctx, TextEditingController ctrl, String label, String hint) {
+  Widget _field(BuildContext ctx, TextEditingController ctrl, String label,
+      String hint,
+      {int maxLines = 1}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -222,6 +238,7 @@ class _TeacherGroupsScreenState extends State<TeacherGroupsScreen> {
         const SizedBox(height: 6),
         TextField(
           controller: ctrl,
+          maxLines: maxLines,
           style: TextStyle(color: context.textColor),
           decoration: InputDecoration(
             hintText: hint,
@@ -238,17 +255,155 @@ class _TeacherGroupsScreenState extends State<TeacherGroupsScreen> {
     );
   }
 
+  Future<void> _showGroupSheet(Map<String, dynamic> g) async {
+    final groupId = g['id']?.toString() ?? '';
+    if (groupId.isEmpty) return;
+
+    Map<String, dynamic> detail = g;
+    try {
+      detail = await _api.getSchoolGroup(groupId);
+    } catch (_) {}
+
+    final members = (detail['members'] as List?)
+            ?.whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList() ??
+        [];
+    final emailsCtrl = TextEditingController();
+
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: context.cardColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  detail['name']?.toString() ?? 'Group',
+                  style: TextStyle(
+                    color: context.textColor,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                Text(
+                  detail['school_name']?.toString() ?? '',
+                  style: TextStyle(color: context.greyColor, fontSize: 13),
+                ),
+                const SizedBox(height: 16),
+                Text('Members (${members.length})',
+                    style: TextStyle(
+                        color: context.textColor, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                if (members.isEmpty)
+                  Text('No students in this group yet.',
+                      style: TextStyle(color: context.greyColor, fontSize: 13))
+                else
+                  ...members.map((m) {
+                    final name = m['name']?.toString() ?? 'Student';
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: CircleAvatar(
+                        backgroundColor: context.accentColor.withOpacity(0.15),
+                        child: Text(
+                          name.isNotEmpty ? name[0].toUpperCase() : 'S',
+                          style: TextStyle(
+                              color: context.accentColor,
+                              fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      title: Text(name,
+                          style: TextStyle(color: context.textColor)),
+                    );
+                  }),
+                const SizedBox(height: 16),
+                _field(ctx, emailsCtrl, 'Add students by email',
+                    'student@email.com'),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      final emails = emailsCtrl.text
+                          .split(RegExp(r'[,;\s]+'))
+                          .map((e) => e.trim())
+                          .where((e) => e.contains('@'))
+                          .toList();
+                      if (emails.isEmpty) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          const SnackBar(content: Text('Enter at least one email.')),
+                        );
+                        return;
+                      }
+                      try {
+                        await _api.updateSchoolGroup(
+                          groupId,
+                          studentIds: (detail['student_ids'] as List?)
+                                  ?.map((e) => e.toString())
+                                  .toList() ??
+                              members
+                                  .map((m) => m['student_id']?.toString() ?? '')
+                                  .where((id) => id.isNotEmpty)
+                                  .toList(),
+                          studentEmails: emails,
+                        );
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        _load();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Students added!')),
+                          );
+                        }
+                      } on ApiException catch (e) {
+                        if (ctx.mounted) {
+                          ScaffoldMessenger.of(ctx).showSnackBar(
+                            SnackBar(
+                              content: Text(e.message),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: context.accentColor,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    child: const Text('Add to group',
+                        style: TextStyle(fontWeight: FontWeight.w700)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    emailsCtrl.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: context.bgColor,
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showCreateSheet,
-        backgroundColor: context.accentColor,
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text('New group',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-      ),
       body: _loading
           ? Center(child: CircularProgressIndicator(color: context.accentColor))
           : RefreshIndicator(
@@ -281,6 +436,28 @@ class _TeacherGroupsScreenState extends State<TeacherGroupsScreen> {
                                 : null,
                           ),
                           const StudentSectionTitle(title: 'Your groups'),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                            child: SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed: _showCreateSheet,
+                                icon: const Icon(Icons.add, size: 20),
+                                label: const Text('Create new group',
+                                    style:
+                                        TextStyle(fontWeight: FontWeight.w700)),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: context.accentColor,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                      vertical: 14),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
                           if (_groups.isEmpty)
                             Padding(
                               padding: const EdgeInsets.all(32),
@@ -299,7 +476,7 @@ class _TeacherGroupsScreenState extends State<TeacherGroupsScreen> {
                                     ),
                                     const SizedBox(height: 6),
                                     Text(
-                                      'Tap New group to create one.',
+                                      'Tap Create new group to get started.',
                                       style: TextStyle(
                                           color: context.greyColor,
                                           fontSize: 13),
@@ -329,7 +506,12 @@ class _TeacherGroupsScreenState extends State<TeacherGroupsScreen> {
         0;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-      child: Container(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => _showGroupSheet(g),
+          borderRadius: BorderRadius.circular(20),
+          child: Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: context.cardColor,
@@ -375,7 +557,10 @@ class _TeacherGroupsScreenState extends State<TeacherGroupsScreen> {
                 ],
               ),
             ),
+            Icon(Icons.chevron_right_rounded, color: context.greyColor),
           ],
+        ),
+          ),
         ),
       ),
     );

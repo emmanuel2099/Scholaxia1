@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
-import 'kind_community_screen.dart';
-import 'kind_groups_screen.dart';
+import '../student/saved/saved_classes_screen.dart';
+import 'kind_games_screen.dart';
 import 'kind_home_screen.dart';
 import 'kind_live_screen.dart';
-import 'kind_profile_screen.dart';
 import 'kind_sia_screen.dart';
 
 /// Kid learner app — polished UI matching the student experience.
@@ -17,6 +16,7 @@ class KindShell extends StatefulWidget {
 
 class _KindShellState extends State<KindShell> {
   int _index = 0;
+  final _savedKey = GlobalKey<SavedClassesScreenState>();
 
   void _goToTab(int i) => setState(() => _index = i);
 
@@ -29,9 +29,8 @@ class _KindShellState extends State<KindShell> {
           KindHomeScreen(onNavigate: _goToTab),
           const KindSiaScreen(),
           const KindLiveScreen(),
-          const KindGroupsScreen(),
-          const KindCommunityScreen(),
-          const KindProfileScreen(),
+          SavedClassesScreen(key: _savedKey),
+          const KindGamesScreen(),
         ];
 
         const navItems = [
@@ -51,19 +50,14 @@ class _KindShellState extends State<KindShell> {
             label: 'Live',
           ),
           _NavItem(
-            icon: Icons.groups_outlined,
-            activeIcon: Icons.groups_rounded,
-            label: 'Groups',
+            icon: Icons.video_library_outlined,
+            activeIcon: Icons.video_library_rounded,
+            label: 'Saved',
           ),
           _NavItem(
-            icon: Icons.people_outline_rounded,
-            activeIcon: Icons.people_rounded,
-            label: 'Community',
-          ),
-          _NavItem(
-            icon: Icons.person_outline_rounded,
-            activeIcon: Icons.person_rounded,
-            label: 'Me',
+            icon: Icons.videogame_asset_outlined,
+            activeIcon: Icons.videogame_asset_rounded,
+            label: 'Games',
           ),
         ];
 
@@ -104,7 +98,10 @@ class _KindShellState extends State<KindShell> {
                   final item = navItems[i];
                   return Expanded(
                     child: GestureDetector(
-                      onTap: () => setState(() => _index = i),
+                      onTap: () {
+                        setState(() => _index = i);
+                        if (i == 3) _savedKey.currentState?.reload();
+                      },
                       behavior: HitTestBehavior.opaque,
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 220),

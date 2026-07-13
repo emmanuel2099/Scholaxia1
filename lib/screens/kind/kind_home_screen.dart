@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import '../../api/api_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/student_ui.dart';
+import '../../widgets/app_header_actions.dart';
 import 'kind_learn_screen.dart';
+import 'kind_cbt_screen.dart';
 import 'kind_shared.dart';
 
 class KindHomeScreen extends StatefulWidget {
@@ -59,6 +61,13 @@ class _KindHomeScreenState extends State<KindHomeScreen> {
     );
   }
 
+  void _openCbt() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const KindCbtScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -77,6 +86,24 @@ class _KindHomeScreenState extends State<KindHomeScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    'Scholaxia Kids',
+                                    style: TextStyle(
+                                      color: context.textColor,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                                const AppHeaderActions(),
+                              ],
+                            ),
+                          ),
                           KindHeroHeader(
                             greeting: 'Hi, $_name!',
                             subtitle: _ageGroup.isNotEmpty
@@ -87,9 +114,11 @@ class _KindHomeScreenState extends State<KindHomeScreen> {
                           const SizedBox(height: 20),
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Row(
-                              children: [
-                                StudentStatCard(
+                            child: SizedBox(
+                              height: 110,
+                              child: Row(
+                                children: [
+                                  StudentStatCard(
                                   icon: Icons.videocam_rounded,
                                   value: '$_liveCount',
                                   label: 'Live now',
@@ -119,6 +148,7 @@ class _KindHomeScreenState extends State<KindHomeScreen> {
                                   ],
                                 ),
                               ],
+                            ),
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -153,16 +183,16 @@ class _KindHomeScreenState extends State<KindHomeScreen> {
         () => widget.onNavigate?.call(2),
       ),
       (
-        Icons.groups_rounded,
-        'Groups',
-        'Study with friends.',
+        Icons.video_library_rounded,
+        'Saved Class',
+        'Replay saved lessons.',
         const [Color(0xFF6366F1), Color(0xFF818CF8)],
         () => widget.onNavigate?.call(3),
       ),
       (
-        Icons.people_rounded,
-        'Community',
-        'See posts and connect.',
+        Icons.videogame_asset_rounded,
+        'Games',
+        '30+ fun learning games.',
         const [Color(0xFF8B5CF6), Color(0xFFA78BFA)],
         () => widget.onNavigate?.call(4),
       ),
@@ -179,6 +209,13 @@ class _KindHomeScreenState extends State<KindHomeScreen> {
         'Fun questions on any topic.',
         const [Color(0xFFF59E0B), Color(0xFFFBBF24)],
         _openLearn,
+      ),
+      (
+        Icons.assignment_rounded,
+        'Entrance CBT',
+        'Primary 6 Common Entrance.',
+        const [Color(0xFF0EA5E9), Color(0xFF38BDF8)],
+        _openCbt,
       ),
       (
         Icons.auto_awesome_rounded,

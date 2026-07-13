@@ -49,6 +49,7 @@
       <button class="nav-btn" data-page="students" onclick="showAdminPage('students')">&#127891; Students</button>
       <button class="nav-btn" data-page="teachers" onclick="showAdminPage('teachers')">&#128104;&#8205;&#127979; Teachers</button>
       <button class="nav-btn" data-page="kind" onclick="showAdminPage('kind')">&#128118; Kind (Kids)</button>
+      <button class="nav-btn" data-page="kind-games" onclick="showAdminPage('kind-games')">&#127918; Kids Games Qs</button>
       <button class="nav-btn" data-page="requests" onclick="showAdminPage('requests')">&#128172; Session Requests</button>
       <button class="nav-btn" data-page="live-subs" onclick="showAdminPage('live-subs')">&#127909; Live Subscriptions</button>
       <button class="nav-btn" data-page="cbt" onclick="showAdminPage('cbt')">&#128221; CBT Exams</button>
@@ -114,6 +115,47 @@
     <section id="page-kind" class="admin-page">
       <div class="page-head"><h2>Kind Learners (Kids)</h2><button class="btn-sm" onclick="loadKind()">Refresh</button></div>
       <div id="kind-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+    </section>
+
+    <section id="page-kind-games" class="admin-page">
+      <div class="page-head">
+        <h2>Kids Game Questions</h2>
+        <button class="btn-sm" onclick="loadKindGamesAdmin()">Refresh</button>
+      </div>
+      <p class="cbt-hint small">Each game ships with 50+ built-in questions. Add more here so kids play longer before any question repeats. Kids unlock Leaf 1 → Leaf 2 → … by answering correctly.</p>
+
+      <div class="panel" style="margin-bottom:16px">
+        <h3>Add a question</h3>
+        <div class="form-grid">
+          <label><span>Game</span>
+            <select id="kg-game"></select>
+          </label>
+          <label style="grid-column:1/-1"><span>Question prompt</span>
+            <textarea id="kg-prompt" rows="2" placeholder="What is 2 + 2?"></textarea>
+          </label>
+          <label><span>Option A (correct if index 0)</span><input id="kg-opt0" /></label>
+          <label><span>Option B</span><input id="kg-opt1" /></label>
+          <label><span>Option C</span><input id="kg-opt2" /></label>
+          <label><span>Option D</span><input id="kg-opt3" /></label>
+          <label><span>Correct option</span>
+            <select id="kg-correct">
+              <option value="0">A</option>
+              <option value="1">B</option>
+              <option value="2">C</option>
+              <option value="3">D</option>
+            </select>
+          </label>
+          <label><span>Speak word (optional TTS)</span><input id="kg-speak" placeholder="e.g. apple" /></label>
+        </div>
+        <button class="btn-sm" onclick="createKindGameQuestion()">Add question</button>
+        <p id="kg-msg" class="cbt-hint small" style="margin-top:8px"></p>
+      </div>
+
+      <div class="page-head" style="margin-top:8px">
+        <h3 style="margin:0">Questions for selected game</h3>
+        <select id="kg-filter" onchange="loadKindGameQuestions()"></select>
+      </div>
+      <div id="kg-questions" class="data-table-wrap"><div class="loading">Pick a game…</div></div>
     </section>
 
     <section id="page-requests" class="admin-page">

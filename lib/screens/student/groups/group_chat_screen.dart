@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../api/api_service.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/student_ui.dart';
+import 'group_voice_call_screen.dart';
 
 class GroupChatScreen extends StatefulWidget {
   final String groupId;
@@ -29,12 +30,18 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   bool _sending = false;
   String? _error;
   Timer? _pollTimer;
+  String? _myUserId;
+  bool _incomingShown = false;
 
   @override
   void initState() {
     super.initState();
+    _api.getUserId().then((id) => _myUserId = id);
     _load();
-    _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) => _refreshMessages(silent: true));
+    _pollTimer = Timer.periodic(const Duration(seconds: 6), (_) {
+      _refreshMessages(silent: true);
+      _checkIncomingCall();
+    });
   }
 
   @override
@@ -104,6 +111,54 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         );
       }
     });
+  }
+
+  Future<void> _checkIncomingCall() async {
+    if (_incomingShown || !mounted) return;
+    try {
+      final call = await _api.getActiveGroupCall(widget.groupId);
+      if (call == null || call['active'] != true) return;
+      final callerId = call['caller_id']?.toString() ?? '';
+      if (_myUserId != null &&
+          callerId.isNotEmpty &&
+          callerId.toLowerCase() == _myUserId!.toLowerCase()) {
+        return;
+      }
+      _incomingShown = true;
+      if (!mounted) return;
+      await showIncomingGroupCall(
+        context,
+        groupId: widget.groupId,
+        groupName: widget.groupName,
+        callerName: call['caller_name']?.toString() ?? 'Member',
+      );
+      _incomingShown = false;
+    } catch (_) {}
+  }
+
+  Future<void> _startCall() async {
+    try {
+      final data = await _api.startGroupVoiceCall(widget.groupId);
+      if (!mounted) return;
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => GroupVoiceCallScreen(
+            groupId: widget.groupId,
+            groupName: widget.groupName,
+            isCaller: true,
+            initialToken: data,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e is ApiException ? e.message : 'Could not start call'),
+        ),
+      );
+    }
   }
 
   Future<void> _send() async {
@@ -188,6 +243,13 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
             ),
           ],
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Group voice call',
+            onPressed: _error != null ? null : _startCall,
+            icon: Icon(Icons.call_rounded, color: context.accentColor),
+          ),
+        ],
       ),
       body: Column(
         children: [

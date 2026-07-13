@@ -110,6 +110,7 @@ function showAdminPage(page) {
   else if (page === "students") loadStudents();
   else if (page === "teachers") loadTeachers();
   else if (page === "kind") loadKind();
+  else if (page === "kind-games") loadKindGamesAdmin();
   else if (page === "requests") loadRequests();
   else if (page === "live-subs") loadLiveSubscriptions();
   else if (page === "cbt") { initCbtBuilder(); loadCbt(); }
@@ -294,6 +295,122 @@ async function loadKind() {
       }).join("") + '</tbody></table>';
   } catch (e) {
     el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + '</div>';
+  }
+}
+
+/* ── Kids game questions (admin) ── */
+var kindGamesCatalog = [];
+
+async function loadKindGamesAdmin() {
+  try {
+    var data = await adminApi("/api/v1/admin/kind-games/catalog");
+    kindGamesCatalog = (data && data.games) || [];
+    var opts = kindGamesCatalog.map(function (g) {
+      return '<option value="' + escHtml(g.id) + '">' + escHtml(g.title) +
+        " (" + (g.admin_questions || 0) + " admin Qs)</option>";
+    }).join("");
+    document.getElementById("kg-game").innerHTML = opts;
+    document.getElementById("kg-filter").innerHTML =
+      '<option value="">All games</option>' + opts;
+    loadKindGameQuestions();
+  } catch (e) {
+    document.getElementById("kg-questions").innerHTML =
+      '<div class="empty-state">' + escHtml(e.message) + "</div>";
+  }
+}
+
+async function loadKindGameQuestions() {
+  var el = document.getElementById("kg-questions");
+  el.innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    var gid = document.getElementById("kg-filter").value;
+    var url = "/api/v1/admin/kind-games/questions";
+    if (gid) url += "?game_id=" + encodeURIComponent(gid);
+    var rows = await adminApi(url);
+    if (!rows) return;
+    if (!rows.length) {
+      el.innerHTML = '<div class="empty-state">No admin questions yet. Add some above — kids also keep their 50 built-in questions.</div>';
+      return;
+    }
+    el.innerHTML =
+      '<table class="data-table"><thead><tr><th>Game</th><th>Prompt</th><th>Options</th><th>Correct</th><th></th></tr></thead><tbody>' +
+      rows
+        .map(function (q) {
+          var opts = (q.options || [])
+            .map(function (o, i) {
+              return (i === q.correct_index ? "<strong>" : "") +
+                escHtml(o) +
+                (i === q.correct_index ? "</strong>" : "");
+            })
+            .join(" · ");
+          return (
+            "<tr><td>" +
+            escHtml(q.game_id) +
+            "</td><td>" +
+            escHtml((q.prompt || "").slice(0, 120)) +
+            "</td><td>" +
+            opts +
+            "</td><td>" +
+            String.fromCharCode(65 + (q.correct_index || 0)) +
+            '</td><td class="actions"><button class="btn-sm danger" onclick="deleteKindGameQuestion(\'' +
+            q.id +
+            "')\">Delete</button></td></tr>"
+          );
+        })
+        .join("") +
+      "</tbody></table>";
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
+  }
+}
+
+async function createKindGameQuestion() {
+  var msg = document.getElementById("kg-msg");
+  var gameId = document.getElementById("kg-game").value;
+  var prompt = (document.getElementById("kg-prompt").value || "").trim();
+  var opts = [0, 1, 2, 3]
+    .map(function (i) {
+      return (document.getElementById("kg-opt" + i).value || "").trim();
+    })
+    .filter(Boolean);
+  var correct = parseInt(document.getElementById("kg-correct").value, 10) || 0;
+  var speak = (document.getElementById("kg-speak").value || "").trim();
+  if (!prompt || opts.length < 2) {
+    msg.textContent = "Need a prompt and at least 2 options.";
+    return;
+  }
+  if (correct >= opts.length) correct = 0;
+  msg.textContent = "Saving…";
+  try {
+    await adminApi("/api/v1/admin/kind-games/questions", {
+      method: "POST",
+      body: JSON.stringify({
+        game_id: gameId,
+        prompt: prompt,
+        options: opts,
+        correct_index: correct,
+        speak_word: speak || null,
+      }),
+    });
+    document.getElementById("kg-prompt").value = "";
+    [0, 1, 2, 3].forEach(function (i) {
+      document.getElementById("kg-opt" + i).value = "";
+    });
+    document.getElementById("kg-speak").value = "";
+    msg.textContent = "Question added to " + gameId + ".";
+    loadKindGamesAdmin();
+  } catch (e) {
+    msg.textContent = e.message || "Failed.";
+  }
+}
+
+async function deleteKindGameQuestion(id) {
+  if (!confirm("Remove this question?")) return;
+  try {
+    await adminApi("/api/v1/admin/kind-games/questions/" + id, { method: "DELETE" });
+    loadKindGameQuestions();
+  } catch (e) {
+    alert(e.message);
   }
 }
 

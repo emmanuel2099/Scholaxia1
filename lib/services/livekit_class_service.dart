@@ -88,18 +88,35 @@ class LiveKitClassService {
       await lkRoom.connect(url, token);
       _rescanAll();
 
+      // Always unlock playback first so remote teacher/student audio is heard.
+      await _enableLoudspeaker();
+      await _ensureAudioPlayback();
+
       if (publishMic) {
-        await lkRoom.localParticipant?.setMicrophoneEnabled(true);
+        try {
+          await lkRoom.localParticipant?.setMicrophoneEnabled(true);
+        } catch (e) {
+          error = 'Mic publish failed: $e';
+        }
       }
       if (publishCamera) {
-        await lkRoom.localParticipant?.setCameraEnabled(true);
+        try {
+          await lkRoom.localParticipant?.setCameraEnabled(true);
+        } catch (_) {}
       }
       _scanLocal();
 
       connected = true;
       status = 'Connected';
-      error = null;
-      unawaited(_ensureAudioPlayback());
+      if (error == null) error = null;
+      await _enableLoudspeaker();
+      await _ensureAudioPlayback();
+      // Re-check shortly — Android often needs a second startAudio after tracks arrive.
+      Future<void>.delayed(const Duration(milliseconds: 800), () async {
+        await _ensureAudioPlayback();
+        await _enableLoudspeaker();
+        _rescanAll();
+      });
     } catch (e) {
       connected = false;
       error = e.toString();
@@ -145,14 +162,26 @@ class LiveKitClassService {
     onChanged();
   }
 
-  Future<void> setScreenShareEnabled(bool enabled) async {
+  Future<void> setScreenShareEnabled(bool enabled, {String? sourceId}) async {
+    error = null;
     try {
-      await room?.localParticipant?.setScreenShareEnabled(enabled);
+      final local = room?.localParticipant;
+      if (enabled && sourceId != null && sourceId.isNotEmpty) {
+        // Desktop: a specific screen/window was chosen from the picker.
+        await local?.setScreenShareEnabled(
+          true,
+          screenShareCaptureOptions:
+              ScreenShareCaptureOptions(sourceId: sourceId),
+        );
+      } else {
+        await local?.setScreenShareEnabled(enabled);
+      }
       screenShareOn = enabled;
       _scanLocal();
       _rescanAll();
     } catch (e) {
       error = e.toString();
+      screenShareOn = false;
     }
     onChanged();
   }
@@ -160,11 +189,18 @@ class LiveKitClassService {
   Future<void> disconnect() async {
     _listener?.dispose();
     _listener = null;
-    if (room != null) {
-      await room!.disconnect();
-      room!.dispose();
-    }
+    // Capture and null out first so concurrent disconnect()/dispose() calls
+    // can't null `room` mid-await and trigger a null-check crash.
+    final r = room;
     room = null;
+    if (r != null) {
+      try {
+        await r.disconnect();
+      } catch (_) {}
+      try {
+        await r.dispose();
+      } catch (_) {}
+    }
     primaryRemoteVideo = null;
     screenShareVideo = null;
     cameraVideo = null;
@@ -260,10 +296,33 @@ class LiveKitClassService {
   Future<void> _ensureAudioPlayback() async {
     final lkRoom = room;
     if (lkRoom == null) return;
-    if (!lkRoom.canPlaybackAudio) {
-      try {
-        await lkRoom.startAudio();
-      } catch (_) {}
+    try {
+      // Always try — some Android devices report canPlaybackAudio true but stay silent.
+      await lkRoom.startAudio();
+    } catch (_) {}
+  }
+
+  Future<void> _enableLoudspeaker() async {
+    if (kIsWeb) return;
+    try {
+      await Hardware.instance.setSpeakerphoneOn(true);
+    } catch (_) {}
+  }
+
+  /// Force remote audio subscriptions (defensive against muted auto-sub edge cases).
+  Future<void> ensureRemoteAudioSubscribed() async {
+    final lkRoom = room;
+    if (lkRoom == null) return;
+    for (final p in lkRoom.remoteParticipants.values) {
+      for (final pub in p.audioTrackPublications) {
+        try {
+          if (!pub.subscribed) {
+            await pub.subscribe();
+          }
+        } catch (_) {}
+      }
     }
+    await _ensureAudioPlayback();
+    onChanged();
   }
 }

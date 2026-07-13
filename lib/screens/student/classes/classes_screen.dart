@@ -3,6 +3,7 @@ import '../../../api/api_service.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/student_ui.dart';
 import '../../../utils/live_join_helper.dart';
+import '../subscription/subscription_screen.dart';
 
 class ClassesScreen extends StatefulWidget {
   const ClassesScreen({super.key});
@@ -12,8 +13,6 @@ class ClassesScreen extends StatefulWidget {
 
 class _ClassesScreenState extends State<ClassesScreen> {
   final _api = ApiService();
-  String _filter = 'All';
-  final _filters = ['All', 'JAMB', 'WAEC', 'NECO', 'Mathematics'];
   String _tab = 'Schedule';
 
   List<Map<String, dynamic>> _live = [];
@@ -83,15 +82,6 @@ class _ClassesScreenState extends State<ClassesScreen> {
     return fallback;
   }
 
-  bool _matchesFilter(Map<String, dynamic> item) {
-    if (_filter == 'All') return true;
-    final subject = _field(item, ['subject', 'category', 'exam_type']).toLowerCase();
-    final title = _field(item, ['title', 'topic', 'name']).toLowerCase();
-    final series = _field(item, ['series', 'description', 'subtitle']).toLowerCase();
-    final needle = _filter.toLowerCase();
-    return subject.contains(needle) || title.contains(needle) || series.contains(needle);
-  }
-
   String _formatTime(Map<String, dynamic> item) {
     final iso = _field(item, ['start_time', 'scheduled_at', 'preferred_time']);
     if (iso.isEmpty) return '';
@@ -133,13 +123,11 @@ class _ClassesScreenState extends State<ClassesScreen> {
   }
 
   Map<String, dynamic>? get _ongoing {
-    final filtered = _live.where(_matchesFilter).toList();
-    return filtered.isNotEmpty ? filtered.first : null;
+    return _live.isNotEmpty ? _live.first : null;
   }
 
   List<Map<String, dynamic>> get _listItems {
-    final source = _tab == 'Schedule' ? _upcoming : _past;
-    return source.where(_matchesFilter).toList();
+    return _tab == 'Schedule' ? _upcoming : _past;
   }
 
   @override
@@ -147,53 +135,88 @@ class _ClassesScreenState extends State<ClassesScreen> {
     return Scaffold(
       backgroundColor: context.bgColor,
       body: SafeArea(
-        child: RefreshIndicator(
-          color: context.accentColor,
-          onRefresh: _load,
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _header(context),
-                _filterRow(context),
-                if (_loading)
-                  Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Center(
-                      child: CircularProgressIndicator(color: context.accentColor),
-                    ),
-                  )
-                else ...[
-                  if (_ongoing != null) _ongoingSession(context, _ongoing!),
-                  _tabsRow(context),
-                  if (_listItems.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: context.cardColor,
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: context.borderColor),
-                        ),
-                        child: Text(
-                          _tab == 'Schedule'
-                              ? 'No upcoming classes scheduled yet.'
-                              : 'No past sessions to show.',
-                          style: TextStyle(color: context.greyColor, fontSize: 13),
-                        ),
-                      ),
-                    )
-                  else
-                    _classList(context),
-                  _countdown(context),
-                ],
-                const SizedBox(height: 100),
-              ],
+        child: Column(
+          children: [
+            Expanded(
+              child: RefreshIndicator(
+                color: context.accentColor,
+                onRefresh: _load,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _header(context),
+                      const SizedBox(height: 8),
+                      if (_loading)
+                        Padding(
+                          padding: const EdgeInsets.all(32),
+                          child: Center(
+                            child: CircularProgressIndicator(
+                                color: context.accentColor),
+                          ),
+                        )
+                      else ...[
+                        if (_ongoing != null) _ongoingSession(context, _ongoing!),
+                        _tabsRow(context),
+                        if (_listItems.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: context.cardColor,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: context.borderColor),
+                              ),
+                              child: Text(
+                                _tab == 'Schedule'
+                                    ? 'No upcoming classes scheduled yet.'
+                                    : 'No past sessions to show.',
+                                style: TextStyle(
+                                    color: context.greyColor, fontSize: 13),
+                              ),
+                            ),
+                          )
+                        else
+                          _classList(context),
+                        _countdown(context),
+                      ],
+                      const SizedBox(height: 24),
+                    ],
+                  ),
+                ),
+              ),
             ),
-          ),
+            _subscribeBar(context),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _subscribeBar(BuildContext ctx) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+      decoration: BoxDecoration(
+        color: ctx.headerColor,
+        border: Border(top: BorderSide(color: ctx.borderColor)),
+      ),
+      child: ElevatedButton.icon(
+        onPressed: () => Navigator.push(
+          ctx,
+          MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
+        ),
+        icon: const Icon(Icons.card_membership_rounded, size: 20),
+        label: const Text('Subscribe — Pay-Per-Class Plan',
+            style: TextStyle(fontWeight: FontWeight.w800)),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: ctx.accentColor,
+          foregroundColor: Colors.black,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         ),
       ),
     );
@@ -221,38 +244,6 @@ class _ClassesScreenState extends State<ClassesScreen> {
           const Spacer(),
           Icon(Icons.more_vert, color: ctx.textColor),
         ],
-      ),
-    );
-  }
-
-  Widget _filterRow(BuildContext ctx) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-      child: Row(
-        children: _filters.map((f) {
-          final sel = f == _filter;
-          return GestureDetector(
-            onTap: () => setState(() => _filter = f),
-            child: Container(
-              margin: const EdgeInsets.only(right: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: sel ? ctx.accentColor : ctx.cardColor,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: sel ? ctx.accentColor : ctx.borderColor),
-              ),
-              child: Text(
-                f,
-                style: TextStyle(
-                  color: sel ? (ctx.isDark ? AppColors.background : Colors.white) : ctx.textColor,
-                  fontSize: 13,
-                  fontWeight: sel ? FontWeight.bold : FontWeight.normal,
-                ),
-              ),
-            ),
-          );
-        }).toList(),
       ),
     );
   }

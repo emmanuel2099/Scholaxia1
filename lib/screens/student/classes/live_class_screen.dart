@@ -1,9 +1,11 @@
 ﻿import 'dart:async';
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:livekit_client/livekit_client.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../../api/api_endpoints.dart';
@@ -48,11 +50,14 @@ class _LiveClassScreenState extends State<LiveClassScreen>
 
   WebSocketChannel? _channel;
   StreamSubscription? _wsSub;
+  Timer? _wsReconnectTimer;
   Timer? _studentsPoll;
   Timer? _attendancePoll;
+  bool _disposed = false;
+  bool _classEnded = false;
   LiveKitClassService? _liveKit;
   LiveClassSaveRecorder? _saveRecorder;
-  final _boardKey = GlobalKey<LiveClassWhiteboardState>();
+  late final BoardController _board;
 
   bool _loading = true;
   bool _boardOpen = false;
@@ -83,18 +88,28 @@ class _LiveClassScreenState extends State<LiveClassScreen>
       length: widget.isTeacher ? 3 : 2,
       vsync: this,
     );
+    _tabController.addListener(() {
+      if (mounted) setState(() {});
+    });
+    _board = BoardController(
+      canDraw: widget.isTeacher,
+      onSend: widget.isTeacher ? _sendBoardEvent : null,
+    );
     _initSession();
   }
 
   @override
   void dispose() {
+    _disposed = true;
     _tabController.dispose();
     _chatController.dispose();
     _chatScroll.dispose();
     _studentsPoll?.cancel();
     _attendancePoll?.cancel();
+    _wsReconnectTimer?.cancel();
     _wsSub?.cancel();
     _channel?.sink.close();
+    _board.dispose();
     _liveKit?.disconnect();
     _liveKit?.dispose();
     if (_saveActive) {
@@ -137,6 +152,9 @@ class _LiveClassScreenState extends State<LiveClassScreen>
       if (widget.isTeacher) {
         _micOn = true;
         _camOn = true;
+      } else if (_micAllowed) {
+        // Auto-open mic so teacher and student hear each other after join.
+        _micOn = true;
       }
 
       _classDetails = await _api.getLiveClassDetail(widget.classId);
@@ -209,6 +227,7 @@ class _LiveClassScreenState extends State<LiveClassScreen>
 
     final channel = WebSocketChannel.connect(Uri.parse(url));
     _channel = channel;
+    _wsSub?.cancel();
     _wsSub = channel.stream.listen(
       (data) {
         try {
@@ -216,27 +235,37 @@ class _LiveClassScreenState extends State<LiveClassScreen>
           _handleWsEvent(msg);
         } catch (_) {}
       },
-      onError: (_) {
-        if (mounted) {
-          setState(() {
-            _messages = [
-              ..._messages,
-              const _ChatMsg(
-                sender: '',
-                text: 'Chat disconnected. Re-open the class to reconnect.',
-                isSystem: true,
-              ),
-            ];
-          });
-        }
-      },
+      onError: (_) => _scheduleWsReconnect(),
+      onDone: _scheduleWsReconnect,
+      cancelOnError: true,
     );
+  }
+
+  void _scheduleWsReconnect() {
+    if (_disposed || _classEnded) return;
+    _channel = null;
+    _wsReconnectTimer?.cancel();
+    _wsReconnectTimer = Timer(const Duration(seconds: 3), () async {
+      if (_disposed || _classEnded) return;
+      try {
+        await _connectWebSocket();
+      } catch (_) {
+        _scheduleWsReconnect();
+      }
+    });
   }
 
   void _handleWsEvent(Map<String, dynamic> msg) {
     final event = msg['event']?.toString() ?? '';
     switch (event) {
       case 'chat':
+        // Server echoes chat back to the sender too; we already show our own
+        // message locally, so skip the echo to avoid duplicates.
+        final fromId = msg['user_id']?.toString() ?? '';
+        if (fromId.isNotEmpty &&
+            fromId.toLowerCase() == _userId.toLowerCase()) {
+          break;
+        }
         final who = msg['role'] == 'teacher' ? 'Teacher' : 'Student';
         _addChat(who, msg['text']?.toString() ?? '');
         break;
@@ -267,9 +296,10 @@ class _LiveClassScreenState extends State<LiveClassScreen>
         }
         break;
       case 'mic_access_granted':
-        if (!widget.isTeacher && _isMe(msg) && !_micAllowed) {
+        if (!widget.isTeacher && _isMe(msg)) {
           setState(() => _micAllowed = true);
-          _toast('Mic allowed — tap Mic to speak.');
+          _toast('Teacher allowed your mic — turning it on.');
+          unawaited(_autoEnableMic());
         }
         break;
       case 'mic_access_update':
@@ -292,9 +322,10 @@ class _LiveClassScreenState extends State<LiveClassScreen>
         }
         break;
       case 'camera_access_granted':
-        if (!widget.isTeacher && _isMe(msg) && !_cameraAllowed) {
+        if (!widget.isTeacher && _isMe(msg)) {
           setState(() => _cameraAllowed = true);
-          _toast('Camera allowed — tap Cam.');
+          _toast('Teacher allowed your camera — turning it on.');
+          unawaited(_autoEnableCamera());
         }
         break;
       case 'camera_access_update':
@@ -317,7 +348,7 @@ class _LiveClassScreenState extends State<LiveClassScreen>
         }
         break;
       case 'whiteboard':
-        _boardKey.currentState?.handleRemoteMessage(msg);
+        _board.handleRemoteMessage(msg);
         if (!widget.isTeacher && msg['action'] == 'board_open') {
           final open = msg['data'] is Map && msg['data']['open'] == true;
           if (mounted) setState(() => _boardOpen = open);
@@ -345,17 +376,64 @@ class _LiveClassScreenState extends State<LiveClassScreen>
     if (next) _tabController.animateTo(2);
   }
 
+  bool get _isDesktop =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.windows ||
+          defaultTargetPlatform == TargetPlatform.linux ||
+          defaultTargetPlatform == TargetPlatform.macOS);
+
   Future<void> _toggleScreenShare() async {
     if (!widget.isTeacher || _liveKit == null) return;
     final next = !_screenShareOn;
+
+    if (!next) {
+      await _liveKit!.setScreenShareEnabled(false);
+      if (mounted) setState(() => _screenShareOn = false);
+      _toast('Screen sharing stopped');
+      return;
+    }
+
     try {
-      await _liveKit!.setScreenShareEnabled(next);
-      if (mounted) setState(() => _screenShareOn = next);
-      if (next) {
-        _toast('Screen sharing started');
+      // On desktop the user must pick which screen/window to share.
+      String? sourceId;
+      if (_isDesktop) {
+        final source = await showDialog(
+          context: context,
+          builder: (_) => Theme(
+            data: ThemeData.dark().copyWith(
+              scaffoldBackgroundColor: const Color(0xFF14121C),
+              dialogBackgroundColor: const Color(0xFF14121C),
+              colorScheme: ColorScheme.dark(
+                surface: const Color(0xFF14121C),
+                primary: context.accentColor,
+              ),
+            ),
+            child: ScreenSelectDialog(),
+          ),
+        );
+        if (source == null) return; // cancelled
+        sourceId = (source as dynamic).id as String?;
+        if (sourceId == null || sourceId.isEmpty) return;
       }
+
+      // Board and screen share both use the top stage — close the board so the
+      // shared screen is visible when sharing starts.
+      if (_boardOpen) {
+        setState(() => _boardOpen = false);
+        _sendBoardEvent('board_open', {'open': false});
+      }
+
+      await _liveKit!.setScreenShareEnabled(true, sourceId: sourceId);
+      if (_liveKit!.error != null) {
+        _toast('Screen share was blocked. Allow screen capture and retry.');
+        if (mounted) setState(() => _screenShareOn = false);
+        return;
+      }
+      if (mounted) setState(() => _screenShareOn = true);
+      _toast('Screen sharing started');
     } catch (_) {
       _toast('Screen share not available on this device');
+      if (mounted) setState(() => _screenShareOn = false);
     }
   }
 
@@ -411,24 +489,65 @@ class _LiveClassScreenState extends State<LiveClassScreen>
     return target.toLowerCase() == _userId.toLowerCase();
   }
 
+  Future<bool> _ensureMediaPermissions({
+    bool camera = false,
+    bool mic = false,
+  }) async {
+    if (kIsWeb) return true;
+    try {
+      if (camera) {
+        final s = await Permission.camera.request();
+        if (!s.isGranted) {
+          _toast('Camera permission is needed. Enable it in settings.');
+          return false;
+        }
+      }
+      if (mic) {
+        final s = await Permission.microphone.request();
+        if (!s.isGranted) {
+          _toast('Microphone permission is needed. Enable it in settings.');
+          return false;
+        }
+      }
+      return true;
+    } catch (_) {
+      _toast('Could not request mic/camera permission.');
+      return false;
+    }
+  }
+
   Future<void> _connectLiveKit() async {
     if (!_hasValidLiveKitToken || _livekitUrl == null || _livekitToken == null) {
       return;
+    }
+
+    // Both teacher and student need mic permission to hear / be heard.
+    final ok = await _ensureMediaPermissions(
+      camera: widget.isTeacher && _camOn,
+      mic: true,
+    );
+    if (!ok && widget.isTeacher) {
+      _toast('Enable microphone so students can hear you.');
     }
 
     _liveKit = LiveKitClassService(onChanged: () {
       if (mounted) setState(() {});
     });
 
+    // Teacher always publishes mic on join; students publish when mic is on.
+    final shouldPubMic = widget.isTeacher
+        ? _micOn
+        : (_micAllowed && _micOn);
     await _liveKit!.connect(
       url: _livekitUrl!,
       token: _livekitToken!,
-      publishMic: widget.isTeacher && _micOn,
+      publishMic: shouldPubMic,
       publishCamera: widget.isTeacher && _camOn,
     );
+    await _liveKit!.ensureRemoteAudioSubscribed();
 
     if (_liveKit!.error != null && mounted) {
-      _toast('Video could not connect. Chat still works.');
+      _toast('Video/audio could not connect. Chat still works.');
     }
   }
 
@@ -492,10 +611,20 @@ class _LiveClassScreenState extends State<LiveClassScreen>
 
   void _sendChat() {
     final text = _chatController.text.trim();
-    if (text.isEmpty || _channel == null) return;
-    _channel!.sink.add(jsonEncode({'event': 'chat', 'text': text}));
-    _addChat('You', text);
-    _chatController.clear();
+    if (text.isEmpty) return;
+    if (_channel == null) {
+      _toast('Reconnecting chat… try again in a moment.');
+      _scheduleWsReconnect();
+      return;
+    }
+    try {
+      _channel!.sink.add(jsonEncode({'event': 'chat', 'text': text}));
+      _addChat('You', text);
+      _chatController.clear();
+    } catch (_) {
+      _toast('Message not sent — reconnecting.');
+      _scheduleWsReconnect();
+    }
   }
 
   void _toggleHand() {
@@ -519,6 +648,7 @@ class _LiveClassScreenState extends State<LiveClassScreen>
     }
 
     final next = !_micOn;
+    if (next && !await _ensureMediaPermissions(mic: true)) return;
     if (next && !widget.isTeacher) {
       await _refreshLiveKitToken(reconnect: true);
     }
@@ -527,6 +657,40 @@ class _LiveClassScreenState extends State<LiveClassScreen>
       if (mounted) setState(() => _micOn = next);
     } catch (e) {
       _toast('Mic error');
+    }
+  }
+
+  Future<void> _autoEnableMic() async {
+    if (widget.isTeacher || _micOn) return;
+    if (_liveKit?.room == null) return;
+    if (!await _ensureMediaPermissions(mic: true)) return;
+    // The publish grant lives server-side; refresh the token so the reconnect
+    // gets can_publish=true, then enable the mic. Retry once if it races.
+    for (var attempt = 0; attempt < 2; attempt++) {
+      await _refreshLiveKitToken(reconnect: true);
+      try {
+        await _liveKit!.setMicrophoneEnabled(true);
+        if (mounted) setState(() => _micOn = true);
+        return;
+      } catch (_) {
+        await Future.delayed(const Duration(milliseconds: 600));
+      }
+    }
+  }
+
+  Future<void> _autoEnableCamera() async {
+    if (widget.isTeacher || _camOn) return;
+    if (_liveKit?.room == null) return;
+    if (!await _ensureMediaPermissions(camera: true)) return;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      await _refreshLiveKitToken(reconnect: true);
+      try {
+        await _liveKit!.setCameraEnabled(true);
+        if (mounted) setState(() => _camOn = true);
+        return;
+      } catch (_) {
+        await Future.delayed(const Duration(milliseconds: 600));
+      }
     }
   }
 
@@ -541,6 +705,7 @@ class _LiveClassScreenState extends State<LiveClassScreen>
     }
 
     final next = !_camOn;
+    if (next && !await _ensureMediaPermissions(camera: true)) return;
     if (next && !widget.isTeacher) {
       await _refreshLiveKitToken(reconnect: true);
     }
@@ -606,20 +771,47 @@ class _LiveClassScreenState extends State<LiveClassScreen>
     );
     if (ok != true || !mounted) return;
 
+    // Mark ended and tell everyone the session is closing before we tear down.
+    _classEnded = true;
+    try {
+      _channel?.sink.add(jsonEncode({
+        'event': 'chat',
+        'text': 'Class ended by the teacher.',
+      }));
+    } catch (_) {}
+
+    String? errorMessage;
     try {
       await _api.endLiveClass(widget.classId);
-      if (mounted) Navigator.pop(context);
     } on ApiException catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message), backgroundColor: Colors.red),
-        );
-      }
+      errorMessage = e.message;
+    } catch (_) {}
+
+    // Always tear down media and leave the screen, even if the API call failed
+    // (e.g. the class was already ended server-side).
+    _wsReconnectTimer?.cancel();
+    try {
+      await _liveKit?.disconnect();
+    } catch (_) {}
+    try {
+      await _channel?.sink.close();
+    } catch (_) {}
+    _channel = null;
+
+    if (!mounted) return;
+    if (errorMessage != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(errorMessage), backgroundColor: Colors.red),
+      );
     }
+    Navigator.pop(context);
   }
 
   void _onClassEnded(String message) {
     if (!mounted) return;
+    _classEnded = true;
+    _wsReconnectTimer?.cancel();
+    unawaited(_liveKit?.disconnect());
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -724,6 +916,7 @@ class _LiveClassScreenState extends State<LiveClassScreen>
 
     return Scaffold(
       backgroundColor: context.bgColor,
+      resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: Column(
           children: [
@@ -741,7 +934,7 @@ class _LiveClassScreenState extends State<LiveClassScreen>
                 ],
               ),
             ),
-            _inputBar(context),
+            if (_tabController.index == 0) _inputBar(context),
           ],
         ),
       ),
@@ -848,21 +1041,24 @@ class _LiveClassScreenState extends State<LiveClassScreen>
     final videoBg = context.isDark ? Colors.black : const Color(0xFF1F2937);
     final remote = _liveKit?.primaryRemoteVideo;
     final lkConnected = _liveKit?.connected == true;
+    // Shrink the top stage while the keyboard is open (e.g. typing on the
+    // board) so the rest of the layout still fits.
+    final keyboardOpen = MediaQuery.of(context).viewInsets.bottom > 0;
+    final stageHeight = keyboardOpen ? 130.0 : 220.0;
 
+    // Board canvas lives at the top (video area) for everyone. The teacher's
+    // toolbar + keyboard live at the bottom in the BOARD tab, both driven by
+    // the same BoardController.
     if (_boardOpen) {
       return SizedBox(
-        height: 220,
-        child: LiveClassWhiteboard(
-          key: _boardKey,
-          canDraw: widget.isTeacher,
-          onSend: widget.isTeacher ? _sendBoardEvent : null,
-        ),
+        height: stageHeight,
+        child: LiveClassBoardCanvas(controller: _board),
       );
     }
 
     if (remote != null) {
       return Container(
-        height: 220,
+        height: stageHeight,
         color: videoBg,
         child: Stack(
           fit: StackFit.expand,
@@ -900,7 +1096,7 @@ class _LiveClassScreenState extends State<LiveClassScreen>
     }
 
     return Container(
-      height: 220,
+      height: stageHeight,
       color: videoBg,
       child: Center(
         child: Column(
@@ -983,9 +1179,13 @@ class _LiveClassScreenState extends State<LiveClassScreen>
               ),
             if (!widget.isTeacher)
               _btn(context, Icons.pan_tool_alt_outlined, 'Hand', _toggleHand),
-            _btn(context, Icons.call_end, 'Leave',
-                () => Navigator.maybePop(context),
-                red: true),
+            _btn(
+              context,
+              Icons.call_end,
+              widget.isTeacher ? 'End' : 'Leave',
+              widget.isTeacher ? _endClass : () => Navigator.maybePop(context),
+              red: true,
+            ),
           ],
         ),
       );
@@ -1246,10 +1446,38 @@ class _LiveClassScreenState extends State<LiveClassScreen>
   }
 
   Widget _boardTab(BuildContext context) {
-    return LiveClassWhiteboard(
-      key: _boardKey,
-      canDraw: widget.isTeacher,
-      onSend: widget.isTeacher ? _sendBoardEvent : null,
+    return Column(
+      children: [
+        if (!_boardOpen)
+          Expanded(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.draw_rounded,
+                        color: context.accentColor, size: 40),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Tap "Board" above to open the whiteboard.\n'
+                      'The board shows at the top; draw or type here.',
+                      textAlign: TextAlign.center,
+                      style:
+                          TextStyle(color: context.greyColor, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          )
+        else
+          Expanded(
+            child: SingleChildScrollView(
+              child: LiveClassBoardControls(controller: _board),
+            ),
+          ),
+      ],
     );
   }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../api/api_service.dart';
 import '../../../theme/app_theme.dart';
+import '../../../utils/post_attachment_picker.dart';
 import '../../auth/exam_subject_setup_screen.dart';
 import '../../auth/role_select_screen.dart';
 import '../../kind/kind_shell.dart';
@@ -18,6 +19,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _api = ApiService();
   StudentProfile? _profile;
   bool _loading = true;
+  bool _uploadingPhoto = false;
   String? _error;
 
   @override
@@ -64,6 +66,41 @@ class _ProfileScreenState extends State<ProfileScreen> {
         context,
         MaterialPageRoute(builder: (_) => const RoleSelectScreen()),
         (_) => false);
+  }
+
+  Future<void> _changeProfilePicture() async {
+    if (_uploadingPhoto) return;
+    try {
+      final picked = await pickPostAttachment('photo');
+      if (picked == null) return;
+      setState(() => _uploadingPhoto = true);
+      final url = await _api.updateProfilePicture(picked.bytes, picked.name);
+      if (!mounted) return;
+      setState(() {
+        _profile = _profile?.copyWith(profilePicture: url);
+        _uploadingPhoto = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile picture updated!')),
+      );
+    } on ApiException catch (e) {
+      if (mounted) {
+        setState(() => _uploadingPhoto = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _uploadingPhoto = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not update picture. Try another image.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -253,6 +290,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
             children: [
               Row(
                 children: [
+                  if (Navigator.of(context).canPop()) ...[
+                    GestureDetector(
+                      onTap: () => Navigator.of(context).maybePop(),
+                      child: Container(
+                        width: 38,
+                        height: 38,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: context.surfColor,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: context.borderColor),
+                        ),
+                        child: Icon(Icons.arrow_back_rounded,
+                            color: context.textColor, size: 20),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                  ],
                   Text('Profile',
                       style: TextStyle(
                         color: context.textColor,
@@ -265,25 +320,97 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
               const SizedBox(height: 28),
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: context.accentColor.withOpacity(0.35),
-                    width: 3,
-                  ),
+              GestureDetector(
+                onTap: _uploadingPhoto ? null : _changeProfilePicture,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: context.accentColor.withOpacity(0.35),
+                          width: 3,
+                        ),
+                      ),
+                      child: CircleAvatar(
+                        radius: 44,
+                        backgroundColor: context.accentColor.withOpacity(0.12),
+                        backgroundImage: (p.profilePicture != null &&
+                                p.profilePicture!.isNotEmpty)
+                            ? NetworkImage(p.profilePicture!)
+                            : null,
+                        child: (p.profilePicture == null ||
+                                p.profilePicture!.isEmpty)
+                            ? Text(initials,
+                                style: TextStyle(
+                                  color: context.accentColor,
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 1,
+                                ))
+                            : null,
+                      ),
+                    ),
+                    if (_uploadingPhoto)
+                      Container(
+                        width: 96,
+                        height: 96,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.35),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Center(
+                          child: SizedBox(
+                            width: 28,
+                            height: 28,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      Positioned(
+                        right: 0,
+                        bottom: 0,
+                        child: Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: context.accentColor,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: context.headerColor,
+                              width: 3,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: context.accentColor.withOpacity(0.35),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: const Icon(
+                            Icons.camera_alt_rounded,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-                child: CircleAvatar(
-                  radius: 44,
-                  backgroundColor: context.accentColor.withOpacity(0.12),
-                  child: Text(initials,
-                      style: TextStyle(
-                        color: context.accentColor,
-                        fontSize: 28,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1,
-                      )),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Tap photo to change',
+                style: TextStyle(
+                  color: context.greyColor,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
               const SizedBox(height: 16),

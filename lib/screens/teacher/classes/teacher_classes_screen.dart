@@ -5,7 +5,9 @@ import '../../student/classes/live_class_screen.dart';
 import '../teacher_shared.dart';
 
 class TeacherClassesScreen extends StatefulWidget {
-  const TeacherClassesScreen({super.key});
+  final int hostClassNonce;
+
+  const TeacherClassesScreen({super.key, this.hostClassNonce = 0});
 
   @override
   State<TeacherClassesScreen> createState() => _TeacherClassesScreenState();
@@ -28,6 +30,17 @@ class _TeacherClassesScreenState extends State<TeacherClassesScreen>
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
     _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant TeacherClassesScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.hostClassNonce != oldWidget.hostClassNonce &&
+        widget.hostClassNonce > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _showCreateClassSheet(goLiveNow: true);
+      });
+    }
   }
 
   @override
@@ -92,11 +105,6 @@ class _TeacherClassesScreenState extends State<TeacherClassesScreen>
     final accent = context.accentColor;
     return Scaffold(
       backgroundColor: context.bgColor,
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showCreateClassSheet,
-        backgroundColor: accent,
-        child: const Icon(Icons.add, color: Colors.black),
-      ),
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -113,17 +121,40 @@ class _TeacherClassesScreenState extends State<TeacherClassesScreen>
             const SizedBox(height: 20),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Column(
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('My Classes',
-                      style: TextStyle(
-                          color: context.textColor,
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
-                  Text('Manage your live classes and sessions.',
-                      style: TextStyle(color: context.greyColor, fontSize: 13)),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('My Classes',
+                            style: TextStyle(
+                                color: context.textColor,
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 4),
+                        Text('Manage your live classes and sessions.',
+                            style: TextStyle(
+                                color: context.greyColor, fontSize: 13)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  ElevatedButton.icon(
+                    onPressed: () => _showCreateClassSheet(goLiveNow: true),
+                    icon: const Icon(Icons.videocam_rounded, size: 18),
+                    label: const Text('Host class',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: accent,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 12),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -183,9 +214,35 @@ class _TeacherClassesScreenState extends State<TeacherClassesScreen>
     if (classes.isEmpty) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
         children: [
-          const SizedBox(height: 80),
-          Center(child: Text(empty, style: TextStyle(color: context.greyColor))),
+          const SizedBox(height: 40),
+          Icon(Icons.videocam_outlined, color: context.greyColor, size: 48),
+          const SizedBox(height: 12),
+          Text(empty,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  color: context.textColor, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          Text(
+            'Tap Host class above to go live instantly.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: context.greyColor, fontSize: 13),
+          ),
+          const SizedBox(height: 20),
+          Center(
+            child: OutlinedButton.icon(
+              onPressed: () => _showCreateClassSheet(goLiveNow: true),
+              icon: Icon(Icons.videocam_rounded, color: context.accentColor),
+              label: Text('Host a class now',
+                  style: TextStyle(color: context.accentColor)),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: context.accentColor),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
+            ),
+          ),
         ],
       );
     }
@@ -569,6 +626,22 @@ class _CreateClassSheetState extends State<_CreateClassSheet> {
   bool _loading = false;
   late bool _goLiveNow;
 
+  // How long the class runs before it auto-ends, in minutes.
+  int _durationMinutes = 60;
+  static const List<int> _durationOptions = [30, 45, 60, 90, 120, 180];
+
+  // 'public' = anyone in the subject, 'private' = only invited students,
+  // 'school_group' = a saved group.
+  String _visibility = 'public';
+  bool _loadingStudents = false;
+  List<Map<String, dynamic>> _students = [];
+  final Set<String> _invited = {};
+  final Set<String> _invitedEmails = {};
+  final TextEditingController _emailCtrl = TextEditingController();
+  List<Map<String, dynamic>> _groups = [];
+  bool _loadingGroups = false;
+  String? _groupId;
+
   @override
   void initState() {
     super.initState();
@@ -577,11 +650,77 @@ class _CreateClassSheetState extends State<_CreateClassSheet> {
     _goLiveNow = widget.initialGoLiveNow;
   }
 
+  Future<void> _loadInvitees() async {
+    if (_students.isNotEmpty || _loadingStudents) return;
+    setState(() => _loadingStudents = true);
+    try {
+      var rows = await widget.api.listLiveSessionRequests(status: 'approved');
+      if (rows.isEmpty) {
+        rows = await widget.api.listLiveSessionRequests();
+      }
+      final seen = <String>{};
+      final list = <Map<String, dynamic>>[];
+      for (final r in rows.whereType<Map>()) {
+        final sid = r['student_id']?.toString() ?? '';
+        if (sid.isEmpty || seen.contains(sid)) continue;
+        seen.add(sid);
+        list.add({
+          'id': sid,
+          'name': r['student_name']?.toString() ??
+              r['topic']?.toString() ??
+              'Student',
+        });
+      }
+      if (mounted) setState(() => _students = list);
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _loadingStudents = false);
+    }
+  }
+
+  Future<void> _loadGroups() async {
+    if (_groups.isNotEmpty || _loadingGroups) return;
+    setState(() => _loadingGroups = true);
+    try {
+      final rows = await widget.api.listSchoolGroups();
+      final list = rows
+          .whereType<Map>()
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+      if (mounted) setState(() => _groups = list);
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _loadingGroups = false);
+    }
+  }
+
+  void _onVisibilityChanged(String v) {
+    setState(() => _visibility = v);
+    if (v == 'private') _loadInvitees();
+    if (v == 'school_group') _loadGroups();
+  }
+
   @override
   void dispose() {
     _titleCtrl.dispose();
     _subjectCtrl.dispose();
+    _emailCtrl.dispose();
     super.dispose();
+  }
+
+  void _addEmail() {
+    final email = _emailCtrl.text.trim().toLowerCase();
+    if (email.isEmpty) return;
+    if (!email.contains('@') || !email.contains('.')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid email address.')),
+      );
+      return;
+    }
+    setState(() {
+      _invitedEmails.add(email);
+      _emailCtrl.clear();
+    });
   }
 
   Future<void> _enterClassroom(Map<String, dynamic> created) async {
@@ -625,10 +764,33 @@ class _CreateClassSheetState extends State<_CreateClassSheet> {
     }
   }
 
+  String _durationLabel(int minutes) {
+    if (minutes < 60) return '$minutes min';
+    final h = minutes ~/ 60;
+    final m = minutes % 60;
+    if (m == 0) return h == 1 ? '1 hour' : '$h hours';
+    return '${h}h ${m}m';
+  }
+
   Future<void> _submit() async {
     final title = _titleCtrl.text.trim();
     final subject = _subjectCtrl.text.trim();
     if (title.isEmpty || subject.isEmpty) return;
+
+    if (_visibility == 'private' && _invited.isEmpty && _invitedEmails.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Add at least one student for a private class.')),
+      );
+      return;
+    }
+    if (_visibility == 'school_group' && (_groupId == null || _groupId!.isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select a school group.')),
+      );
+      return;
+    }
+
     setState(() => _loading = true);
     try {
       final created = await widget.api.createLiveClass(
@@ -636,6 +798,11 @@ class _CreateClassSheetState extends State<_CreateClassSheet> {
         title: title,
         startTime: _goLiveNow ? null : _start.toUtc().toIso8601String(),
         goLiveNow: _goLiveNow,
+        durationMinutes: _durationMinutes,
+        visibility: _visibility,
+        invitedStudentIds: _invited.toList(),
+        invitedStudentEmails: _invitedEmails.toList(),
+        schoolGroupId: _groupId,
       );
       if (_goLiveNow) {
         await _enterClassroom(created);
@@ -666,7 +833,8 @@ class _CreateClassSheetState extends State<_CreateClassSheet> {
         top: 20,
         bottom: MediaQuery.of(context).viewInsets.bottom + 24,
       ),
-      child: Column(
+      child: SingleChildScrollView(
+        child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -679,7 +847,34 @@ class _CreateClassSheetState extends State<_CreateClassSheet> {
           _field(_titleCtrl, 'Class title'),
           const SizedBox(height: 12),
           _field(_subjectCtrl, 'Subject (e.g. Mathematics)'),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
+          Text('Who can join?',
+              style: TextStyle(
+                  color: context.textColor,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          _visibilityOption(
+            value: 'public',
+            icon: Icons.public,
+            title: 'Public',
+            subtitle: 'Any student taking this subject can join.',
+          ),
+          _visibilityOption(
+            value: 'private',
+            icon: Icons.lock_outline,
+            title: 'Specific students',
+            subtitle: 'Only students you invite can join.',
+          ),
+          _visibilityOption(
+            value: 'school_group',
+            icon: Icons.groups_outlined,
+            title: 'School group',
+            subtitle: 'Only members of a saved group can join.',
+          ),
+          if (_visibility == 'private') _invitePicker(),
+          if (_visibility == 'school_group') _groupPicker(),
+          const SizedBox(height: 8),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: Text('Go live now',
@@ -716,6 +911,41 @@ class _CreateClassSheetState extends State<_CreateClassSheet> {
               });
             },
           ),
+          const SizedBox(height: 12),
+          Text('When does the class stop?',
+              style: TextStyle(
+                  color: context.textColor,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _durationOptions.map((m) {
+              final selected = _durationMinutes == m;
+              return ChoiceChip(
+                label: Text(_durationLabel(m)),
+                selected: selected,
+                onSelected: (_) => setState(() => _durationMinutes = m),
+                labelStyle: TextStyle(
+                  color: selected ? Colors.black : context.textColor,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+                selectedColor: context.accentColor,
+                backgroundColor: context.surfColor,
+                side: BorderSide(color: context.borderColor),
+                showCheckmark: false,
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _goLiveNow
+                ? 'The class will automatically end ${_durationLabel(_durationMinutes)} after it starts.'
+                : 'The class will automatically end ${_durationLabel(_durationMinutes)} after the start time.',
+            style: TextStyle(color: context.greyColor, fontSize: 11),
+          ),
           const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
@@ -739,6 +969,225 @@ class _CreateClassSheetState extends State<_CreateClassSheet> {
             ),
           ),
         ],
+      ),
+      ),
+    );
+  }
+
+  Widget _visibilityOption({
+    required String value,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+  }) {
+    final selected = _visibility == value;
+    final accent = context.accentColor;
+    return GestureDetector(
+      onTap: () => _onVisibilityChanged(value),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? accent.withOpacity(0.12) : context.surfColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: selected ? accent : context.borderColor,
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: selected ? accent : context.greyColor, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: TextStyle(
+                          color: context.textColor,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600)),
+                  Text(subtitle,
+                      style:
+                          TextStyle(color: context.greyColor, fontSize: 11)),
+                ],
+              ),
+            ),
+            Icon(
+              selected
+                  ? Icons.radio_button_checked
+                  : Icons.radio_button_unchecked,
+              color: selected ? accent : context.greyColor,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _invitePicker() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Add any student directly by email.
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _emailCtrl,
+                style: TextStyle(color: context.textColor, fontSize: 14),
+                keyboardType: TextInputType.emailAddress,
+                onSubmitted: (_) => _addEmail(),
+                decoration: InputDecoration(
+                  hintText: 'Add student by email',
+                  hintStyle:
+                      TextStyle(color: context.greyColor, fontSize: 13),
+                  filled: true,
+                  fillColor: context.surfColor,
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 12),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              height: 44,
+              child: ElevatedButton(
+                onPressed: _addEmail,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: context.accentColor,
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                ),
+                child: const Text('Add',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ],
+        ),
+        if (_invitedEmails.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: _invitedEmails.map((e) {
+              return Chip(
+                label: Text(e, style: const TextStyle(fontSize: 12)),
+                backgroundColor: context.accentColor.withOpacity(0.12),
+                labelStyle: TextStyle(color: context.textColor),
+                deleteIconColor: context.greyColor,
+                onDeleted: () => setState(() => _invitedEmails.remove(e)),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              );
+            }).toList(),
+          ),
+        ],
+        const SizedBox(height: 10),
+        if (_loadingStudents)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          )
+        else if (_students.isNotEmpty) ...[
+          Text('Or pick from students who requested a session:',
+              style: TextStyle(color: context.greyColor, fontSize: 12)),
+          const SizedBox(height: 6),
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            constraints: const BoxConstraints(maxHeight: 200),
+            decoration: BoxDecoration(
+              color: context.surfColor,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: context.borderColor),
+            ),
+            child: ListView(
+              shrinkWrap: true,
+              children: _students.map((s) {
+                final id = s['id'] as String;
+                final checked = _invited.contains(id);
+                return CheckboxListTile(
+                  dense: true,
+                  value: checked,
+                  activeColor: context.accentColor,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  title: Text(s['name'] as String,
+                      style:
+                          TextStyle(color: context.textColor, fontSize: 13)),
+                  onChanged: (v) => setState(() {
+                    if (v == true) {
+                      _invited.add(id);
+                    } else {
+                      _invited.remove(id);
+                    }
+                  }),
+                );
+              }).toList(),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _groupPicker() {
+    if (_loadingGroups) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      );
+    }
+    if (_groups.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Text(
+          'No school groups yet. Create one in the Groups tab first.',
+          style: TextStyle(color: context.greyColor, fontSize: 12),
+        ),
+      );
+    }
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      constraints: const BoxConstraints(maxHeight: 220),
+      decoration: BoxDecoration(
+        color: context.surfColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: context.borderColor),
+      ),
+      child: ListView(
+        shrinkWrap: true,
+        children: _groups.map((g) {
+          final id = g['id']?.toString() ?? '';
+          final title = (g['name'] ?? 'Group').toString();
+          final school = (g['school_name'] ?? '').toString();
+          final count = g['member_count'] ?? (g['student_ids'] is List
+              ? (g['student_ids'] as List).length
+              : 0);
+          final selected = _groupId == id;
+          return RadioListTile<String>(
+            dense: true,
+            value: id,
+            groupValue: _groupId,
+            activeColor: context.accentColor,
+            controlAffinity: ListTileControlAffinity.leading,
+            title: Text(
+              school.isEmpty ? title : '$school — $title',
+              style: TextStyle(
+                  color: context.textColor,
+                  fontSize: 13,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.normal),
+            ),
+            subtitle: Text('$count student(s)',
+                style: TextStyle(color: context.greyColor, fontSize: 11)),
+            onChanged: (v) => setState(() => _groupId = v),
+          );
+        }).toList(),
       ),
     );
   }
