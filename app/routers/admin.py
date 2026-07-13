@@ -252,7 +252,7 @@ class CBTQuestionCreate(BaseModel):
 class CBTExamCreate(BaseModel):
     title: str
     subject: str
-    exam_type: str           # JAMB | WAEC | NECO | SCHOOL
+    exam_type: str           # JAMB | WAEC | NECO | SCHOOL | COMMON_ENTRANCE
     duration_minutes: int
     questions: list[CBTQuestionCreate]
     is_published: bool = True
@@ -285,10 +285,14 @@ async def _persist_cbt_exam(
     if not payload.questions:
         raise HTTPException(status_code=400, detail="At least one question required")
 
+    exam_type = payload.exam_type.upper().strip().replace(" ", "_").replace("-", "_")
+    if exam_type in ("CE", "COMMONENTRANCE"):
+        exam_type = "COMMON_ENTRANCE"
+
     exam = CBTExam(
         title=payload.title,
         subject=payload.subject,
-        exam_type=payload.exam_type.upper(),
+        exam_type=exam_type,
         duration_minutes=payload.duration_minutes,
         total_questions=len(payload.questions),
         created_by=created_by,

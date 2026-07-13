@@ -51,6 +51,10 @@ class MyTeacherProfile(BaseModel):
     joined: str
 
 
+class UpdateProfilePictureRequest(BaseModel):
+    profile_picture: str
+
+
 # ── Student: own profile (token-based, no user_id needed) ────────────────────
 
 @router.get("/profiles/me", response_model=PublicStudentProfile)
@@ -81,6 +85,33 @@ async def get_my_student_profile(
         profile_picture=user.profile_picture,
         joined=user.created_at.strftime("%B %Y"),
     )
+
+
+@router.patch("/profiles/me/picture")
+async def update_my_profile_picture(
+    payload: UpdateProfilePictureRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Set the logged-in user's profile photo URL (after uploading via /community/upload)."""
+    url = (payload.profile_picture or "").strip()
+    if not url.startswith("http://") and not url.startswith("https://"):
+        raise HTTPException(status_code=400, detail="profile_picture must be a valid image URL")
+    if len(url) > 500:
+        raise HTTPException(status_code=400, detail="profile_picture URL is too long")
+
+    result = await db.execute(select(User).where(User.id == current_user["sub"]))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.profile_picture = url
+    await db.flush()
+    return {
+        "message": "Profile picture updated",
+        "profile_picture": user.profile_picture,
+        "user_id": str(user.id),
+    }
 
 
 # ── Student public profile ────────────────────────────────────────────────────

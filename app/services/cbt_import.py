@@ -7,7 +7,7 @@ import io
 import json
 from typing import Any
 
-VALID_EXAM_TYPES = {"JAMB", "WAEC", "NECO", "SCHOOL", "POST_UTME"}
+VALID_EXAM_TYPES = {"JAMB", "WAEC", "NECO", "SCHOOL", "POST_UTME", "COMMON_ENTRANCE", "CE"}
 VALID_OPTIONS = {"A", "B", "C", "D"}
 
 
@@ -95,7 +95,9 @@ def normalize_exam(raw: dict[str, Any], defaults: dict[str, Any] | None = None) 
     ).strip()
     exam_type = str(
         _pick(raw, "exam_type", "type", "board") or defaults.get("exam_type") or "JAMB"
-    ).strip().upper()
+    ).strip().upper().replace(" ", "_").replace("-", "_")
+    if exam_type in ("CE", "COMMONENTRANCE"):
+        exam_type = "COMMON_ENTRANCE"
     if not title:
         raise ValueError("Exam title is required")
     if not subject:

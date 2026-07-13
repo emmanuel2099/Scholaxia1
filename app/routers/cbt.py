@@ -7,7 +7,13 @@ from datetime import datetime
 import httpx
 import json
 from app.core.database import get_db
-from app.core.deps import require_student, require_admin, get_current_user, require_teacher
+from app.core.deps import (
+    require_student,
+    require_student_or_kind,
+    require_admin,
+    get_current_user,
+    require_teacher,
+)
 from app.models.cbt import CBTExam, CBTQuestion, CBTSession, ExamProctorLog
 from app.models.user import StudentProfile, User
 from app.core.subjects import subject_matches
@@ -391,11 +397,9 @@ async def download_exam(
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
 
-    if exam.is_school_exam:
-        raise HTTPException(
-            status_code=403,
-            detail="School exams cannot be downloaded. They must be taken online during the scheduled window.",
-        )
+    # Internal (school) exams are downloadable for offline use. We never ship the
+    # correct answers for them — grading happens server-side on submit — so
+    # offline downloads stay tamper-safe.
 
     q_result = await db.execute(
         select(CBTQuestion).where(CBTQuestion.exam_id == exam.id)
@@ -437,7 +441,7 @@ async def download_exam(
 @router.post("/sessions/{exam_id}/start", response_model=SessionResponse)
 async def start_session(
     exam_id: str,
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -446,6 +450,17 @@ async def start_session(
     exam = result.scalar_one_or_none()
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
+
+    role = (current_user.get("role") or "").lower()
+    exam_type = (exam.exam_type or "").upper()
+    # Kid app: Primary 6 Common Entrance CBT only (content added from admin).
+    if role == "kind" and exam_type not in ("COMMON_ENTRANCE", "CE"):
+        raise HTTPException(
+            status_code=403,
+            detail="Kid learners can only take Common Entrance CBT exams",
+        )
+    if role == "kind" and exam.is_school_exam:
+        raise HTTPException(status_code=403, detail="School exams are not available in Kids mode")
 
     now = datetime.utcnow()
     if exam.is_school_exam:
@@ -479,7 +494,7 @@ async def start_session(
 @router.post("/sessions/submit", response_model=ResultResponse)
 async def submit_session(
     payload: SubmitAnswersRequest,
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -539,7 +554,7 @@ async def submit_session(
 @router.get("/sessions/{session_id}/result", response_model=ResultResponse)
 async def get_session_result(
     session_id: str,
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -568,7 +583,7 @@ async def get_session_result(
 @router.get("/sessions/{session_id}/review")
 async def get_session_review(
     session_id: str,
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
     """Returns all questions with correct answers, student answers, and explanations."""
@@ -865,3 +880,205 @@ async def teacher_school_exam_results(
         "results": out,
         "submitted_count": len(out),
     }
+
+
+# ── Internal Exams (downloadable, offline-capable, routed to subject teachers) ─
+
+class InternalSubmitRequest(BaseModel):
+    answers: dict  # {question_id: "A"|"B"|"C"|"D"}
+    is_auto_submit: bool = False
+
+
+async def _notify_subject_teachers(db: AsyncSession, exam: CBTExam, student_name: str) -> None:
+    """Notify every teacher who teaches this exam's subject (plus its creator)."""
+    try:
+        from app.models.notification import Notification, NotificationType
+        from app.models.user import TeacherProfile
+
+        recipient_ids: set = set()
+        if exam.created_by:
+            recipient_ids.add(str(exam.created_by))
+
+        tp_res = await db.execute(select(TeacherProfile))
+        for tp in tp_res.scalars().all():
+            if subject_matches(exam.subject, tp.subjects or []):
+                recipient_ids.add(str(tp.user_id))
+
+        for uid in recipient_ids:
+            db.add(Notification(
+                user_id=uid,
+                type=NotificationType.cbt_reminder,
+                title="New exam submission",
+                body=f"{student_name} submitted «{exam.title}» ({exam.subject}). Open Grading to review.",
+                data=json.dumps({"exam_id": str(exam.id), "subject": exam.subject}),
+            ))
+    except Exception:
+        pass
+
+
+@router.get("/internal-exams/for-me")
+async def internal_exams_for_me(
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """Internal (school) exams the student can download and take offline."""
+    profile_res = await db.execute(
+        select(StudentProfile).where(StudentProfile.user_id == current_user["sub"])
+    )
+    profile = profile_res.scalar_one_or_none()
+    subjects = (profile.selected_subjects or []) if profile else []
+
+    result = await db.execute(
+        select(CBTExam).where(
+            CBTExam.is_published == True,  # noqa: E712
+            CBTExam.is_school_exam == True,  # noqa: E712
+        ).order_by(CBTExam.created_at.desc())
+    )
+    exams = result.scalars().all()
+
+    taken_res = await db.execute(
+        select(CBTSession.exam_id).where(
+            CBTSession.student_id == current_user["sub"],
+            CBTSession.submitted_at != None,  # noqa: E711
+        )
+    )
+    taken = {str(x) for x in taken_res.scalars().all()}
+
+    out = []
+    for e in exams:
+        # If the student has picked subjects, only show matching exams; otherwise
+        # show everything so a newly-set exam is always discoverable.
+        if subjects and not subject_matches(e.subject, subjects):
+            continue
+        out.append({
+            "id": str(e.id),
+            "title": e.title,
+            "subject": e.subject,
+            "duration_minutes": e.duration_minutes,
+            "total_questions": e.total_questions,
+            "already_taken": str(e.id) in taken,
+        })
+    return {"exams": out}
+
+
+@router.post("/internal-exams/{exam_id}/submit", response_model=ResultResponse)
+async def submit_internal_exam(
+    exam_id: str,
+    payload: InternalSubmitRequest,
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """One-shot submit for an offline-taken internal exam. Scored server-side."""
+    exam_res = await db.execute(
+        select(CBTExam).where(
+            CBTExam.id == exam_id,
+            CBTExam.is_published == True,  # noqa: E712
+            CBTExam.is_school_exam == True,  # noqa: E712
+        )
+    )
+    exam = exam_res.scalar_one_or_none()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+
+    existing_res = await db.execute(
+        select(CBTSession).where(
+            CBTSession.exam_id == exam_id,
+            CBTSession.student_id == current_user["sub"],
+            CBTSession.submitted_at != None,  # noqa: E711
+        )
+    )
+    if existing_res.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="You already submitted this exam.")
+
+    q_res = await db.execute(select(CBTQuestion).where(CBTQuestion.exam_id == exam.id))
+    questions = q_res.scalars().all()
+
+    correct = 0
+    wrong = 0
+    weak_topics: set = set()
+    for q in questions:
+        chosen = payload.answers.get(str(q.id))
+        if chosen and chosen.upper() == q.correct_option.upper():
+            correct += 1
+        else:
+            wrong += 1
+            if q.topic:
+                weak_topics.add(q.topic)
+
+    total = correct + wrong
+    percentage = round((correct / total) * 100, 2) if total > 0 else 0.0
+
+    session = CBTSession(
+        student_id=current_user["sub"],
+        exam_id=exam.id,
+        answers=payload.answers,
+        score=correct,
+        percentage=percentage,
+        total_correct=correct,
+        total_wrong=wrong,
+        weak_topics=list(weak_topics),
+        submitted_at=datetime.utcnow(),
+        is_auto_submitted=payload.is_auto_submit,
+    )
+    db.add(session)
+    await db.flush()
+
+    student_res = await db.execute(select(User).where(User.id == current_user["sub"]))
+    student = student_res.scalar_one_or_none()
+    student_name = (student.full_name or student.email or "A student") if student else "A student"
+    await _notify_subject_teachers(db, exam, student_name)
+
+    return ResultResponse(
+        score=correct,
+        percentage=percentage,
+        total_correct=correct,
+        total_wrong=wrong,
+        weak_topics=list(weak_topics),
+    )
+
+
+@router.get("/internal-exams/submissions")
+async def teacher_internal_submissions(
+    current_user: dict = Depends(require_teacher),
+    db: AsyncSession = Depends(get_db),
+):
+    """All internal-exam submissions routed to this teacher (their subjects or
+    exams they created)."""
+    from app.models.user import TeacherProfile
+
+    tp_res = await db.execute(
+        select(TeacherProfile).where(TeacherProfile.user_id == current_user["sub"])
+    )
+    tp = tp_res.scalar_one_or_none()
+    subjects = (tp.subjects or []) if tp else []
+
+    rows = await db.execute(
+        select(CBTSession, User, CBTExam)
+        .join(User, User.id == CBTSession.student_id)
+        .join(CBTExam, CBTExam.id == CBTSession.exam_id)
+        .where(
+            CBTExam.is_school_exam == True,  # noqa: E712
+            CBTSession.submitted_at != None,  # noqa: E711
+        )
+        .order_by(CBTSession.submitted_at.desc())
+    )
+    out = []
+    for session, user, exam in rows.all():
+        mine = str(exam.created_by) == current_user["sub"]
+        if not mine and not subject_matches(exam.subject, subjects):
+            continue
+        out.append({
+            "session_id": str(session.id),
+            "student_id": str(session.student_id),
+            "student_name": user.full_name or user.email or "Student",
+            "exam_id": str(exam.id),
+            "exam_title": exam.title,
+            "subject": exam.subject,
+            "score": session.score or 0,
+            "percentage": session.percentage or 0,
+            "total_correct": session.total_correct or 0,
+            "total_wrong": session.total_wrong or 0,
+            "total_questions": exam.total_questions,
+            "submitted_at": session.submitted_at.isoformat() if session.submitted_at else None,
+        })
+    return {"submissions": out, "count": len(out)}

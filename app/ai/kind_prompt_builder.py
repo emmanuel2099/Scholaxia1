@@ -107,20 +107,34 @@ def build_kind_quiz_prompt(
     child_name: str,
 ) -> str:
     n = min(max(num_questions, 3), 10)
-    return f"""Create a fun quiz for {child_name} (age {age_group}).
+    return f"""Create a fun multiple-choice quiz for {child_name} (age {age_group}).
 
 Subject: {subject}
 Topic: {topic}
 Number of questions: {n}
 
-Format EACH question exactly like:
-Q1. [question]
-A) [option]
-B) [option]
-C) [option]
-D) [option]
+Return ONLY valid JSON (no markdown fences, no extra text) in this exact shape:
+{{
+  "intro": "One short friendly sentence inviting {child_name} to play.",
+  "questions": [
+    {{
+      "question": "Question text",
+      "options": {{
+        "A": "option text",
+        "B": "option text",
+        "C": "option text",
+        "D": "option text"
+      }},
+      "correct": "A"
+    }}
+  ]
+}}
 
-Do NOT include answers — the child will answer first, then ask you to check."""
+Rules:
+- Exactly {n} questions in the "questions" array
+- "correct" must be one of A, B, C, D
+- Age-appropriate language
+- No answer keys outside of the JSON "correct" field"""
 
 
 def build_kind_homework_prompt(

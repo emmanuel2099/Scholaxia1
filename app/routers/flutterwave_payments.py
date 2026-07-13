@@ -51,6 +51,7 @@ class SkillEnrollInitRequest(BaseModel):
     full_name: str
     phone: str
     email: Optional[str] = None
+    location: Optional[str] = None
     preferred_start: Optional[str] = None
     notes: Optional[str] = None
 
@@ -117,6 +118,7 @@ async def init_skill_enrollment_payment(
 
     full_name = (payload.full_name or "").strip()
     phone = (payload.phone or "").strip()
+    location = (payload.location or "").strip()
     if not full_name or not phone:
         raise HTTPException(status_code=400, detail="Full name and phone are required")
 
@@ -134,7 +136,10 @@ async def init_skill_enrollment_payment(
         status=PaymentStatus.pending,
         flutterwave_tx_ref=tx_ref,
         live_plan_id=skill_plan_key(skill_id),
-        description=f"Skills enroll: {program['title']} | {full_name} | {phone}"[:255],
+        description=(
+            f"Skills enroll: {program['title']} | {full_name} | {phone}"
+            + (f" | {location}" if location else "")
+        )[:255],
     )
     db.add(payment)
     await db.flush()

@@ -12,7 +12,7 @@ class CBTExam(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     subject: Mapped[str] = mapped_column(String(100), nullable=False)
-    exam_type: Mapped[str] = mapped_column(String(20), nullable=False)  # JAMB, WAEC, NECO, SCHOOL
+    exam_type: Mapped[str] = mapped_column(String(30), nullable=False)  # JAMB, WAEC, NECO, SCHOOL, COMMON_ENTRANCE
     duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
     total_questions: Mapped[int] = mapped_column(Integer, nullable=False)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)

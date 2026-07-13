@@ -116,6 +116,7 @@ function showAdminPage(page) {
   else if (page === "recommendations") loadRecommendations();
   else if (page === "student-groups") loadPendingStudentGroups();
   else if (page === "community") loadCommunityPosts();
+  else if (page === "marketplace") loadMarketplace();
 }
 
 /* ── Dashboard ── */
@@ -563,7 +564,7 @@ function switchCbtMode(mode, skipReset) {
   var hint = document.getElementById("cbt-mode-hint");
   hint.className = "cbt-hint " + (isPractice ? "practice-hint" : "school-hint");
   hint.textContent = isPractice
-    ? "Practice exams for JAMB / WAEC / NECO — students can take these anytime to prepare."
+    ? "Practice exams for JAMB / WAEC / NECO, or Primary 6 Common Entrance for the Kids app."
     : "Scheduled school exam — set open/close times. Camera proctoring is recommended.";
   document.getElementById("btn-create-cbt").textContent = isPractice ? "Create practice exam" : "Create school exam";
   if (!skipReset) {
@@ -1045,4 +1046,159 @@ async function deleteCommunityPost(id) {
     await adminApi("/api/v1/admin/community/posts/" + id, { method: "DELETE" });
     loadCommunityPosts();
   } catch (e) { alert(e.message); }
+}
+
+/* ── Marketplace ── */
+async function loadMarketplace() {
+  await Promise.all([loadMarketplaceProducts(), loadMarketplaceBookings()]);
+}
+
+async function loadMarketplaceProducts() {
+  var el = document.getElementById("marketplace-products");
+  if (!el) return;
+  el.innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    var rows = await adminApi("/api/v1/admin/marketplace/products");
+    if (!rows) return;
+    if (!rows.length) {
+      el.innerHTML = '<div class="empty-state">No products yet. Add one above.</div>';
+      return;
+    }
+    el.innerHTML =
+      '<table class="data-table"><thead><tr><th>Title</th><th>Category</th><th>Price</th><th>Available</th><th></th></tr></thead><tbody>' +
+      rows
+        .map(function (p) {
+          return (
+            "<tr><td>" +
+            escHtml(p.title) +
+            "</td><td>" +
+            escHtml(p.category) +
+            "</td><td>₦" +
+            Number(p.price || 0).toLocaleString() +
+            "</td><td>" +
+            (p.is_available ? "Yes" : "No") +
+            '</td><td class="actions"><button class="btn-sm danger" onclick="deleteMarketplaceProduct(\'' +
+            p.id +
+            "')\">Remove</button></td></tr>"
+          );
+        })
+        .join("") +
+      "</tbody></table>";
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
+  }
+}
+
+async function loadMarketplaceBookings() {
+  var el = document.getElementById("marketplace-bookings");
+  if (!el) return;
+  el.innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    var rows = await adminApi("/api/v1/admin/marketplace/bookings");
+    if (!rows) return;
+    if (!rows.length) {
+      el.innerHTML = '<div class="empty-state">No bookings yet.</div>';
+      return;
+    }
+    el.innerHTML =
+      '<table class="data-table"><thead><tr><th>Product</th><th>Student</th><th>WhatsApp</th><th>Phone</th><th>Email</th><th>Status</th><th></th></tr></thead><tbody>' +
+      rows
+        .map(function (b) {
+          var wa = (b.whatsapp || "").replace(/\D/g, "");
+          var waLink = wa
+            ? '<a href="https://wa.me/' +
+              escHtml(wa) +
+              '" target="_blank" style="color:#7dd3a0">' +
+              escHtml(b.whatsapp) +
+              "</a>"
+            : escHtml(b.whatsapp || "—");
+          var contactedBtn =
+            b.status === "pending"
+              ? '<button class="btn-sm" onclick="markMarketplaceContacted(\'' +
+                b.id +
+                "')\">Mark contacted</button>"
+              : "";
+          return (
+            "<tr><td>" +
+            escHtml(b.product_title || "—") +
+            "<br><span style=\"font-size:.75rem;color:#6b8f75\">₦" +
+            Number(b.product_price || 0).toLocaleString() +
+            "</span></td><td>" +
+            escHtml(b.full_name) +
+            "</td><td>" +
+            waLink +
+            "</td><td>" +
+            escHtml(b.phone || "—") +
+            "</td><td>" +
+            escHtml(b.email || "—") +
+            "</td><td>" +
+            escHtml(b.status || "pending") +
+            '</td><td class="actions">' +
+            contactedBtn +
+            "</td></tr>"
+          );
+        })
+        .join("") +
+      "</tbody></table>";
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
+  }
+}
+
+async function createMarketplaceProduct() {
+  var msg = document.getElementById("mp-product-msg");
+  var title = (document.getElementById("mp-title").value || "").trim();
+  var category = document.getElementById("mp-category").value;
+  var price = parseFloat(document.getElementById("mp-price").value || "0");
+  var image = (document.getElementById("mp-image").value || "").trim();
+  var desc = (document.getElementById("mp-desc").value || "").trim();
+  if (!title) {
+    msg.textContent = "Title is required.";
+    return;
+  }
+  msg.textContent = "Saving…";
+  try {
+    await adminApi("/api/v1/admin/marketplace/products", {
+      method: "POST",
+      body: JSON.stringify({
+        title: title,
+        category: category,
+        price: price,
+        description: desc || null,
+        image_url: image || null,
+        currency: "NGN",
+        is_available: true,
+      }),
+    });
+    document.getElementById("mp-title").value = "";
+    document.getElementById("mp-price").value = "";
+    document.getElementById("mp-image").value = "";
+    document.getElementById("mp-desc").value = "";
+    msg.textContent = "Product posted.";
+    loadMarketplaceProducts();
+  } catch (e) {
+    msg.textContent = e.message || "Failed to post product.";
+  }
+}
+
+async function deleteMarketplaceProduct(id) {
+  if (!confirm("Remove this product from the marketplace?")) return;
+  try {
+    await adminApi("/api/v1/admin/marketplace/products/" + id, { method: "DELETE" });
+    loadMarketplaceProducts();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+async function markMarketplaceContacted(id) {
+  try {
+    await adminApi(
+      "/api/v1/admin/marketplace/bookings/" + id + "/status?status=contacted",
+      { method: "PATCH" }
+    );
+    loadMarketplaceBookings();
+  } catch (e) {
+    alert(e.message);
+  }
 }

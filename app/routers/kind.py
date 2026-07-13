@@ -83,6 +83,7 @@ def _profile_dict(profile: KindProfile, user: User) -> dict:
         "favorite_subjects": profile.favorite_subjects or [],
         "learning_goals": profile.learning_goals,
         "preferred_language": profile.preferred_language,
+        "profile_picture": user.profile_picture,
     }
 
 
@@ -206,17 +207,23 @@ async def sia_kind_quiz(
     current_user: dict = Depends(require_kind),
     db: AsyncSession = Depends(get_db),
 ):
-    """Fun age-appropriate quiz (answers hidden until child asks)."""
+    """Fun age-appropriate interactive quiz for Learn & Play."""
     profile = await _get_kind_profile(current_user["sub"], db)
     name = await _get_child_name(current_user["sub"], db)
-    answer = await kind_quiz(
+    result = await kind_quiz(
         topic=payload.topic,
         subject=payload.subject,
         child_name=name,
         age_group=profile.age_group,
         num_questions=payload.num_questions,
     )
-    return {"sia_kind": answer, "topic": payload.topic, "num_questions": payload.num_questions}
+    return {
+        "sia_kind": result.get("sia_kind") or result.get("intro") or "",
+        "intro": result.get("intro") or "",
+        "questions": result.get("questions") or [],
+        "topic": payload.topic,
+        "num_questions": result.get("num_questions") or payload.num_questions,
+    }
 
 
 @router.post("/kind/sia/homework")

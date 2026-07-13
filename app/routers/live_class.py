@@ -501,10 +501,10 @@ async def _notify_for_class(
             db, live_class, teacher_name, live_now=live_now
         )
         if vis == LiveClassVisibility.public.value:
+            # Public = platform-wide: notify every student.
             if live_now:
-                await send_subject_notification(
+                await send_all_students_notification(
                     db=db,
-                    subject=live_class.subject,
                     title="Live class starting now",
                     body=f"«{live_class.title}» is live — copy your code from the app popup.",
                     notification_type="live_class",
@@ -512,9 +512,8 @@ async def _notify_for_class(
                 )
             else:
                 when = (start or live_class.start_time).strftime("%d %b %Y at %I:%M %p")
-                await send_subject_notification(
+                await send_all_students_notification(
                     db=db,
-                    subject=live_class.subject,
                     title="Upcoming platform live class",
                     body=f"«{live_class.title}» is scheduled for {when}.",
                     notification_type="live_class",

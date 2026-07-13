@@ -34,7 +34,12 @@ async def _recipient_ids(db: AsyncSession, live_class: LiveClass) -> list[str]:
         group = group_res.scalar_one_or_none()
         return group.member_ids() if group else []
 
-    # Subject, public, and legacy: only students who selected this subject
+    # Public: platform-wide — deliver the code to every student.
+    if vis == LiveClassVisibility.public.value:
+        res = await db.execute(select(StudentProfile))
+        return [str(p.user_id) for p in res.scalars().all()]
+
+    # Subject / legacy: only students who selected this subject.
     res = await db.execute(select(StudentProfile))
     out = []
     for profile in res.scalars().all():

@@ -42,6 +42,7 @@ class ProfileResponse(BaseModel):
     education_level: Optional[str]
     has_active_subscription: bool
     setup_complete: bool = False
+    profile_picture: Optional[str] = None
 
 
 @router.get("/subjects")
@@ -156,4 +157,5 @@ async def get_my_profile(
             and profile.selected_subjects
             and len(profile.selected_subjects) >= SUBJECT_MINIMUMS.get(profile.exam_type, 1)
         ),
+        profile_picture=user.profile_picture,
     )

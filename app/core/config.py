@@ -44,6 +44,19 @@ class Settings(BaseSettings):
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
 
+    # Mobile app version gating. Bump these each time you publish to the store
+    # so older installs get an in-app "update available" prompt.
+    APP_LATEST_VERSION: str = "1.0.0"
+    APP_LATEST_BUILD: int = 1  # must be > client build to prompt an update
+    APP_MIN_SUPPORTED_BUILD: int = 1  # builds below this are force-updated
+    APP_UPDATE_ANDROID_URL: str = (
+        "https://play.google.com/store/apps/details?id=com.scholaxia.scholaxia"
+    )
+    APP_UPDATE_IOS_URL: str = ""
+    APP_UPDATE_MESSAGE: str = (
+        "A new version of Scholaxia is available with improvements and new features."
+    )
+
     # Flutterwave (live class payments)
     FLUTTERWAVE_PUBLIC_KEY: str = ""
     FLUTTERWAVE_SECRET_KEY: str = ""
