@@ -107,6 +107,18 @@ def normalize_exam(raw: dict[str, Any], defaults: dict[str, Any] | None = None) 
             f"Exam '{title}': exam_type must be one of {', '.join(sorted(VALID_EXAM_TYPES))}"
         )
 
+    year_raw = _pick(raw, "year", "exam_year", "session")
+    if year_raw is None:
+        year_raw = defaults.get("year")
+    year: int | None = None
+    if year_raw is not None and str(year_raw).strip() != "":
+        try:
+            year = int(str(year_raw).strip()[:4])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Exam '{title}': year must be a number like 2019") from exc
+        if year < 1990 or year > 2100:
+            raise ValueError(f"Exam '{title}': year must be between 1990 and 2100")
+
     duration = _pick(raw, "duration_minutes", "duration", "time_minutes")
     if duration is None:
         duration = defaults.get("duration_minutes", 30)
@@ -132,7 +144,7 @@ def normalize_exam(raw: dict[str, Any], defaults: dict[str, Any] | None = None) 
     if isinstance(is_published, str):
         is_published = is_published.strip().lower() in {"1", "true", "yes", "y"}
 
-    return {
+    out: dict[str, Any] = {
         "title": title,
         "subject": subject,
         "exam_type": exam_type,
@@ -141,6 +153,9 @@ def normalize_exam(raw: dict[str, Any], defaults: dict[str, Any] | None = None) 
         "is_school_exam": bool(_pick(raw, "is_school_exam") or defaults.get("is_school_exam")),
         "questions": questions,
     }
+    if year is not None:
+        out["year"] = year
+    return out
 
 
 def parse_json_import(content: bytes, defaults: dict[str, Any] | None = None) -> list[dict[str, Any]]:
@@ -208,6 +223,7 @@ def parse_cbt_file(
 CBT_IMPORT_TEMPLATE: dict[str, Any] = {
     "title": "JAMB Physics Mock 1",
     "subject": "Physics",
+    "year": 2019,
     "exam_type": "JAMB",
     "duration_minutes": 60,
     "is_published": True,

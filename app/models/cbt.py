@@ -13,6 +13,7 @@ class CBTExam(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     subject: Mapped[str] = mapped_column(String(100), nullable=False)
     exam_type: Mapped[str] = mapped_column(String(30), nullable=False)  # JAMB, WAEC, NECO, SCHOOL, COMMON_ENTRANCE
+    year: Mapped[int | None] = mapped_column(Integer, nullable=True)  # e.g. 2019 — used for student year filter
     duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
     total_questions: Mapped[int] = mapped_column(Integer, nullable=False)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)

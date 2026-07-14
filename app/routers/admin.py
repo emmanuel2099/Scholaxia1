@@ -249,10 +249,23 @@ class CBTQuestionCreate(BaseModel):
     image_url: Optional[str] = None
 
 
+def _normalize_cbt_year(raw) -> Optional[int]:
+    if raw is None or str(raw).strip() == "":
+        return None
+    try:
+        year = int(str(raw).strip()[:4])
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Year must be a number like 2019")
+    if year < 1990 or year > 2100:
+        raise HTTPException(status_code=400, detail="Year must be between 1990 and 2100")
+    return year
+
+
 class CBTExamCreate(BaseModel):
     title: str
     subject: str
     exam_type: str           # JAMB | WAEC | NECO | SCHOOL | COMMON_ENTRANCE
+    year: Optional[int] = None  # exam year — required from admin UI
     duration_minutes: int
     questions: list[CBTQuestionCreate]
     is_published: bool = True
@@ -269,6 +282,7 @@ class CBTExamResponse(BaseModel):
     title: str
     subject: str
     exam_type: str
+    year: Optional[int] = None
     duration_minutes: int
     total_questions: int
     is_published: bool
@@ -285,14 +299,22 @@ async def _persist_cbt_exam(
     if not payload.questions:
         raise HTTPException(status_code=400, detail="At least one question required")
 
+    subject = (payload.subject or "").strip()
+    if not subject:
+        raise HTTPException(status_code=400, detail="Subject is required")
+    year = _normalize_cbt_year(payload.year)
+    if year is None:
+        raise HTTPException(status_code=400, detail="Exam year is required")
+
     exam_type = payload.exam_type.upper().strip().replace(" ", "_").replace("-", "_")
     if exam_type in ("CE", "COMMONENTRANCE"):
         exam_type = "COMMON_ENTRANCE"
 
     exam = CBTExam(
         title=payload.title,
-        subject=payload.subject,
+        subject=subject,
         exam_type=exam_type,
+        year=year,
         duration_minutes=payload.duration_minutes,
         total_questions=len(payload.questions),
         created_by=created_by,
@@ -338,6 +360,7 @@ def _exam_to_response(exam: CBTExam) -> CBTExamResponse:
         title=exam.title,
         subject=exam.subject,
         exam_type=exam.exam_type,
+        year=exam.year,
         duration_minutes=exam.duration_minutes,
         total_questions=exam.total_questions,
         is_published=exam.is_published,
@@ -366,16 +389,7 @@ async def admin_list_cbt_exams(
     """Admin lists all CBT exams including unpublished."""
     result = await db.execute(select(CBTExam).order_by(CBTExam.exam_type, CBTExam.subject))
     exams = result.scalars().all()
-    return [
-        CBTExamResponse(
-            id=str(e.id), title=e.title, subject=e.subject,
-            exam_type=e.exam_type, duration_minutes=e.duration_minutes,
-            total_questions=e.total_questions, is_published=e.is_published,
-            is_school_exam=e.is_school_exam,
-            scheduled_start=e.scheduled_start, scheduled_end=e.scheduled_end,
-        )
-        for e in exams
-    ]
+    return [_exam_to_response(e) for e in exams]
 
 
 @router.patch("/cbt/exams/{exam_id}/publish")
@@ -427,6 +441,7 @@ async def import_cbt_file(
     file: UploadFile = File(...),
     title: Optional[str] = Form(None),
     subject: Optional[str] = Form(None),
+    year: Optional[str] = Form(None),
     exam_type: Optional[str] = Form(None),
     duration_minutes: Optional[int] = Form(30),
     is_published: str = Form("true"),
@@ -437,14 +452,23 @@ async def import_cbt_file(
     """
     Upload a .json or .csv CBT file. Questions are saved as normal exams in the database
     and appear in the student app like any other CBT (not as a downloadable file).
+    Subject and year from the form are required and applied to every imported exam.
     """
     content = await file.read()
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large. Maximum size is 10MB.")
 
+    form_subject = (subject or "").strip()
+    form_year = _normalize_cbt_year(year)
+    if not form_subject:
+        raise HTTPException(status_code=400, detail="Pick a subject before uploading")
+    if form_year is None:
+        raise HTTPException(status_code=400, detail="Pick the exam year before uploading")
+
     defaults = {
         "title": (title or "").strip() or None,
-        "subject": (subject or "").strip() or None,
+        "subject": form_subject,
+        "year": form_year,
         "exam_type": (exam_type or "JAMB").strip().upper(),
         "duration_minutes": duration_minutes or 30,
         "is_published": is_published.strip().lower() in {"1", "true", "yes", "on"},
@@ -460,6 +484,9 @@ async def import_cbt_file(
     skipped: list[str] = []
 
     for raw in exam_payloads:
+        # Form subject/year always win so the exam slots correctly on the platform.
+        raw["subject"] = form_subject
+        raw["year"] = form_year
         if skip_dup:
             existing = await db.execute(
                 select(CBTExam).where(CBTExam.title == raw["title"])
@@ -470,7 +497,8 @@ async def import_cbt_file(
 
         payload = CBTExamCreate(
             title=raw["title"],
-            subject=raw["subject"],
+            subject=form_subject,
+            year=form_year,
             exam_type=raw["exam_type"],
             duration_minutes=raw["duration_minutes"],
             is_published=raw.get("is_published", True),
@@ -483,6 +511,7 @@ async def import_cbt_file(
                 "id": str(exam.id),
                 "title": exam.title,
                 "subject": exam.subject,
+                "year": exam.year,
                 "exam_type": exam.exam_type,
                 "total_questions": exam.total_questions,
                 "is_published": exam.is_published,

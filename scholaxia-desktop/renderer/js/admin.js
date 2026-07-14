@@ -664,7 +664,21 @@ function emptyQuestion() {
   };
 }
 
+function fillCbtYearSelects() {
+  var years = [];
+  for (var y = 2026; y >= 1995; y--) years.push(String(y));
+  ["cbt-year", "cbt-import-year"].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (!el || el.options.length > 1) return;
+    el.innerHTML = '<option value="">Select year</option>' +
+      years.map(function (yr) {
+        return '<option value="' + yr + '">' + yr + "</option>";
+      }).join("");
+  });
+}
+
 function initCbtBuilder() {
+  fillCbtYearSelects();
   if (!cbtQuestions.length) cbtQuestions = [emptyQuestion()];
   switchCbtMode(cbtMode, true);
   renderCbtQuestions();
@@ -791,13 +805,14 @@ async function loadCbt() {
     var rows = await adminApi("/api/v1/admin/cbt/exams");
     if (!rows) return;
     if (!rows.length) { el.innerHTML = '<div class="empty-state">No CBT exams. Create one or click Seed Exams.</div>'; return; }
-    el.innerHTML = '<table class="data-table"><thead><tr><th>Title</th><th>Subject</th><th>Type</th><th>Questions</th><th>Status</th><th></th></tr></thead><tbody>' +
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Title</th><th>Subject</th><th>Year</th><th>Type</th><th>Questions</th><th>Status</th><th></th></tr></thead><tbody>' +
       rows.map(function (e) {
         var typeBadge = e.is_school_exam
           ? '<span class="badge school">School</span>'
           : '<span class="badge ok">' + escHtml(e.exam_type) + '</span>';
         var pub = e.is_published ? '<span class="badge ok">Published</span>' : '<span class="badge muted">Draft</span>';
         return '<tr><td>' + escHtml(e.title) + '</td><td>' + escHtml(e.subject) + '</td>' +
+          '<td>' + (e.year || "—") + '</td>' +
           '<td>' + typeBadge + '</td><td>' + e.total_questions + '</td><td>' + pub + '</td>' +
           '<td class="actions">' +
           '<button class="btn-sm" onclick="toggleCbtPublish(\'' + e.id + '\')">Toggle publish</button>' +
@@ -817,10 +832,20 @@ async function createCbt() {
 
   var title = document.getElementById("cbt-title").value.trim();
   var subject = document.getElementById("cbt-subject").value.trim();
-  if (!title || !subject) {
-    err.textContent = "Enter an exam title and subject.";
+  var yearRaw = document.getElementById("cbt-year").value.trim();
+  if (!title) {
+    err.textContent = "Enter an exam title.";
     return;
   }
+  if (!subject) {
+    err.textContent = "Pick a subject.";
+    return;
+  }
+  if (!yearRaw) {
+    err.textContent = "Pick the exam year.";
+    return;
+  }
+  var year = parseInt(yearRaw, 10);
 
   var isSchool = cbtMode === "school";
   if (isSchool) {
@@ -862,6 +887,7 @@ async function createCbt() {
   var body = {
     title: title,
     subject: subject,
+    year: year,
     exam_type: document.getElementById("cbt-type").value,
     duration_minutes: parseInt(document.getElementById("cbt-duration").value, 10) || 30,
     is_school_exam: isSchool,
@@ -882,6 +908,7 @@ async function createCbt() {
     await adminApi("/api/v1/admin/cbt/exams", { method: "POST", body: JSON.stringify(body) });
     document.getElementById("cbt-title").value = "";
     document.getElementById("cbt-subject").value = "";
+    document.getElementById("cbt-year").value = "";
     document.getElementById("cbt-start").value = "";
     document.getElementById("cbt-end").value = "";
     cbtQuestions = [emptyQuestion()];
@@ -935,19 +962,26 @@ async function importCbtFile() {
   }
 
   var file = input.files[0];
-  var name = (file.name || "").toLowerCase();
   var fields = {
     title: document.getElementById("cbt-import-title").value.trim(),
     subject: document.getElementById("cbt-import-subject").value.trim(),
+    year: document.getElementById("cbt-import-year").value.trim(),
     exam_type: document.getElementById("cbt-import-type").value,
     duration_minutes: parseInt(document.getElementById("cbt-import-duration").value, 10) || 60,
     is_published: document.getElementById("cbt-import-publish").checked,
     skip_duplicates: document.getElementById("cbt-import-skip-dup").checked,
   };
 
-  if (name.endsWith(".csv") && (!fields.title || !fields.subject)) {
-    err.textContent = "For CSV files, enter title and subject above (or put them in a JSON file).";
+  if (!fields.subject) {
+    err.textContent = "Pick a subject so students can find this exam.";
     return;
+  }
+  if (!fields.year) {
+    err.textContent = "Pick the exam year so it shows under the right year filter.";
+    return;
+  }
+  if (!fields.title) {
+    fields.title = fields.exam_type + " " + fields.subject + " " + fields.year;
   }
 
   btn.disabled = true;
@@ -957,7 +991,7 @@ async function importCbtFile() {
     if (!r) return;
     var lines = [];
     if (r.created_count) {
-      lines.push("Created " + r.created_count + " exam(s):");
+      lines.push("Created " + r.created_count + " exam(s) for " + fields.subject + " " + fields.year + ":");
       (r.created || []).forEach(function (e) {
         lines.push("• " + e.title + " (" + e.total_questions + " questions)");
       });
@@ -1295,6 +1329,18 @@ async function createMarketplaceProduct() {
     loadMarketplaceProducts();
   } catch (e) {
     msg.textContent = e.message || "Failed to post product.";
+  }
+}
+
+async function seedMarketplaceProducts() {
+  var msg = document.getElementById("mp-product-msg");
+  if (msg) msg.textContent = "Seeding sample products…";
+  try {
+    var r = await adminApi("/api/v1/admin/marketplace/seed-samples", { method: "POST" });
+    if (msg) msg.textContent = (r && r.message) || "Sample products ready.";
+    loadMarketplaceProducts();
+  } catch (e) {
+    if (msg) msg.textContent = e.message || "Could not seed products.";
   }
 }
 

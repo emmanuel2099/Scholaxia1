@@ -223,6 +223,7 @@ class ExamSummary(BaseModel):
     title: str
     subject: str
     exam_type: str
+    year: Optional[int] = None
     duration_minutes: int
     total_questions: int
     is_published: bool
@@ -235,7 +236,8 @@ class ExamSummary(BaseModel):
 def _exam_summary(e: CBTExam) -> ExamSummary:
     return ExamSummary(
         id=str(e.id), title=e.title, subject=e.subject,
-        exam_type=e.exam_type, duration_minutes=e.duration_minutes,
+        exam_type=e.exam_type, year=e.year,
+        duration_minutes=e.duration_minutes,
         total_questions=e.total_questions, is_published=e.is_published,
         is_school_exam=e.is_school_exam,
         camera_required=e.camera_required,
@@ -338,12 +340,29 @@ async def exams_for_student(
 
     exam_type = profile.exam_type.value
     subjects = profile.selected_subjects
+    level = (profile.education_level or "").upper().replace(" ", "")
+    # JSS students always get Junior WAEC / BECE practice packs uploaded by admin.
+    if level.startswith("JSS") or exam_type.upper() == "JUNIOR_WAEC":
+        exam_type = "JUNIOR_WAEC"
     now = datetime.utcnow()
 
     result = await db.execute(
         select(CBTExam).where(CBTExam.is_published == True)  # noqa: E712
     )
     all_exams = result.scalars().all()
+
+    def _practice_type_ok(et: str) -> bool:
+        t = (et or "").upper().replace(" ", "_")
+        want = exam_type.upper()
+        if want == "JUNIOR_WAEC":
+            return t in ("JUNIOR_WAEC", "BECE", "JSSCE", "JUNIORWAEC") or "JUNIOR" in t
+        if want == "WAEC":
+            return t in ("WAEC", "WASSCE") and "JUNIOR" not in t
+        if want == "NECO":
+            return "NECO" in t
+        if want == "JAMB":
+            return "JAMB" in t or "UTME" in t
+        return t == want
 
     practice = []
     school = []
@@ -353,12 +372,13 @@ async def exams_for_student(
         if e.is_school_exam:
             if _school_exam_is_open(e, now) or (e.scheduled_start and e.scheduled_start > now):
                 school.append(_exam_summary(e))
-        elif e.exam_type.upper() == exam_type.upper():
+        elif _practice_type_ok(e.exam_type):
             practice.append(_exam_summary(e))
 
     return {
         "exam_type": exam_type,
         "selected_subjects": subjects,
+        "education_level": profile.education_level,
         "practice_exams": practice,
         "school_exams": school,
     }
@@ -428,6 +448,7 @@ async def download_exam(
         "id": str(exam.id),
         "title": exam.title,
         "subject": exam.subject,
+        "year": exam.year,
         "exam_type": exam.exam_type,
         "duration_minutes": exam.duration_minutes,
         "total_questions": exam.total_questions,

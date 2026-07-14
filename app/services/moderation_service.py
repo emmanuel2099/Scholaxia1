@@ -16,8 +16,9 @@ PERSONAL_INFO_PATTERNS = [
     r"(?:\+?\d{1,3}[\s.-]?)?(?:0\d{2,3}[\s.-]?)?\d{3}[\s.-]?\d{4,5}",  # phone (incl. 080…)
     r"\b\d{10,11}\b",
     r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",
-    r"(wa\.me|t\.me|ig\.com|fb\.com|chat\.whatsapp\.com)",
-    r"https?://(?!scholaxia\.com)\S+",
+    r"(wa\.me|t\.me|ig\.com|fb\.com|chat\.whatsapp\.com|bit\.ly|tinyurl)",
+    r"https?://\S+",
+    r"www\.\S+",
 ]
 
 

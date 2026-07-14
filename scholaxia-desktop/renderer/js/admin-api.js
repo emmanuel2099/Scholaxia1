@@ -115,6 +115,7 @@ async function uploadCbtExamFile(file, fields) {
   fd.append("file", file);
   if (fields.title) fd.append("title", fields.title);
   if (fields.subject) fd.append("subject", fields.subject);
+  if (fields.year) fd.append("year", String(fields.year));
   if (fields.exam_type) fd.append("exam_type", fields.exam_type);
   if (fields.duration_minutes != null) fd.append("duration_minutes", String(fields.duration_minutes));
   fd.append("is_published", fields.is_published ? "true" : "false");

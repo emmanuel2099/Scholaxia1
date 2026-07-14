@@ -44,6 +44,9 @@ async def _run_schema_migrations(conn) -> None:
         "ALTER TABLE cbt_exams ADD COLUMN IF NOT EXISTS scheduled_end TIMESTAMP NULL"
     ))
     await conn.execute(text(
+        "ALTER TABLE cbt_exams ADD COLUMN IF NOT EXISTS year INTEGER NULL"
+    ))
+    await conn.execute(text(
         "ALTER TABLE payments ADD COLUMN IF NOT EXISTS flutterwave_tx_ref VARCHAR(255) NULL"
     ))
     await conn.execute(text(
@@ -139,7 +142,17 @@ async def _run_schema_migrations(conn) -> None:
         """
     ))
     try:
+        await conn.execute(text(
+            "ALTER TABLE users ALTER COLUMN profile_picture TYPE VARCHAR(1000)"
+        ))
+    except Exception:
+        pass
+    try:
         await conn.execute(text("ALTER TYPE examtype ADD VALUE IF NOT EXISTS 'POST_UTME'"))
+    except Exception:
+        pass
+    try:
+        await conn.execute(text("ALTER TYPE examtype ADD VALUE IF NOT EXISTS 'JUNIOR_WAEC'"))
     except Exception:
         pass
     try:

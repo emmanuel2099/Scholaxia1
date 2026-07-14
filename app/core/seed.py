@@ -146,6 +146,8 @@ _ALL_CBT_EXAMS = _EXAMS + JAMB_EXAMS
 
 async def seed_cbt_exams(db: AsyncSession) -> list[str]:
     """Seed WAEC, NECO, and JAMB exam data if not already present."""
+    import re
+
     created = []
     for exam_data in _ALL_CBT_EXAMS:
         existing = await db.execute(
@@ -156,6 +158,10 @@ async def seed_cbt_exams(db: AsyncSession) -> list[str]:
 
         questions = exam_data["questions"]
         exam_fields = {k: v for k, v in exam_data.items() if k != "questions"}
+        if exam_fields.get("year") is None:
+            match = re.search(r"(20\d{2}|19\d{2})", str(exam_fields.get("title") or ""))
+            if match:
+                exam_fields["year"] = int(match.group(1))
         exam = CBTExam(
             **exam_fields,
             total_questions=len(questions),

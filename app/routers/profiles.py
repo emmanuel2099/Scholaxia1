@@ -94,10 +94,18 @@ async def update_my_profile_picture(
     db: AsyncSession = Depends(get_db),
 ):
     """Set the logged-in user's profile photo URL (after uploading via /community/upload)."""
+    from app.core.config import settings
+
     url = (payload.profile_picture or "").strip()
+    if url.startswith("/") and not url.startswith("//"):
+        base = (getattr(settings, "PUBLIC_API_BASE", None) or "").rstrip("/")
+        if not base:
+            # Fallback — clients also resolve relative paths themselves.
+            base = "https://scholaxia1.onrender.com"
+        url = f"{base}{url}"
     if not url.startswith("http://") and not url.startswith("https://"):
         raise HTTPException(status_code=400, detail="profile_picture must be a valid image URL")
-    if len(url) > 500:
+    if len(url) > 1000:
         raise HTTPException(status_code=400, detail="profile_picture URL is too long")
 
     result = await db.execute(select(User).where(User.id == current_user["sub"]))

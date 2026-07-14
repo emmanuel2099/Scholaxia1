@@ -208,6 +208,28 @@ async def send_message(
             raise HTTPException(status_code=403, detail="You must join this channel first")
 
     flagged, reason = await check_message_content(payload.content)
+    if flagged:
+        # Auto-eject student from community channel for links / phones / bad words.
+        if role == UserRole.student or role == "student":
+            profile_result = await db.execute(
+                select(StudentProfile).where(StudentProfile.user_id == current_user["sub"])
+            )
+            profile = profile_result.scalar_one_or_none()
+            if profile and profile.community_channel_id:
+                profile.community_channel_id = None
+                await db.flush()
+                raise HTTPException(
+                    status_code=403,
+                    detail=(
+                        "You were removed from Community for sharing a link, phone number, "
+                        "or prohibited words. Rejoin later only after admin approval."
+                    ),
+                )
+        raise HTTPException(status_code=400, detail=f"Message blocked: {reason}")
+
+    sender_res = await db.execute(select(User).where(User.id == current_user["sub"]))
+    sender = sender_res.scalar_one_or_none()
+    sender_name = sender.full_name if sender else "Someone"
 
     message = CommunityMessage(
         channel_id=parse_uuid(payload.channel_id),
@@ -215,18 +237,11 @@ async def send_message(
         content=payload.content,
         media_url=payload.media_url,
         media_type=payload.media_type,
-        is_flagged=flagged,
-        flagged_reason=reason,
+        is_flagged=False,
+        flagged_reason=None,
     )
     db.add(message)
     await db.flush()
-
-    if flagged:
-        raise HTTPException(status_code=400, detail=f"Message blocked: {reason}")
-
-    sender_res = await db.execute(select(User).where(User.id == current_user["sub"]))
-    sender = sender_res.scalar_one_or_none()
-    sender_name = sender.full_name if sender else "Someone"
 
     # ── Notifications ─────────────────────────────────────────────────────
     try:
@@ -282,7 +297,21 @@ async def send_message(
     except Exception:
         pass
 
-    return {"message_id": str(message.id), "status": "sent"}
+    return {
+        "id": str(message.id),
+        "message_id": str(message.id),
+        "status": "sent",
+        "channel_id": str(channel.id),
+        "sender_id": str(current_user["sub"]),
+        "sender_name": sender_name,
+        "author_name": sender_name,
+        "author_picture": sender.profile_picture if sender else None,
+        "profile_picture": sender.profile_picture if sender else None,
+        "content": payload.content,
+        "media_url": payload.media_url,
+        "media_type": payload.media_type,
+        "created_at": message.created_at.isoformat() if message.created_at else None,
+    }
 
 
 class ReportMessageRequest(BaseModel):
@@ -534,7 +563,7 @@ async def get_messages(
     if sender_ids:
         sender_uuids = [parse_uuid(sid) for sid in sender_ids]
         users_result = await db.execute(select(User).where(User.id.in_(sender_uuids)))
-        users_map = {str(u.id): u.full_name for u in users_result.scalars().all()}
+        users_map, pictures_map = _user_maps(users_result.scalars().all())
 
     return [
         {
@@ -542,6 +571,9 @@ async def get_messages(
             "channel_id": str(m.channel_id),
             "sender_id": str(m.sender_id),
             "sender_name": users_map.get(str(m.sender_id), "Unknown"),
+            "author_name": users_map.get(str(m.sender_id), "Unknown"),
+            "author_picture": pictures_map.get(str(m.sender_id)),
+            "profile_picture": pictures_map.get(str(m.sender_id)),
             "content": m.content,
             "media_url": m.media_url,
             "media_type": m.media_type,
@@ -671,7 +703,27 @@ async def _reactions_for_posts(db: AsyncSession, post_ids: list[str], viewer_id:
     return counts, mine
 
 
-def _serialize_post(p, users_map: dict, liked_ids: set, viewer_id: str, role, reactions=None, my_reaction=None) -> dict:
+def _user_maps(users) -> tuple[dict, dict]:
+    """Return (names_by_id, pictures_by_id) for a list of User rows."""
+    names = {}
+    pictures = {}
+    for u in users:
+        names[str(u.id)] = u.full_name
+        if u.profile_picture:
+            pictures[str(u.id)] = u.profile_picture
+    return names, pictures
+
+
+def _serialize_post(
+    p,
+    users_map: dict,
+    liked_ids: set,
+    viewer_id: str,
+    role,
+    reactions=None,
+    my_reaction=None,
+    pictures_map: dict | None = None,
+) -> dict:
     role_name = _role_str(role)
     viewer_uuid = str(viewer_id)
     show_author = (
@@ -679,11 +731,15 @@ def _serialize_post(p, users_map: dict, liked_ids: set, viewer_id: str, role, re
         or str(p.author_id) == viewer_uuid
         or role_name in ("teacher", "admin")
     )
+    pictures_map = pictures_map or {}
+    author_id = str(p.author_id) if show_author else None
     return {
         "id": str(p.id),
         "channel_id": str(p.channel_id),
-        "author_id": str(p.author_id) if show_author else None,
+        "author_id": author_id,
         "author_name": users_map.get(str(p.author_id), "Unknown") if show_author else "Anonymous",
+        "author_picture": pictures_map.get(str(p.author_id)) if show_author else None,
+        "profile_picture": pictures_map.get(str(p.author_id)) if show_author else None,
         "content": p.content,
         "media_url": p.media_url,
         "media_type": p.media_type,
@@ -738,11 +794,12 @@ async def _fetch_channel_posts(
     posts = [p for p in posts if not POST_COMMENT_RE.match(p.content or "")]
 
     author_ids = list({str(p.author_id) for p in posts})
-    users_map = {}
+    users_map: dict = {}
+    pictures_map: dict = {}
     if author_ids:
         author_uuids = [parse_uuid(aid) for aid in author_ids]
         users_result = await db.execute(select(User).where(User.id.in_(author_uuids)))
-        users_map = {str(u.id): u.full_name for u in users_result.scalars().all()}
+        users_map, pictures_map = _user_maps(users_result.scalars().all())
 
     post_ids = [str(p.id) for p in posts]
     liked_ids: set[str] = set()
@@ -768,6 +825,7 @@ async def _fetch_channel_posts(
             current_user.get("role"),
             reaction_counts.get(str(p.id), {}),
             my_reactions.get(str(p.id), ""),
+            pictures_map,
         )
         for p in posts
     ]
@@ -878,15 +936,18 @@ async def list_post_comments(
     posts = result.scalars().all()
 
     author_ids = list({str(p.author_id) for p in posts})
-    users_map = {}
+    users_map: dict = {}
+    pictures_map: dict = {}
     if author_ids:
         author_uuids = [parse_uuid(aid) for aid in author_ids]
         users_result = await db.execute(select(User).where(User.id.in_(author_uuids)))
-        users_map = {str(u.id): u.full_name for u in users_result.scalars().all()}
+        users_map, pictures_map = _user_maps(users_result.scalars().all())
 
     viewer_id = current_user["sub"]
     return [
-        _serialize_post(p, users_map, set(), viewer_id, current_user.get("role"))
+        _serialize_post(
+            p, users_map, set(), viewer_id, current_user.get("role"), pictures_map=pictures_map
+        )
         for p in posts
     ]
 
@@ -935,6 +996,22 @@ async def create_post(
 
     flagged, reason = await check_message_content(payload.content)
     if flagged:
+        role = current_user.get("role")
+        if role == "student":
+            profile_result = await db.execute(
+                select(StudentProfile).where(StudentProfile.user_id == current_user["sub"])
+            )
+            profile = profile_result.scalar_one_or_none()
+            if profile and profile.community_channel_id:
+                profile.community_channel_id = None
+                await db.flush()
+                raise HTTPException(
+                    status_code=403,
+                    detail=(
+                        "You were removed from Community for sharing a link, phone number, "
+                        "or prohibited words."
+                    ),
+                )
         raise HTTPException(status_code=400, detail=f"Post blocked: {reason}")
 
     comment_match = POST_COMMENT_RE.match(payload.content or "")
@@ -1011,6 +1088,8 @@ async def create_post(
         "channel_id": str(post.channel_id),
         "author_id": None if payload.is_anonymous else str(post.author_id),
         "author_name": "Anonymous" if payload.is_anonymous else author_name,
+        "author_picture": None if payload.is_anonymous else (author.profile_picture if author else None),
+        "profile_picture": None if payload.is_anonymous else (author.profile_picture if author else None),
         "content": post.content,
         "is_anonymous": post.is_anonymous,
         "visibility": _visibility_str(post.visibility),
@@ -1139,14 +1218,20 @@ async def get_pinned_posts(
     posts = result.scalars().all()
 
     author_ids = list({str(p.author_id) for p in posts})
-    users_result = await db.execute(select(User).where(User.id.in_(author_ids)))
-    users_map = {str(u.id): u.full_name for u in users_result.scalars().all()}
+    users_map: dict = {}
+    pictures_map: dict = {}
+    if author_ids:
+        author_uuids = [parse_uuid(aid) for aid in author_ids]
+        users_result = await db.execute(select(User).where(User.id.in_(author_uuids)))
+        users_map, pictures_map = _user_maps(users_result.scalars().all())
 
     return [
         {
             "id": str(p.id),
             "author_id": str(p.author_id),
             "author_name": users_map.get(str(p.author_id), "Unknown"),
+            "author_picture": pictures_map.get(str(p.author_id)),
+            "profile_picture": pictures_map.get(str(p.author_id)),
             "content": p.content,
             "media_url": p.media_url,
             "like_count": p.like_count,

@@ -66,12 +66,67 @@ async def list_categories():
     }
 
 
+_SAMPLE_PRODUCTS = [
+    {
+        "title": "Wireless Earbuds Pro",
+        "description": "Bluetooth earbuds with case — great for lectures. Tap Book and Scholaxia will chat with you.",
+        "category": "gadgets",
+        "price": 18500,
+    },
+    {
+        "title": "Used HP Laptop 8GB",
+        "description": "Reliable student laptop for CBT practice and Zoom classes.",
+        "category": "laptops",
+        "price": 175000,
+    },
+    {
+        "title": "Campus Hoodie (M)",
+        "description": "Soft cotton hoodie — Scholaxia purple. Limited stock for testing.",
+        "category": "clothes",
+        "price": 12000,
+    },
+    {
+        "title": "Samsung A14 (32GB)",
+        "description": "Clean condition phone for classes and community chat.",
+        "category": "phones",
+        "price": 95000,
+    },
+    {
+        "title": "JAMB Past Questions Pack",
+        "description": "Printed past questions set for practice at home.",
+        "category": "books",
+        "price": 3500,
+    },
+]
+
+
+async def _ensure_sample_products(db: AsyncSession) -> None:
+    """Seed sample sellable items when the marketplace is empty (for testing)."""
+    count_res = await db.execute(select(MarketplaceProduct.id).limit(1))
+    if count_res.scalar_one_or_none() is not None:
+        return
+    for item in _SAMPLE_PRODUCTS:
+        db.add(
+            MarketplaceProduct(
+                title=item["title"],
+                description=item["description"],
+                category=item["category"],
+                price=float(item["price"]),
+                currency="NGN",
+                is_available=True,
+                is_active=True,
+            )
+        )
+    await db.flush()
+
+
 @router.get("/products")
 async def list_products(
     category: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     """Public list of active marketplace products (students browse)."""
+    await _ensure_sample_products(db)
     q = select(MarketplaceProduct).where(
         MarketplaceProduct.is_active == True,  # noqa: E712
         MarketplaceProduct.is_available == True,  # noqa: E712
@@ -207,6 +262,42 @@ class ProductUpdate(BaseModel):
 
 
 admin_router = APIRouter(prefix="/admin/marketplace", tags=["Admin — Marketplace"])
+
+
+@admin_router.post("/seed-samples", status_code=201)
+async def admin_seed_sample_products(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Post sample sellable products for testing (admin only). Skips titles that already exist."""
+    created = []
+    for item in _SAMPLE_PRODUCTS:
+        dup = await db.execute(
+            select(MarketplaceProduct).where(MarketplaceProduct.title == item["title"])
+        )
+        if dup.scalar_one_or_none() is not None:
+            continue
+        product = MarketplaceProduct(
+            title=item["title"],
+            description=item["description"],
+            category=item["category"],
+            price=float(item["price"]),
+            currency="NGN",
+            is_available=True,
+            is_active=True,
+            created_by=current_user["sub"],
+        )
+        db.add(product)
+        await db.flush()
+        created.append(_product_dict(product))
+
+    return {
+        "message": f"Added {len(created)} sample product(s)."
+        if created
+        else "Sample products already exist.",
+        "added": len(created),
+        "products": created,
+    }
 
 
 @admin_router.post("/products", status_code=201)

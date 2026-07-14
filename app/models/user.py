@@ -19,6 +19,7 @@ class ExamType(str, enum.Enum):
     JAMB = "JAMB"
     WAEC = "WAEC"
     NECO = "NECO"
+    JUNIOR_WAEC = "JUNIOR_WAEC"  # BECE / Junior WAEC for JSS1–3
     POST_UTME = "POST_UTME"
     ALL = "ALL"
 
@@ -35,7 +36,7 @@ class User(Base):
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     oauth_provider: Mapped[str] = mapped_column(String(50), nullable=True)  # google, apple
     oauth_id: Mapped[str] = mapped_column(String(255), nullable=True)
-    profile_picture: Mapped[str] = mapped_column(String(500), nullable=True)
+    profile_picture: Mapped[str] = mapped_column(String(1000), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

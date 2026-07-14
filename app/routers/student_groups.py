@@ -632,6 +632,8 @@ async def create_group_post(
         "channel_id": str(post.channel_id),
         "author_id": str(uid),
         "author_name": author_name,
+        "author_picture": user.profile_picture if user else None,
+        "profile_picture": user.profile_picture if user else None,
         "content": post.content,
         "media_url": post.media_url,
         "media_type": post.media_type,
@@ -667,6 +669,8 @@ async def list_group_messages(
             "id": str(msg.id),
             "user_id": str(msg.user_id),
             "author_name": user.full_name or user.email,
+            "author_picture": user.profile_picture,
+            "profile_picture": user.profile_picture,
             "content": msg.content,
             "created_at": msg.created_at.isoformat() if msg.created_at else None,
             "is_mine": str(msg.user_id) == str(uid),
@@ -694,6 +698,18 @@ async def send_group_message(
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
     flagged, reason = await check_message_content(text)
     if flagged:
+        # Auto-remove student from the group for links / phone / bad words.
+        mem = await _get_membership(db, gid, uid)
+        if mem and mem.role != StudentGroupMemberRole.admin:
+            await db.delete(mem)
+            await db.flush()
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "You were removed from this group for sharing a link, phone number, "
+                    "or prohibited words. Contact admin if this was a mistake."
+                ),
+            )
         raise HTTPException(status_code=400, detail=reason)
     msg = StudentGroupMessage(group_id=gid, user_id=uid, content=text)
     db.add(msg)
@@ -704,6 +720,8 @@ async def send_group_message(
         "id": str(msg.id),
         "user_id": str(uid),
         "author_name": user.full_name if user else "Student",
+        "author_picture": user.profile_picture if user else None,
+        "profile_picture": user.profile_picture if user else None,
         "content": text,
         "created_at": msg.created_at.isoformat() if msg.created_at else None,
         "is_mine": True,
