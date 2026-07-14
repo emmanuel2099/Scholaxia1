@@ -75,11 +75,13 @@ class Settings(BaseSettings):
     OTP_EXPIRE_MINUTES: int = 10
 
     # ── AI Engine ─────────────────────────────────────────────────────────────
-    # "gemini" = Google Gemini (primary — 1,500 req/day free)
+    # "deepseek" = DeepSeek (primary — strong + cheap)
+    # "openai"   = OpenAI GPT-4o
+    # "gemini"   = Google Gemini
     # "groq"   = Groq (fallback)
     # "hosted" = Self-hosted (Ollama, vLLM)
     # "local"  = HuggingFace in-process
-    AI_BACKEND: str = "openai"
+    AI_BACKEND: str = "deepseek"
     AI_MAX_TOKENS: int = 8192   # Gemini supports up to 8192 output tokens
     AI_TEMPERATURE: float = 0.42
 

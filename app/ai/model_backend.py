@@ -338,7 +338,7 @@ async def run_inference(prompt: str, conversation_history: list = None,
     Run inference with automatic fallback chain.
 
     Priority order (primary → fallbacks):
-      gemini → openai → deepseek → groq
+      deepseek → openai → gemini → groq
     """
     if not _any_api_key_configured():
         raise RuntimeError(
@@ -372,9 +372,9 @@ async def run_inference(prompt: str, conversation_history: list = None,
         "groq": settings.GROQ_API_KEY,
     }
 
-    # Build try order: configured primary first, then highest teaching-quality backends.
-    try_order = [backend] if backend in backends else ["openai"]
-    for name in ("openai", "gemini", "deepseek", "groq"):
+    # Build try order: configured primary first, then fallbacks.
+    try_order = [backend] if backend in backends else ["deepseek"]
+    for name in ("deepseek", "openai", "gemini", "groq"):
         if name not in try_order and keys.get(name):
             try_order.append(name)
 
