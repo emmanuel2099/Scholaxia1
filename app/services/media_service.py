@@ -42,6 +42,7 @@ FOLDER_RESOURCE_TYPE = {
     "covers": "image",
     "snapshots": "image",
     "cbt": "image",
+    "marketplace": "image",
 }
 
 

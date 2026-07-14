@@ -32,11 +32,28 @@ class _CbtResultScreenState extends State<CbtResultScreen> {
   }
 
   Future<void> _loadResult() async {
+    final sid = widget.sessionId.trim();
+    if (sid.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _error =
+              'No online session was created (you may be offline). Your score was calculated on this device.';
+          _loading = false;
+        });
+      }
+      return;
+    }
     try {
-      final r = await _api.cbtSessionResult(widget.sessionId);
+      final r = await _api.cbtSessionResult(sid);
       if (mounted) setState(() { _result = r; _loading = false; });
     } catch (e) {
-      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+      if (mounted) {
+        setState(() {
+          _error =
+              'Could not reach the server. Check your internet and try again.';
+          _loading = false;
+        });
+      }
     }
   }
 

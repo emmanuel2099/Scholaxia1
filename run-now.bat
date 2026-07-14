@@ -32,10 +32,10 @@ echo Building on D: (%D_BUILD%)
 echo TEMP=%TEMP%
 echo.
 
-flutter pub get
+call flutter pub get
 if errorlevel 1 goto :fail
 
-flutter run -d windows
+call flutter run -d windows
 if errorlevel 1 goto :fail
 exit /b 0
 

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../api/api_service.dart';
 import '../../../theme/app_theme.dart';
+import '../../../widgets/author_avatar.dart';
 import '../../../widgets/student_ui.dart';
 import 'group_voice_call_screen.dart';
 
@@ -167,6 +168,7 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     _inputCtrl.clear();
     setState(() => _sending = true);
 
+    final pic = await _api.cachedProfilePicture();
     final optimistic = {
       'id': 'local-${DateTime.now().millisecondsSinceEpoch}',
       'author_name': 'You',
@@ -174,6 +176,8 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
       'created_at': DateTime.now().toIso8601String(),
       'is_mine': true,
       '_pending': true,
+      if (pic != null && pic.isNotEmpty) 'author_picture': pic,
+      if (pic != null && pic.isNotEmpty) 'profile_picture': pic,
     };
     setState(() => _messages = [..._messages, optimistic]);
     _scrollToBottom();
@@ -181,10 +185,19 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     try {
       final sent = await _api.sendGroupMessage(widget.groupId, text);
       if (mounted) {
+        final enriched = Map<String, dynamic>.from(sent);
+        if ((enriched['author_picture'] == null ||
+                enriched['author_picture'].toString().isEmpty) &&
+            pic != null &&
+            pic.isNotEmpty) {
+          enriched['author_picture'] = pic;
+          enriched['profile_picture'] = pic;
+        }
+        enriched['is_mine'] = true;
         setState(() {
           _messages = [
             ..._messages.where((m) => m['id'] != optimistic['id']),
-            sent,
+            enriched,
           ];
         });
         _scrollToBottom();
@@ -290,6 +303,8 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     final author = m['author_name']?.toString() ?? 'Student';
     final content = m['content']?.toString() ?? '';
     final time = _formatTime(m['created_at']?.toString());
+    final picture = m['author_picture']?.toString() ??
+        m['profile_picture']?.toString();
 
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
@@ -312,15 +327,29 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (!mine)
-              Text(
-                author,
-                style: TextStyle(
-                  color: context.accentColor,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AuthorAvatar(
+                  pictureUrl: picture,
+                  name: mine ? 'You' : author,
+                  radius: 12,
+                  preferLocalCache: mine,
                 ),
-              ),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    mine ? 'You' : author,
+                    style: TextStyle(
+                      color: mine ? Colors.white70 : context.accentColor,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
             Text(
               content,
               style: TextStyle(

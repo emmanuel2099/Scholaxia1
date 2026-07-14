@@ -1,12 +1,16 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import '../../../api/api_service.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/post_attachment_picker.dart';
+import '../../../services/profile_avatar_cache.dart';
 import '../../auth/exam_subject_setup_screen.dart';
 import '../../auth/role_select_screen.dart';
 import '../../kind/kind_shell.dart';
 import '../notifications/notifications_screen.dart';
 import 'about_scholaxia_screen.dart';
+import 'terms_conditions_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -21,6 +25,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _loading = true;
   bool _uploadingPhoto = false;
   String? _error;
+  File? _localAvatar;
 
   @override
   void initState() {
@@ -41,7 +46,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return;
       }
       final p = await _api.getStudentProfile();
-      if (mounted) setState(() { _profile = p; _loading = false; _error = null; });
+      final local = await ProfileAvatarCache.instance.existingFile();
+      if (mounted) {
+        setState(() {
+          _profile = p;
+          _localAvatar = local;
+          _loading = false;
+          _error = null;
+        });
+      }
     } catch (e) {
       if (mounted) {
         final msg = e is ApiException ? e.message : e.toString();
@@ -54,13 +67,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
           );
           return;
         }
-        setState(() { _error = msg; _loading = false; });
+        // Still show cached avatar if profile fetch failed.
+        final local = await ProfileAvatarCache.instance.existingFile();
+        final cachedUrl = await _api.cachedProfilePicture();
+        setState(() {
+          _localAvatar = local;
+          if (cachedUrl != null && _profile == null) {
+            _profile = StudentProfile(
+              fullName: '',
+              email: '',
+              profilePicture: cachedUrl,
+            );
+          } else if (cachedUrl != null && _profile != null) {
+            _profile = _profile!.copyWith(profilePicture: cachedUrl);
+          }
+          _error = msg;
+          _loading = false;
+        });
       }
     }
   }
 
   Future<void> _logout() async {
     await _api.clearTokens();
+    await ProfileAvatarCache.instance.clear();
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
         context,
@@ -75,9 +105,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (picked == null) return;
       setState(() => _uploadingPhoto = true);
       final url = await _api.updateProfilePicture(picked.bytes, picked.name);
+      final local = await ProfileAvatarCache.instance.existingFile();
       if (!mounted) return;
       setState(() {
         _profile = _profile?.copyWith(profilePicture: url);
+        _localAvatar = local;
         _uploadingPhoto = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
@@ -101,6 +133,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
       }
     }
+  }
+
+  ImageProvider? _avatarProvider(StudentProfile p) {
+    if (_localAvatar != null) return FileImage(_localAvatar!);
+    final raw = p.profilePicture;
+    if (raw == null || raw.isEmpty) return null;
+    final url = _api.resolveMediaUrl(raw);
+    if (url.isEmpty) return null;
+    return NetworkImage(url);
   }
 
   @override
@@ -206,7 +247,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     context,
                     icon: Icons.school_rounded,
                     label: 'Exam target',
-                    value: examSet ? p.examType! : 'Not set',
+                    value: examSet
+                        ? (p.examType == 'ALL'
+                            ? 'JAMB + ${p.ssceExamType ?? 'WAEC/NECO'}'
+                            : p.examType!)
+                        : 'Not set',
                     muted: !examSet,
                   )),
                   const SizedBox(width: 12),
@@ -219,7 +264,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   )),
                 ],
               ),
-              if (p.subjects.isNotEmpty) ...[
+              if (p.jambSubjects.isNotEmpty) ...[
+                const SizedBox(height: 20),
+                _sectionTitle(context, 'JAMB subjects'),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: p.jambSubjects
+                      .map((s) => _subjectChip(context, s))
+                      .toList(),
+                ),
+              ],
+              if (p.ssceSubjects.isNotEmpty) ...[
+                const SizedBox(height: 20),
+                _sectionTitle(
+                  context,
+                  '${p.ssceExamType == 'JUNIOR_WAEC' ? 'Junior WAEC' : (p.ssceExamType ?? 'WAEC/NECO')} subjects',
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: p.ssceSubjects
+                      .map((s) => _subjectChip(context, s))
+                      .toList(),
+                ),
+              ],
+              if (p.jambSubjects.isEmpty &&
+                  p.ssceSubjects.isEmpty &&
+                  p.subjects.isNotEmpty) ...[
                 const SizedBox(height: 20),
                 _sectionTitle(context, 'My subjects'),
                 const SizedBox(height: 10),
@@ -265,6 +339,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const AboutScholaxiaScreen()),
+                  ),
+                ),
+                _settingsRow(
+                  context,
+                  Icons.description_outlined,
+                  'Terms & Conditions',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const TermsConditionsScreen()),
                   ),
                 ),
               ]),
@@ -337,12 +420,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: CircleAvatar(
                         radius: 44,
                         backgroundColor: context.accentColor.withOpacity(0.12),
-                        backgroundImage: (p.profilePicture != null &&
-                                p.profilePicture!.isNotEmpty)
-                            ? NetworkImage(p.profilePicture!)
-                            : null,
-                        child: (p.profilePicture == null ||
-                                p.profilePicture!.isEmpty)
+                        backgroundImage: _avatarProvider(p),
+                        child: _avatarProvider(p) == null
                             ? Text(initials,
                                 style: TextStyle(
                                   color: context.accentColor,

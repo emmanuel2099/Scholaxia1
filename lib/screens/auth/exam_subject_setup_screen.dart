@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../api/api_service.dart';
 import '../../theme/app_theme.dart';
+import '../kind/kind_shell.dart';
 import '../student/student_shell.dart';
 
-/// Post-signup flow: pick exam type (JAMB / WAEC / NECO) and subjects, then go home.
+/// Post-signup: class level + exams. SS students can select both JAMB and WAEC/NECO
+/// with separate subject lists.
 class ExamSubjectSetupScreen extends StatefulWidget {
   final bool popOnComplete;
   const ExamSubjectSetupScreen({super.key, this.popOnComplete = false});
@@ -14,21 +16,22 @@ class ExamSubjectSetupScreen extends StatefulWidget {
 
 class _ExamSubjectSetupScreenState extends State<ExamSubjectSetupScreen> {
   final _api = ApiService();
-  static const _examOptions = [
-    ('JAMB', 'JAMB UTME', 'Pick exactly 4 subjects'),
-    ('WAEC', 'WAEC WASSCE', 'Pick up to 9 subjects'),
-    ('NECO', 'NECO SSCE', 'Pick up to 9 subjects'),
-  ];
 
-  String _examType = 'JAMB';
   String _educationLevel = 'SS3';
-  final _selected = <String>{};
+  bool _enableJamb = true;
+  bool _enableSsce = true;
+  String _ssceBoard = 'WAEC'; // WAEC | NECO
+  final _jambSelected = <String>{};
+  final _ssceSelected = <String>{};
   List<String> _availableSubjects = [];
   bool _loadingSubjects = true;
   bool _saving = false;
 
-  int get _subjectLimit => _examType == 'JAMB' ? 4 : 9;
-  int get _subjectMinimum => _examType == 'JAMB' ? 4 : 1;
+  bool get _isJss => _educationLevel.toUpperCase().startsWith('JSS');
+  bool get _isPrimary6 {
+    final n = _educationLevel.toUpperCase().replaceAll(' ', '');
+    return n == 'PRIMARY6' || n == 'P6' || n == 'PRY6';
+  }
 
   @override
   void initState() {
@@ -65,6 +68,9 @@ class _ExamSubjectSetupScreenState extends State<ExamSubjectSetupScreen> {
             'IRS',
             'Further Mathematics',
             'Civic Education',
+            'Basic Science',
+            'Basic Technology',
+            'Social Studies',
           ];
           _loadingSubjects = false;
         });
@@ -72,63 +78,137 @@ class _ExamSubjectSetupScreenState extends State<ExamSubjectSetupScreen> {
     }
   }
 
-  void _selectExam(String type) {
+  void _selectLevel(String level) {
     setState(() {
-      _examType = type;
-      if (_selected.length > _subjectLimit) {
-        _selected.removeAll(_selected.skip(_subjectLimit));
+      _educationLevel = level;
+      if (level.toUpperCase().startsWith('JSS')) {
+        _enableJamb = false;
+        _enableSsce = true;
+        _ssceBoard = 'WAEC';
+        _jambSelected.clear();
+      } else if (_isPrimary6Level(level)) {
+        _enableJamb = false;
+        _enableSsce = false;
+      } else {
+        // SS / JAMB prep — allow both by default
+        if (!_enableJamb && !_enableSsce) {
+          _enableJamb = true;
+          _enableSsce = true;
+        }
       }
     });
   }
 
-  void _toggleSubject(String subject) {
+  bool _isPrimary6Level(String level) {
+    final n = level.toUpperCase().replaceAll(' ', '');
+    return n == 'PRIMARY6' || n == 'P6' || n == 'PRY6';
+  }
+
+  void _toggle(Set<String> selected, String subject, int limit, String label) {
     setState(() {
-      if (_selected.contains(subject)) {
-        _selected.remove(subject);
-      } else if (_selected.length < _subjectLimit) {
-        _selected.add(subject);
-      } else if (_examType == 'JAMB') {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('JAMB requires exactly 4 subjects.')),
-        );
+      if (selected.contains(subject)) {
+        selected.remove(subject);
+      } else if (selected.length < limit) {
+        selected.add(subject);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('You can pick up to $_subjectLimit subjects.')),
+          SnackBar(content: Text('$label: pick up to $limit subjects.')),
         );
       }
     });
   }
 
   Future<void> _continue() async {
-    if (_selected.length < _subjectMinimum) {
+    if (_isPrimary6) {
+      setState(() => _saving = true);
+      try {
+        final data = await _api.setupExam(
+          educationLevel: _educationLevel,
+          examType: 'JAMB',
+          subjects: const ['Mathematics'],
+        );
+        if (!mounted) return;
+        if (data['redirect'] == 'kind' || data['role'] == 'kind') {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => const KindShell()),
+            (_) => false,
+          );
+          return;
+        }
+      } on ApiException catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+        );
+      } finally {
+        if (mounted) setState(() => _saving = false);
+      }
+      return;
+    }
+
+    if (_isJss) {
+      if (_ssceSelected.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Select at least one subject for Junior WAEC.')),
+        );
+        return;
+      }
+      setState(() => _saving = true);
+      try {
+        await _api.setupExam(
+          educationLevel: _educationLevel,
+          enableJamb: false,
+          enableSsce: true,
+          ssceExamType: 'WAEC',
+          ssceSubjects: _ssceSelected.toList(),
+          examType: 'JUNIOR_WAEC',
+          subjects: _ssceSelected.toList(),
+        );
+        if (!mounted) return;
+        _goNext();
+      } on ApiException catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+        );
+      } finally {
+        if (mounted) setState(() => _saving = false);
+      }
+      return;
+    }
+
+    if (!_enableJamb && !_enableSsce) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            _examType == 'JAMB'
-                ? 'Select exactly 4 subjects for JAMB.'
-                : 'Select at least one subject.',
-          ),
-        ),
+        const SnackBar(content: Text('Turn on JAMB and/or WAEC/NECO.')),
       );
       return;
     }
+    if (_enableJamb && _jambSelected.length != 4) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('JAMB needs exactly 4 subjects.')),
+      );
+      return;
+    }
+    if (_enableSsce && _ssceSelected.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Pick at least one WAEC/NECO subject.')),
+      );
+      return;
+    }
+
     setState(() => _saving = true);
     try {
       await _api.setupExam(
-        examType: _examType,
-        subjects: _selected.toList(),
         educationLevel: _educationLevel,
+        enableJamb: _enableJamb,
+        enableSsce: _enableSsce,
+        jambSubjects: _jambSelected.toList(),
+        ssceExamType: _ssceBoard,
+        ssceSubjects: _ssceSelected.toList(),
       );
       if (!mounted) return;
-      if (widget.popOnComplete && Navigator.canPop(context)) {
-        Navigator.pop(context, true);
-      } else {
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (_) => const StudentShell()),
-          (_) => false,
-        );
-      }
+      _goNext();
     } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -139,9 +219,31 @@ class _ExamSubjectSetupScreenState extends State<ExamSubjectSetupScreen> {
     }
   }
 
+  void _goNext() {
+    if (widget.popOnComplete && Navigator.canPop(context)) {
+      Navigator.pop(context, true);
+    } else {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const StudentShell()),
+        (_) => false,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final btnFg = context.isDark ? AppColors.background : Colors.white;
+    final levels = const [
+      'Primary 6',
+      'JSS1',
+      'JSS2',
+      'JSS3',
+      'SS1',
+      'SS2',
+      'SS3',
+      'JAMB',
+    ];
 
     return Scaffold(
       backgroundColor: context.bgColor,
@@ -166,146 +268,127 @@ class _ExamSubjectSetupScreenState extends State<ExamSubjectSetupScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Choose your exam and subjects so we can personalize CBT, Sia, and your profile.',
-                    style: TextStyle(color: context.greyColor, fontSize: 14, height: 1.4),
+                    'Choose your class. SS students can select both JAMB and WAEC/NECO with separate subjects.',
+                    style: TextStyle(
+                        color: context.greyColor, fontSize: 14, height: 1.4),
                   ),
                   const SizedBox(height: 24),
-                  Text(
-                    'EXAM TYPE',
-                    style: TextStyle(
-                      color: context.greyColor,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 1,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  ..._examOptions.map((opt) {
-                    final selected = _examType == opt.$1;
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: GestureDetector(
-                        onTap: () => _selectExam(opt.$1),
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: selected
-                                ? context.accentColor.withOpacity(0.12)
-                                : context.cardColor,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: selected ? context.accentColor : context.borderColor,
-                              width: selected ? 1.5 : 1,
-                            ),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                selected ? Icons.radio_button_checked : Icons.radio_button_off,
-                                color: selected ? context.accentColor : context.greyColor,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      opt.$2,
-                                      style: TextStyle(
-                                        color: context.textColor,
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    Text(
-                                      opt.$3,
-                                      style: TextStyle(color: context.greyColor, fontSize: 12),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  }),
-                  const SizedBox(height: 16),
-                  Text(
-                    'EDUCATION LEVEL',
-                    style: TextStyle(
-                      color: context.greyColor,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 1,
-                    ),
-                  ),
+                  _label(context, 'EDUCATION LEVEL'),
                   const SizedBox(height: 10),
                   Wrap(
                     spacing: 8,
                     runSpacing: 8,
-                    children: ['SS1', 'SS2', 'SS3', 'JAMB'].map((level) {
+                    children: levels.map((level) {
                       final sel = _educationLevel == level;
                       return ChoiceChip(
                         label: Text(level),
                         selected: sel,
-                        onSelected: (_) => setState(() => _educationLevel = level),
+                        onSelected: (_) => _selectLevel(level),
                         selectedColor: context.accentColor.withOpacity(0.2),
                         labelStyle: TextStyle(
                           color: sel ? context.accentColor : context.textColor,
                           fontWeight: sel ? FontWeight.w600 : FontWeight.normal,
                         ),
-                        side: BorderSide(color: sel ? context.accentColor : context.borderColor),
+                        side: BorderSide(
+                            color: sel
+                                ? context.accentColor
+                                : context.borderColor),
                         backgroundColor: context.cardColor,
                       );
                     }).toList(),
                   ),
-                  const SizedBox(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'SUBJECTS',
-                        style: TextStyle(
-                          color: context.greyColor,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 1,
-                        ),
-                      ),
-                      Text(
-                        '${_selected.length}/$_subjectLimit',
-                        style: TextStyle(
-                          color: context.accentColor,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
+                  if (_isPrimary6) ...[
+                    const SizedBox(height: 20),
+                    _infoBox(
+                      context,
+                      'Primary 6 opens the Kids app. Common Entrance CBT is uploaded by admin there.',
+                    ),
+                  ],
+                  if (_isJss) ...[
+                    const SizedBox(height: 24),
+                    _infoBox(
+                      context,
+                      'JSS uses Junior WAEC (BECE). Admin uploads those questions.',
+                    ),
+                    const SizedBox(height: 16),
+                    _label(context, 'JUNIOR WAEC SUBJECTS'),
+                    const SizedBox(height: 10),
+                    _subjectWrap(
+                      context,
+                      selected: _ssceSelected,
+                      limit: 9,
+                      label: 'Junior WAEC',
+                    ),
+                  ],
+                  if (!_isPrimary6 && !_isJss) ...[
+                    const SizedBox(height: 24),
+                    _label(context, 'EXAM BOARDS (PICK ONE OR BOTH)'),
+                    const SizedBox(height: 10),
+                    _boardToggle(
+                      context,
+                      title: 'JAMB UTME',
+                      subtitle: 'Exactly 4 subjects',
+                      value: _enableJamb,
+                      onChanged: (v) => setState(() => _enableJamb = v),
+                    ),
+                    const SizedBox(height: 10),
+                    _boardToggle(
+                      context,
+                      title: 'WAEC / NECO',
+                      subtitle: 'Up to 9 subjects',
+                      value: _enableSsce,
+                      onChanged: (v) => setState(() => _enableSsce = v),
+                    ),
+                    if (_enableSsce) ...[
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          ChoiceChip(
+                            label: const Text('WAEC'),
+                            selected: _ssceBoard == 'WAEC',
+                            onSelected: (_) =>
+                                setState(() => _ssceBoard = 'WAEC'),
+                            selectedColor:
+                                context.accentColor.withOpacity(0.2),
+                          ),
+                          const SizedBox(width: 8),
+                          ChoiceChip(
+                            label: const Text('NECO'),
+                            selected: _ssceBoard == 'NECO',
+                            onSelected: (_) =>
+                                setState(() => _ssceBoard = 'NECO'),
+                            selectedColor:
+                                context.accentColor.withOpacity(0.2),
+                          ),
+                        ],
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: _availableSubjects.map((s) {
-                      final sel = _selected.contains(s);
-                      return FilterChip(
-                        label: Text(s, style: const TextStyle(fontSize: 12)),
-                        selected: sel,
-                        onSelected: (_) => _toggleSubject(s),
-                        selectedColor: context.accentColor.withOpacity(0.2),
-                        checkmarkColor: context.accentColor,
-                        labelStyle: TextStyle(
-                          color: sel ? context.accentColor : context.textColor,
-                        ),
-                        side: BorderSide(color: sel ? context.accentColor : context.borderColor),
-                        backgroundColor: context.cardColor,
-                      );
-                    }).toList(),
-                  ),
-                  const SizedBox(height: 32),
+                    if (_enableJamb) ...[
+                      const SizedBox(height: 22),
+                      _label(context,
+                          'JAMB SUBJECTS (${_jambSelected.length}/4)'),
+                      const SizedBox(height: 10),
+                      _subjectWrap(
+                        context,
+                        selected: _jambSelected,
+                        limit: 4,
+                        label: 'JAMB',
+                      ),
+                    ],
+                    if (_enableSsce) ...[
+                      const SizedBox(height: 22),
+                      _label(context,
+                          '$_ssceBoard SUBJECTS (${_ssceSelected.length}/9)'),
+                      const SizedBox(height: 10),
+                      _subjectWrap(
+                        context,
+                        selected: _ssceSelected,
+                        limit: 9,
+                        label: _ssceBoard,
+                      ),
+                    ],
+                  ],
+                  const SizedBox(height: 28),
                   SizedBox(
                     width: double.infinity,
                     height: 52,
@@ -314,24 +397,124 @@ class _ExamSubjectSetupScreenState extends State<ExamSubjectSetupScreen> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: context.accentColor,
                         foregroundColor: btnFg,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14)),
                       ),
                       child: _saving
                           ? SizedBox(
                               width: 22,
                               height: 22,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: btnFg),
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: btnFg),
                             )
-                          : const Text(
-                              'Continue to Home',
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          : Text(
+                              _isPrimary6 ? 'Continue to Kids app' : 'Save & continue',
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.w700, fontSize: 15),
                             ),
                     ),
                   ),
                 ],
               ),
             ),
+    );
+  }
+
+  Widget _label(BuildContext context, String text) => Text(
+        text,
+        style: TextStyle(
+          color: context.greyColor,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 1,
+        ),
+      );
+
+  Widget _infoBox(BuildContext context, String text) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: context.accentColor.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: context.accentColor.withOpacity(0.4)),
+        ),
+        child: Text(text,
+            style:
+                TextStyle(color: context.textColor, fontSize: 13, height: 1.4)),
+      );
+
+  Widget _boardToggle(
+    BuildContext context, {
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: value
+            ? context.accentColor.withOpacity(0.12)
+            : context.cardColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: value ? context.accentColor : context.borderColor,
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: TextStyle(
+                        color: context.textColor,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14)),
+                Text(subtitle,
+                    style:
+                        TextStyle(color: context.greyColor, fontSize: 12)),
+              ],
+            ),
+          ),
+          Switch.adaptive(
+            value: value,
+            activeColor: context.accentColor,
+            onChanged: onChanged,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _subjectWrap(
+    BuildContext context, {
+    required Set<String> selected,
+    required int limit,
+    required String label,
+  }) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: _availableSubjects.map((s) {
+        final sel = selected.contains(s);
+        return FilterChip(
+          label: Text(s),
+          selected: sel,
+          onSelected: (_) => _toggle(selected, s, limit, label),
+          selectedColor: context.accentColor.withOpacity(0.2),
+          checkmarkColor: context.accentColor,
+          labelStyle: TextStyle(
+            color: sel ? context.accentColor : context.textColor,
+            fontWeight: sel ? FontWeight.w600 : FontWeight.normal,
+            fontSize: 13,
+          ),
+          side: BorderSide(
+              color: sel ? context.accentColor : context.borderColor),
+          backgroundColor: context.cardColor,
+        );
+      }).toList(),
     );
   }
 }

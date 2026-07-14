@@ -31,6 +31,11 @@ class CBTExam(Base):
     scheduled_start: Mapped[datetime] = mapped_column(DateTime, nullable=True)
     scheduled_end: Mapped[datetime] = mapped_column(DateTime, nullable=True)
 
+    # Internal exam targeting (admin assigns teacher + optional students)
+    assigned_student_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    notes_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    notes_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
     questions: Mapped[list["CBTQuestion"]] = relationship("CBTQuestion", back_populates="exam")
     sessions: Mapped[list["CBTSession"]] = relationship("CBTSession", back_populates="exam")
 

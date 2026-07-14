@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_endpoints.dart';
 import '../models/sia_board_item.dart';
+import '../services/profile_avatar_cache.dart';
 
 // ── Errors ────────────────────────────────────────────────────────────────────
 
@@ -15,6 +16,9 @@ class ApiException implements Exception {
   final String message;
 
   const ApiException(this.statusCode, this.message);
+
+  /// Convenience when status is unknown (client-side failures).
+  const ApiException.message(this.message) : statusCode = 0;
 
   @override
   String toString() => message;
@@ -33,6 +37,7 @@ class ApiService {
   static const _kUserId = 'user_id';
   static const _kSetupComplete = 'setup_complete';
   static const _kOnboardingSeen = 'onboarding_seen';
+  static const _kProfilePicture = 'profile_picture_url';
   static const _studentMe = '/api/v1/students/me';
 
   // ── Token storage ─────────────────────────────────────────────────────────
@@ -59,6 +64,24 @@ class ApiService {
     await prefs.remove(_kUserRole);
     await prefs.remove(_kUserId);
     await prefs.remove(_kSetupComplete);
+    await prefs.remove(_kProfilePicture);
+  }
+
+  Future<void> cacheProfilePicture(String? url) async {
+    final prefs = await SharedPreferences.getInstance();
+    final resolved = resolveMediaUrl(url);
+    if (resolved.isEmpty) {
+      await prefs.remove(_kProfilePicture);
+    } else {
+      await prefs.setString(_kProfilePicture, resolved);
+    }
+  }
+
+  Future<String?> cachedProfilePicture() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_kProfilePicture);
+    if (raw == null || raw.isEmpty) return null;
+    return resolveMediaUrl(raw);
   }
 
   Future<bool> hasSeenOnboarding() async {
@@ -380,22 +403,46 @@ class ApiService {
   // ── Students ───────────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> setupExam({
-    required String examType,
-    required List<String> subjects,
+    String? examType,
+    List<String>? subjects,
     required String educationLevel,
+    bool? enableJamb,
+    bool? enableSsce,
+    List<String>? jambSubjects,
+    String? ssceExamType,
+    List<String>? ssceSubjects,
   }) async {
+    final body = <String, dynamic>{
+      'education_level': educationLevel,
+    };
+    if (examType != null) body['exam_type'] = examType;
+    if (subjects != null) body['subjects'] = subjects;
+    if (enableJamb != null) body['enable_jamb'] = enableJamb;
+    if (enableSsce != null) body['enable_ssce'] = enableSsce;
+    if (jambSubjects != null) body['jamb_subjects'] = jambSubjects;
+    if (ssceExamType != null) body['ssce_exam_type'] = ssceExamType;
+    if (ssceSubjects != null) body['ssce_subjects'] = ssceSubjects;
     final res = await http.post(
       _uri(ApiEndpoints.setupExam),
       headers: await _authHeaders(),
-      body: jsonEncode({
-        'exam_type': examType,
-        'subjects': subjects,
-        'education_level': educationLevel,
-      }),
+      body: jsonEncode(body),
     );
     final data = _parseMap(res);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kSetupComplete, true);
+    // Primary 6 → kids: server returns new tokens + role.
+    final access = data['access_token']?.toString();
+    final refresh = data['refresh_token']?.toString();
+    final role = data['role']?.toString();
+    if (access != null && access.isNotEmpty) {
+      await prefs.setString(_kAccessToken, access);
+      if (refresh != null && refresh.isNotEmpty) {
+        await prefs.setString(_kRefreshToken, refresh);
+      }
+      if (role != null && role.isNotEmpty) {
+        await prefs.setString(_kUserRole, role.toLowerCase().trim());
+      }
+    }
     return data;
   }
 
@@ -451,7 +498,46 @@ class ApiService {
       _uri(_studentMe),
       headers: await _authHeaders(),
     );
-    return StudentProfile.fromJson(_parseMap(res));
+    final profile = StudentProfile.fromJson(_parseMap(res));
+    final fromApi = resolveMediaUrl(profile.profilePicture);
+    if (fromApi.isNotEmpty) {
+      await cacheProfilePicture(fromApi);
+      return profile.copyWith(profilePicture: fromApi);
+    }
+    // Network/profile missing picture — keep last uploaded URL so restart still shows it.
+    final cached = await cachedProfilePicture();
+    if (cached != null && cached.isNotEmpty) {
+      return profile.copyWith(profilePicture: cached);
+    }
+    return profile;
+  }
+
+  /// Upload an image then save it as the current user's profile picture.
+  Future<String> updateProfilePicture(List<int> bytes, String filename) async {
+    final uploaded = await communityUpload(bytes, filename);
+    var url = uploaded['file_url']?.toString() ??
+        uploaded['secure_url']?.toString() ??
+        uploaded['url']?.toString() ??
+        '';
+    url = resolveMediaUrl(url);
+    if (url.isEmpty) {
+      throw ApiException.message('Upload succeeded but no image URL returned.');
+    }
+    final res = await http.patch(
+      _uri(ApiEndpoints.profilePicture),
+      headers: await _authHeaders(),
+      body: jsonEncode({'profile_picture': url}),
+    );
+    final data = _parseMap(res);
+    final saved = resolveMediaUrl(
+      data['profile_picture']?.toString() ?? url,
+    );
+    await cacheProfilePicture(saved);
+    // Keep a local copy so the avatar still shows if the CDN is slow/offline.
+    try {
+      await ProfileAvatarCache.instance.saveBytes(bytes);
+    } catch (_) {}
+    return saved.isNotEmpty ? saved : url;
   }
 
   Future<StudentProfile> getStudentProfileById(String userId) async {
@@ -460,22 +546,6 @@ class ApiService {
       headers: await _authHeaders(),
     );
     return StudentProfile.fromJson(_parseMap(res));
-  }
-
-  /// Upload an image then save it as the current user's profile picture.
-  Future<String> updateProfilePicture(List<int> bytes, String filename) async {
-    final uploaded = await communityUpload(bytes, filename);
-    final url = uploaded['file_url']?.toString() ?? '';
-    if (url.isEmpty) {
-      throw ApiException('Upload succeeded but no image URL returned.');
-    }
-    final res = await http.patch(
-      _uri(ApiEndpoints.profilePicture),
-      headers: await _authHeaders(),
-      body: jsonEncode({'profile_picture': url}),
-    );
-    final data = _parseMap(res);
-    return data['profile_picture']?.toString() ?? url;
   }
 
   Future<Map<String, dynamic>> walletMe() async {
@@ -1733,6 +1803,9 @@ class StudentProfile {
   final String? examType;
   final String? educationLevel;
   final List<String> subjects;
+  final List<String> jambSubjects;
+  final List<String> ssceSubjects;
+  final String? ssceExamType;
   final bool hasActiveSubscription;
   final String? profilePicture;
 
@@ -1742,12 +1815,17 @@ class StudentProfile {
     this.examType,
     this.educationLevel,
     this.subjects = const [],
+    this.jambSubjects = const [],
+    this.ssceSubjects = const [],
+    this.ssceExamType,
     this.hasActiveSubscription = false,
     this.profilePicture,
   });
 
   factory StudentProfile.fromJson(Map<String, dynamic> json) {
     final rawSubjects = json['selected_subjects'];
+    final jamb = json['jamb_subjects'];
+    final ssce = json['ssce_subjects'];
     return StudentProfile(
       fullName: json['full_name'] as String? ?? '',
       email: json['email'] as String? ?? '',
@@ -1756,6 +1834,11 @@ class StudentProfile {
       subjects: rawSubjects is List
           ? rawSubjects.map((e) => e.toString()).toList()
           : const [],
+      jambSubjects:
+          jamb is List ? jamb.map((e) => e.toString()).toList() : const [],
+      ssceSubjects:
+          ssce is List ? ssce.map((e) => e.toString()).toList() : const [],
+      ssceExamType: json['ssce_exam_type'] as String?,
       hasActiveSubscription: json['has_active_subscription'] == true,
       profilePicture: json['profile_picture'] as String?,
     );
@@ -1768,6 +1851,9 @@ class StudentProfile {
       examType: examType,
       educationLevel: educationLevel,
       subjects: subjects,
+      jambSubjects: jambSubjects,
+      ssceSubjects: ssceSubjects,
+      ssceExamType: ssceExamType,
       hasActiveSubscription: hasActiveSubscription,
       profilePicture: profilePicture ?? this.profilePicture,
     );
@@ -1894,6 +1980,8 @@ class CbtQuestion {
   final List<String> options;
   final String? topic;
   final String? imageUrl;
+  /// Present in offline practice packs for local scoring (never shown in UI).
+  final String? correctOption;
 
   const CbtQuestion({
     required this.id,
@@ -1901,6 +1989,7 @@ class CbtQuestion {
     required this.options,
     this.topic,
     this.imageUrl,
+    this.correctOption,
   });
 
   bool get hasImage => imageUrl != null && imageUrl!.isNotEmpty;
@@ -1913,7 +2002,15 @@ class CbtQuestion {
       json['option_d']?.toString() ?? '',
     ].where((o) => o.isNotEmpty).toList();
 
-    final image = json['image_url']?.toString() ?? json['imageUrl']?.toString();
+    final image = json['image_url']?.toString() ??
+        json['imageUrl']?.toString() ??
+        json['diagram_url']?.toString() ??
+        json['diagram']?.toString() ??
+        json['image']?.toString();
+
+    final correct = json['correct_option']?.toString() ??
+        json['correctOption']?.toString() ??
+        json['answer']?.toString();
 
     return CbtQuestion(
       id: json['id']?.toString() ?? '',
@@ -1921,6 +2018,9 @@ class CbtQuestion {
       options: options,
       topic: json['topic']?.toString(),
       imageUrl: image != null && image.isNotEmpty ? image : null,
+      correctOption: correct != null && correct.isNotEmpty
+          ? correct.toUpperCase().substring(0, 1)
+          : null,
     );
   }
 }

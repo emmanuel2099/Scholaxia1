@@ -47,6 +47,24 @@ async def _run_schema_migrations(conn) -> None:
         "ALTER TABLE cbt_exams ADD COLUMN IF NOT EXISTS year INTEGER NULL"
     ))
     await conn.execute(text(
+        "ALTER TABLE cbt_exams ADD COLUMN IF NOT EXISTS assigned_student_ids JSON NULL"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE cbt_exams ADD COLUMN IF NOT EXISTS notes_url VARCHAR(500) NULL"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE cbt_exams ADD COLUMN IF NOT EXISTS notes_title VARCHAR(255) NULL"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS jamb_subjects VARCHAR[] NULL"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS ssce_subjects VARCHAR[] NULL"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS ssce_exam_type VARCHAR(20) NULL"
+    ))
+    await conn.execute(text(
         "ALTER TABLE payments ADD COLUMN IF NOT EXISTS flutterwave_tx_ref VARCHAR(255) NULL"
     ))
     await conn.execute(text(
@@ -144,6 +162,12 @@ async def _run_schema_migrations(conn) -> None:
     try:
         await conn.execute(text(
             "ALTER TABLE users ALTER COLUMN profile_picture TYPE VARCHAR(1000)"
+        ))
+    except Exception:
+        pass
+    try:
+        await conn.execute(text(
+            "ALTER TABLE marketplace_products ALTER COLUMN image_url TYPE VARCHAR(1000)"
         ))
     except Exception:
         pass

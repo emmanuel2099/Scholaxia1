@@ -13,7 +13,7 @@ from app.core.deps import require_admin
 from app.core.security import hash_password, create_access_token, create_refresh_token
 from app.models.user import User, UserRole, TeacherProfile, StudentProfile, KindProfile
 from app.models.content import Book, LibraryTarget
-from app.models.cbt import CBTExam, CBTQuestion
+from app.models.cbt import CBTExam, CBTQuestion, CBTSession
 from app.models.community import CommunityPost, CommunityChannel
 from app.models.student_group import StudentGroup, StudentGroupMember
 from app.services.group_community import ensure_group_feed_post
@@ -174,6 +174,30 @@ class BookResponse(BaseModel):
     is_downloadable: bool
     allow_copy: bool
     allow_screenshot: bool
+
+
+@router.post("/library/upload-file")
+async def upload_library_pdf(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(require_admin),
+):
+    """Upload a PDF into the authenticated books folder; returns file_key for create."""
+    if file.content_type not in ("application/pdf", "application/x-pdf") and not (
+        (file.filename or "").lower().endswith(".pdf")
+    ):
+        raise HTTPException(status_code=400, detail="Upload a PDF file.")
+    content = await file.read()
+    if len(content) > 40 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="PDF too large (max 40MB).")
+    try:
+        result = upload_file(content, "books")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
+    return {
+        "file_key": result["public_id"],
+        "secure_url": result.get("secure_url") or "",
+        "filename": file.filename or "book.pdf",
+    }
 
 
 @router.post("/library/upload-url")
@@ -569,6 +593,219 @@ async def upload_cbt_question_image(
     return {"image_url": result["secure_url"]}
 
 
+class InternalExamQuestionIn(BaseModel):
+    question_text: str
+    option_a: str
+    option_b: str
+    option_c: str
+    option_d: str
+    correct_option: str
+    explanation: Optional[str] = None
+    topic: Optional[str] = None
+    image_url: Optional[str] = None
+
+
+class InternalExamCreate(BaseModel):
+    title: str
+    subject: str
+    teacher_id: str
+    duration_minutes: int = 45
+    questions: list[InternalExamQuestionIn]
+    student_ids: list[str] = []  # empty = all students whose profile includes this subject
+    notes_url: Optional[str] = None
+    notes_title: Optional[str] = None
+    is_published: bool = True
+
+
+@router.post("/internal-exams", status_code=201)
+async def admin_create_internal_exam(
+    payload: InternalExamCreate,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin uploads an internal exam for a teacher + subject (and optional students)."""
+    if not payload.questions:
+        raise HTTPException(status_code=400, detail="At least one question is required")
+    subject = (payload.subject or "").strip()
+    if not subject:
+        raise HTTPException(status_code=400, detail="Subject is required")
+
+    teacher_res = await db.execute(
+        select(User).where(User.id == payload.teacher_id, User.role == UserRole.teacher)
+    )
+    teacher = teacher_res.scalar_one_or_none()
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+
+    student_ids: list[str] = []
+    for sid in payload.student_ids or []:
+        sid = str(sid).strip()
+        if not sid:
+            continue
+        s_res = await db.execute(
+            select(User).where(User.id == sid, User.role == UserRole.student)
+        )
+        if not s_res.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail=f"Student not found: {sid}")
+        student_ids.append(sid)
+
+    exam = CBTExam(
+        title=payload.title.strip(),
+        subject=subject,
+        exam_type="SCHOOL",
+        duration_minutes=max(5, min(int(payload.duration_minutes or 45), 300)),
+        total_questions=len(payload.questions),
+        created_by=teacher.id,
+        is_published=payload.is_published,
+        is_school_exam=True,
+        ai_locked=False,
+        camera_required=False,
+        block_minimize=False,
+        assigned_student_ids=student_ids or None,
+        notes_url=(payload.notes_url or "").strip() or None,
+        notes_title=(payload.notes_title or "").strip() or None,
+    )
+    db.add(exam)
+    await db.flush()
+
+    for q in payload.questions:
+        if q.correct_option.upper() not in ("A", "B", "C", "D"):
+            raise HTTPException(status_code=400, detail="correct_option must be A/B/C/D")
+        db.add(
+            CBTQuestion(
+                exam_id=exam.id,
+                question_text=q.question_text,
+                option_a=q.option_a,
+                option_b=q.option_b,
+                option_c=q.option_c,
+                option_d=q.option_d,
+                correct_option=q.correct_option.upper(),
+                explanation=q.explanation,
+                topic=q.topic,
+                image_url=q.image_url,
+            )
+        )
+    await db.flush()
+    return {
+        "id": str(exam.id),
+        "title": exam.title,
+        "subject": exam.subject,
+        "teacher_id": str(teacher.id),
+        "teacher_name": teacher.full_name or teacher.email,
+        "total_questions": exam.total_questions,
+        "assigned_students": len(student_ids),
+        "notes_url": exam.notes_url,
+        "is_published": exam.is_published,
+    }
+
+
+@router.get("/internal-exams")
+async def admin_list_internal_exams(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(CBTExam)
+        .where(CBTExam.is_school_exam == True)  # noqa: E712
+        .order_by(CBTExam.created_at.desc())
+    )
+    exams = result.scalars().all()
+    teacher_ids = {e.created_by for e in exams if e.created_by}
+    teachers = {}
+    if teacher_ids:
+        t_res = await db.execute(select(User).where(User.id.in_(teacher_ids)))
+        teachers = {u.id: u for u in t_res.scalars().all()}
+
+    out = []
+    for e in exams:
+        teacher = teachers.get(e.created_by) if e.created_by else None
+        assigned = e.assigned_student_ids or []
+        out.append(
+            {
+                "id": str(e.id),
+                "title": e.title,
+                "subject": e.subject,
+                "teacher_id": str(e.created_by) if e.created_by else None,
+                "teacher_name": (teacher.full_name or teacher.email) if teacher else "—",
+                "duration_minutes": e.duration_minutes,
+                "total_questions": e.total_questions,
+                "assigned_count": len(assigned) if assigned else 0,
+                "assign_mode": "selected_students" if assigned else "subject_match",
+                "notes_url": e.notes_url,
+                "notes_title": e.notes_title,
+                "is_published": e.is_published,
+                "created_at": e.created_at.isoformat() if e.created_at else None,
+            }
+        )
+    return out
+
+
+@router.post("/internal-exams/upload-notes")
+async def admin_upload_internal_notes(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(require_admin),
+):
+    """Upload PDF/image notes attached to an internal exam."""
+    allowed = CBT_IMAGE_TYPES | {"application/pdf"}
+    if file.content_type not in allowed:
+        raise HTTPException(status_code=400, detail="Upload a PDF, JPEG, PNG, WebP, or GIF.")
+    content = await file.read()
+    if len(content) > 12 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large (max 12MB).")
+    folder = "assignments" if file.content_type == "application/pdf" else "images"
+    try:
+        result = upload_file(content, folder)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+    return {
+        "notes_url": result["secure_url"],
+        "notes_title": file.filename or "Notes",
+    }
+
+
+@router.get("/internal-exams/submissions")
+async def admin_internal_exam_submissions(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin view of student internal-exam submissions / requests status."""
+    rows = await db.execute(
+        select(CBTSession, User, CBTExam)
+        .join(User, User.id == CBTSession.student_id)
+        .join(CBTExam, CBTExam.id == CBTSession.exam_id)
+        .where(
+            CBTExam.is_school_exam == True,  # noqa: E712
+            CBTSession.submitted_at != None,  # noqa: E711
+        )
+        .order_by(CBTSession.submitted_at.desc())
+        .limit(200)
+    )
+    data = rows.all()
+    teacher_ids = {exam.created_by for _, _, exam in data if exam.created_by}
+    teachers = {}
+    if teacher_ids:
+        t_res = await db.execute(select(User).where(User.id.in_(teacher_ids)))
+        teachers = {u.id: u for u in t_res.scalars().all()}
+
+    out = []
+    for session, user, exam in data:
+        teacher = teachers.get(exam.created_by) if exam.created_by else None
+        out.append(
+            {
+                "session_id": str(session.id),
+                "student_name": user.full_name or user.email,
+                "exam_title": exam.title,
+                "subject": exam.subject,
+                "teacher_name": (teacher.full_name or teacher.email) if teacher else "—",
+                "percentage": session.percentage,
+                "total_correct": session.total_correct,
+                "total_wrong": session.total_wrong,
+                "submitted_at": session.submitted_at.isoformat() if session.submitted_at else None,
+            }
+        )
+    return out
+
+
 # ── Platform Overview ─────────────────────────────────────────────────────────
 
 @router.get("/overview")
@@ -683,9 +920,24 @@ class LiveSubscriptionAdminResponse(BaseModel):
     paid: bool = False
     sessions_left: int = 0
     sessions_used: int = 0
+    sessions_total: int = 0
     expires_at: Optional[datetime] = None
     last_payment_at: Optional[datetime] = None
     last_payment_amount: Optional[float] = None
+
+
+class LiveSubscriptionUpdateRequest(BaseModel):
+    plan_id: Optional[str] = None
+    sessions_used: Optional[int] = None
+    expires_at: Optional[datetime] = None
+    grant: bool = True  # False = revoke
+
+
+@router.get("/live-plans")
+async def admin_list_live_plans(current_user: dict = Depends(require_admin)):
+    from app.core.live_class_plans import all_plans_dict
+
+    return {"plans": all_plans_dict()}
 
 
 @router.get("/live-subscriptions", response_model=list[LiveSubscriptionAdminResponse])
@@ -696,6 +948,7 @@ async def list_live_subscriptions(
     """Students with live class plan / payment access for admin review."""
     from app.services.live_class_access import get_live_access_info
     from app.models.payment import Payment, PaymentStatus
+    from app.core.skills_programs import is_skill_plan_key
 
     result = await db.execute(
         select(User, StudentProfile)
@@ -706,26 +959,29 @@ async def list_live_subscriptions(
     rows = result.all()
     out = []
     for user, profile in rows:
+        plan_id = profile.live_plan_id if profile else None
+        if plan_id and is_skill_plan_key(plan_id):
+            continue
         access = await get_live_access_info(db, str(user.id))
         active = access.get("active_plan") or {}
         last_pay_at = None
         last_pay_amt = None
-        if access.get("paid"):
-            pay_res = await db.execute(
-                select(Payment)
-                .where(
-                    Payment.student_id == user.id,
-                    Payment.status == PaymentStatus.success,
-                )
-                .order_by(Payment.created_at.desc())
-                .limit(1)
+        pay_res = await db.execute(
+            select(Payment)
+            .where(
+                Payment.student_id == user.id,
+                Payment.status == PaymentStatus.success,
+                Payment.live_plan_id.isnot(None),
             )
-            last_pay = pay_res.scalar_one_or_none()
-            if last_pay:
-                last_pay_at = last_pay.created_at
-                last_pay_amt = float(last_pay.amount) if last_pay.amount is not None else None
+            .order_by(Payment.created_at.desc())
+            .limit(1)
+        )
+        last_pay = pay_res.scalar_one_or_none()
+        if last_pay and last_pay.live_plan_id and not is_skill_plan_key(last_pay.live_plan_id):
+            last_pay_at = last_pay.created_at
+            last_pay_amt = float(last_pay.amount) if last_pay.amount is not None else None
 
-        if not access.get("paid") and not (profile and profile.live_plan_id):
+        if not access.get("paid") and not (profile and profile.live_plan_id and not is_skill_plan_key(profile.live_plan_id)):
             continue
 
         out.append(LiveSubscriptionAdminResponse(
@@ -737,10 +993,131 @@ async def list_live_subscriptions(
             paid=bool(access.get("paid")),
             sessions_left=int(access.get("sessions_left") or 0),
             sessions_used=int(active.get("sessions_used") or 0),
+            sessions_total=int(active.get("sessions_total") or 0),
             expires_at=access.get("valid_until"),
             last_payment_at=last_pay_at,
             last_payment_amount=last_pay_amt,
         ))
+    return out
+
+
+@router.patch("/live-subscriptions/{student_id}")
+async def update_live_subscription(
+    student_id: str,
+    payload: LiveSubscriptionUpdateRequest,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Grant, update, or revoke a student's live-class subscription."""
+    from app.core.live_class_plans import get_plan
+    from app.core.datetime_utils import naive_utc_now
+    from datetime import timedelta
+    from app.core.config import settings
+
+    try:
+        uid = uuid.UUID(student_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid student id")
+
+    user_res = await db.execute(
+        select(User).where(User.id == uid, User.role == UserRole.student)
+    )
+    user = user_res.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    p_res = await db.execute(select(StudentProfile).where(StudentProfile.user_id == uid))
+    profile = p_res.scalar_one_or_none()
+    if not profile:
+        profile = StudentProfile(user_id=uid, selected_subjects=[])
+        db.add(profile)
+        await db.flush()
+
+    if not payload.grant:
+        profile.live_plan_id = None
+        profile.live_plan_expires_at = None
+        profile.live_plan_sessions_used = 0
+        profile.has_active_subscription = False
+        await db.flush()
+        return {"message": "Subscription revoked", "student_id": str(uid), "paid": False}
+
+    plan_id = (payload.plan_id or profile.live_plan_id or "").strip()
+    if not plan_id:
+        raise HTTPException(status_code=400, detail="Choose a live plan")
+    plan = get_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=400, detail=f"Unknown plan: {plan_id}")
+
+    profile.live_plan_id = plan.id
+    if payload.expires_at is not None:
+        profile.live_plan_expires_at = payload.expires_at.replace(tzinfo=None) if payload.expires_at.tzinfo else payload.expires_at
+    elif not profile.live_plan_expires_at:
+        profile.live_plan_expires_at = naive_utc_now() + timedelta(days=settings.LIVE_CLASS_MONTHLY_DAYS)
+    if payload.sessions_used is not None:
+        profile.live_plan_sessions_used = max(0, int(payload.sessions_used))
+    elif profile.live_plan_sessions_used is None:
+        profile.live_plan_sessions_used = 0
+    profile.has_active_subscription = True
+    await db.flush()
+
+    sessions_used = int(profile.live_plan_sessions_used or 0)
+    return {
+        "message": "Subscription updated",
+        "student_id": str(uid),
+        "plan_id": plan.id,
+        "plan_name": plan.name,
+        "sessions_used": sessions_used,
+        "sessions_left": max(0, plan.sessions - sessions_used),
+        "expires_at": profile.live_plan_expires_at.isoformat() if profile.live_plan_expires_at else None,
+        "paid": True,
+    }
+
+
+@router.get("/skills-enrollments")
+async def list_skills_enrollments(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Students who enrolled / paid for Skills training programs."""
+    from app.models.payment import Payment, PaymentStatus
+    from app.core.skills_programs import (
+        is_skill_plan_key,
+        skill_id_from_plan_key,
+        get_skill_program,
+    )
+
+    result = await db.execute(
+        select(Payment, User)
+        .join(User, User.id == Payment.student_id)
+        .where(
+            Payment.live_plan_id.isnot(None),
+            Payment.live_plan_id.like("skill:%"),
+        )
+        .order_by(Payment.created_at.desc())
+        .limit(300)
+    )
+    out = []
+    for payment, user in result.all():
+        plan_key = payment.live_plan_id or ""
+        if not is_skill_plan_key(plan_key):
+            continue
+        skill_id = skill_id_from_plan_key(plan_key)
+        program = get_skill_program(skill_id) or {}
+        out.append(
+            {
+                "payment_id": str(payment.id),
+                "student_id": str(user.id),
+                "student_name": user.full_name or user.email,
+                "email": user.email,
+                "skill_id": skill_id,
+                "skill_title": program.get("title") or skill_id,
+                "skill_fee": program.get("fee"),
+                "amount_paid": float(payment.amount) if payment.amount is not None else None,
+                "status": payment.status.value if payment.status else None,
+                "description": payment.description,
+                "created_at": payment.created_at.isoformat() if payment.created_at else None,
+            }
+        )
     return out
 
 

@@ -26,6 +26,7 @@ class _HomeScreenState extends State<HomeScreen> {
   StudentProfile? _profile;
   List<Map<String, dynamic>> _recommendations = [];
   List<Map<String, dynamic>> _liveSessions = [];
+  List<Map<String, dynamic>> _recentCbt = [];
   bool _loadingFeed = true;
   String? _joiningClassId;
   int _unreadNotifications = 0;
@@ -106,11 +107,13 @@ class _HomeScreenState extends State<HomeScreen> {
         _safeCall(_api.getRecommendationsFeed()),
         _safeCall(_api.listLiveClasses(status: 'live')),
         _safeCall(_api.myAccessCodes()),
+        _safeCall(_api.cbtMySessions()),
       ]);
 
       final recsDirect = results[0] as List<dynamic>?;
       final liveRaw = results[1] as List<dynamic>?;
       final accessData = results[2] as Map<String, dynamic>?;
+      final cbtRaw = results[3] as List<dynamic>?;
 
       final recs = recsDirect ?? <dynamic>[];
 
@@ -144,10 +147,13 @@ class _HomeScreenState extends State<HomeScreen> {
           })
           .toList();
 
+      final cbtRecent = _toMaps(cbtRaw ?? []).take(5).toList();
+
       if (mounted) {
         setState(() {
           _recommendations = _toMaps(recs);
           _liveSessions = _dedupeSessions(liveNow);
+          _recentCbt = cbtRecent;
         });
       }
     } finally {
@@ -657,7 +663,7 @@ class _HomeScreenState extends State<HomeScreen> {
       children: [
         StudentSectionTitle(
           title: 'Recent Performance',
-          action: 'Last 7 days',
+          action: _recentCbt.isEmpty ? 'CBT' : 'Your exams',
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -681,26 +687,65 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ],
             ),
-            child: Column(
-              children: [
-                _perfRow(context, 'Biology CBT Mock', '84/100', 'Excellent',
-                    const Color(0xFF7C3AED)),
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  child: Divider(height: 1, color: context.borderColor),
-                ),
-                _perfRow(context, 'Use of English Prep', '72/100', 'Improving',
-                    const Color(0xFF6366F1)),
-              ],
-            ),
+            child: _recentCbt.isEmpty
+                ? Text(
+                    'Complete a CBT practice exam to see your real scores here.',
+                    style: TextStyle(
+                        color: context.greyColor, fontSize: 13, height: 1.4),
+                  )
+                : Column(
+                    children: [
+                      for (var i = 0; i < _recentCbt.length; i++) ...[
+                        if (i > 0)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            child: Divider(
+                                height: 1, color: context.borderColor),
+                          ),
+                        _perfFromSession(context, _recentCbt[i], i),
+                      ],
+                    ],
+                  ),
           ),
         ),
       ],
     );
   }
 
-  Widget _perfRow(BuildContext context, String title, String score, String tag, Color color) {
-    final pct = int.tryParse(score.split('/').first) ?? 0;
+  Widget _perfFromSession(
+      BuildContext context, Map<String, dynamic> s, int index) {
+    final title = (s['exam_title']?.toString().trim().isNotEmpty == true)
+        ? s['exam_title'].toString()
+        : (s['subject']?.toString() ?? 'CBT Exam');
+    final pct = (s['percentage'] as num?)?.round() ?? 0;
+    final correct = (s['total_correct'] as num?)?.toInt();
+    final wrong = (s['total_wrong'] as num?)?.toInt();
+    final total = (correct != null && wrong != null) ? correct + wrong : null;
+    final scoreLabel =
+        total != null ? '$correct/$total' : '$pct%';
+    String tag;
+    Color color;
+    if (pct >= 70) {
+      tag = 'Excellent';
+      color = const Color(0xFF7C3AED);
+    } else if (pct >= 50) {
+      tag = 'Improving';
+      color = const Color(0xFF6366F1);
+    } else {
+      tag = 'Keep going';
+      color = const Color(0xFFF59E0B);
+    }
+    // Alternate accent for visual variety
+    if (index % 2 == 1 && pct >= 50) {
+      color = const Color(0xFF6366F1);
+    }
+    return _perfRow(context, title, scoreLabel, tag, color, pctOverride: pct);
+  }
+
+  Widget _perfRow(BuildContext context, String title, String score, String tag,
+      Color color,
+      {int? pctOverride}) {
+    final pct = pctOverride ?? int.tryParse(score.split('/').first) ?? 0;
     return Row(
       children: [
         SizedBox(
@@ -710,7 +755,7 @@ class _HomeScreenState extends State<HomeScreen> {
             alignment: Alignment.center,
             children: [
               CircularProgressIndicator(
-                value: pct / 100,
+                value: (pct / 100).clamp(0.0, 1.0),
                 strokeWidth: 4,
                 backgroundColor: color.withOpacity(0.15),
                 valueColor: AlwaysStoppedAnimation(color),
@@ -732,6 +777,8 @@ class _HomeScreenState extends State<HomeScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                       color: context.textColor,
                       fontSize: 14,
@@ -754,7 +801,9 @@ class _HomeScreenState extends State<HomeScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                tag == 'Excellent' ? Icons.trending_up_rounded : Icons.show_chart_rounded,
+                tag == 'Excellent'
+                    ? Icons.trending_up_rounded
+                    : Icons.show_chart_rounded,
                 color: color,
                 size: 14,
               ),

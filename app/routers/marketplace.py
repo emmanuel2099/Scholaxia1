@@ -4,9 +4,9 @@ Marketplace — admin posts products; students browse by category and book.
 
 from datetime import datetime
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -14,6 +14,7 @@ from app.core.deps import require_student, require_admin, get_current_user
 from app.models.marketplace import MarketplaceProduct, MarketplaceBooking, MARKETPLACE_CATEGORIES
 from app.models.user import User
 from app.services.notification_service import send_admins_notification
+from app.services.media_service import upload_file
 
 router = APIRouter(prefix="/marketplace", tags=["Marketplace"])
 
@@ -66,57 +67,24 @@ async def list_categories():
     }
 
 
-_SAMPLE_PRODUCTS = [
-    {
-        "title": "Wireless Earbuds Pro",
-        "description": "Bluetooth earbuds with case — great for lectures. Tap Book and Scholaxia will chat with you.",
-        "category": "gadgets",
-        "price": 18500,
-    },
-    {
-        "title": "Used HP Laptop 8GB",
-        "description": "Reliable student laptop for CBT practice and Zoom classes.",
-        "category": "laptops",
-        "price": 175000,
-    },
-    {
-        "title": "Campus Hoodie (M)",
-        "description": "Soft cotton hoodie — Scholaxia purple. Limited stock for testing.",
-        "category": "clothes",
-        "price": 12000,
-    },
-    {
-        "title": "Samsung A14 (32GB)",
-        "description": "Clean condition phone for classes and community chat.",
-        "category": "phones",
-        "price": 95000,
-    },
-    {
-        "title": "JAMB Past Questions Pack",
-        "description": "Printed past questions set for practice at home.",
-        "category": "books",
-        "price": 3500,
-    },
-]
+# Legacy demo titles — soft-removed so they no longer appear in the shop.
+_LEGACY_SAMPLE_TITLES = (
+    "Wireless Earbuds Pro",
+    "Used HP Laptop 8GB",
+    "Campus Hoodie (M)",
+    "Samsung A14 (32GB)",
+    "JAMB Past Questions Pack",
+)
 
 
-async def _ensure_sample_products(db: AsyncSession) -> None:
-    """Seed sample sellable items when the marketplace is empty (for testing)."""
-    count_res = await db.execute(select(MarketplaceProduct.id).limit(1))
-    if count_res.scalar_one_or_none() is not None:
-        return
-    for item in _SAMPLE_PRODUCTS:
-        db.add(
-            MarketplaceProduct(
-                title=item["title"],
-                description=item["description"],
-                category=item["category"],
-                price=float(item["price"]),
-                currency="NGN",
-                is_available=True,
-                is_active=True,
-            )
-        )
+async def _deactivate_legacy_samples(db: AsyncSession) -> None:
+    """Hide old seeded sample products (no images / demo stock)."""
+    await db.execute(
+        update(MarketplaceProduct)
+        .where(MarketplaceProduct.title.in_(_LEGACY_SAMPLE_TITLES))
+        .where(MarketplaceProduct.is_active == True)  # noqa: E712
+        .values(is_active=False, is_available=False)
+    )
     await db.flush()
 
 
@@ -126,7 +94,7 @@ async def list_products(
     db: AsyncSession = Depends(get_db),
 ):
     """Public list of active marketplace products (students browse)."""
-    await _ensure_sample_products(db)
+    await _deactivate_legacy_samples(db)
     q = select(MarketplaceProduct).where(
         MarketplaceProduct.is_active == True,  # noqa: E712
         MarketplaceProduct.is_available == True,  # noqa: E712
@@ -263,41 +231,25 @@ class ProductUpdate(BaseModel):
 
 admin_router = APIRouter(prefix="/admin/marketplace", tags=["Admin — Marketplace"])
 
+_MP_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 
-@admin_router.post("/seed-samples", status_code=201)
-async def admin_seed_sample_products(
+
+@admin_router.post("/upload-image")
+async def admin_upload_product_image(
+    file: UploadFile = File(...),
     current_user: dict = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
 ):
-    """Post sample sellable products for testing (admin only). Skips titles that already exist."""
-    created = []
-    for item in _SAMPLE_PRODUCTS:
-        dup = await db.execute(
-            select(MarketplaceProduct).where(MarketplaceProduct.title == item["title"])
-        )
-        if dup.scalar_one_or_none() is not None:
-            continue
-        product = MarketplaceProduct(
-            title=item["title"],
-            description=item["description"],
-            category=item["category"],
-            price=float(item["price"]),
-            currency="NGN",
-            is_available=True,
-            is_active=True,
-            created_by=current_user["sub"],
-        )
-        db.add(product)
-        await db.flush()
-        created.append(_product_dict(product))
-
-    return {
-        "message": f"Added {len(created)} sample product(s)."
-        if created
-        else "Sample products already exist.",
-        "added": len(created),
-        "products": created,
-    }
+    """Upload a product photo for the marketplace."""
+    if file.content_type not in _MP_IMAGE_TYPES:
+        raise HTTPException(status_code=400, detail="Use JPEG, PNG, WebP, or GIF.")
+    content = await file.read()
+    if len(content) > 6 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Image too large (max 6MB).")
+    try:
+        result = upload_file(content, "marketplace")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
+    return {"image_url": result["secure_url"]}
 
 
 @admin_router.post("/products", status_code=201)
@@ -312,13 +264,16 @@ async def admin_create_product(
             status_code=400,
             detail=f"category must be one of {', '.join(MARKETPLACE_CATEGORIES)}",
         )
+    image_url = (payload.image_url or "").strip() or None
+    if not image_url:
+        raise HTTPException(status_code=400, detail="Product image is required.")
     product = MarketplaceProduct(
         title=payload.title.strip(),
         description=(payload.description or "").strip() or None,
         category=cat,
         price=max(float(payload.price or 0), 0),
         currency=(payload.currency or "NGN").upper(),
-        image_url=(payload.image_url or "").strip() or None,
+        image_url=image_url,
         is_available=payload.is_available,
         created_by=current_user["sub"],
     )
@@ -332,8 +287,11 @@ async def admin_list_products(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    await _deactivate_legacy_samples(db)
     result = await db.execute(
-        select(MarketplaceProduct).order_by(MarketplaceProduct.created_at.desc())
+        select(MarketplaceProduct)
+        .where(MarketplaceProduct.is_active == True)  # noqa: E712
+        .order_by(MarketplaceProduct.created_at.desc())
     )
     return [_product_dict(p) | {"is_active": p.is_active} for p in result.scalars().all()]
 

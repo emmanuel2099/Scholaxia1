@@ -122,7 +122,7 @@ class _CbtExamScreenState extends State<CbtExamScreen> {
     setState(() => _isSubmitting = true);
 
     CbtResult? result;
-    String? submitError;
+    final sid = (widget.sessionId ?? '').trim();
     if (widget.internalExamId != null) {
       try {
         result = await _api.submitInternalExam(
@@ -130,44 +130,55 @@ class _CbtExamScreenState extends State<CbtExamScreen> {
           answers: _answers,
           isAutoSubmit: isAutoSubmit,
         );
-      } catch (e) {
-        submitError = e.toString();
-      }
-    } else if (widget.sessionId != null) {
+      } catch (_) {}
+    } else if (sid.isNotEmpty) {
       try {
         result = await _api.cbtSubmit(
-          sessionId: widget.sessionId!,
+          sessionId: sid,
           answers: _answers,
           isAutoSubmit: isAutoSubmit,
         );
       } catch (_) {}
     }
 
+    // Offline / network down: score from downloaded pack so result still shows.
+    result ??= _scoreLocally();
+
     if (!mounted) return;
-    if (widget.internalExamId != null && result == null) {
-      // Offline or failed submit — let the student know it will be retried.
-      setState(() => _isSubmitting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            submitError != null && submitError.contains('already')
-                ? 'You already submitted this exam.'
-                : 'Could not submit now. Reconnect and try again.',
-          ),
-          backgroundColor: Colors.red,
-        ),
-      );
-      Navigator.pop(context);
-      return;
-    }
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(
         builder: (_) => CbtResultScreen(
-          sessionId: widget.sessionId ?? '',
+          sessionId: sid,
           result: result,
         ),
       ),
+    );
+  }
+
+  CbtResult _scoreLocally() {
+    var correct = 0;
+    final weak = <String>{};
+    for (final q in _questions) {
+      final ans = _answers[q.id];
+      final expected = q.correctOption;
+      if (expected == null || expected.isEmpty) continue;
+      if (ans != null && ans.toUpperCase() == expected.toUpperCase()) {
+        correct++;
+      } else {
+        final t = q.topic?.trim();
+        if (t != null && t.isNotEmpty) weak.add(t);
+      }
+    }
+    final total = _questions.isEmpty ? 1 : _questions.length;
+    final wrong = total - correct;
+    final pct = (correct / total) * 100;
+    return CbtResult(
+      score: correct.toDouble(),
+      percentage: pct,
+      totalCorrect: correct,
+      totalWrong: wrong < 0 ? 0 : wrong,
+      weakTopics: weak.toList(),
     );
   }
 
@@ -196,63 +207,118 @@ class _CbtExamScreenState extends State<CbtExamScreen> {
     final btnFg = context.isDark ? AppColors.background : Colors.white;
     final isBookmarked = _bookmarked.contains(question.id);
 
-    return Scaffold(
-      backgroundColor: context.bgColor,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildTopBar(context),
-            Expanded(
-              child: SingleChildScrollView(
-                controller: _scrollCtrl,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 16),
-                    _buildQuestionCard(context, question, isBookmarked),
-                    const SizedBox(height: 16),
-                    ...List.generate(
-                      question.options.length,
-                      (i) => Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: _buildOptionTile(context, i, question.options[i]),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _confirmLeave();
+      },
+      child: Scaffold(
+        backgroundColor: context.bgColor,
+        body: SafeArea(
+          child: Column(
+            children: [
+              _buildTopBar(context),
+              Expanded(
+                child: SingleChildScrollView(
+                  controller: _scrollCtrl,
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox(height: 16),
+                      _buildQuestionCard(context, question, isBookmarked),
+                      const SizedBox(height: 16),
+                      ...List.generate(
+                        question.options.length,
+                        (i) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _buildOptionTile(
+                              context, i, question.options[i]),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 100),
-                  ],
+                      const SizedBox(height: 100),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            _buildBottomBar(context, btnFg),
-          ],
+              _buildBottomBar(context, btnFg),
+            ],
+          ),
         ),
       ),
     );
   }
 
+  Future<void> _confirmLeave() async {
+    if (_isSubmitting) return;
+    final leave = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: context.cardColor,
+        title: Text('Leave exam?',
+            style: TextStyle(color: context.textColor)),
+        content: Text(
+          'Your progress on this attempt will be lost if you have not submitted. Leave anyway?',
+          style: TextStyle(color: context.greyColor, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Stay', style: TextStyle(color: context.greyColor)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Leave',
+                style: TextStyle(
+                    color: Colors.redAccent, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (leave == true && mounted) {
+      _timer?.cancel();
+      Navigator.pop(context);
+    }
+  }
+
   Widget _buildTopBar(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: context.accentColor,
-              borderRadius: BorderRadius.circular(8),
+          IconButton(
+            tooltip: 'Leave exam',
+            onPressed: _confirmLeave,
+            style: IconButton.styleFrom(
+              backgroundColor: context.surfColor,
+              side: BorderSide(color: context.borderColor),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
             ),
-            child: Text(
-              widget.subject,
-              style: TextStyle(
-                color: context.isDark ? AppColors.background : Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1,
+            icon: Icon(Icons.close_rounded, color: context.textColor, size: 20),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: context.accentColor,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                widget.subject,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: context.isDark ? AppColors.background : Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 0.5,
+                ),
               ),
             ),
           ),
-          const Spacer(),
+          const SizedBox(width: 8),
           Row(
             children: [
               Icon(Icons.timer_outlined, color: context.accentColor, size: 16),
@@ -261,7 +327,7 @@ class _CbtExamScreenState extends State<CbtExamScreen> {
                 duration: const Duration(milliseconds: 300),
                 style: TextStyle(
                   color: _timerColor(context),
-                  fontSize: 18,
+                  fontSize: 16,
                   fontWeight: FontWeight.bold,
                   fontFeatures: const [FontFeature.tabularFigures()],
                 ),
@@ -269,12 +335,12 @@ class _CbtExamScreenState extends State<CbtExamScreen> {
               ),
             ],
           ),
-          const Spacer(),
+          const SizedBox(width: 8),
           Text(
             '$_currentQuestion / $_questionCount',
             style: TextStyle(
               color: context.greyColor,
-              fontSize: 14,
+              fontSize: 13,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -283,7 +349,8 @@ class _CbtExamScreenState extends State<CbtExamScreen> {
     );
   }
 
-  Widget _buildQuestionCard(BuildContext context, CbtQuestion question, bool isBookmarked) {
+  Widget _buildQuestionCard(
+      BuildContext context, CbtQuestion question, bool isBookmarked) {
     return Container(
       key: ValueKey(question.id),
       padding: const EdgeInsets.all(18),
@@ -308,7 +375,8 @@ class _CbtExamScreenState extends State<CbtExamScreen> {
             children: [
               if (question.topic != null && question.topic!.isNotEmpty)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: context.accentColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(6),
@@ -347,23 +415,94 @@ class _CbtExamScreenState extends State<CbtExamScreen> {
             ),
           ),
           if (question.hasImage) ...[
-            const SizedBox(height: 16),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                question.imageUrl!,
-                height: 160,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => Container(
-                  height: 160,
-                  color: context.surfColor,
-                  child: Icon(Icons.broken_image_outlined, color: context.greyColor),
-                ),
+            const SizedBox(height: 14),
+            Text(
+              'DIAGRAM — tap to enlarge',
+              style: TextStyle(
+                color: context.greyColor,
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.8,
               ),
             ),
+            const SizedBox(height: 8),
+            _buildDiagram(context, question.imageUrl!),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildDiagram(BuildContext context, String rawUrl) {
+    final url = _api.resolveMediaUrl(rawUrl);
+    return GestureDetector(
+      onTap: () => _openDiagramViewer(url),
+      child: Container(
+        width: double.infinity,
+        constraints: const BoxConstraints(minHeight: 180, maxHeight: 320),
+        decoration: BoxDecoration(
+          color: context.surfColor,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: context.borderColor),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Image.network(
+          url,
+          fit: BoxFit.contain,
+          width: double.infinity,
+          loadingBuilder: (context, child, progress) {
+            if (progress == null) return child;
+            return SizedBox(
+              height: 180,
+              child: Center(
+                child: CircularProgressIndicator(
+                    color: context.accentColor, strokeWidth: 2),
+              ),
+            );
+          },
+          errorBuilder: (_, __, ___) => SizedBox(
+            height: 160,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.image_not_supported_outlined,
+                    color: context.greyColor, size: 36),
+                const SizedBox(height: 8),
+                Text('Diagram could not load',
+                    style: TextStyle(color: context.greyColor, fontSize: 12)),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openDiagramViewer(String url) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => Scaffold(
+          backgroundColor: Colors.black,
+          appBar: AppBar(
+            backgroundColor: Colors.black,
+            foregroundColor: Colors.white,
+            title: const Text('Diagram'),
+          ),
+          body: Center(
+            child: InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 5,
+              child: Image.network(
+                url,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const Icon(
+                    Icons.broken_image_outlined,
+                    color: Colors.white54,
+                    size: 48),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -470,6 +609,21 @@ class _CbtExamScreenState extends State<CbtExamScreen> {
             ),
           ),
           const SizedBox(width: 10),
+          GestureDetector(
+            onTap: _confirmLeave,
+            child: Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: context.surfColor,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.redAccent.withOpacity(0.5)),
+              ),
+              child: const Icon(Icons.exit_to_app_rounded,
+                  color: Colors.redAccent, size: 20),
+            ),
+          ),
+          const SizedBox(width: 10),
           Expanded(
             child: SizedBox(
               height: 46,
@@ -488,22 +642,34 @@ class _CbtExamScreenState extends State<CbtExamScreen> {
                   backgroundColor: context.accentColor,
                   disabledBackgroundColor: context.accentColor.withOpacity(0.4),
                   foregroundColor: btnFg,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
                 ),
                 child: _isSubmitting
                     ? SizedBox(
                         width: 20,
                         height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: btnFg))
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: btnFg))
                     : Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Text(
-                            isLast ? 'Submit Exam' : 'Next',
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                          Flexible(
+                            child: Text(
+                              isLast ? 'Submit' : 'Next',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 14),
+                            ),
                           ),
-                          const SizedBox(width: 6),
-                          Icon(isLast ? Icons.check_circle_outline : Icons.arrow_forward, size: 18),
+                          const SizedBox(width: 4),
+                          Icon(
+                              isLast
+                                  ? Icons.check_circle_outline
+                                  : Icons.arrow_forward,
+                              size: 18),
                         ],
                       ),
               ),

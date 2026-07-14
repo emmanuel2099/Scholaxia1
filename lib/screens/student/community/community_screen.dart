@@ -4,6 +4,7 @@ import '../../../services/community_badge.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/student_ui.dart';
 import '../../../widgets/app_header_actions.dart';
+import '../../../widgets/author_avatar.dart';
 import '../../../widgets/voice_note_player.dart';
 import '../../../widgets/voice_note_recorder.dart';
 import 'new_post_screen.dart';
@@ -40,6 +41,7 @@ class _CommunityScreenState extends State<CommunityScreen>
   String _generalChannelName = '';
   final Map<String, int> _commentCounts = {};
   String? _myUserId;
+  String? _channelError;
 
   @override
   void initState() {
@@ -99,28 +101,65 @@ class _CommunityScreenState extends State<CommunityScreen>
   }
 
   Future<void> _loadChannels() async {
-    setState(() => _loadingChannels = true);
+    setState(() {
+      _loadingChannels = true;
+      _channelError = null;
+    });
     try {
       final data = await _api.communityChannels();
       if (!mounted) return;
-      setState(() { _channels = data; _loadingChannels = false; });
+      if (data.isEmpty) {
+        setState(() {
+          _channels = [];
+          _loadingChannels = false;
+          _channelError =
+              'No community channels yet. Ask admin to create the General channel.';
+        });
+        return;
+      }
+      setState(() {
+        _channels = data;
+        _loadingChannels = false;
+      });
       final general = data.firstWhere(
         (c) {
-          final n = (c as Map<String, dynamic>)['name']?.toString().toLowerCase() ?? '';
-          return !n.contains('teacher') && !n.contains('announcement') && !n.contains('notice');
+          final m = Map<String, dynamic>.from(c as Map);
+          final n = m['name']?.toString().toLowerCase() ?? '';
+          final t = m['type']?.toString().toLowerCase() ??
+              m['channel_type']?.toString().toLowerCase() ??
+              '';
+          if (t.contains('announce') || t.contains('teacher')) return false;
+          return !n.contains('teacher') &&
+              !n.contains('announcement') &&
+              !n.contains('notice');
         },
-        orElse: () => data.isNotEmpty ? data.first : null,
+        orElse: () => data.first,
       );
-      if (general != null) {
-        _generalChannelId = (general as Map<String, dynamic>)['id']?.toString() ?? '';
-        _generalChannelName = (general as Map<String, dynamic>)['name']?.toString() ?? 'General';
-        // Auto-join the channel silently, then load posts
-        try { await _api.joinChannel(channelId: _generalChannelId); } catch (_) {}
-        _loadPosts();        _loadPinnedPosts();
-        _loadAnnouncements();
+      final g = Map<String, dynamic>.from(general as Map);
+      _generalChannelId = g['id']?.toString() ?? '';
+      _generalChannelName = g['name']?.toString() ?? 'General';
+      if (_generalChannelId.isEmpty) {
+        setState(() {
+          _channelError = 'Community channel is missing. Pull to refresh.';
+        });
+        return;
       }
-    } catch (_) {
-      if (mounted) setState(() => _loadingChannels = false);
+      try {
+        await _api.joinChannel(channelId: _generalChannelId);
+      } catch (_) {}
+      await Future.wait([
+        _loadPosts(keepExistingOnError: false),
+        _loadPinnedPosts(),
+        _loadAnnouncements(),
+      ]);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loadingChannels = false;
+          _channelError =
+              'Could not connect to Community. Check your internet and tap Retry.';
+        });
+      }
     }
   }
 
@@ -128,24 +167,68 @@ class _CommunityScreenState extends State<CommunityScreen>
     if (_generalChannelId.isEmpty) return;
     setState(() => _loadingPosts = true);
     try {
-      final data = await _api.listPosts(channelId: _generalChannelId);
-      final filtered = data.where((p) {
+      List<dynamic> postsRaw = const [];
+      List<dynamic> msgsRaw = const [];
+      try {
+        postsRaw = await _api.listPosts(channelId: _generalChannelId, limit: 80);
+      } catch (_) {}
+      try {
+        msgsRaw = await _api.getMessages(channelId: _generalChannelId, limit: 80);
+      } catch (_) {}
+
+      final posts = postsRaw.where((p) {
         if (p is! Map) return false;
         return !isCommentPost(Map<String, dynamic>.from(p));
-      }).toList();
+      }).map((p) => Map<String, dynamic>.from(p as Map)).toList();
+
+      // Merge legacy chat messages so older/desktop chat still appears.
+      for (final raw in msgsRaw) {
+        if (raw is! Map) continue;
+        final m = Map<String, dynamic>.from(raw);
+        final id = m['id']?.toString() ?? '';
+        if (id.isEmpty) continue;
+        if (posts.any((p) => p['id']?.toString() == id)) continue;
+        posts.add({
+          'id': id,
+          'content': m['content'] ?? m['text'] ?? '',
+          'created_at': m['created_at'],
+          'author_name': m['sender_name'] ?? m['author_name'] ?? 'Student',
+          'author_id': m['sender_id'] ?? m['user_id'],
+          'author_picture': m['author_picture'] ?? m['profile_picture'],
+          'profile_picture': m['profile_picture'] ?? m['author_picture'],
+          'media_url': m['media_url'],
+          'media_type': m['media_type'],
+          'is_message': true,
+        });
+      }
+
+      posts.sort((a, b) {
+        final at = a['created_at']?.toString() ?? '';
+        final bt = b['created_at']?.toString() ?? '';
+        return at.compareTo(bt);
+      });
+
       if (mounted) {
         setState(() {
-          _posts = filtered.reversed.toList();
+          _posts = posts;
           _loadingPosts = false;
+          if (postsRaw.isEmpty && msgsRaw.isEmpty) {
+            // keep empty state but clear network error if request succeeded
+            _channelError = null;
+          } else {
+            _channelError = null;
+          }
         });
         _scrollFeedToBottom(animated: false);
       }
       await _loadCommentCounts();
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
         setState(() {
           if (!keepExistingOnError) _posts = [];
           _loadingPosts = false;
+          _channelError =
+              'Could not load messages. Check your internet and tap Refresh.';
         });
       }
     }
@@ -153,11 +236,22 @@ class _CommunityScreenState extends State<CommunityScreen>
 
   void _appendPost(Map<String, dynamic> post) {
     final id = post['id']?.toString() ?? '';
+    final enriched = Map<String, dynamic>.from(post);
+    // Ensure my avatar shows immediately after posting.
+    final isMine = _myUserId != null &&
+        (enriched['author_id']?.toString() == _myUserId ||
+            enriched['author_name']?.toString().toLowerCase() == 'you');
+    if (isMine &&
+        (enriched['author_picture'] == null ||
+            enriched['author_picture'].toString().isEmpty)) {
+      // Will prefer local cache via AuthorAvatar(preferLocalCache: true)
+      enriched['_mine'] = true;
+    }
     setState(() {
       final kept = _posts
           .where((p) => (p as Map<String, dynamic>)['id']?.toString() != id)
           .toList();
-      _posts = [...kept, post];
+      _posts = [...kept, enriched];
       _posts.sort((a, b) {
         final at = (a as Map<String, dynamic>)['created_at']?.toString() ?? '';
         final bt = (b as Map<String, dynamic>)['created_at']?.toString() ?? '';
@@ -169,14 +263,27 @@ class _CommunityScreenState extends State<CommunityScreen>
 
   Future<void> _sendQuickMessage() async {
     final text = _messageCtrl.text.trim();
-    if ((text.isEmpty && _voiceBytes == null) ||
-        _sendingMessage ||
-        _generalChannelId.isEmpty) {
+    if ((text.isEmpty && _voiceBytes == null) || _sendingMessage) {
+      return;
+    }
+    if (_generalChannelId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Community not connected yet. Tap Retry / Refresh and check internet.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      await _loadChannels();
       return;
     }
 
     setState(() => _sendingMessage = true);
     try {
+      try {
+        await _api.joinChannel(channelId: _generalChannelId);
+      } catch (_) {}
+
       String? mediaUrl;
       String? mediaType;
       if (_voiceBytes != null && _voiceFilename != null) {
@@ -186,19 +293,60 @@ class _CommunityScreenState extends State<CommunityScreen>
         mediaType = 'audio';
       }
 
-      final post = await _api.createPost(
-        channelId: _generalChannelId,
-        content: text.isEmpty ? 'Voice note' : text,
-        mediaUrl: mediaUrl,
-        mediaType: mediaType,
-      );
+      Map<String, dynamic>? post;
+      try {
+        post = await _api.createPost(
+          channelId: _generalChannelId,
+          content: text.isEmpty ? 'Voice note' : text,
+          mediaUrl: mediaUrl,
+          mediaType: mediaType,
+        );
+      } on ApiException catch (e) {
+        final msg = e.message.toLowerCase();
+        if (msg.contains('join') || msg.contains('member')) {
+          rethrow;
+        }
+        // Fall back to legacy messages API so chat still works.
+        final msgMap = await _api.sendMessage(
+          channelId: _generalChannelId,
+          content: text.isEmpty ? 'Voice note' : text,
+          mediaUrl: mediaUrl,
+          mediaType: mediaType,
+        );
+        post = {
+          'id': msgMap['id'],
+          'content': msgMap['content'] ?? text,
+          'created_at': msgMap['created_at'],
+          'author_name': msgMap['sender_name'] ?? 'You',
+          'author_id': msgMap['sender_id'],
+          'author_picture': msgMap['author_picture'] ?? msgMap['profile_picture'],
+          'profile_picture': msgMap['profile_picture'] ?? msgMap['author_picture'],
+          'media_url': mediaUrl,
+          'media_type': mediaType,
+          'is_message': true,
+          '_mine': true,
+        };
+      }
       if (!mounted) return;
       _messageCtrl.clear();
       setState(() {
         _voiceBytes = null;
         _voiceFilename = null;
       });
-      _appendPost(post);
+      if (post != null) {
+        final pic = await _api.cachedProfilePicture();
+        if (pic != null && pic.isNotEmpty) {
+          post = {
+            ...post,
+            'author_picture': post['author_picture'] ?? pic,
+            'profile_picture': post['profile_picture'] ?? pic,
+            '_mine': true,
+          };
+        } else {
+          post = {...post, '_mine': true};
+        }
+        _appendPost(post);
+      }
     } on ApiException catch (e) {
       if (!mounted) return;
       final msg = e.message.toLowerCase();
@@ -212,25 +360,11 @@ class _CommunityScreenState extends State<CommunityScreen>
         ));
         if (joined == true && mounted) {
           try {
-            String? mediaUrl;
-            String? mediaType;
-            if (_voiceBytes != null && _voiceFilename != null) {
-              final upload =
-                  await _api.communityUpload(_voiceBytes!, _voiceFilename!);
-              mediaUrl = upload['file_url'] as String?;
-              mediaType = 'audio';
-            }
             final post = await _api.createPost(
               channelId: _generalChannelId,
               content: text.isEmpty ? 'Voice note' : text,
-              mediaUrl: mediaUrl,
-              mediaType: mediaType,
             );
             _messageCtrl.clear();
-            setState(() {
-              _voiceBytes = null;
-              _voiceFilename = null;
-            });
             _appendPost(post);
           } on ApiException catch (e2) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -243,6 +377,15 @@ class _CommunityScreenState extends State<CommunityScreen>
           SnackBar(content: Text(e.message), backgroundColor: Colors.red),
         );
       }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'Could not send. Check internet and try again. (${e.toString()})'),
+          backgroundColor: Colors.red,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _sendingMessage = false);
     }
@@ -517,6 +660,36 @@ class _CommunityScreenState extends State<CommunityScreen>
     if (_loadingChannels) {
       return Center(child: CircularProgressIndicator(color: context.accentColor));
     }
+    if (_generalChannelId.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.wifi_off_rounded, color: context.greyColor, size: 48),
+              const SizedBox(height: 12),
+              Text(
+                _channelError ??
+                    'Could not open Community. Check your internet connection.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: context.textColor, fontSize: 14, height: 1.4),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _loadChannels,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: context.accentColor,
+                  foregroundColor:
+                      context.isDark ? AppColors.background : Colors.white,
+                ),
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return Column(
       children: [
         Expanded(
@@ -529,6 +702,20 @@ class _CommunityScreenState extends State<CommunityScreen>
               controller: _feedScroll,
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
               children: [
+                if (_channelError != null) ...[
+                  Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 12),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.orange.withOpacity(0.35)),
+                    ),
+                    child: Text(_channelError!,
+                        style: TextStyle(color: context.textColor, fontSize: 12)),
+                  ),
+                ],
                 if (_pinnedPosts.isNotEmpty) ...[
                   Text('Pinned Posts',
                       style: TextStyle(
@@ -552,7 +739,7 @@ class _CommunityScreenState extends State<CommunityScreen>
                           fontSize: 15,
                           fontWeight: FontWeight.bold)),
                   TextButton(
-                      onPressed: _loadPosts,
+                      onPressed: () => _loadPosts(keepExistingOnError: true),
                       child: Text('Refresh',
                           style: TextStyle(color: context.accentColor, fontSize: 12))),
                 ]),
@@ -583,9 +770,7 @@ class _CommunityScreenState extends State<CommunityScreen>
   Widget _buildMessageComposer(BuildContext context) {
     final hasText = _messageCtrl.text.trim().isNotEmpty;
     final hasVoice = _voiceBytes != null;
-    final canSend = _generalChannelId.isNotEmpty &&
-        !_sendingMessage &&
-        (hasText || hasVoice);
+    final canSend = !_sendingMessage && (hasText || hasVoice);
     final sendFg = context.isDark ? AppColors.background : Colors.white;
 
     return Container(
@@ -821,7 +1006,12 @@ class _CommunityScreenState extends State<CommunityScreen>
     final commentCount = _commentCounts[postId] ?? post['comment_count'] as int? ?? 0;
     final mediaUrl = post['media_url']?.toString() ?? '';
     final mediaType = post['media_type']?.toString() ?? '';
-    final initial = authorName.isNotEmpty ? authorName[0].toUpperCase() : 'U';
+    final picture = post['author_picture']?.toString() ??
+        post['profile_picture']?.toString();
+    final isMine = post['_mine'] == true ||
+        _canEditPost(post) ||
+        (_myUserId != null &&
+            post['author_id']?.toString() == _myUserId);
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -831,8 +1021,12 @@ class _CommunityScreenState extends State<CommunityScreen>
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          CircleAvatar(radius: 20, backgroundColor: context.accentColor.withOpacity(0.15),
-              child: Text(initial, style: TextStyle(color: context.accentColor, fontWeight: FontWeight.bold))),
+          AuthorAvatar(
+            pictureUrl: picture,
+            name: authorName,
+            radius: 20,
+            preferLocalCache: isMine && !isAnonymous,
+          ),
           const SizedBox(width: 10),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
@@ -1014,10 +1208,11 @@ class _CommunityScreenState extends State<CommunityScreen>
         children: [
           Row(
             children: [
-              CircleAvatar(
+              AuthorAvatar(
+                pictureUrl: post['author_picture']?.toString() ??
+                    post['profile_picture']?.toString(),
+                name: author,
                 radius: 18,
-                backgroundColor: context.accentColor.withOpacity(0.15),
-                child: Icon(Icons.school_outlined, color: context.accentColor, size: 18),
               ),
               const SizedBox(width: 10),
               Expanded(

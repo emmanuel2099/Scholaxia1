@@ -65,7 +65,7 @@ class AboutScholaxiaScreen extends StatelessWidget {
             ),
             const SizedBox(height: 28),
             Text(
-              'Your all-in-one study companion for JAMB, WAEC, and NECO.',
+              'Scholaxia is your complete student hub — CBT practice, live classes, teacher exams, skills training, library, marketplace, and a vibrant learning community.',
               style: TextStyle(
                 color: context.textColor,
                 fontSize: 15,
@@ -76,6 +76,18 @@ class AboutScholaxiaScreen extends StatelessWidget {
             const SizedBox(height: 16),
             _feature(
               context,
+              Icons.apps_rounded,
+              'Everything you need in one app',
+              'Library materials, saved live recordings, Tutor AI, Scholaxia Marketplace, and CBT practice for your board.',
+            ),
+            _feature(
+              context,
+              Icons.flag_outlined,
+              'Built for real students, real results',
+              'Prepare for UTME, Junior WAEC, WAEC, NECO, live lessons, and skills — Scholaxia keeps you focused.',
+            ),
+            _feature(
+              context,
               Icons.smart_toy_outlined,
               'Sia AI Tutor',
               'Get instant explanations and answers tailored to your exam subjects.',
@@ -84,7 +96,7 @@ class AboutScholaxiaScreen extends StatelessWidget {
               context,
               Icons.quiz_outlined,
               'CBT Practice',
-              'Timed mock exams that match your selected subjects and exam board.',
+              'Download subject packs by year and practise offline when you are ready.',
             ),
             _feature(
               context,
@@ -100,7 +112,7 @@ class AboutScholaxiaScreen extends StatelessWidget {
             ),
             const SizedBox(height: 24),
             Text(
-              'Scholaxia helps Nigerian students prepare smarter — practice exams, learn with AI, and stay connected with your class.',
+              'Start free, grow at your pace. Create your account, set up your exam profile, pick your subjects, and explore live classes, CBT and skills whenever you are ready.',
               style: TextStyle(color: context.greyColor, fontSize: 14, height: 1.5),
             ),
           ],

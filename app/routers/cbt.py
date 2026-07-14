@@ -325,25 +325,36 @@ async def exams_for_student(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Practice + school exams filtered by the student's exam type and selected subjects.
-    Practice exams can be downloaded for offline use; school exams cannot.
+    Practice + school exams filtered by the student's exam boards and subjects.
+    Returns jamb_exams and ssce_exams so the app can show JAMB | WAEC/NECO tabs.
     """
+    from app.routers.students import _profile_boards
+
     profile_res = await db.execute(
         select(StudentProfile).where(StudentProfile.user_id == current_user["sub"])
     )
     profile = profile_res.scalar_one_or_none()
-    if not profile or not profile.exam_type or not profile.selected_subjects:
+    if not profile or not profile.exam_type:
         raise HTTPException(
             status_code=400,
             detail="Complete exam setup first at /students/setup-exam",
         )
 
-    exam_type = profile.exam_type.value
-    subjects = profile.selected_subjects
+    boards = _profile_boards(profile)
+    jamb_subjects = boards["jamb_subjects"]
+    ssce_subjects = boards["ssce_subjects"]
+    ssce_board = boards["ssce_exam_type"]
     level = (profile.education_level or "").upper().replace(" ", "")
-    # JSS students always get Junior WAEC / BECE practice packs uploaded by admin.
-    if level.startswith("JSS") or exam_type.upper() == "JUNIOR_WAEC":
-        exam_type = "JUNIOR_WAEC"
+
+    if not jamb_subjects and not ssce_subjects and not profile.selected_subjects:
+        raise HTTPException(
+            status_code=400,
+            detail="Complete exam setup first at /students/setup-exam",
+        )
+
+    is_junior = level.startswith("JSS") or (ssce_board == "JUNIOR_WAEC") or (
+        profile.exam_type and profile.exam_type.value == "JUNIOR_WAEC"
+    )
     now = datetime.utcnow()
 
     result = await db.execute(
@@ -351,35 +362,70 @@ async def exams_for_student(
     )
     all_exams = result.scalars().all()
 
-    def _practice_type_ok(et: str) -> bool:
+    def _is_jamb(et: str) -> bool:
         t = (et or "").upper().replace(" ", "_")
-        want = exam_type.upper()
-        if want == "JUNIOR_WAEC":
-            return t in ("JUNIOR_WAEC", "BECE", "JSSCE", "JUNIORWAEC") or "JUNIOR" in t
-        if want == "WAEC":
-            return t in ("WAEC", "WASSCE") and "JUNIOR" not in t
-        if want == "NECO":
-            return "NECO" in t
-        if want == "JAMB":
-            return "JAMB" in t or "UTME" in t
-        return t == want
+        return "JAMB" in t or "UTME" in t
 
-    practice = []
+    def _is_ssce(et: str) -> bool:
+        t = (et or "").upper().replace(" ", "_")
+        if is_junior:
+            return t in ("JUNIOR_WAEC", "BECE", "JSSCE", "JUNIORWAEC") or "JUNIOR" in t
+        if ssce_board == "NECO":
+            return "NECO" in t
+        if ssce_board == "WAEC":
+            return t in ("WAEC", "WASSCE") and "JUNIOR" not in t
+        # Both / unknown SSCE — show WAEC and NECO packs
+        return (("WAEC" in t or "WASSCE" in t or "NECO" in t) and "JUNIOR" not in t)
+
+    jamb_practice = []
+    ssce_practice = []
     school = []
     for e in all_exams:
-        if not subject_matches(e.subject, subjects):
-            continue
         if e.is_school_exam:
+            subjects = list({*jamb_subjects, *ssce_subjects, *(profile.selected_subjects or [])})
+            if subjects and not subject_matches(e.subject, subjects):
+                continue
             if _school_exam_is_open(e, now) or (e.scheduled_start and e.scheduled_start > now):
                 school.append(_exam_summary(e))
-        elif _practice_type_ok(e.exam_type):
-            practice.append(_exam_summary(e))
+            continue
+
+        if jamb_subjects and _is_jamb(e.exam_type) and subject_matches(e.subject, jamb_subjects):
+            jamb_practice.append(_exam_summary(e))
+        if ssce_subjects and _is_ssce(e.exam_type) and subject_matches(e.subject, ssce_subjects):
+            ssce_practice.append(_exam_summary(e))
+
+    # Deduplicate practice_exams list while keeping board buckets
+    seen = set()
+    practice = []
+    for item in [*jamb_practice, *ssce_practice]:
+        if item.id in seen:
+            continue
+        seen.add(item.id)
+        practice.append(item)
+
+    active_boards = []
+    if jamb_subjects:
+        active_boards.append("JAMB")
+    if ssce_subjects:
+        label = "JUNIOR_WAEC" if is_junior else (ssce_board or "WAEC")
+        if label == "NECO":
+            active_boards.append("WAEC_NECO")
+        elif label == "JUNIOR_WAEC":
+            active_boards.append("JUNIOR_WAEC")
+        else:
+            active_boards.append("WAEC_NECO")
 
     return {
-        "exam_type": exam_type,
-        "selected_subjects": subjects,
+        "exam_type": profile.exam_type.value if profile.exam_type else None,
+        "boards": active_boards,
+        "jamb_subjects": jamb_subjects,
+        "ssce_subjects": ssce_subjects,
+        "ssce_exam_type": ssce_board,
+        "selected_subjects": profile.selected_subjects or [],
         "education_level": profile.education_level,
         "practice_exams": practice,
+        "jamb_exams": jamb_practice,
+        "ssce_exams": ssce_practice,
         "school_exams": school,
     }
 
@@ -453,6 +499,8 @@ async def download_exam(
         "duration_minutes": exam.duration_minutes,
         "total_questions": exam.total_questions,
         "is_school_exam": exam.is_school_exam,
+        "notes_url": exam.notes_url,
+        "notes_title": exam.notes_title,
         "questions": question_list,
     }
 
@@ -966,17 +1014,34 @@ async def internal_exams_for_me(
     taken = {str(x) for x in taken_res.scalars().all()}
 
     out = []
+    teacher_ids = {e.created_by for e in exams if e.created_by}
+    teachers = {}
+    if teacher_ids:
+        t_res = await db.execute(select(User).where(User.id.in_(teacher_ids)))
+        teachers = {str(u.id): u for u in t_res.scalars().all()}
+
+    uid = str(current_user["sub"])
     for e in exams:
-        # If the student has picked subjects, only show matching exams; otherwise
-        # show everything so a newly-set exam is always discoverable.
-        if subjects and not subject_matches(e.subject, subjects):
+        assigned = e.assigned_student_ids or []
+        if assigned:
+            # Only listed students get this exam.
+            if uid not in {str(x) for x in assigned}:
+                continue
+        elif subjects and not subject_matches(e.subject, subjects):
+            # No explicit student list → match by profile subjects.
             continue
+
+        teacher = teachers.get(str(e.created_by)) if e.created_by else None
         out.append({
             "id": str(e.id),
             "title": e.title,
             "subject": e.subject,
+            "teacher_id": str(e.created_by) if e.created_by else None,
+            "teacher_name": (teacher.full_name or teacher.email) if teacher else "Teacher",
             "duration_minutes": e.duration_minutes,
             "total_questions": e.total_questions,
+            "notes_url": e.notes_url,
+            "notes_title": e.notes_title,
             "already_taken": str(e.id) in taken,
         })
     return {"exams": out}

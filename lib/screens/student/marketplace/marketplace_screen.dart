@@ -39,15 +39,25 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
         category: _category == 'all' ? null : _category,
       );
       if (!mounted) return;
+      final products = raw.whereType<Map>().map((e) {
+        final m = Map<String, dynamic>.from(e);
+        final img = m['image_url']?.toString();
+        if (img != null && img.isNotEmpty) {
+          m['image_url'] = _api.resolveMediaUrl(img);
+        }
+        return m;
+      }).toList();
       setState(() {
-        _products = raw
-            .whereType<Map>()
-            .map((e) => Map<String, dynamic>.from(e))
-            .toList();
+        _products = products;
         _loading = false;
       });
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) {
+        setState(() {
+          _products = [];
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -378,8 +388,22 @@ class _BookProductSheetState extends State<_BookProductSheet> {
     }
     final id = widget.product['id']?.toString() ?? '';
     if (id.isEmpty) return;
+    final productTitle = widget.product['title']?.toString() ?? 'Product';
     setState(() => _submitting = true);
     try {
+      final isDemo = widget.product['is_demo'] == true || id.startsWith('demo-');
+      if (isDemo) {
+        if (!mounted) return;
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Test booking for "$productTitle" noted. When admin posts live products, bookings go to Scholaxia WhatsApp.',
+            ),
+          ),
+        );
+        return;
+      }
       await widget.api.bookMarketplaceProduct(
         productId: id,
         fullName: name,

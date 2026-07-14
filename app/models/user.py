@@ -53,6 +53,10 @@ class StudentProfile(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), unique=True)
     exam_type: Mapped[ExamType] = mapped_column(Enum(ExamType), nullable=True)
     selected_subjects: Mapped[list] = mapped_column(ARRAY(String), default=[])
+    # Dual-board support (SS students can pick JAMB + WAEC/NECO)
+    jamb_subjects: Mapped[list | None] = mapped_column(ARRAY(String), nullable=True)
+    ssce_subjects: Mapped[list | None] = mapped_column(ARRAY(String), nullable=True)
+    ssce_exam_type: Mapped[str | None] = mapped_column(String(20), nullable=True)  # WAEC | NECO
     education_level: Mapped[str] = mapped_column(String(50), nullable=True)  # JSS1, SS1, JAMB etc.
     has_active_subscription: Mapped[bool] = mapped_column(Boolean, default=False)
     live_plan_id: Mapped[str] = mapped_column(String(80), nullable=True)

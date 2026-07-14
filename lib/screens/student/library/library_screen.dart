@@ -48,7 +48,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
       final detail = await _api.libraryReadBook(id);
       final url = detail['read_url']?.toString() ?? '';
       if (url.isEmpty) {
-        throw ApiException('This book is not available to read yet.');
+        throw ApiException.message('This book is not available to read yet.');
       }
       final uri = Uri.parse(url);
       final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);

@@ -53,7 +53,9 @@ class _AppHeaderActionsState extends State<AppHeaderActions> {
         setState(() {
           _unread = count;
           _initial = initial;
-          _photoUrl = (photo != null && photo.isNotEmpty) ? photo : null;
+          _photoUrl = (photo != null && photo.isNotEmpty)
+              ? _api.resolveMediaUrl(photo)
+              : null;
         });
       }
     } catch (_) {}

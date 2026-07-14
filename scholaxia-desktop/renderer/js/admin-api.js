@@ -136,6 +136,37 @@ async function uploadCbtExamFile(file, fields) {
   return data;
 }
 
+async function uploadAdminFile(url, file) {
+  var fd = new FormData();
+  fd.append("file", file);
+  var res = await fetch(API_BASE + url, {
+    method: "POST",
+    headers: { Authorization: "Bearer " + getAdminToken() },
+    body: fd,
+    signal: fetchTimeout(120000),
+  });
+  var data = await res.json().catch(function () { return {}; });
+  if (res.status === 401) {
+    clearAdminSession();
+    window.location.href = "admin.html";
+    return null;
+  }
+  if (!res.ok) throw new Error(formatApiError(data.detail) || "Upload failed (" + res.status + ")");
+  return data;
+}
+
+async function uploadMarketplaceImage(file) {
+  return uploadAdminFile("/api/v1/admin/marketplace/upload-image", file);
+}
+
+async function uploadInternalNotes(file) {
+  return uploadAdminFile("/api/v1/admin/internal-exams/upload-notes", file);
+}
+
+async function uploadLibraryPdf(file) {
+  return uploadAdminFile("/api/v1/admin/library/upload-file", file);
+}
+
 async function downloadCbtImportTemplate() {
   var res = await fetch(API_BASE + "/api/v1/admin/cbt/import-template", {
     headers: { Authorization: "Bearer " + getAdminToken() },

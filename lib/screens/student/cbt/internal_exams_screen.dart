@@ -307,9 +307,25 @@ class _InternalExamsScreenState extends State<InternalExamsScreen> {
                             fontSize: 15,
                             fontWeight: FontWeight.w800)),
                     const SizedBox(height: 2),
-                    Text(subject,
+                    Text(
+                      [
+                        if ((exam['teacher_name']?.toString() ?? '').isNotEmpty)
+                          'Teacher: ${exam['teacher_name']}',
+                        if (subject.isNotEmpty) subject,
+                      ].join(' · '),
+                      style: TextStyle(
+                          color: context.greyColor, fontSize: 12),
+                    ),
+                    if ((exam['notes_url']?.toString() ?? '').isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        exam['notes_title']?.toString().isNotEmpty == true
+                            ? 'Notes: ${exam['notes_title']}'
+                            : 'Notes attached',
                         style: TextStyle(
-                            color: context.greyColor, fontSize: 12)),
+                            color: context.accentColor, fontSize: 11),
+                      ),
+                    ],
                   ],
                 ),
               ),

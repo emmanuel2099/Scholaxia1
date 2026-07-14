@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; script-src-attr 'unsafe-inline'; connect-src https://scholaxia1.onrender.com http://127.0.0.1:*; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; script-src-attr 'unsafe-inline'; connect-src https://scholaxia1.onrender.com http://127.0.0.1:*; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https:" />
   <title>Scholaxia Admin</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -67,7 +67,10 @@
       <div class="nav-section">Learning</div>
       <button class="nav-btn" data-page="requests" onclick="showAdminPage('requests')">Session Requests</button>
       <button class="nav-btn" data-page="live-subs" onclick="showAdminPage('live-subs')">Live Subscriptions</button>
+      <button class="nav-btn" data-page="skills-enroll" onclick="showAdminPage('skills-enroll')">Skills Enrollments</button>
       <button class="nav-btn" data-page="cbt" onclick="showAdminPage('cbt')">CBT Exams</button>
+      <button class="nav-btn" data-page="library" onclick="showAdminPage('library')">Library</button>
+      <button class="nav-btn" data-page="internal-exams" onclick="showAdminPage('internal-exams')">Internal Exams</button>
       <button class="nav-btn" data-page="recommendations" onclick="showAdminPage('recommendations')">Recommendations</button>
       <div class="nav-section">Community</div>
       <button class="nav-btn" data-page="student-groups" onclick="showAdminPage('student-groups')">Student Groups</button>
@@ -182,8 +185,32 @@
 
     <section id="page-live-subs" class="admin-page">
       <div class="page-head"><h2>Live Subscriptions</h2><button class="btn-sm" onclick="loadLiveSubscriptions()">Refresh</button></div>
-      <p class="page-desc">Students who paid for live class access — plan, sessions left, and expiry.</p>
+      <p class="page-desc">Grant or update live-class plans for students — change plan, sessions used, expiry, or revoke access.</p>
+
+      <div class="panel">
+        <h3>Grant / update subscription</h3>
+        <div class="form-grid">
+          <label><span>Student *</span><select id="sub-student"><option value="">Loading…</option></select></label>
+          <label><span>Live plan *</span><select id="sub-plan"><option value="">Loading…</option></select></label>
+          <label><span>Sessions already used</span><input id="sub-sessions-used" type="number" min="0" value="0" /></label>
+          <label><span>Expires (optional)</span><input id="sub-expires" type="datetime-local" /></label>
+        </div>
+        <div class="form-row" style="margin-top:8px">
+          <button class="btn-primary" style="width:auto;padding:12px 22px" onclick="grantLiveSubscription()">Save subscription</button>
+        </div>
+        <p id="sub-form-msg" class="cbt-hint small" style="margin-top:8px"></p>
+      </div>
+
       <div id="live-subs-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+    </section>
+
+    <section id="page-skills-enroll" class="admin-page">
+      <div class="page-head">
+        <h2>Skills Enrollments</h2>
+        <button class="btn-sm" onclick="loadSkillsEnrollments()">Refresh</button>
+      </div>
+      <p class="page-desc">Students who enrolled in Skills programs (web design, graphics, cyber security, etc.) — payment status and amount.</p>
+      <div id="skills-enroll-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
     </section>
 
     <section id="page-cbt" class="admin-page">
@@ -242,7 +269,7 @@
             <select id="cbt-import-year"></select>
           </label>
           <label><span>Exam board</span>
-            <select id="cbt-import-type"><option>JAMB</option><option>WAEC</option><option>NECO</option><option>COMMON_ENTRANCE</option></select>
+            <select id="cbt-import-type"><option>JAMB</option><option>WAEC</option><option>NECO</option><option>JUNIOR_WAEC</option><option>COMMON_ENTRANCE</option></select>
           </label>
           <label><span>Duration (minutes)</span><input id="cbt-import-duration" type="number" value="60" min="5" max="300" /></label>
         </div>
@@ -294,7 +321,7 @@
             <select id="cbt-year"></select>
           </label>
           <label><span>Exam board</span>
-            <select id="cbt-type"><option>JAMB</option><option>WAEC</option><option>NECO</option><option>COMMON_ENTRANCE</option></select>
+            <select id="cbt-type"><option>JAMB</option><option>WAEC</option><option>NECO</option><option>JUNIOR_WAEC</option><option>COMMON_ENTRANCE</option></select>
           </label>
           <label><span>Duration (minutes)</span><input id="cbt-duration" type="number" value="30" min="5" max="180" /></label>
         </div>
@@ -330,6 +357,115 @@
       <div id="cbt-table" class="data-table-wrap" style="margin-top:20px"><div class="loading">Loading…</div></div>
     </section>
 
+    <section id="page-library" class="admin-page">
+      <div class="page-head">
+        <h2>Library</h2>
+        <button class="btn-sm" onclick="loadLibraryAdmin()">Refresh</button>
+      </div>
+      <p class="page-desc">Upload PDF books / notes for students. Pick subject and exam board so the right learners see them.</p>
+      <div class="panel">
+        <h3>Upload a book</h3>
+        <div class="form-grid">
+          <label><span>Title *</span><input id="lib-title" placeholder="e.g. WAEC Maths past questions" /></label>
+          <label><span>Author</span><input id="lib-author" placeholder="Optional" /></label>
+          <label><span>Subject *</span>
+            <select id="lib-subject">
+              <option>Mathematics</option>
+              <option>English Language</option>
+              <option>Biology</option>
+              <option>Chemistry</option>
+              <option>Physics</option>
+              <option>Economics</option>
+              <option>Government</option>
+              <option>Geography</option>
+              <option>Literature</option>
+              <option>Further Mathematics</option>
+              <option>Civic Education</option>
+            </select>
+          </label>
+          <label><span>Exam board *</span>
+            <select id="lib-exam">
+              <option>JAMB</option>
+              <option>WAEC</option>
+              <option>NECO</option>
+              <option>JUNIOR_WAEC</option>
+              <option>COMMON_ENTRANCE</option>
+              <option>ALL</option>
+            </select>
+          </label>
+          <label><span>PDF file *</span><input id="lib-file" type="file" accept=".pdf,application/pdf" /></label>
+          <label><span>Description</span><input id="lib-desc" placeholder="Short note for students" /></label>
+        </div>
+        <div class="cbt-actions">
+          <button type="button" class="btn-primary" id="btn-lib-upload" onclick="uploadLibraryBook()">Upload to library</button>
+        </div>
+        <p id="lib-form-error" class="error-msg"></p>
+        <p id="lib-form-ok" class="cbt-hint small" style="color:#3dd68c"></p>
+      </div>
+      <div id="library-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+    </section>
+
+    <section id="page-internal-exams" class="admin-page">
+      <div class="page-head">
+        <h2>Internal Exams</h2>
+        <button class="btn-sm" onclick="loadInternalExamsAdmin()">Refresh</button>
+      </div>
+      <p class="page-desc">
+        Upload school exams + notes. Choose the teacher and (optionally) specific students.
+        If you don’t pick students, everyone whose profile includes that subject will see the exam —
+        they can download offline, take it, and submit. Submissions show below.
+      </p>
+
+      <div class="panel">
+        <h3>Upload internal exam</h3>
+        <div class="form-grid">
+          <label><span>Exam title *</span><input id="ie-title" placeholder="SS2 Mid-term Maths" /></label>
+          <label><span>Subject *</span>
+            <select id="ie-subject">
+              <option value="">Select subject</option>
+              <option>Mathematics</option>
+              <option>English Language</option>
+              <option>Biology</option>
+              <option>Chemistry</option>
+              <option>Physics</option>
+              <option>Economics</option>
+              <option>Government</option>
+              <option>Geography</option>
+              <option>Literature</option>
+              <option>Further Mathematics</option>
+              <option>Civic Education</option>
+            </select>
+          </label>
+          <label><span>Teacher *</span><select id="ie-teacher"><option value="">Loading…</option></select></label>
+          <label><span>Duration (minutes)</span><input id="ie-duration" type="number" value="45" min="5" max="300" /></label>
+          <label><span>Questions file (JSON/CSV) *</span><input id="ie-file" type="file" accept=".json,.csv,application/json,text/csv" /></label>
+          <label><span>Notes file (PDF/image, optional)</span><input id="ie-notes" type="file" accept=".pdf,image/*" /></label>
+        </div>
+        <div style="margin:12px 0 8px">
+          <label class="chk-label">
+            <input type="checkbox" id="ie-all-subject" checked onchange="toggleIeStudentPick()" />
+            All students who selected this subject in their profile
+          </label>
+        </div>
+        <div id="ie-student-wrap" class="hidden">
+          <p class="cbt-hint small">Pick one or more students (they must still match the subject later if you want — list is filtered by subject when possible):</p>
+          <div id="ie-students" class="ie-student-list"><div class="loading">Loading students…</div></div>
+        </div>
+        <div class="cbt-actions">
+          <button type="button" class="btn-primary" id="btn-ie-create" onclick="createInternalExamAdmin()">Upload &amp; publish</button>
+        </div>
+        <p id="ie-form-error" class="error-msg"></p>
+        <p id="ie-form-ok" class="cbt-hint small" style="color:#3dd68c"></p>
+      </div>
+
+      <h3 style="margin:8px 0 10px;font-family:var(--font-brand)">Published internal exams</h3>
+      <div id="ie-exams-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+
+      <h3 style="margin:22px 0 10px;font-family:var(--font-brand)">Student submissions</h3>
+      <p class="cbt-hint small">Students’ submitted scores after offline download + take + submit.</p>
+      <div id="ie-submissions-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+    </section>
+
     <section id="page-recommendations" class="admin-page">
       <div class="page-head">
         <h2>Recommendations</h2>
@@ -352,8 +488,8 @@
             <select id="rec-target"><option value="all">Everyone</option><option value="student">Students only</option><option value="teacher">Teachers only</option></select>
           </label>
           <label><span>Link (optional)</span><input id="rec-url" placeholder="https://..." /></label>
+          <label style="grid-column:1/-1"><span>Description *</span><textarea id="rec-desc" placeholder="Why should students read this?"></textarea></label>
         </div>
-        <label><span>Description *</span><textarea id="rec-desc" placeholder="Why should students read this?"></textarea></label>
         <button class="btn-sm" onclick="createRecommendation()" style="margin-top:8px">Publish recommendation</button>
         <p id="rec-form-error" class="error-msg"></p>
       </div>
@@ -390,23 +526,30 @@
       </div>
       <p class="cbt-hint small">Post products (gadgets, laptops, clothes, etc.). Students book with name, WhatsApp, phone &amp; email — then you chat them.</p>
 
-      <div class="card" style="margin-bottom:1rem;padding:1rem;">
-        <h3 style="margin:0 0 0.75rem;">Add product</h3>
-        <div class="cbt-toolbar" style="flex-wrap:wrap;gap:0.5rem;">
-          <input type="text" id="mp-title" placeholder="Product title" style="min-width:160px;" />
-          <select id="mp-category">
-            <option value="gadgets">Gadgets</option>
-            <option value="laptops">Laptops</option>
-            <option value="phones">Phones</option>
-            <option value="clothes">Clothes</option>
-            <option value="books">Books</option>
-            <option value="other">Other</option>
-          </select>
-          <input type="number" id="mp-price" placeholder="Price (₦)" min="0" style="width:120px;" />
-          <input type="text" id="mp-image" placeholder="Image URL (optional)" style="min-width:180px;" />
-          <input type="text" id="mp-desc" placeholder="Short description" style="min-width:180px;flex:1;" />
-          <button class="btn-primary" onclick="createMarketplaceProduct()">Post product</button>
-          <button class="btn-sm" onclick="seedMarketplaceProducts()">Seed sample products</button>
+      <div class="panel" style="margin-bottom:1rem;">
+        <h3>Add product</h3>
+        <div class="form-grid">
+          <label><span>Product title *</span><input type="text" id="mp-title" placeholder="Product title" /></label>
+          <label><span>Category</span>
+            <select id="mp-category">
+              <option value="gadgets">Gadgets</option>
+              <option value="laptops">Laptops</option>
+              <option value="phones">Phones</option>
+              <option value="clothes">Clothes</option>
+              <option value="books">Books</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <label><span>Price (₦)</span><input type="number" id="mp-price" placeholder="Price" min="0" /></label>
+          <label><span>Short description</span><input type="text" id="mp-desc" placeholder="Short description" /></label>
+          <label><span>Product image *</span><input type="file" id="mp-image-file" accept="image/*" onchange="previewMarketplaceImage(this)" /></label>
+          <label><span>Or image URL</span><input type="text" id="mp-image" placeholder="https://… (optional if you upload a file)" oninput="previewMarketplaceImageUrl(this.value)" /></label>
+        </div>
+        <div style="margin:8px 0 12px">
+          <img id="mp-image-preview" class="mp-image-preview hidden" alt="Preview" />
+        </div>
+        <div class="form-row">
+          <button class="btn-primary" style="width:auto;padding:12px 24px" onclick="createMarketplaceProduct()">Post product</button>
         </div>
         <p id="mp-product-msg" class="cbt-hint small" style="margin-top:0.5rem;"></p>
       </div>

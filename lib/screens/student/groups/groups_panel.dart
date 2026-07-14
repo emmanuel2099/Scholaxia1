@@ -273,19 +273,17 @@ class _GroupsPanelState extends State<GroupsPanel> {
             children: [
               _searchField(context),
               const SizedBox(height: 16),
-              _sectionTitle(context, 'Your groups'),
-              const SizedBox(height: 8),
-              if (mine.isEmpty)
+              if (!hasQuery || mine.isNotEmpty) ...[
+                _sectionTitle(context, 'Your groups'),
+                const SizedBox(height: 8),
+              ],
+              if (mine.isEmpty && !hasQuery)
                 _emptyHint(
                   context,
-                  hasQuery
-                      ? 'No groups match “${_query.trim()}”'
-                      : 'You have not joined a group yet',
-                  hasQuery
-                      ? 'Try another name, or clear the search.'
-                      : 'Tap + below to create one, or join from Discover groups.',
+                  'You have not joined a group yet',
+                  'Tap + below to create one, or join from Discover groups.',
                 )
-              else
+              else if (mine.isNotEmpty)
                 ...mine.map(
                     (g) => _studentGroupCard(context, g, isMineSection: true)),
               const SizedBox(height: 20),
@@ -296,11 +294,11 @@ class _GroupsPanelState extends State<GroupsPanel> {
                 style: TextStyle(color: context.greyColor, fontSize: 12),
               ),
               const SizedBox(height: 8),
-              if (discover.isEmpty)
+              if (discover.isEmpty && !(hasQuery && (mine.isNotEmpty || school.isNotEmpty)))
                 _emptyHint(
                   context,
                   hasQuery
-                      ? 'No discover groups match “${_query.trim()}”'
+                      ? 'No groups match “${_query.trim()}”'
                       : 'No open groups right now',
                   hasQuery
                       ? 'Try a different search.'

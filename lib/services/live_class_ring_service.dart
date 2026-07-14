@@ -105,16 +105,24 @@ class LiveClassRingService {
   }
 
   void _playBurst() {
-    try {
-      SystemSound.play(SystemSoundType.alert);
-    } catch (_) {}
-    if (!_isMobile && kIsWeb) return;
+    // Prefer Scholaxia custom ringtone (asset); avoid default system beep.
+    if (kIsWeb) {
+      try {
+        SystemSound.play(SystemSoundType.alert);
+      } catch (_) {}
+      return;
+    }
     unawaited(() async {
       try {
         final p = await _ensurePlayer();
         await p.stop();
-        await p.play(AssetSource('asset/sounds/live_class_ringtone.mp3'));
-      } catch (_) {}
+        await p.setVolume(1.0);
+        await p.play(AssetSource(assetPath));
+      } catch (_) {
+        try {
+          SystemSound.play(SystemSoundType.alert);
+        } catch (__) {}
+      }
     }());
   }
 }

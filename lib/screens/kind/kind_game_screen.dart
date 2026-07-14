@@ -65,9 +65,41 @@ class _KindGameScreenState extends State<KindGameScreen> {
 
   Future<void> _initTts() async {
     try {
-      await _tts.setSpeechRate(0.42);
-      await _tts.setPitch(1.05);
       await _tts.setLanguage('en-US');
+      // Slower + slightly higher pitch for a calm female reading voice.
+      await _tts.setSpeechRate(0.28);
+      await _tts.setPitch(1.18);
+      await _tts.setVolume(1.0);
+      final voices = await _tts.getVoices;
+      if (voices is List && voices.isNotEmpty) {
+        Map<String, dynamic>? chosen;
+        for (final raw in voices) {
+          if (raw is! Map) continue;
+          final v = Map<String, dynamic>.from(raw);
+          final name = (v['name'] ?? '').toString().toLowerCase();
+          final locale = (v['locale'] ?? '').toString().toLowerCase();
+          if (!locale.startsWith('en')) continue;
+          if (name.contains('zira') ||
+              name.contains('samantha') ||
+              name.contains('jenny') ||
+              name.contains('karen') ||
+              name.contains('victoria') ||
+              name.contains('female') ||
+              name.contains('aria') ||
+              name.contains('hazel') ||
+              name.contains('susan') ||
+              name.contains('moira')) {
+            chosen = v;
+            break;
+          }
+        }
+        if (chosen != null) {
+          await _tts.setVoice({
+            'name': '${chosen['name']}',
+            'locale': '${chosen['locale']}',
+          });
+        }
+      }
     } catch (_) {}
   }
 
