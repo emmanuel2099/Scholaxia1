@@ -138,6 +138,7 @@ async def my_groups(
             "id": str(grp.id),
             "name": grp.name,
             "description": grp.description,
+            "image_url": getattr(grp, "image_url", None),
             "role": mem.role.value,
             "is_public": grp.is_public,
             "is_community_listed": grp.is_community_listed,
@@ -184,6 +185,7 @@ async def community_listed_groups(
             "id": str(grp.id),
             "name": grp.name,
             "description": grp.description,
+            "image_url": getattr(grp, "image_url", None),
             "is_member": member is not None,
             "is_admin": member is not None and member.role == StudentGroupMemberRole.admin,
             "is_approved": grp.is_approved,
@@ -230,6 +232,7 @@ async def discover_groups(
             "id": str(grp.id),
             "name": grp.name,
             "description": grp.description,
+            "image_url": getattr(grp, "image_url", None),
             "pending_request": pending.scalar_one_or_none() is not None,
         })
     return groups
