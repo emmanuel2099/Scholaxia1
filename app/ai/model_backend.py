@@ -198,7 +198,11 @@ async def _infer_deepseek(prompt: str, conversation_history: list = None,
 
     messages.append({"role": "user", "content": prompt})
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    # DeepSeek is happiest under ~4k output tokens for tutor replies.
+    out_tokens = max_tokens or settings.AI_MAX_TOKENS
+    out_tokens = min(int(out_tokens), 4096)
+
+    async with httpx.AsyncClient(timeout=90.0) as client:
         response = await client.post(
             "https://api.deepseek.com/chat/completions",
             headers={
@@ -208,7 +212,7 @@ async def _infer_deepseek(prompt: str, conversation_history: list = None,
             json={
                 "model": settings.DEEPSEEK_MODEL,
                 "messages": messages,
-                "max_tokens": max_tokens or settings.AI_MAX_TOKENS,
+                "max_tokens": out_tokens,
                 "temperature": temperature if temperature is not None else settings.AI_TEMPERATURE,
             },
         )
@@ -343,7 +347,7 @@ async def run_inference(prompt: str, conversation_history: list = None,
     if not _any_api_key_configured():
         raise RuntimeError(
             "Sia AI is not configured on the server. "
-            "An administrator must set GEMINI_API_KEY, OPENAI_API_KEY, or DEEPSEEK_API_KEY."
+            "Set DEEPSEEK_API_KEY (recommended) or OPENAI_API_KEY / GEMINI_API_KEY in Render Environment, then redeploy."
         )
 
     backend = settings.AI_BACKEND.lower()
@@ -379,11 +383,13 @@ async def run_inference(prompt: str, conversation_history: list = None,
             try_order.append(name)
 
     last_error = None
+    tried = []
     for name in try_order:
         if name not in backends:
             continue
         if name in keys and not keys[name]:
             continue
+        tried.append(name)
         try:
             result = await backends[name]()
             if result and len(result.strip()) >= 2:
@@ -393,5 +399,9 @@ async def run_inference(prompt: str, conversation_history: list = None,
             continue
 
     if last_error:
-        raise last_error
-    raise RuntimeError("All AI backends failed. Please try again in a moment.")
+        raise RuntimeError(
+            f"All AI backends failed ({', '.join(tried) or 'none'}). Last error: {type(last_error).__name__}: {str(last_error)[:160]}"
+        )
+    raise RuntimeError(
+        "No AI backends available. Set DEEPSEEK_API_KEY on Render Environment and redeploy."
+    )

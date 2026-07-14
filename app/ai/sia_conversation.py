@@ -34,7 +34,9 @@ SHORT_ACKS = {
 }
 
 
-def _msg_role(msg: dict) -> str:
+def _msg_role(msg) -> str:
+    if not isinstance(msg, dict):
+        return "user"
     role = (msg.get("role") or "").lower()
     if role in ("assistant", "model", "ai", "sia"):
         return "assistant"

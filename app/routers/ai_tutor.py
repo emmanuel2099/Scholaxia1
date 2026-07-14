@@ -134,6 +134,33 @@ class AskRequest(BaseModel):
     tutor_mode: str = "smart"  # smart = ChatGPT-style structured answers with code fences
 
 
+@router.get("/status")
+async def sia_status():
+    """Public check: which AI providers are configured (no secrets)."""
+    from app.core.config import settings
+
+    return {
+        "ok": True,
+        "ai_backend": settings.AI_BACKEND,
+        "providers": {
+            "deepseek": bool(settings.DEEPSEEK_API_KEY),
+            "openai": bool(settings.OPENAI_API_KEY),
+            "gemini": bool(settings.GEMINI_API_KEY),
+            "groq": bool(settings.GROQ_API_KEY),
+        },
+        "models": {
+            "deepseek": settings.DEEPSEEK_MODEL,
+            "openai": settings.OPENAI_MODEL,
+            "gemini": settings.GEMINI_MODEL,
+            "groq": settings.GROQ_MODEL,
+        },
+        "voice": {
+            "elevenlabs": bool(settings.ELEVENLABS_API_KEY),
+            "edge_tts_fallback": True,
+        },
+    }
+
+
 @router.post("/ask")
 async def ask_sia(
     payload: AskRequest,
@@ -141,6 +168,8 @@ async def ask_sia(
     db: AsyncSession = Depends(get_db),
 ):
     """Ask Sia any educational question. Returns text + board content."""
+    student_name = "there"
+    level = "UNKNOWN"
     try:
         _validate_language(payload.language)
         student_name = await _get_student_name(current_user["sub"], db)
@@ -168,7 +197,17 @@ async def ask_sia(
         )
 
         if answer.startswith("Sia is temporarily unavailable"):
-            raise HTTPException(status_code=503, detail=answer)
+            # Return 200 with a clear message so the app can show/speak it
+            # (raising 503 was shown as a useless "waking up" error).
+            return {
+                "sia": answer,
+                "board": [
+                    {"type": "heading", "content": "Sia needs a moment"},
+                    {"type": "point", "content": answer[:220]},
+                ],
+                "student": student_name,
+                "level": level,
+            }
 
         try:
             board = extract_board_content(answer)
@@ -184,10 +223,19 @@ async def ask_sia(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Sia could not answer right now. Please try again. ({type(e).__name__})",
-        ) from e
+        msg = (
+            f"I hit a temporary server issue ({type(e).__name__}), {student_name}. "
+            "Please try again in a few seconds."
+        )
+        return {
+            "sia": msg,
+            "board": [
+                {"type": "heading", "content": "Temporary issue"},
+                {"type": "point", "content": msg},
+            ],
+            "student": student_name,
+            "level": level,
+        }
 
 
 # ── Mode 2: Explain a concept ─────────────────────────────────────────────────

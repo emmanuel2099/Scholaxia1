@@ -143,7 +143,13 @@ class _SiaVoiceClassroomScreenState extends State<SiaVoiceClassroomScreen> {
   String _formatAskError(Object error) {
     if (error is ApiException) {
       if (error.statusCode == 503) {
-        return 'Sia is waking up — wait a moment and try again.';
+        final detail = error.message.trim();
+        if (detail.isNotEmpty &&
+            detail.toLowerCase() != 'internal server error' &&
+            !detail.toLowerCase().contains('waking up')) {
+          return detail;
+        }
+        return 'Sia is busy — wait a moment and try again.';
       }
       if (error.statusCode == 401 || error.statusCode == 403) {
         return 'Session expired — log out and sign in again.';
@@ -151,6 +157,9 @@ class _SiaVoiceClassroomScreenState extends State<SiaVoiceClassroomScreen> {
       return error.message;
     }
     final text = error.toString();
+    if (text.contains('TimeoutException') || text.contains('timed out')) {
+      return 'Sia took too long — try a shorter question.';
+    }
     if (text.contains('SocketException') ||
         text.contains('Failed host lookup') ||
         text.contains('Connection refused')) {
