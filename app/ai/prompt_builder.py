@@ -12,6 +12,8 @@ Built from the full Sia PRD:
 - Emotional intelligence
 """
 
+import re
+
 from app.ai.sia_accuracy import SIA_ACCURACY_FIRST, SIA_TUTOR_CORE, SIA_CONVERSATION_INTEL
 
 SIA_SYSTEM_PROMPT = """

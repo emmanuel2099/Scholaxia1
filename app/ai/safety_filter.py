@@ -1,4 +1,4 @@
-﻿"""
+"""
 AI Safety Filter
 """
 import re
