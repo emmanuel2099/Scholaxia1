@@ -29,6 +29,7 @@ class _SiaScreenState extends State<SiaScreen> {
   @override
   void initState() {
     super.initState();
+    SiaVoiceService.instance.init();
     _bootstrap();
   }
 
@@ -57,6 +58,7 @@ class _SiaScreenState extends State<SiaScreen> {
               question: question,
               subject: subject,
               educationLevel: _educationLevel,
+              conversationHistory: _buildHistory(),
               tutorMode: 'smart',
             );
             return SiaVoiceAskResult(board: r.board, speakText: r.sia);

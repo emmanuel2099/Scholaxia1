@@ -52,67 +52,95 @@ async def teacher_ask_ai(
     Teacher AI — helps teachers build content and manage their classes.
     This is completely separate from the student AI.
     """
-    task = payload.task if payload.task in VALID_TASKS else detect_teacher_task(payload.details)
+    try:
+        task = payload.task if payload.task in VALID_TASKS else "general"
+        if task == "general":
+            detected = detect_teacher_task(payload.details)
+            if detected in VALID_TASKS:
+                task = detected
 
-    if task == "general" and _is_casual_greeting(payload.details):
+        if task == "general" and _is_casual_greeting(payload.details):
+            return TeacherAIResponse(
+                result=(
+                    "Hello! I'm your Scholaxia teaching assistant. "
+                    "What would you like help with — a lesson plan, assignment, quiz, grading, or something else?"
+                ),
+                task=task,
+                subject=payload.subject,
+            )
+
+        system = build_teacher_system_prompt(
+            task=task,
+            subject=payload.subject,
+            education_level=payload.education_level,
+        )
+        history = None
+        if payload.conversation_history:
+            history = []
+            for msg in payload.conversation_history[-24:]:
+                if not isinstance(msg, dict):
+                    continue
+                role = str(msg.get("role") or "user").lower()
+                content = str(msg.get("content") or msg.get("text") or "").strip()
+                if not content:
+                    continue
+                if role in ("assistant", "ai", "model"):
+                    role = "assistant"
+                else:
+                    role = "user"
+                history.append({"role": role, "content": content[:4000]})
+
+        conv_intel = build_conversation_intel(
+            payload.details, history, audience="teacher",
+        )
+        if conv_intel:
+            system = f"{system}\n\n{conv_intel}"
+        prompt = build_teacher_prompt(
+            task=task,
+            subject=payload.subject,
+            education_level=payload.education_level,
+            details=payload.details,
+        )
+
+        conv = analyze_conversation(payload.details, history)
+        temp = 0.38 if conv.get("is_follow_up") else (0.42 if task in ("quiz", "lesson_plan", "grading") else 0.50)
+
+        try:
+            raw_result = await run_inference(
+                prompt,
+                system_prompt=system,
+                conversation_history=history,
+                max_tokens=8192,
+                temperature=temp,
+            )
+        except RuntimeError as e:
+            raise HTTPException(status_code=503, detail=str(e))
+        except Exception as e:
+            msg = str(e)
+            if "429" in msg or "rate limit" in msg.lower():
+                raise HTTPException(
+                    status_code=429,
+                    detail="AI is busy right now. Please wait a moment and try again.",
+                )
+            raise HTTPException(
+                status_code=503,
+                detail="Teacher AI could not respond. Please try again.",
+            )
+
+        result = sanitize_output(raw_result)
+
         return TeacherAIResponse(
-            result=(
-                "Hello! I'm your Scholaxia teaching assistant. "
-                "What would you like help with — a lesson plan, assignment, quiz, grading, or something else?"
-            ),
+            result=result,
             task=task,
             subject=payload.subject,
         )
-
-    system = build_teacher_system_prompt(
-        task=task,
-        subject=payload.subject,
-        education_level=payload.education_level,
-    )
-    conv_intel = build_conversation_intel(
-        payload.details, payload.conversation_history, audience="teacher",
-    )
-    if conv_intel:
-        system = f"{system}\n\n{conv_intel}"
-    prompt = build_teacher_prompt(
-        task=task,
-        subject=payload.subject,
-        education_level=payload.education_level,
-        details=payload.details,
-    )
-
-    conv = analyze_conversation(payload.details, payload.conversation_history)
-    temp = 0.38 if conv.get("is_follow_up") else (0.42 if task in ("quiz", "lesson_plan", "grading") else 0.50)
-
-    try:
-        raw_result = await run_inference(
-            prompt,
-            system_prompt=system,
-            conversation_history=payload.conversation_history,
-            max_tokens=8192,
-            temperature=temp,
-        )
-    except RuntimeError as e:
-        raise HTTPException(status_code=503, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
-        msg = str(e)
-        if "429" in msg or "rate limit" in msg.lower():
-            raise HTTPException(
-                status_code=429,
-                detail="AI is busy right now. Please wait a moment and try again.",
-            )
         raise HTTPException(
             status_code=503,
-            detail="Teacher AI could not respond. Please try again.",
-        )
-
-    result = sanitize_output(raw_result)
-
-    return TeacherAIResponse(
-        result=result,
-        task=task,
-        subject=payload.subject,
-    )
+            detail=f"Teacher AI could not respond. Please try again. ({type(e).__name__})",
+        ) from e
 
 
 class SpeakRequest(BaseModel):

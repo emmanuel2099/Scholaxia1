@@ -79,9 +79,9 @@ class Settings(BaseSettings):
     # "groq"   = Groq (fallback)
     # "hosted" = Self-hosted (Ollama, vLLM)
     # "local"  = HuggingFace in-process
-    AI_BACKEND: str = "gemini"
+    AI_BACKEND: str = "openai"
     AI_MAX_TOKENS: int = 8192   # Gemini supports up to 8192 output tokens
-    AI_TEMPERATURE: float = 0.5
+    AI_TEMPERATURE: float = 0.42
 
     # Gemini (Google AI — primary)
     GEMINI_API_KEY: str = ""

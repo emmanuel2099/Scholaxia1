@@ -719,6 +719,7 @@ def build_sia_system_prompt(student_name: str, subject: str, education_level: st
                             language: str, student_memory: dict = None,
                             raw_input: str = "", intelligence_context: str = "") -> str:
     """Full system prompt for main Sia — identity + teaching rules + reasoning boost."""
+    from app.ai.sia_accuracy import SIA_EXPERT_CAPABILITY
     context = _build_context(student_name, subject, education_level, language,
                              student_memory, raw_input=raw_input)
     memory_block = ""
@@ -734,9 +735,9 @@ def build_sia_system_prompt(student_name: str, subject: str, education_level: st
                 f"- Recently studied: {', '.join(recent[:4]) if recent else 'just starting'}"
             )
     intel = f"\n{intelligence_context}" if intelligence_context else ""
-    # Use focused tutor core — not the full gamification manifesto (too long, dilutes accuracy).
     return (
-        f"{SIA_ACCURACY_FIRST}\n\n{SIA_CONVERSATION_INTEL}\n\n{SIA_TUTOR_CORE}\n\n{context}\n"
+        f"{SIA_ACCURACY_FIRST}\n\n{SIA_CONVERSATION_INTEL}\n\n{SIA_EXPERT_CAPABILITY}\n\n"
+        f"{SIA_TUTOR_CORE}\n\n{context}\n"
         f"{SIA_REASONING_BOOST}{memory_block}{intel}"
     )
 
@@ -1376,10 +1377,16 @@ def _is_casual_greeting(details: str) -> bool:
 
 
 def build_teacher_system_prompt(task: str, subject: str, education_level: str) -> str:
-    from app.ai.sia_accuracy import SIA_ACCURACY_FIRST, TEACHER_AI_CORE, SIA_CONVERSATION_INTEL
+    from app.ai.sia_accuracy import (
+        SIA_ACCURACY_FIRST,
+        TEACHER_AI_CORE,
+        SIA_CONVERSATION_INTEL,
+        SIA_EXPERT_CAPABILITY,
+    )
     instruction = TEACHER_TASK_PROFILES.get(task, TEACHER_TASK_PROFILES["general"])
     return (
-        f"{SIA_ACCURACY_FIRST}\n\n{SIA_CONVERSATION_INTEL}\n\n{TEACHER_AI_CORE}\n\n"
+        f"{SIA_ACCURACY_FIRST}\n\n{SIA_CONVERSATION_INTEL}\n\n{SIA_EXPERT_CAPABILITY}\n\n"
+        f"{TEACHER_AI_CORE}\n\n"
         f"Subject: {subject}\nLevel: {education_level}\nTask focus: {instruction}"
     )
 

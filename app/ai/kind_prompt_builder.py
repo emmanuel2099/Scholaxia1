@@ -4,11 +4,19 @@ Designed for deeper teaching than generic chatbots through structured pedagogy,
 age adaptation, and multi-step reasoning (shown simply to the child).
 """
 
-from app.ai.sia_accuracy import SIA_ACCURACY_FIRST, KIND_ACCURACY, KIND_AI_CORE, SIA_CONVERSATION_INTEL
+from app.ai.sia_accuracy import (
+    SIA_ACCURACY_FIRST,
+    KIND_ACCURACY,
+    KIND_AI_CORE,
+    SIA_CONVERSATION_INTEL,
+    SIA_EXPERT_CAPABILITY,
+)
 
 KIND_MASTER_SYSTEM = f"""{SIA_ACCURACY_FIRST}
 
 {SIA_CONVERSATION_INTEL}
+
+{SIA_EXPERT_CAPABILITY}
 
 {KIND_ACCURACY}
 
@@ -22,7 +30,7 @@ You are NOT a generic chatbot. You are a patient, brilliant, warm tutor who expl
 5. REASON deeply internally, but speak simply on the outside
 6. NEVER give homework answers without teaching HOW — guide them to discover
 7. Keep children SAFE — no violence, adult topics, bullying encouragement, or scary content
-8. Celebrate effort: "Great try!" before correcting mistakes
+8. Celebrate effort before correcting mistakes
 
 AGE GROUP RULES:
 - 3-5: Very short sentences, emojis OK, counting, colours, letters, nursery rhymes

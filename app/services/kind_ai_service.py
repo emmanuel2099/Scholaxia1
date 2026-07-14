@@ -53,7 +53,7 @@ async def kind_chat(
             prompt,
             conversation_history=conversation_history,
             system_prompt=system,
-            max_tokens=4096,
+            max_tokens=6144,
             temperature=temp,
         )
     except RuntimeError as e:

@@ -16,6 +16,29 @@ from app.core.config import settings
 from app.ai.prompt_builder import SIA_SYSTEM_PROMPT
 
 
+def _history_msgs(conversation_history: list = None, limit: int = 24) -> list:
+    """Normalize chat turns so bad client payloads never crash inference."""
+    if not conversation_history:
+        return []
+    out = []
+    for msg in conversation_history[-limit:]:
+        if not isinstance(msg, dict):
+            continue
+        role = str(msg.get("role") or "user").strip().lower()
+        content = msg.get("content")
+        if content is None:
+            content = msg.get("text")
+        text = str(content or "").strip()
+        if not text:
+            continue
+        if role in ("assistant", "ai", "model", "sia"):
+            role = "assistant"
+        elif role != "user":
+            role = "user"
+        out.append({"role": role, "content": text[:4000]})
+    return out
+
+
 def _any_api_key_configured() -> bool:
     return bool(
         settings.GEMINI_API_KEY
@@ -68,7 +91,7 @@ async def _infer_gemini(prompt: str, conversation_history: list = None,
     sys = _resolve_system(system_prompt)
 
     if conversation_history:
-        for msg in conversation_history[-10:]:
+        for msg in _history_msgs(conversation_history):
             role = "user" if msg.get("role") == "user" else "model"
             contents.append({"role": role, "parts": [{"text": msg.get("content", "")}]})
 
@@ -120,7 +143,7 @@ async def _infer_openai(prompt: str, conversation_history: list = None,
         messages.append({"role": "system", "content": sys})
 
     if conversation_history:
-        for msg in conversation_history[-10:]:
+        for msg in _history_msgs(conversation_history):
             role = msg.get("role", "user")
             content = msg.get("content", "")
             if role in ("user", "assistant") and content:
@@ -167,7 +190,7 @@ async def _infer_deepseek(prompt: str, conversation_history: list = None,
         messages.append({"role": "system", "content": sys})
 
     if conversation_history:
-        for msg in conversation_history[-10:]:
+        for msg in _history_msgs(conversation_history):
             role = msg.get("role", "user")
             content = msg.get("content", "")
             if role in ("user", "assistant") and content:
@@ -205,7 +228,7 @@ async def _infer_groq(prompt: str, conversation_history: list = None,
         messages.append({"role": "system", "content": sys})
 
     if conversation_history:
-        for msg in conversation_history[-10:]:
+        for msg in _history_msgs(conversation_history):
             role = msg.get("role", "user")
             content = msg.get("content", "")
             if role in ("user", "assistant") and content:
@@ -349,9 +372,9 @@ async def run_inference(prompt: str, conversation_history: list = None,
         "groq": settings.GROQ_API_KEY,
     }
 
-    # Build try order: primary first, then fallbacks with keys
-    try_order = [backend] if backend in backends else ["gemini"]
-    for name in ("gemini", "openai", "deepseek", "groq"):
+    # Build try order: configured primary first, then highest teaching-quality backends.
+    try_order = [backend] if backend in backends else ["openai"]
+    for name in ("openai", "gemini", "deepseek", "groq"):
         if name not in try_order and keys.get(name):
             try_order.append(name)
 

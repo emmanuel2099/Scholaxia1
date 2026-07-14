@@ -28,6 +28,7 @@ class _TeacherAiScreenState extends State<TeacherAiScreen> {
   @override
   void initState() {
     super.initState();
+    SiaVoiceService.instance.init();
     _bootstrap();
   }
 
@@ -57,6 +58,7 @@ class _TeacherAiScreenState extends State<TeacherAiScreen> {
               subject: subject,
               educationLevel: 'SS2',
               details: question,
+              conversationHistory: _buildHistory(),
             );
             final reply = res['result']?.toString() ?? 'No response.';
             return SiaVoiceAskResult(board: const [], speakText: reply);

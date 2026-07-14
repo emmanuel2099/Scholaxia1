@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -316,16 +317,18 @@ class ApiService {
     String subject = 'General',
     List<Map<String, dynamic>>? conversationHistory,
   }) async {
-    final res = await http.post(
-      _uri(ApiEndpoints.kindSiaChat),
-      headers: await _authHeaders(),
-      body: jsonEncode({
-        'question': question,
-        'subject': subject,
-        if (conversationHistory != null)
-          'conversation_history': conversationHistory,
-      }),
-    );
+    final res = await http
+        .post(
+          _uri(ApiEndpoints.kindSiaChat),
+          headers: await _authHeaders(),
+          body: jsonEncode({
+            'question': question,
+            'subject': subject,
+            if (conversationHistory != null)
+              'conversation_history': conversationHistory,
+          }),
+        )
+        .timeout(const Duration(seconds: 120));
     final data = _parseMap(res);
     return KindSiaResponse(
       text: data['sia_kind']?.toString() ?? 'No reply.',
@@ -659,19 +662,21 @@ class ApiService {
     List<Map<String, dynamic>>? conversationHistory,
     String tutorMode = 'smart',
   }) async {
-    final res = await http.post(
-      _uri(ApiEndpoints.siaAsk),
-      headers: await _authHeaders(),
-      body: jsonEncode({
-        'question': question,
-        'subject': subject,
-        'language': language,
-        if (educationLevel != null) 'education_level': educationLevel,
-        if (conversationHistory != null)
-          'conversation_history': conversationHistory,
-        'tutor_mode': tutorMode,
-      }),
-    );
+    final res = await http
+        .post(
+          _uri(ApiEndpoints.siaAsk),
+          headers: await _authHeaders(),
+          body: jsonEncode({
+            'question': question,
+            'subject': subject,
+            'language': language,
+            if (educationLevel != null) 'education_level': educationLevel,
+            if (conversationHistory != null)
+              'conversation_history': conversationHistory,
+            'tutor_mode': tutorMode,
+          }),
+        )
+        .timeout(const Duration(seconds: 120));
     return SiaResponse.fromJson(_parseMap(res));
   }
 
@@ -684,13 +689,24 @@ class ApiService {
     final endpoint = role == 'teacher'
         ? ApiEndpoints.teacherAiSpeak
         : ApiEndpoints.siaSpeak;
-    final res = await http.post(
-      _uri(endpoint),
-      headers: await _authHeaders(),
-      body: jsonEncode({'text': text, 'language': language}),
-    );
-    if (res.statusCode != 200) return null;
-    return res.bodyBytes;
+    try {
+      final res = await http
+          .post(
+            _uri(endpoint),
+            headers: await _authHeaders(),
+            body: jsonEncode({'text': text, 'language': language}),
+          )
+          .timeout(const Duration(seconds: 90));
+      if (res.statusCode != 200) {
+        debugPrint('fetchVoiceAudio HTTP ${res.statusCode}: ${res.body}');
+        return null;
+      }
+      if (res.bodyBytes.isEmpty) return null;
+      return res.bodyBytes;
+    } catch (e) {
+      debugPrint('fetchVoiceAudio error: $e');
+      return null;
+    }
   }
 
   // ── Teacher AI ─────────────────────────────────────────────────────────────
@@ -702,18 +718,20 @@ class ApiService {
     required String details,
     List<Map<String, dynamic>>? conversationHistory,
   }) async {
-    final res = await http.post(
-      _uri(ApiEndpoints.teacherAiAsk),
-      headers: await _authHeaders(),
-      body: jsonEncode({
-        'task': task,
-        'subject': subject,
-        'education_level': educationLevel,
-        'details': details,
-        if (conversationHistory != null)
-          'conversation_history': conversationHistory,
-      }),
-    );
+    final res = await http
+        .post(
+          _uri(ApiEndpoints.teacherAiAsk),
+          headers: await _authHeaders(),
+          body: jsonEncode({
+            'task': task,
+            'subject': subject,
+            'education_level': educationLevel,
+            'details': details,
+            if (conversationHistory != null)
+              'conversation_history': conversationHistory,
+          }),
+        )
+        .timeout(const Duration(seconds: 120));
     return _parseMap(res);
   }
 

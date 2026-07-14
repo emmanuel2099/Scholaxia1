@@ -23,6 +23,7 @@ class _KindSiaScreenState extends State<KindSiaScreen> {
   bool _voiceOn = true;
   String _subject = 'General';
   List<String> _subjects = ['General'];
+  String _childName = 'Friend';
 
   @override
   void initState() {
@@ -41,14 +42,14 @@ class _KindSiaScreenState extends State<KindSiaScreen> {
       MaterialPageRoute(
         builder: (_) => SiaVoiceClassroomScreen(
           title: 'Sia Voice Chat',
-          studentName: 'Friend',
+          studentName: _childName,
           subjects: _subjects,
           initialSubject: _subject,
           onAsk: (question, subject) async {
             final r = await _api.kindSiaChat(
               question: question,
               subject: subject,
-              conversationHistory: const [],
+              conversationHistory: _buildHistory(),
             );
             return SiaVoiceAskResult(board: r.board, speakText: r.text);
           },
@@ -124,6 +125,13 @@ class _KindSiaScreenState extends State<KindSiaScreen> {
   }
 
   Future<void> _loadSubjects() async {
+    try {
+      final me = await _api.getKindMe();
+      final name = (me['full_name'] ?? me['first_name'] ?? me['name'])?.toString().trim();
+      if (mounted && name != null && name.isNotEmpty) {
+        setState(() => _childName = name.split(' ').first);
+      }
+    } catch (_) {}
     try {
       final subs = await _api.kindSubjects();
       if (mounted && subs.isNotEmpty) setState(() => _subjects = subs);

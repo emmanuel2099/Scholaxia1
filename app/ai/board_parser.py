@@ -59,7 +59,10 @@ def extract_board_content(sia_response: str) -> list[BoardItem]:
             continue
 
         # ── Headings ──────────────────────────────────────
-        if re.match(r"^\*\*(.+)\*\*:?$", line) or (clean.endswith(":") and len(clean) < 50 and clean[0].isupper()):
+        if clean and (
+            re.match(r"^\*\*(.+)\*\*:?$", line)
+            or (clean.endswith(":") and len(clean) < 50 and clean[0].isupper())
+        ):
             content = clean.rstrip(":")
             board.append({"type": "heading", "content": content})
             continue

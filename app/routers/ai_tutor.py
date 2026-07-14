@@ -65,8 +65,10 @@ SUPPORTED_CURRICULA = ["WAEC", "NECO", "JAMB", "Cambridge", "Nigerian"]
 async def _get_student_name(user_id: str, db: AsyncSession) -> str:
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
-    if user:
-        return user.full_name.split()[0]  # first name only
+    if user and user.full_name:
+        parts = user.full_name.strip().split()
+        if parts:
+            return parts[0]
     return "there"
 
 
@@ -82,8 +84,35 @@ async def _get_student_profile(user_id: str, db: AsyncSession) -> tuple[str, lis
     if not profile:
         return "UNKNOWN", []
     level = profile.education_level or "UNKNOWN"
-    subjects = list(profile.selected_subjects or [])
+    raw = profile.selected_subjects or []
+    try:
+        subjects = list(raw)
+    except TypeError:
+        subjects = []
     return level, subjects
+
+
+def _normalize_history(history: Optional[list]) -> Optional[list]:
+    """Keep only well-formed chat turns for the model APIs."""
+    if not history:
+        return None
+    out = []
+    for msg in history[-24:]:
+        if not isinstance(msg, dict):
+            continue
+        role = str(msg.get("role") or "").strip().lower()
+        content = msg.get("content")
+        if content is None:
+            content = msg.get("text")
+        text = str(content or "").strip()
+        if not text:
+            continue
+        if role in ("assistant", "ai", "model", "sia"):
+            role = "assistant"
+        else:
+            role = "user"
+        out.append({"role": role, "content": text[:4000]})
+    return out or None
 
 
 def _validate_language(language: str):
@@ -112,41 +141,53 @@ async def ask_sia(
     db: AsyncSession = Depends(get_db),
 ):
     """Ask Sia any educational question. Returns text + board content."""
-    _validate_language(payload.language)
-    student_name = await _get_student_name(current_user["sub"], db)
-    profile_level, profile_subjects = await _get_student_profile(current_user["sub"], db)
-    level = payload.education_level or profile_level
-    default_subject = (
-        profile_subjects[0] if profile_subjects else payload.subject
-    )
-    active_subject = resolve_active_subject(
-        payload.question,
-        payload.subject or default_subject,
-        profile_subjects,
-    )
+    try:
+        _validate_language(payload.language)
+        student_name = await _get_student_name(current_user["sub"], db)
+        profile_level, profile_subjects = await _get_student_profile(current_user["sub"], db)
+        level = payload.education_level or profile_level
+        default_subject = (
+            profile_subjects[0] if profile_subjects else payload.subject
+        )
+        active_subject = resolve_active_subject(
+            payload.question,
+            payload.subject or default_subject,
+            profile_subjects,
+        )
+        history = _normalize_history(payload.conversation_history)
 
-    answer = await get_ai_response(
-        question=payload.question,
-        subject=active_subject,
-        education_level=level,
-        language=payload.language,
-        student_id=current_user["sub"],
-        student_name=student_name,
-        conversation_history=payload.conversation_history,
-        tutor_mode=payload.tutor_mode or "smart",
-    )
+        answer = await get_ai_response(
+            question=payload.question,
+            subject=active_subject,
+            education_level=level,
+            language=payload.language,
+            student_id=current_user["sub"],
+            student_name=student_name,
+            conversation_history=history,
+            tutor_mode=payload.tutor_mode or "smart",
+        )
 
-    if answer.startswith("Sia is temporarily unavailable"):
-        raise HTTPException(status_code=503, detail=answer)
+        if answer.startswith("Sia is temporarily unavailable"):
+            raise HTTPException(status_code=503, detail=answer)
 
-    board = extract_board_content(answer)
+        try:
+            board = extract_board_content(answer)
+        except Exception:
+            board = []
 
-    return {
-        "sia": answer,
-        "board": board,
-        "student": student_name,
-        "level": level
-    }
+        return {
+            "sia": answer,
+            "board": board,
+            "student": student_name,
+            "level": level,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Sia could not answer right now. Please try again. ({type(e).__name__})",
+        ) from e
 
 
 # ── Mode 2: Explain a concept ─────────────────────────────────────────────────

@@ -67,7 +67,9 @@ async def _get_child_name(user_id: str, db: AsyncSession) -> str:
     result = await db.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if user and user.full_name:
-        return user.full_name.split()[0]
+        parts = user.full_name.strip().split()
+        if parts:
+            return parts[0]
     return "friend"
 
 
@@ -149,9 +151,9 @@ async def sia_kind_chat(
     Sia Kind — advanced teaching AI for children.
   Uses multi-model fallback (Gemini → OpenAI → DeepSeek → Groq).
     """
-    profile = await _get_kind_profile(current_user["sub"], db)
-    name = await _get_child_name(current_user["sub"], db)
     try:
+        profile = await _get_kind_profile(current_user["sub"], db)
+        name = await _get_child_name(current_user["sub"], db)
         answer = await kind_chat(
             question=payload.question,
             subject=payload.subject,
@@ -164,20 +166,26 @@ async def sia_kind_chat(
             favorite_subjects=profile.favorite_subjects,
             conversation_history=payload.conversation_history,
         )
+        try:
+            board = extract_board_content(answer)
+        except Exception:
+            board = []
+        return {
+            "sia_kind": answer,
+            "board": board,
+            "subject": payload.subject,
+            "age_group": profile.age_group,
+            "engine": "sia-kind-multi-model",
+        }
+    except HTTPException:
+        raise
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
-    except Exception:
+    except Exception as e:
         raise HTTPException(
             status_code=503,
-            detail="Sia Kind could not respond right now. Please try again.",
-        )
-    return {
-        "sia_kind": answer,
-        "board": extract_board_content(answer),
-        "subject": payload.subject,
-        "age_group": profile.age_group,
-        "engine": "sia-kind-multi-model",
-    }
+            detail=f"Sia Kind could not respond right now. Please try again. ({type(e).__name__})",
+        ) from e
 
 
 @router.post("/kind/sia/learn")
