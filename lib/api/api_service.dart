@@ -1563,13 +1563,22 @@ class ApiService {
     String filename,
   ) async {
     final uploaded = await communityUpload(bytes, filename);
-    final raw = uploaded['file_url']?.toString() ?? '';
+    final raw = uploaded['file_url']?.toString() ??
+        uploaded['url']?.toString() ??
+        uploaded['secure_url']?.toString() ??
+        '';
     final url = resolveMediaUrl(raw);
     if (url.isEmpty) {
       throw const ApiException.message('Upload failed — no image URL returned.');
     }
-    await updateStudentGroup(groupId, imageUrl: url);
-    return url;
+    final updated = await updateStudentGroup(groupId, imageUrl: url);
+    final saved = resolveMediaUrl(updated['image_url']?.toString() ?? url);
+    if (saved.isEmpty) {
+      throw const ApiException.message(
+        'Photo uploaded but server did not save it. Redeploy API / check image_url column.',
+      );
+    }
+    return saved;
   }
 
   Future<List<dynamic>> myStudentGroups() async {

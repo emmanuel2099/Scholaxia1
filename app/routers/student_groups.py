@@ -72,7 +72,7 @@ def _group_dict(grp: StudentGroup, mem, pending, member_count: int, creator_name
         "id": str(grp.id),
         "name": grp.name,
         "description": grp.description,
-        "image_url": grp.image_url,
+        "image_url": getattr(grp, "image_url", None),
         "is_public": grp.is_public,
         "is_community_listed": grp.is_community_listed,
         "is_approved": grp.is_approved,

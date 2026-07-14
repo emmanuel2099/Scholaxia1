@@ -260,9 +260,23 @@ class _GroupsPanelState extends State<GroupsPanel> {
     final nameCtrl = TextEditingController(text: group['name']?.toString() ?? '');
     final descCtrl =
         TextEditingController(text: group['description']?.toString() ?? '');
-    var imageUrl = group['image_url']?.toString() ?? '';
+    final originalImage = group['image_url']?.toString() ?? '';
+    var imageUrl = originalImage;
     var uploading = false;
     var saving = false;
+
+    void applyImageLocally(String url) {
+      for (final g in _mine) {
+        if (g['id']?.toString() == id) {
+          g['image_url'] = url;
+        }
+      }
+      for (final g in _discover) {
+        if (g['id']?.toString() == id) {
+          g['image_url'] = url;
+        }
+      }
+    }
 
     final saved = await showDialog<bool>(
       context: context,
@@ -270,6 +284,9 @@ class _GroupsPanelState extends State<GroupsPanel> {
         return StatefulBuilder(
           builder: (ctx, setLocal) {
             final preview = imageUrl.trim();
+            final previewUrl = preview.isEmpty
+                ? ''
+                : _api.resolveMediaUrl(preview);
             return AlertDialog(
               backgroundColor: context.cardColor,
               title: Text(
@@ -297,6 +314,16 @@ class _GroupsPanelState extends State<GroupsPanel> {
                                   imageUrl = url;
                                   uploading = false;
                                 });
+                                if (mounted) {
+                                  setState(() => applyImageLocally(url));
+                                }
+                                if (ctx.mounted) {
+                                  ScaffoldMessenger.of(ctx).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Group photo saved.'),
+                                    ),
+                                  );
+                                }
                               } on ApiException catch (e) {
                                 setLocal(() => uploading = false);
                                 if (ctx.mounted) {
@@ -318,26 +345,43 @@ class _GroupsPanelState extends State<GroupsPanel> {
                       child: Stack(
                         alignment: Alignment.center,
                         children: [
-                          CircleAvatar(
-                            radius: 36,
-                            backgroundColor:
-                                context.accentColor.withOpacity(0.15),
-                            backgroundImage: preview.isNotEmpty
-                                ? NetworkImage(_api.resolveMediaUrl(preview))
-                                : null,
-                            child: preview.isEmpty
-                                ? Text(
-                                    (nameCtrl.text.isNotEmpty
-                                            ? nameCtrl.text[0]
-                                            : 'G')
-                                        .toUpperCase(),
-                                    style: TextStyle(
-                                      color: context.accentColor,
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 22,
+                          ClipOval(
+                            child: Container(
+                              width: 72,
+                              height: 72,
+                              color: context.accentColor.withOpacity(0.15),
+                              child: previewUrl.isNotEmpty
+                                  ? Image.network(
+                                      previewUrl,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) => Center(
+                                        child: Text(
+                                          (nameCtrl.text.isNotEmpty
+                                                  ? nameCtrl.text[0]
+                                                  : 'G')
+                                              .toUpperCase(),
+                                          style: TextStyle(
+                                            color: context.accentColor,
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 22,
+                                          ),
+                                        ),
+                                      ),
+                                    )
+                                  : Center(
+                                      child: Text(
+                                        (nameCtrl.text.isNotEmpty
+                                                ? nameCtrl.text[0]
+                                                : 'G')
+                                            .toUpperCase(),
+                                        style: TextStyle(
+                                          color: context.accentColor,
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 22,
+                                        ),
+                                      ),
                                     ),
-                                  )
-                                : null,
+                            ),
                           ),
                           if (uploading)
                             const SizedBox(
@@ -393,7 +437,7 @@ class _GroupsPanelState extends State<GroupsPanel> {
               actions: [
                 TextButton(
                   onPressed: saving ? null : () => Navigator.pop(ctx, false),
-                  child: const Text('Cancel'),
+                  child: const Text('Done'),
                 ),
                 ElevatedButton(
                   onPressed: saving
@@ -414,6 +458,9 @@ class _GroupsPanelState extends State<GroupsPanel> {
                               id,
                               name: name,
                               description: descCtrl.text.trim(),
+                              imageUrl: imageUrl.trim().isEmpty
+                                  ? null
+                                  : imageUrl.trim(),
                             );
                             if (ctx.mounted) Navigator.pop(ctx, true);
                           } on ApiException catch (e) {
@@ -442,39 +489,57 @@ class _GroupsPanelState extends State<GroupsPanel> {
       },
     );
 
+    final finalImage = imageUrl;
     nameCtrl.dispose();
     descCtrl.dispose();
-    if (saved == true && mounted) await _load();
+    if (!mounted) return;
+    if (saved == true || finalImage != originalImage) {
+      if (finalImage.isNotEmpty) {
+        setState(() => applyImageLocally(finalImage));
+      }
+      await _load();
+    }
   }
 
   Widget _groupAvatar(BuildContext context, Map<String, dynamic> g) {
     final name = g['name']?.toString() ?? 'G';
     final raw = g['image_url']?.toString() ?? '';
     final url = raw.isEmpty ? '' : _api.resolveMediaUrl(raw);
-    return Container(
-      width: 44,
-      height: 44,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
+    final letter = name.isNotEmpty ? name[0].toUpperCase() : 'G';
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: 44,
+        height: 44,
         color: context.accentColor.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(12),
-        image: url.isNotEmpty
-            ? DecorationImage(
-                image: NetworkImage(url),
-                fit: BoxFit.cover,
+        child: url.isEmpty
+            ? Center(
+                child: Text(
+                  letter,
+                  style: TextStyle(
+                    color: context.accentColor,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 18,
+                  ),
+                ),
               )
-            : null,
-      ),
-      child: url.isEmpty
-          ? Text(
-              name.isNotEmpty ? name[0].toUpperCase() : 'G',
-              style: TextStyle(
-                color: context.accentColor,
-                fontWeight: FontWeight.w800,
-                fontSize: 18,
+            : Image.network(
+                url,
+                fit: BoxFit.cover,
+                width: 44,
+                height: 44,
+                errorBuilder: (_, __, ___) => Center(
+                  child: Text(
+                    letter,
+                    style: TextStyle(
+                      color: context.accentColor,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 18,
+                    ),
+                  ),
+                ),
               ),
-            )
-          : null,
+      ),
     );
   }
 
