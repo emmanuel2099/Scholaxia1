@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../api/api_service.dart';
 import '../../../theme/app_theme.dart';
+import '../../../utils/post_attachment_picker.dart';
 import '../../../widgets/author_avatar.dart';
 import '../../../widgets/student_ui.dart';
 import 'group_voice_call_screen.dart';
@@ -9,11 +10,13 @@ import 'group_voice_call_screen.dart';
 class GroupChatScreen extends StatefulWidget {
   final String groupId;
   final String groupName;
+  final String? groupImageUrl;
 
   const GroupChatScreen({
     super.key,
     required this.groupId,
     required this.groupName,
+    this.groupImageUrl,
   });
 
   @override
@@ -33,10 +36,14 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
   Timer? _pollTimer;
   String? _myUserId;
   bool _incomingShown = false;
+  late String _title;
+  String? _imageUrl;
 
   @override
   void initState() {
     super.initState();
+    _title = widget.groupName;
+    _imageUrl = widget.groupImageUrl;
     _api.getUserId().then((id) => _myUserId = id);
     _load();
     _pollTimer = Timer.periodic(const Duration(seconds: 6), (_) {
@@ -70,6 +77,8 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         return;
       }
       _groupInfo = info;
+      _title = info['name']?.toString() ?? _title;
+      _imageUrl = info['image_url']?.toString() ?? _imageUrl;
       await _refreshMessages(silent: false);
     } catch (e) {
       if (mounted) {
@@ -229,9 +238,190 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
     }
   }
 
+  Future<void> _editGroupFromChat() async {
+    final nameCtrl = TextEditingController(text: _title);
+    final descCtrl = TextEditingController(
+      text: _groupInfo?['description']?.toString() ?? '',
+    );
+    var imageUrl = _imageUrl ?? '';
+    var uploading = false;
+    var saving = false;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setLocal) {
+            final preview = imageUrl.trim();
+            return AlertDialog(
+              backgroundColor: context.cardColor,
+              title: Text('Edit group', style: TextStyle(color: context.textColor)),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    GestureDetector(
+                      onTap: uploading
+                          ? null
+                          : () async {
+                              try {
+                                final picked = await pickPostAttachment('photo');
+                                if (picked == null) return;
+                                setLocal(() => uploading = true);
+                                final url = await _api.updateStudentGroupImage(
+                                  widget.groupId,
+                                  picked.bytes,
+                                  picked.name,
+                                );
+                                setLocal(() {
+                                  imageUrl = url;
+                                  uploading = false;
+                                });
+                              } on ApiException catch (e) {
+                                setLocal(() => uploading = false);
+                                if (ctx.mounted) {
+                                  ScaffoldMessenger.of(ctx).showSnackBar(
+                                    SnackBar(content: Text(e.message)),
+                                  );
+                                }
+                              } catch (_) {
+                                setLocal(() => uploading = false);
+                              }
+                            },
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          CircleAvatar(
+                            radius: 36,
+                            backgroundColor:
+                                context.accentColor.withOpacity(0.15),
+                            backgroundImage: preview.isNotEmpty
+                                ? NetworkImage(_api.resolveMediaUrl(preview))
+                                : null,
+                            child: preview.isEmpty
+                                ? Text(
+                                    (_title.isNotEmpty ? _title[0] : 'G')
+                                        .toUpperCase(),
+                                    style: TextStyle(
+                                      color: context.accentColor,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 22,
+                                    ),
+                                  )
+                                : null,
+                          ),
+                          if (uploading)
+                            const SizedBox(
+                              width: 28,
+                              height: 28,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          else
+                            Positioned(
+                              right: 0,
+                              bottom: 0,
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: context.accentColor,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.camera_alt_rounded,
+                                  size: 14,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Tap to change group photo',
+                      style: TextStyle(color: context.greyColor, fontSize: 12),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: nameCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Group name',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: descCtrl,
+                      maxLines: 2,
+                      decoration: const InputDecoration(
+                        labelText: 'Description',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: saving ? null : () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: saving
+                      ? null
+                      : () async {
+                          final name = nameCtrl.text.trim();
+                          if (name.isEmpty) return;
+                          setLocal(() => saving = true);
+                          try {
+                            await _api.updateStudentGroup(
+                              widget.groupId,
+                              name: name,
+                              description: descCtrl.text.trim(),
+                            );
+                            if (ctx.mounted) Navigator.pop(ctx, true);
+                          } on ApiException catch (e) {
+                            setLocal(() => saving = false);
+                            if (ctx.mounted) {
+                              ScaffoldMessenger.of(ctx).showSnackBar(
+                                SnackBar(content: Text(e.message)),
+                              );
+                            }
+                          } catch (_) {
+                            setLocal(() => saving = false);
+                          }
+                        },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    final newName = nameCtrl.text.trim();
+    final newImage = imageUrl;
+    nameCtrl.dispose();
+    descCtrl.dispose();
+    if (saved == true && mounted) {
+      setState(() {
+        if (newName.isNotEmpty) _title = newName;
+        _imageUrl = newImage;
+      });
+      await _load();
+    } else if (newImage != (_imageUrl ?? '') && mounted) {
+      setState(() => _imageUrl = newImage);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final memberCount = _groupInfo?['member_count'] ?? 0;
+    final isAdmin = _groupInfo?['is_admin'] == true;
+    final image = (_imageUrl ?? '').trim();
+    final imageResolved =
+        image.isEmpty ? '' : _api.resolveMediaUrl(image);
 
     return Scaffold(
       backgroundColor: context.bgColor,
@@ -239,24 +429,54 @@ class _GroupChatScreenState extends State<GroupChatScreen> {
         backgroundColor: context.headerColor,
         elevation: 0,
         leading: const StudentBackButton(),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        title: Row(
           children: [
-            Text(
-              widget.groupName,
-              style: TextStyle(
-                color: context.textColor,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
+            CircleAvatar(
+              radius: 16,
+              backgroundColor: context.accentColor.withOpacity(0.15),
+              backgroundImage: imageResolved.isNotEmpty
+                  ? NetworkImage(imageResolved)
+                  : null,
+              child: imageResolved.isEmpty
+                  ? Text(
+                      _title.isNotEmpty ? _title[0].toUpperCase() : 'G',
+                      style: TextStyle(
+                        color: context.accentColor,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                      ),
+                    )
+                  : null,
             ),
-            Text(
-              '$memberCount member${memberCount == 1 ? '' : 's'}',
-              style: TextStyle(color: context.greyColor, fontSize: 11),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _title,
+                    style: TextStyle(
+                      color: context.textColor,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Text(
+                    '$memberCount member${memberCount == 1 ? '' : 's'}',
+                    style: TextStyle(color: context.greyColor, fontSize: 11),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
         actions: [
+          if (isAdmin)
+            IconButton(
+              tooltip: 'Edit group',
+              onPressed: _editGroupFromChat,
+              icon: Icon(Icons.edit_rounded, color: context.accentColor),
+            ),
           IconButton(
             tooltip: 'Group voice call',
             onPressed: _error != null ? null : _startCall,

@@ -50,6 +50,7 @@ class PromoteGroupRequest(BaseModel):
 class UpdateGroupRequest(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    image_url: Optional[str] = None
 
 
 class GroupMessageBody(BaseModel):
@@ -71,6 +72,7 @@ def _group_dict(grp: StudentGroup, mem, pending, member_count: int, creator_name
         "id": str(grp.id),
         "name": grp.name,
         "description": grp.description,
+        "image_url": grp.image_url,
         "is_public": grp.is_public,
         "is_community_listed": grp.is_community_listed,
         "is_approved": grp.is_approved,
@@ -386,8 +388,24 @@ async def update_group(
         group.name = name
     if payload.description is not None:
         group.description = (payload.description or "").strip() or None
+    if payload.image_url is not None:
+        image = (payload.image_url or "").strip()
+        if image:
+            if not (image.startswith("http://") or image.startswith("https://")):
+                raise HTTPException(status_code=400, detail="image_url must be an http(s) URL.")
+            if len(image) > 1000:
+                raise HTTPException(status_code=400, detail="image_url is too long.")
+            group.image_url = image
+        else:
+            group.image_url = None
     await db.flush()
-    return {"id": str(group.id), "name": group.name, "description": group.description, "message": "Group updated."}
+    return {
+        "id": str(group.id),
+        "name": group.name,
+        "description": group.description,
+        "image_url": group.image_url,
+        "message": "Group updated.",
+    }
 
 
 @router.delete("/{group_id}")

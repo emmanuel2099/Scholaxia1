@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../api/api_service.dart';
 import '../../../theme/app_theme.dart';
+import '../../../utils/post_attachment_picker.dart';
 import 'group_chat_screen.dart';
 
 /// Groups list + create — matches desktop Groups tab APIs:
@@ -246,9 +247,235 @@ class _GroupsPanelState extends State<GroupsPanel> {
         builder: (_) => GroupChatScreen(
           groupId: id,
           groupName: group['name']?.toString() ?? 'Group',
+          groupImageUrl: group['image_url']?.toString(),
         ),
       ),
     ).then((_) => _load());
+  }
+
+  Future<void> _editGroup(Map<String, dynamic> group) async {
+    final id = group['id']?.toString();
+    if (id == null || id.isEmpty) return;
+
+    final nameCtrl = TextEditingController(text: group['name']?.toString() ?? '');
+    final descCtrl =
+        TextEditingController(text: group['description']?.toString() ?? '');
+    var imageUrl = group['image_url']?.toString() ?? '';
+    var uploading = false;
+    var saving = false;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setLocal) {
+            final preview = imageUrl.trim();
+            return AlertDialog(
+              backgroundColor: context.cardColor,
+              title: Text(
+                'Edit group',
+                style: TextStyle(color: context.textColor),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    GestureDetector(
+                      onTap: uploading
+                          ? null
+                          : () async {
+                              try {
+                                final picked = await pickPostAttachment('photo');
+                                if (picked == null) return;
+                                setLocal(() => uploading = true);
+                                final url = await _api.updateStudentGroupImage(
+                                  id,
+                                  picked.bytes,
+                                  picked.name,
+                                );
+                                setLocal(() {
+                                  imageUrl = url;
+                                  uploading = false;
+                                });
+                              } on ApiException catch (e) {
+                                setLocal(() => uploading = false);
+                                if (ctx.mounted) {
+                                  ScaffoldMessenger.of(ctx).showSnackBar(
+                                    SnackBar(content: Text(e.message)),
+                                  );
+                                }
+                              } catch (_) {
+                                setLocal(() => uploading = false);
+                                if (ctx.mounted) {
+                                  ScaffoldMessenger.of(ctx).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Could not upload image.'),
+                                    ),
+                                  );
+                                }
+                              }
+                            },
+                      child: Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          CircleAvatar(
+                            radius: 36,
+                            backgroundColor:
+                                context.accentColor.withOpacity(0.15),
+                            backgroundImage: preview.isNotEmpty
+                                ? NetworkImage(_api.resolveMediaUrl(preview))
+                                : null,
+                            child: preview.isEmpty
+                                ? Text(
+                                    (nameCtrl.text.isNotEmpty
+                                            ? nameCtrl.text[0]
+                                            : 'G')
+                                        .toUpperCase(),
+                                    style: TextStyle(
+                                      color: context.accentColor,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 22,
+                                    ),
+                                  )
+                                : null,
+                          ),
+                          if (uploading)
+                            const SizedBox(
+                              width: 28,
+                              height: 28,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          else
+                            Positioned(
+                              right: 0,
+                              bottom: 0,
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: context.accentColor,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.camera_alt_rounded,
+                                  size: 14,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Tap to change group photo',
+                      style: TextStyle(color: context.greyColor, fontSize: 12),
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: nameCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Group name',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: descCtrl,
+                      maxLines: 2,
+                      decoration: const InputDecoration(
+                        labelText: 'Description',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: saving ? null : () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: saving
+                      ? null
+                      : () async {
+                          final name = nameCtrl.text.trim();
+                          if (name.isEmpty) {
+                            ScaffoldMessenger.of(ctx).showSnackBar(
+                              const SnackBar(
+                                content: Text('Name is required.'),
+                              ),
+                            );
+                            return;
+                          }
+                          setLocal(() => saving = true);
+                          try {
+                            await _api.updateStudentGroup(
+                              id,
+                              name: name,
+                              description: descCtrl.text.trim(),
+                            );
+                            if (ctx.mounted) Navigator.pop(ctx, true);
+                          } on ApiException catch (e) {
+                            setLocal(() => saving = false);
+                            if (ctx.mounted) {
+                              ScaffoldMessenger.of(ctx).showSnackBar(
+                                SnackBar(content: Text(e.message)),
+                              );
+                            }
+                          } catch (_) {
+                            setLocal(() => saving = false);
+                          }
+                        },
+                  child: saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    nameCtrl.dispose();
+    descCtrl.dispose();
+    if (saved == true && mounted) await _load();
+  }
+
+  Widget _groupAvatar(BuildContext context, Map<String, dynamic> g) {
+    final name = g['name']?.toString() ?? 'G';
+    final raw = g['image_url']?.toString() ?? '';
+    final url = raw.isEmpty ? '' : _api.resolveMediaUrl(raw);
+    return Container(
+      width: 44,
+      height: 44,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: context.accentColor.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(12),
+        image: url.isNotEmpty
+            ? DecorationImage(
+                image: NetworkImage(url),
+                fit: BoxFit.cover,
+              )
+            : null,
+      ),
+      child: url.isEmpty
+          ? Text(
+              name.isNotEmpty ? name[0].toUpperCase() : 'G',
+              style: TextStyle(
+                color: context.accentColor,
+                fontWeight: FontWeight.w800,
+                fontSize: 18,
+              ),
+            )
+          : null,
+    );
   }
 
   @override
@@ -565,23 +792,7 @@ class _GroupsPanelState extends State<GroupsPanel> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 44,
-                height: 44,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: context.accentColor.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  name.isNotEmpty ? name[0].toUpperCase() : 'G',
-                  style: TextStyle(
-                    color: context.accentColor,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 18,
-                  ),
-                ),
-              ),
+              _groupAvatar(context, g),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -627,7 +838,15 @@ class _GroupsPanelState extends State<GroupsPanel> {
                   ),
                   child: const Text('Open chat'),
                 ),
-                if (isAdmin)
+                if (isAdmin) ...[
+                  OutlinedButton(
+                    onPressed: () => _editGroup(g),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: context.accentColor,
+                      side: BorderSide(color: context.accentColor.withOpacity(0.5)),
+                    ),
+                    child: const Text('Edit'),
+                  ),
                   OutlinedButton(
                     onPressed: () => _manageJoinRequests(g),
                     style: OutlinedButton.styleFrom(
@@ -636,6 +855,7 @@ class _GroupsPanelState extends State<GroupsPanel> {
                     ),
                     child: const Text('Requests'),
                   ),
+                ],
               ] else if (isMember && !approved)
                 Text(
                   'Waiting for Scholaxia admin approval',

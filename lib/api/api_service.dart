@@ -1538,6 +1538,40 @@ class ApiService {
     return _parseMap(res);
   }
 
+  Future<Map<String, dynamic>> updateStudentGroup(
+    String groupId, {
+    String? name,
+    String? description,
+    String? imageUrl,
+  }) async {
+    final body = <String, dynamic>{};
+    if (name != null) body['name'] = name.trim();
+    if (description != null) body['description'] = description.trim();
+    if (imageUrl != null) body['image_url'] = imageUrl.trim();
+    final res = await http.patch(
+      _uri(ApiEndpoints.studentGroup(groupId)),
+      headers: await _authHeaders(),
+      body: jsonEncode(body),
+    );
+    return _parseMap(res);
+  }
+
+  /// Upload a photo then save it as the group image (admins/creators).
+  Future<String> updateStudentGroupImage(
+    String groupId,
+    List<int> bytes,
+    String filename,
+  ) async {
+    final uploaded = await communityUpload(bytes, filename);
+    final raw = uploaded['file_url']?.toString() ?? '';
+    final url = resolveMediaUrl(raw);
+    if (url.isEmpty) {
+      throw const ApiException.message('Upload failed — no image URL returned.');
+    }
+    await updateStudentGroup(groupId, imageUrl: url);
+    return url;
+  }
+
   Future<List<dynamic>> myStudentGroups() async {
     final res = await http.get(
       _uri(ApiEndpoints.studentGroupsMine),

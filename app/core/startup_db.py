@@ -128,6 +128,9 @@ async def _run_schema_migrations(conn) -> None:
         "ALTER TABLE student_groups ADD COLUMN IF NOT EXISTS is_approved BOOLEAN NOT NULL DEFAULT TRUE"
     ))
     await conn.execute(text(
+        "ALTER TABLE student_groups ADD COLUMN IF NOT EXISTS image_url VARCHAR(1000)"
+    ))
+    await conn.execute(text(
         "UPDATE student_groups SET is_approved = TRUE WHERE is_approved IS NULL"
     ))
     await conn.execute(text(
