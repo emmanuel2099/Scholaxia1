@@ -792,7 +792,33 @@ class _GroupsPanelState extends State<GroupsPanel> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _groupAvatar(context, g),
+              GestureDetector(
+                onTap: isAdmin ? () => _editGroup(g) : null,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    _groupAvatar(context, g),
+                    if (isAdmin)
+                      Positioned(
+                        right: -4,
+                        bottom: -4,
+                        child: Container(
+                          padding: const EdgeInsets.all(3),
+                          decoration: BoxDecoration(
+                            color: context.accentColor,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: context.cardColor, width: 2),
+                          ),
+                          child: const Icon(
+                            Icons.edit_rounded,
+                            size: 12,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -821,6 +847,12 @@ class _GroupsPanelState extends State<GroupsPanel> {
                   ],
                 ),
               ),
+              if (isAdmin)
+                IconButton(
+                  tooltip: 'Edit group',
+                  onPressed: () => _editGroup(g),
+                  icon: Icon(Icons.settings_rounded, color: context.accentColor),
+                ),
             ],
           ),
           const SizedBox(height: 12),
@@ -839,13 +871,17 @@ class _GroupsPanelState extends State<GroupsPanel> {
                   child: const Text('Open chat'),
                 ),
                 if (isAdmin) ...[
-                  OutlinedButton(
+                  ElevatedButton.icon(
                     onPressed: () => _editGroup(g),
-                    style: OutlinedButton.styleFrom(
+                    icon: const Icon(Icons.edit_rounded, size: 16),
+                    label: const Text('Edit group'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: context.headerColor,
                       foregroundColor: context.accentColor,
-                      side: BorderSide(color: context.accentColor.withOpacity(0.5)),
+                      elevation: 0,
+                      side: BorderSide(color: context.accentColor),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
-                    child: const Text('Edit'),
                   ),
                   OutlinedButton(
                     onPressed: () => _manageJoinRequests(g),
