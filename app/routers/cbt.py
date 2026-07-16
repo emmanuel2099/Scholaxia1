@@ -328,7 +328,7 @@ async def exams_for_student(
     Practice + school exams filtered by the student's exam boards and subjects.
     Returns jamb_exams and ssce_exams so the app can show JAMB | WAEC/NECO tabs.
     """
-    from app.routers.students import _profile_boards
+    from app.routers.students import _profile_boards, _is_jss_level
 
     profile_res = await db.execute(
         select(StudentProfile).where(StudentProfile.user_id == current_user["sub"])
@@ -352,9 +352,10 @@ async def exams_for_student(
             detail="Complete exam setup first at /students/setup-exam",
         )
 
-    is_junior = level.startswith("JSS") or (ssce_board == "JUNIOR_WAEC") or (
+    is_junior = (ssce_board == "JUNIOR_WAEC") or (
         profile.exam_type and profile.exam_type.value == "JUNIOR_WAEC"
-    )
+    ) or _is_jss_level(profile.education_level or "")
+    is_common_entrance = ssce_board == "COMMON_ENTRANCE"
     now = datetime.utcnow()
 
     result = await db.execute(
@@ -368,6 +369,8 @@ async def exams_for_student(
 
     def _is_ssce(et: str) -> bool:
         t = (et or "").upper().replace(" ", "_")
+        if is_common_entrance:
+            return t in ("COMMON_ENTRANCE", "CE", "COMMONENTRANCE") or "COMMON" in t
         if is_junior:
             return t in ("JUNIOR_WAEC", "BECE", "JSSCE", "JUNIORWAEC") or "JUNIOR" in t
         if ssce_board == "NECO":
@@ -407,13 +410,16 @@ async def exams_for_student(
     if jamb_subjects:
         active_boards.append("JAMB")
     if ssce_subjects:
-        label = "JUNIOR_WAEC" if is_junior else (ssce_board or "WAEC")
-        if label == "NECO":
-            active_boards.append("WAEC_NECO")
-        elif label == "JUNIOR_WAEC":
+        if is_common_entrance:
+            active_boards.append("COMMON_ENTRANCE")
+        elif is_junior:
             active_boards.append("JUNIOR_WAEC")
         else:
-            active_boards.append("WAEC_NECO")
+            label = ssce_board or "WAEC"
+            if label == "NECO":
+                active_boards.append("WAEC_NECO")
+            else:
+                active_boards.append("WAEC_NECO")
 
     return {
         "exam_type": profile.exam_type.value if profile.exam_type else None,

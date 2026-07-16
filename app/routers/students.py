@@ -41,7 +41,12 @@ def _is_primary_6(level: str) -> bool:
 
 def _is_jss_level(level: str) -> bool:
     n = _norm_level(level)
-    return n.startswith("JSS")
+    return n == "JSS3"
+
+
+def _is_common_entrance_level(level: str) -> bool:
+    n = _norm_level(level)
+    return n in ("COMMONENTRANCE", "COMMON_ENTRANCE", "CE")
 
 
 class ExamSetupRequest(BaseModel):
@@ -88,7 +93,7 @@ def _profile_boards(profile: StudentProfile) -> dict:
     jamb = list(profile.jamb_subjects or [])
     ssce = list(profile.ssce_subjects or [])
     ssce_board = (profile.ssce_exam_type or "").upper().strip() or None
-    if ssce_board and ssce_board not in ("WAEC", "NECO", "JUNIOR_WAEC"):
+    if ssce_board and ssce_board not in ("WAEC", "NECO", "JUNIOR_WAEC", "COMMON_ENTRANCE"):
         ssce_board = None
 
     et = profile.exam_type.value if profile.exam_type else None
@@ -103,6 +108,9 @@ def _profile_boards(profile: StudentProfile) -> dict:
         elif et == "JUNIOR_WAEC":
             ssce = selected
             ssce_board = "JUNIOR_WAEC"
+        elif et == "COMMON_ENTRANCE":
+            ssce = selected
+            ssce_board = "COMMON_ENTRANCE"
         elif et == "ALL":
             # Old ALL rows: treat subjects as shared until re-setup
             jamb = selected[:4] if len(selected) >= 4 else selected
@@ -171,7 +179,35 @@ async def setup_exam(
     current_user: dict = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ):
-    # JSS1–3 → Junior WAEC CBT (admin uploads JUNIOR_WAEC exams).
+    # Common Entrance — 9 subjects, one CBT subject at a time.
+    if _is_common_entrance_level(payload.education_level):
+        subjects = _uniq(payload.ssce_subjects or payload.subjects or [])
+        if len(subjects) != 9:
+            raise HTTPException(status_code=400, detail="Common Entrance requires exactly 9 subjects")
+        result = await db.execute(select(StudentProfile).where(StudentProfile.user_id == current_user["sub"]))
+        profile = result.scalar_one_or_none()
+        if not profile:
+            profile = StudentProfile(user_id=current_user["sub"])
+            db.add(profile)
+        profile.exam_type = ExamType.WAEC
+        profile.selected_subjects = subjects
+        profile.jamb_subjects = []
+        profile.ssce_subjects = subjects
+        profile.ssce_exam_type = "COMMON_ENTRANCE"
+        profile.education_level = payload.education_level
+        await db.flush()
+        return {
+            "message": "Exam setup complete",
+            "exam_type": "COMMON_ENTRANCE",
+            "subjects": subjects,
+            "jamb_subjects": [],
+            "ssce_subjects": subjects,
+            "ssce_exam_type": "COMMON_ENTRANCE",
+            "education_level": payload.education_level,
+            "setup_complete": True,
+        }
+
+    # JSS3 → Junior WAEC CBT (admin uploads JUNIOR_WAEC exams).
     if _is_jss_level(payload.education_level):
         exam_type = ExamType.JUNIOR_WAEC
         subjects = _uniq(payload.ssce_subjects or payload.subjects or [])
@@ -256,8 +292,8 @@ async def setup_exam(
         jamb = _uniq(payload.jamb_subjects) if enable_jamb else []
         ssce = _uniq(payload.ssce_subjects) if enable_ssce else []
         ssce_board = (payload.ssce_exam_type or "WAEC").upper().strip()
-        if enable_ssce and ssce_board not in ("WAEC", "NECO"):
-            raise HTTPException(status_code=400, detail="SSCE board must be WAEC or NECO")
+        if enable_ssce and ssce_board not in ("WAEC", "NECO", "COMMON_ENTRANCE"):
+            raise HTTPException(status_code=400, detail="SSCE board must be WAEC, NECO, or COMMON_ENTRANCE")
         if enable_jamb and len(jamb) != 4:
             raise HTTPException(status_code=400, detail="JAMB requires exactly 4 subjects")
         if enable_ssce and len(ssce) < 1:

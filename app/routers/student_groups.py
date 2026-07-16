@@ -478,6 +478,7 @@ async def get_group(
         "id": str(grp.id),
         "name": grp.name,
         "description": grp.description,
+        "image_url": getattr(grp, "image_url", None),
         "is_community_listed": grp.is_community_listed,
         "is_approved": grp.is_approved,
         "is_member": mem is not None,
