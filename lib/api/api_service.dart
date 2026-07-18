@@ -559,6 +559,240 @@ class ApiService {
     return _parseMap(res);
   }
 
+  // ── Scholaxia Intellect League ──────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> silMeta() async {
+    final res = await http.get(_uri(ApiEndpoints.silMeta));
+    return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> silStatus() async {
+    final res = await http.get(
+      _uri(ApiEndpoints.silStatus),
+      headers: await _authHeaders(),
+    );
+    return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> silRegister(Map<String, dynamic> body) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.silRegister),
+      headers: await _authHeaders(),
+      body: jsonEncode(body),
+    );
+    return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> silFaceVerify({
+    required String faceSelfieB64,
+    String? matchId,
+    bool livenessOk = true,
+  }) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.silFaceVerify),
+      headers: await _authHeaders(),
+      body: jsonEncode({
+        'face_selfie_b64': faceSelfieB64,
+        if (matchId != null) 'match_id': matchId,
+        'liveness_ok': livenessOk,
+      }),
+    );
+    return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> silWallet() async {
+    final res = await http.get(
+      _uri(ApiEndpoints.silWallet),
+      headers: await _authHeaders(),
+    );
+    return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> silWalletBuy(String package) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.silWalletBuy),
+      headers: await _authHeaders(),
+      body: jsonEncode({'package': package}),
+    );
+    return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> silDashboard() async {
+    final res = await http.get(
+      _uri(ApiEndpoints.silDashboard),
+      headers: await _authHeaders(),
+    );
+    return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> silStartPractice({
+    String subject = 'General Knowledge',
+    int questionCount = 10,
+  }) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.silPractice),
+      headers: await _authHeaders(),
+      body: jsonEncode({
+        'subject': subject,
+        'question_count': questionCount,
+      }),
+    );
+    return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> silStartAi(int level) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.silAi),
+      headers: await _authHeaders(),
+      body: jsonEncode({'level': level}),
+    );
+    return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> silStartStudentChallenge({
+    String? opponentGamerTag,
+    int betCoins = 100,
+    String subject = 'General Knowledge',
+  }) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.silStudentChallenge),
+      headers: await _authHeaders(),
+      body: jsonEncode({
+        if (opponentGamerTag != null) 'opponent_gamer_tag': opponentGamerTag,
+        'bet_coins': betCoins,
+        'subject': subject,
+      }),
+    );
+    return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> silStartClassChallenge() async {
+    final res = await http.post(
+      _uri(ApiEndpoints.silClassChallenge),
+      headers: await _authHeaders(),
+      body: '{}',
+    );
+    return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> silStartSchoolChallenge({
+    String opponentSchool = 'Rival Academy',
+  }) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.silSchoolChallenge, {'opponent_school': opponentSchool}),
+      headers: await _authHeaders(),
+      body: '{}',
+    );
+    return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> silStartFriday() async {
+    final res = await http.post(
+      _uri(ApiEndpoints.silFriday),
+      headers: await _authHeaders(),
+      body: '{}',
+    );
+    return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> silFinishMatch(
+    String matchId,
+    List<Map<String, dynamic>> answers,
+  ) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.silMatchFinish(matchId)),
+      headers: await _authHeaders(),
+      body: jsonEncode({'answers': answers}),
+    );
+    return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> silAnticheat(
+    String matchId,
+    String eventType, {
+    String? detail,
+    Map<String, dynamic>? meta,
+  }) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.silMatchAnticheat(matchId)),
+      headers: await _authHeaders(),
+      body: jsonEncode({
+        'event_type': eventType,
+        if (detail != null) 'detail': detail,
+        if (meta != null) 'meta': meta,
+      }),
+    );
+    return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> silHeartbeat(
+    String matchId, {
+    required bool faceInFrame,
+    required int faceCount,
+    double? luminance,
+    String? detail,
+  }) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.silMatchHeartbeat(matchId)),
+      headers: await _authHeaders(),
+      body: jsonEncode({
+        'face_in_frame': faceInFrame,
+        'face_count': faceCount,
+        if (luminance != null) 'luminance': luminance,
+        if (detail != null) 'detail': detail,
+      }),
+    );
+    return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> silDeviceReport({
+    required bool isEmulator,
+    required bool isRooted,
+    required bool isJailbroken,
+    String? platform,
+    String? model,
+    String? matchId,
+    Map<String, dynamic>? raw,
+  }) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.silDeviceReport),
+      headers: await _authHeaders(),
+      body: jsonEncode({
+        'is_emulator': isEmulator,
+        'is_rooted': isRooted,
+        'is_jailbroken': isJailbroken,
+        if (platform != null) 'platform': platform,
+        if (model != null) 'model': model,
+        if (matchId != null) 'match_id': matchId,
+        if (raw != null) 'raw': raw,
+      }),
+    );
+    return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> silLeaderboard({
+    String scope = 'national',
+    String? state,
+    String? school,
+  }) async {
+    final query = <String, String>{'scope': scope};
+    if (state != null) query['state'] = state;
+    if (school != null) query['school'] = school;
+    final res = await http.get(
+      _uri(ApiEndpoints.silLeaderboard, query),
+      headers: await _authHeaders(),
+    );
+    return _parseMap(res);
+  }
+
+  Future<List<dynamic>> silHistory() async {
+    final res = await http.get(
+      _uri(ApiEndpoints.silHistory),
+      headers: await _authHeaders(),
+    );
+    return _parseList(res);
+  }
+
   // ── Library ────────────────────────────────────────────────────────────────
 
   Future<List<dynamic>> libraryStudentBooks({

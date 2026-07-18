@@ -1,8 +1,8 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter_tts/flutter_tts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../api/api_service.dart';
+import '../../services/sia_voice_service.dart';
 import '../../theme/app_theme.dart';
 import 'kind_adventure_banks.dart';
 import 'kind_game_banks.dart';
@@ -37,9 +37,9 @@ class KindGameScreen extends StatefulWidget {
 }
 
 class _KindGameScreenState extends State<KindGameScreen> {
-  /// Up to 50 questions per play. Banks are 50+; admin questions grow the
+  /// Up to 10 questions per play. Banks stay large; admin questions grow the
   /// bank so full recycle only happens after every question was seen.
-  static const _sessionSize = 50;
+  static const _sessionSize = 10;
 
   List<GameQuestion> _questions = [];
   int _index = 0;
@@ -51,7 +51,6 @@ class _KindGameScreenState extends State<KindGameScreen> {
   int _leafLevel = 1;
   LeafUnlockResult? _leafResult;
   int _poolSize = 0;
-  final _tts = FlutterTts();
   final _api = ApiService();
 
   String get _seenKey => 'kidgame_seen_${widget.gameId}';
@@ -59,53 +58,14 @@ class _KindGameScreenState extends State<KindGameScreen> {
   @override
   void initState() {
     super.initState();
-    _initTts();
+    // Cloud TTS (safe on Windows) — same path as Kind Sia voice.
+    SiaVoiceService.instance.init();
     _prepareSession();
-  }
-
-  Future<void> _initTts() async {
-    try {
-      await _tts.setLanguage('en-US');
-      // Slower + slightly higher pitch for a calm female reading voice.
-      await _tts.setSpeechRate(0.28);
-      await _tts.setPitch(1.18);
-      await _tts.setVolume(1.0);
-      final voices = await _tts.getVoices;
-      if (voices is List && voices.isNotEmpty) {
-        Map<String, dynamic>? chosen;
-        for (final raw in voices) {
-          if (raw is! Map) continue;
-          final v = Map<String, dynamic>.from(raw);
-          final name = (v['name'] ?? '').toString().toLowerCase();
-          final locale = (v['locale'] ?? '').toString().toLowerCase();
-          if (!locale.startsWith('en')) continue;
-          if (name.contains('zira') ||
-              name.contains('samantha') ||
-              name.contains('jenny') ||
-              name.contains('karen') ||
-              name.contains('victoria') ||
-              name.contains('female') ||
-              name.contains('aria') ||
-              name.contains('hazel') ||
-              name.contains('susan') ||
-              name.contains('moira')) {
-            chosen = v;
-            break;
-          }
-        }
-        if (chosen != null) {
-          await _tts.setVoice({
-            'name': '${chosen['name']}',
-            'locale': '${chosen['locale']}',
-          });
-        }
-      }
-    } catch (_) {}
   }
 
   @override
   void dispose() {
-    _tts.stop();
+    SiaVoiceService.instance.stop();
     super.dispose();
   }
 
@@ -201,9 +161,10 @@ class _KindGameScreenState extends State<KindGameScreen> {
     final text = _speakText(_questions[_index]);
     if (text.isEmpty) return;
     try {
-      await _tts.stop();
-      await _tts.speak(text);
-    } catch (_) {}
+      await SiaVoiceService.instance.speak(text);
+    } catch (e) {
+      debugPrint('KindGame speak skipped: $e');
+    }
   }
 
   void _pick(int i) {

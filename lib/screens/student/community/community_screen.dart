@@ -40,6 +40,8 @@ class _CommunityScreenState extends State<CommunityScreen>
 
   String _generalChannelName = '';
   final Map<String, int> _commentCounts = {};
+  /// Replies keyed by parent post id — shown inline (no need to open sheet).
+  final Map<String, List<Map<String, dynamic>>> _commentsByPost = {};
   String? _myUserId;
   String? _channelError;
 
@@ -427,19 +429,29 @@ class _CommunityScreenState extends State<CommunityScreen>
     try {
       final comments = await _api.listAllPostComments(channelId: _generalChannelId);
       final counts = <String, int>{};
+      final byPost = <String, List<Map<String, dynamic>>>{};
       for (final m in comments) {
         if (m is! Map) continue;
-        final content = m['content']?.toString() ?? '';
+        final map = Map<String, dynamic>.from(m);
+        final content = map['content']?.toString() ?? '';
         final match = RegExp(r'^@post:([^\s]+)').firstMatch(content);
         if (match != null) {
           final id = match.group(1)!;
           counts[id] = (counts[id] ?? 0) + 1;
+          byPost.putIfAbsent(id, () => []).add(map);
         }
+      }
+      for (final list in byPost.values) {
+        list.sort((a, b) => (a['created_at']?.toString() ?? '')
+            .compareTo(b['created_at']?.toString() ?? ''));
       }
       if (mounted) setState(() {
         _commentCounts
           ..clear()
           ..addAll(counts);
+        _commentsByPost
+          ..clear()
+          ..addAll(byPost);
       });
     } catch (_) {}
   }
@@ -1062,38 +1074,49 @@ class _CommunityScreenState extends State<CommunityScreen>
           const SizedBox(height: 10),
           VoiceNotePlayer(mediaUrl: mediaUrl),
         ],
-        const SizedBox(height: 10),
-        Row(children: [
-          GestureDetector(
-            onTap: () => _toggleLike(postId),
-            child: Row(children: [
-              Icon(likedByMe ? Icons.thumb_up : Icons.thumb_up_outlined,
-                  color: likedByMe ? context.accentColor : context.greyColor, size: 15),
-              const SizedBox(width: 4),
-              Text('$likeCount',
+        const SizedBox(height: 8),
+        // Tap Comment to open replies in a sheet (not nested under the post).
+        Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: Wrap(
+            spacing: 12,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              GestureDetector(
+                onTap: () => _toggleLike(postId),
+                child: Text(
+                  likeCount > 0 ? 'Like · $likeCount' : 'Like',
                   style: TextStyle(
-                      color: likedByMe ? context.accentColor : context.greyColor,
-                      fontSize: 12,
-                      fontWeight: likedByMe ? FontWeight.w600 : FontWeight.normal)),
-            ]),
-          ),
-          const SizedBox(width: 16),
-          GestureDetector(
-            onTap: () => _openComments(context, post),
-            child: Row(children: [
-              Icon(Icons.chat_bubble_outline,
-                  color: commentCount > 0 ? context.accentColor : context.greyColor,
-                  size: 15),
-              const SizedBox(width: 4),
-              Text(commentCount > 0 ? '$commentCount' : 'Comment',
+                    color: likedByMe ? context.accentColor : context.greyLColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              GestureDetector(
+                onTap: () => _openComments(context, post),
+                child: Text(
+                  commentCount > 0
+                      ? (commentCount == 1
+                          ? '1 comment'
+                          : '$commentCount comments')
+                      : 'Comment',
                   style: TextStyle(
-                      color: commentCount > 0 ? context.accentColor : context.greyColor,
-                      fontSize: 12,
-                      fontWeight:
-                          commentCount > 0 ? FontWeight.w600 : FontWeight.normal)),
-            ]),
+                    color: commentCount > 0
+                        ? context.accentColor
+                        : context.greyLColor,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              Text(
+                _formatTime(createdAt),
+                style: TextStyle(color: context.greyColor, fontSize: 11),
+              ),
+            ],
           ),
-        ]),
+        ),
       ]),
     );
   }

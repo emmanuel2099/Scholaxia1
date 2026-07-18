@@ -4,6 +4,7 @@ import '../../../services/community_badge.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/voice_note_player.dart';
 import '../../../widgets/voice_note_recorder.dart';
+import '../../student/community/post_comments_sheet.dart';
 import '../teacher_shared.dart';
 
 class TeacherNoticesScreen extends StatefulWidget {
@@ -406,9 +407,8 @@ class _TeacherNoticesScreenState extends State<TeacherNoticesScreen>
             child: _StudentPostCard(
               post: p,
               isOwn: isOwn,
-              replies: _comments[pid] ?? const [],
-              teacherName: _teacherName,
-              onReply: () => setState(() => _replyingTo = p),
+              commentCount: (_comments[pid] ?? const []).length,
+              onOpenComments: () => _openComments(p),
               onEdit: isOwn ? () => _editTeacherPost(p) : null,
               onDelete: isOwn ? () => _deleteTeacherPost(pid) : null,
             ),
@@ -416,6 +416,35 @@ class _TeacherNoticesScreenState extends State<TeacherNoticesScreen>
         },
       ),
     );
+  }
+
+  void _openComments(Map<String, dynamic> post) {
+    final postId = post['id']?.toString() ?? '';
+    if (postId.isEmpty || _generalChannelId.isEmpty) return;
+    final author = post['author_name']?.toString() ?? 'Student';
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: context.cardColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => PostCommentsSheet(
+        postId: postId,
+        channelId: _generalChannelId,
+        postAuthor: author,
+        onCountChanged: (count) {
+          if (!mounted) return;
+          setState(() {
+            // Keep local cache length in sync after sheet edits.
+            final list = _comments.putIfAbsent(postId, () => []);
+            while (list.length > count) {
+              list.removeLast();
+            }
+          });
+        },
+      ),
+    ).then((_) => _load());
   }
 
   Future<void> _editTeacherPost(Map<String, dynamic> post) async {
@@ -701,17 +730,15 @@ class _NoticeCard extends StatelessWidget {
 class _StudentPostCard extends StatelessWidget {
   final Map<String, dynamic> post;
   final bool isOwn;
-  final List<Map<String, dynamic>> replies;
-  final String? teacherName;
-  final VoidCallback? onReply;
+  final int commentCount;
+  final VoidCallback? onOpenComments;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
   const _StudentPostCard({
     required this.post,
     this.isOwn = false,
-    this.replies = const [],
-    this.teacherName,
-    this.onReply,
+    this.commentCount = 0,
+    this.onOpenComments,
     this.onEdit,
     this.onDelete,
   });
@@ -725,188 +752,131 @@ class _StudentPostCard extends StatelessWidget {
         TeacherUtils.relativeTime(post['created_at']?.toString() ?? '');
     final mediaUrl = post['media_url']?.toString() ?? '';
     final mediaType = post['media_type']?.toString() ?? '';
-    final bubble = Align(
-      alignment: isOwn ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.85,
-        ),
-        decoration: BoxDecoration(
-          color: isOwn ? context.accentColor.withOpacity(0.22) : null,
-          gradient: isOwn
-              ? null
-              : LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    context.accentColor.withOpacity(0.12),
-                    context.accentColor.withOpacity(0.06),
-                  ],
-                ),
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(18),
-            topRight: const Radius.circular(18),
-            bottomLeft: Radius.circular(isOwn ? 18 : 4),
-            bottomRight: Radius.circular(isOwn ? 4 : 18),
-          ),
-          border: Border.all(color: context.accentColor.withOpacity(0.2)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  radius: 14,
-                  backgroundColor: context.accentColor.withOpacity(0.2),
-                  child: Text(
-                    author.isNotEmpty ? author[0].toUpperCase() : 'S',
-                    style: TextStyle(
-                      color: context.accentColor,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    author,
-                    style: TextStyle(
-                      color: context.textColor,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                Text(time,
-                    style: TextStyle(color: context.greyColor, fontSize: 10)),
-                if (isOwn && (onEdit != null || onDelete != null))
-                  PopupMenuButton<String>(
-                    icon: Icon(Icons.more_vert,
-                        size: 18, color: context.greyColor),
-                    onSelected: (v) {
-                      if (v == 'edit') onEdit?.call();
-                      if (v == 'delete') onDelete?.call();
-                    },
-                    itemBuilder: (_) => [
-                      if (onEdit != null)
-                        const PopupMenuItem(value: 'edit', child: Text('Edit')),
-                      if (onDelete != null)
-                        const PopupMenuItem(
-                            value: 'delete', child: Text('Delete')),
-                    ],
-                  ),
-              ],
-            ),
-            if (content.isNotEmpty && !content.startsWith('@post:')) ...[
-              const SizedBox(height: 8),
-              Text(
-                content,
-                style: TextStyle(
-                  color: context.textColor,
-                  fontSize: 14,
-                  height: 1.45,
-                ),
-              ),
-            ],
-            if (mediaUrl.isNotEmpty && mediaType == 'audio') ...[
-              const SizedBox(height: 10),
-              VoiceNotePlayer(mediaUrl: mediaUrl),
-            ],
-          ],
-        ),
-      ),
-    );
+    final text = content.startsWith('@post:') ? '' : content;
+    final nameColor = isOwn ? context.accentColor : context.textColor;
 
-    final sortedReplies = [...replies]..sort((a, b) =>
-        (a['created_at']?.toString() ?? '')
-            .compareTo(b['created_at']?.toString() ?? ''));
-
-    return Column(
+    // Feed shows the message only. Tap Comment to open replies (Facebook-style).
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        bubble,
-        for (final r in sortedReplies)
-          Padding(
-            padding: const EdgeInsets.only(left: 24, top: 6),
-            child: _ReplyBubble(reply: r, teacherName: teacherName),
-          ),
-        if (!isOwn)
-          Padding(
-            padding: const EdgeInsets.only(left: 24, top: 4),
-            child: TextButton.icon(
-              onPressed: onReply,
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                minimumSize: Size.zero,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              icon: Icon(Icons.reply_rounded,
-                  size: 16, color: context.accentColor),
-              label: Text('Reply',
-                  style: TextStyle(color: context.accentColor, fontSize: 12)),
+        CircleAvatar(
+          radius: 18,
+          backgroundColor: context.accentColor.withOpacity(0.22),
+          child: Text(
+            author.isNotEmpty ? author[0].toUpperCase() : 'S',
+            style: TextStyle(
+              color: context.accentColor,
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
             ),
           ),
-      ],
-    );
-  }
-}
-
-class _ReplyBubble extends StatelessWidget {
-  final Map<String, dynamic> reply;
-  final String? teacherName;
-  const _ReplyBubble({required this.reply, this.teacherName});
-
-  String _replyText(String raw) {
-    final m = RegExp(r'^@post:\S+\s*').firstMatch(raw);
-    return m != null ? raw.substring(m.end).trim() : raw.trim();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final rawAuthor = reply['author_name']?.toString() ?? 'Student';
-    final isTeacher = teacherName != null &&
-        rawAuthor.isNotEmpty &&
-        rawAuthor == teacherName;
-    final author = isTeacher ? 'You' : rawAuthor;
-    final text = _replyText(reply['content']?.toString() ?? '');
-    final time =
-        TeacherUtils.relativeTime(reply['created_at']?.toString() ?? '');
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: isTeacher
-            ? context.accentColor.withOpacity(0.16)
-            : context.surfColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: context.borderColor),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(author,
-                  style: TextStyle(
-                    color: isTeacher ? context.accentColor : context.textColor,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  )),
-              const SizedBox(width: 8),
-              Text(time,
-                  style: TextStyle(color: context.greyColor, fontSize: 10)),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Flexible(
+                    child: GestureDetector(
+                      onTap: onOpenComments,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: context.surfColor,
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              author,
+                              style: TextStyle(
+                                color: nameColor,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            if (text.isNotEmpty) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                text,
+                                style: TextStyle(
+                                  color: context.textColor,
+                                  fontSize: 14,
+                                  height: 1.35,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (isOwn && (onEdit != null || onDelete != null))
+                    PopupMenuButton<String>(
+                      padding: EdgeInsets.zero,
+                      iconSize: 18,
+                      icon: Icon(Icons.more_horiz,
+                          size: 18, color: context.greyColor),
+                      onSelected: (v) {
+                        if (v == 'edit') onEdit?.call();
+                        if (v == 'delete') onDelete?.call();
+                      },
+                      itemBuilder: (_) => [
+                        if (onEdit != null)
+                          const PopupMenuItem(
+                              value: 'edit', child: Text('Edit')),
+                        if (onDelete != null)
+                          const PopupMenuItem(
+                              value: 'delete', child: Text('Delete')),
+                      ],
+                    ),
+                ],
+              ),
+              if (mediaUrl.isNotEmpty && mediaType == 'audio') ...[
+                const SizedBox(height: 6),
+                VoiceNotePlayer(mediaUrl: mediaUrl),
+              ],
+              const SizedBox(height: 4),
+              Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Wrap(
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 10,
+                  children: [
+                    GestureDetector(
+                      onTap: onOpenComments,
+                      child: Text(
+                        commentCount > 0
+                            ? (commentCount == 1
+                                ? '1 comment'
+                                : '$commentCount comments')
+                            : 'Comment',
+                        style: TextStyle(
+                          color: commentCount > 0
+                              ? context.accentColor
+                              : context.greyLColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      time,
+                      style:
+                          TextStyle(color: context.greyColor, fontSize: 11),
+                    ),
+                  ],
+                ),
+              ),
             ],
           ),
-          if (text.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(text,
-                style: TextStyle(
-                    color: context.textColor, fontSize: 13, height: 1.4)),
-          ],
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

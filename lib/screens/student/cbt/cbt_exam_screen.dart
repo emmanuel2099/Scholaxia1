@@ -15,6 +15,8 @@ class CbtExamScreen extends StatefulWidget {
   /// send answers to the internal-exam endpoint (scored server-side) instead of
   /// the normal session submit.
   final String? internalExamId;
+  /// Optional subject sections for combined exams (label -> start question).
+  final Map<String, int> sectionStarts;
 
   const CbtExamScreen({
     super.key,
@@ -24,6 +26,7 @@ class CbtExamScreen extends StatefulWidget {
     this.sessionId,
     this.questions = const [],
     this.internalExamId,
+    this.sectionStarts = const {},
   });
 
   @override
@@ -282,6 +285,7 @@ class _CbtExamScreenState extends State<CbtExamScreen> {
   }
 
   Widget _buildTopBar(BuildContext context) {
+    final hasSections = widget.sectionStarts.length > 1;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       child: Row(
@@ -299,24 +303,78 @@ class _CbtExamScreenState extends State<CbtExamScreen> {
           ),
           const SizedBox(width: 8),
           Flexible(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: context.accentColor,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                widget.subject,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: context.isDark ? AppColors.background : Colors.white,
-                  fontSize: 11,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ),
+            child: hasSections
+                ? PopupMenuButton<int>(
+                    tooltip: 'Choose section',
+                    onSelected: _goToQuestion,
+                    itemBuilder: (ctx) {
+                      final entries = widget.sectionStarts.entries.toList()
+                        ..sort((a, b) => a.value.compareTo(b.value));
+                      return entries
+                          .map(
+                            (e) => PopupMenuItem<int>(
+                              value: e.value,
+                              child: Text('${e.key}  (Q${e.value})'),
+                            ),
+                          )
+                          .toList();
+                    },
+                    child: Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: context.accentColor,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              widget.subject,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: context.isDark
+                                    ? AppColors.background
+                                    : Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(
+                            Icons.arrow_drop_down_rounded,
+                            color: context.isDark
+                                ? AppColors.background
+                                : Colors.white,
+                            size: 18,
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: context.accentColor,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      widget.subject,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: context.isDark ? AppColors.background : Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
           ),
           const SizedBox(width: 8),
           Row(

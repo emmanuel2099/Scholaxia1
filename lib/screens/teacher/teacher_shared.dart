@@ -136,6 +136,8 @@ class TeacherTopBar extends StatefulWidget {
   final int unreadCount;
   final ValueChanged<int>? onUnreadChanged;
   final VoidCallback? onProfileTap;
+  /// When true, show a back arrow before the logo (for pushed screens).
+  final bool showBack;
 
   const TeacherTopBar({
     super.key,
@@ -144,6 +146,7 @@ class TeacherTopBar extends StatefulWidget {
     this.unreadCount = 0,
     this.onUnreadChanged,
     this.onProfileTap,
+    this.showBack = false,
   });
 
   @override
@@ -202,6 +205,19 @@ class _TeacherTopBarState extends State<TeacherTopBar> {
       children: [
         Row(
           children: [
+            if (widget.showBack) ...[
+              GestureDetector(
+                onTap: () => Navigator.of(context).maybePop(),
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  alignment: Alignment.center,
+                  child: Icon(Icons.arrow_back_rounded,
+                      color: context.textColor, size: 22),
+                ),
+              ),
+              const SizedBox(width: 2),
+            ],
             Icon(Icons.auto_awesome, color: accent, size: 18),
             const SizedBox(width: 6),
             Text('Scholaxia',

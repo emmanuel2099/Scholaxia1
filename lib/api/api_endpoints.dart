@@ -193,6 +193,32 @@ class ApiEndpoints {
   static const String walletMe = '$_v1/wallet/me';
   static const String walletWithdraw = '$_v1/wallet/withdraw';
 
+  // Scholaxia Intellect League (SIL)
+  static const String silMeta = '$_v1/sil/meta';
+  static const String silStatus = '$_v1/sil/status';
+  static const String silRegister = '$_v1/sil/register';
+  static const String silFaceVerify = '$_v1/sil/face-verify';
+  static const String silWallet = '$_v1/sil/wallet';
+  static const String silWalletBuy = '$_v1/sil/wallet/buy';
+  static const String silDashboard = '$_v1/sil/dashboard';
+  static const String silPractice = '$_v1/sil/matches/practice';
+  static const String silAi = '$_v1/sil/matches/ai';
+  static const String silStudentChallenge = '$_v1/sil/matches/student-challenge';
+  static const String silClassChallenge = '$_v1/sil/matches/class-challenge';
+  static const String silSchoolChallenge = '$_v1/sil/matches/school-challenge';
+  static const String silFriday = '$_v1/sil/matches/friday';
+  static String silMatch(String id) => '$_v1/sil/matches/$id';
+  static String silMatchFinish(String id) => '$_v1/sil/matches/$id/finish';
+  static String silMatchAnticheat(String id) => '$_v1/sil/matches/$id/anticheat';
+  static String silMatchResume(String id) => '$_v1/sil/matches/$id/resume';
+  static String silMatchHeartbeat(String id) => '$_v1/sil/matches/$id/heartbeat';
+  static const String silDeviceReport = '$_v1/sil/device-report';
+  static const String silLeaderboard = '$_v1/sil/leaderboard';
+  static const String silHistory = '$_v1/sil/history';
+  static const String silSchools = '$_v1/sil/schools';
+  static const String silAdminFlagged = '$_v1/sil/admin/flagged-matches';
+  static String silAdminReview(String id) => '$_v1/sil/admin/flagged-matches/$id/review';
+
   // Notifications
   static const String notifications = '$_v1/notifications/';
   static const String notificationsReadAll = '$_v1/notifications/read-all';

@@ -11,10 +11,13 @@ import 'home/home_screen.dart';
 import 'sia/sia_screen.dart';
 import 'cbt/cbt_screen.dart';
 import 'community/community_screen.dart';
-import 'subscription/subscription_screen.dart';
+import 'games/games_screen.dart';
+import 'sil/sil_entry.dart';
 
 class StudentShell extends StatefulWidget {
-  const StudentShell({super.key});
+  final bool openSilOnStart;
+
+  const StudentShell({super.key, this.openSilOnStart = false});
 
   @override
   State<StudentShell> createState() => _StudentShellState();
@@ -31,7 +34,7 @@ class _StudentShellState extends State<StudentShell>
     const SiaScreen(),
     const CbtScreen(),
     const CommunityScreen(),
-    const SubscriptionScreen(),
+    const GamesScreen(),
   ];
 
   static const _navItems = [
@@ -39,7 +42,7 @@ class _StudentShellState extends State<StudentShell>
     _NavItem(icon: Icons.auto_awesome_outlined, activeIcon: Icons.auto_awesome_rounded, label: 'Sia'),
     _NavItem(icon: Icons.quiz_outlined, activeIcon: Icons.quiz_rounded, label: 'CBT'),
     _NavItem(icon: Icons.people_outline_rounded, activeIcon: Icons.people_rounded, label: 'Community'),
-    _NavItem(icon: Icons.card_membership_outlined, activeIcon: Icons.card_membership_rounded, label: 'Subscribe'),
+    _NavItem(icon: Icons.sports_esports_outlined, activeIcon: Icons.sports_esports_rounded, label: 'Games'),
   ];
 
   @override
@@ -51,6 +54,15 @@ class _StudentShellState extends State<StudentShell>
     LocalNotificationService.instance.init().then((_) {
       LocalNotificationService.instance.seedKnownNotifications(_api);
     });
+    if (widget.openSilOnStart) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const SilEntryScreen()),
+        );
+      });
+    }
   }
 
   @override

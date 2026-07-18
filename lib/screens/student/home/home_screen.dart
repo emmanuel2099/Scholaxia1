@@ -14,6 +14,7 @@ import '../sia/sia_screen.dart';
 import '../cbt/internal_exams_screen.dart';
 import '../library/library_screen.dart';
 import '../marketplace/marketplace_screen.dart';
+import '../sil/sil_entry.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -237,6 +238,37 @@ class _HomeScreenState extends State<HomeScreen> {
                   onTap: () => Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const SiaScreen()),
+                  ),
+                ),
+                StudentFeatureBanner(
+                  title: 'Join Scholaxia Intellect League',
+                  subtitle: 'Compete live, earn coins, climb national rankings — represent your school.',
+                  buttonLabel: 'Enter League',
+                  icon: Icons.emoji_events_rounded,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const SilEntryScreen()),
+                  ),
+                ),
+                if (DateTime.now().weekday == DateTime.friday)
+                  StudentFeatureBanner(
+                    title: 'Friday National Challenge is Live',
+                    subtitle: 'Nationwide academic championship — play now and climb the ranks.',
+                    buttonLabel: 'Join Friday',
+                    icon: Icons.flag_rounded,
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const SilEntryScreen()),
+                    ),
+                  ),
+                StudentFeatureBanner(
+                  title: 'Buy Scholaxia Coins',
+                  subtitle: 'Fuel AI Challenges, Student bets, Class & School battles.',
+                  buttonLabel: 'Open Wallet',
+                  icon: Icons.monetization_on_rounded,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const SilEntryScreen()),
                   ),
                 ),
                 _recommended(context),
@@ -621,7 +653,7 @@ class _HomeScreenState extends State<HomeScreen> {
       (
         Icons.storefront_rounded,
         'Marketplace',
-        'Gadgets, laptops, clothes & more.',
+        'Gadgets, laptops, phones & more.',
         const [Color(0xFFF59E0B), Color(0xFFFBBF24)],
         const MarketplaceScreen(),
       ),

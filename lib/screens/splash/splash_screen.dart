@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../services/firebase_push_service.dart';
 import '../../api/api_service.dart';
 import '../../theme/app_theme.dart';
-import '../auth/exam_subject_setup_screen.dart';
 import '../auth/role_select_screen.dart';
 import '../onboarding/onboarding_screen.dart';
 import '../kind/kind_shell.dart';
@@ -61,8 +60,7 @@ class _SplashScreenState extends State<SplashScreen>
         } else if (role == 'kind') {
           dest = const KindShell();
         } else {
-          final complete = await api.isSetupComplete();
-          dest = complete ? const StudentShell() : const ExamSubjectSetupScreen();
+          dest = const StudentShell();
         }
 
         Navigator.of(context).pushReplacement(PageRouteBuilder(

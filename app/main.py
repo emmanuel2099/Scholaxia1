@@ -20,6 +20,7 @@ from app.routers import school_groups, student_groups
 from app.routers import app_meta
 from app.routers import marketplace
 from app.routers import kid_games
+from app.routers import sil
 from app.websockets.live_class_ws import live_class_endpoint
 
 
@@ -73,6 +74,7 @@ app.include_router(marketplace.router, prefix="/api/v1")
 app.include_router(marketplace.admin_router, prefix="/api/v1")
 app.include_router(kid_games.router, prefix="/api/v1")
 app.include_router(kid_games.admin_router, prefix="/api/v1")
+app.include_router(sil.router, prefix="/api/v1")
 app.include_router(materials.router, prefix="/api/v1")
 app.include_router(wallet.router, prefix="/api/v1")
 app.include_router(recommendations.router, prefix="/api/v1")

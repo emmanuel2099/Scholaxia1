@@ -83,6 +83,7 @@ class _TeacherCbtScreenState extends State<TeacherCbtScreen> {
                 api: _api,
                 teacherName: _teacherName,
                 unreadCount: _unread,
+                showBack: true,
               ),
             ),
             const SizedBox(height: 20),

@@ -309,6 +309,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _settingsGroup(context, [
                 _settingsRow(
                   context,
+                  Icons.school_outlined,
+                  'Exam settings',
+                  onTap: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            const ExamSubjectSetupScreen(popOnComplete: true),
+                      ),
+                    );
+                    if (mounted) _load();
+                  },
+                ),
+                _settingsRow(
+                  context,
                   Icons.notifications_outlined,
                   'Notifications',
                   onTap: () => Navigator.push(
@@ -645,14 +660,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Complete your profile',
+                Text('Complete exam setup',
                     style: TextStyle(
                       color: context.textColor,
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
                     )),
                 const SizedBox(height: 2),
-                Text('Set your exam target and education level to personalize your study plan.',
+                Text('Set your exam target and subjects.',
                     style: TextStyle(color: context.greyColor, fontSize: 12, height: 1.35)),
               ],
             ),

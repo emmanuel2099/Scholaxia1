@@ -59,7 +59,7 @@ class _KindGamesScreenState extends State<KindGamesScreen> {
             KindHeroHeader(
               greeting: 'Educational Games',
               subtitle:
-                  'Play to unlock Leaf 2… Leaf 30. Each game has 50+ questions and works offline.',
+                  'Play to unlock Leaf 2… Leaf 30. Each game has 10 questions and works offline.',
               icon: Icons.videogame_asset_rounded,
               badge: 'KID SAFE',
             ),

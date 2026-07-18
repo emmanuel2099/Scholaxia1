@@ -186,6 +186,12 @@ async def _run_schema_migrations(conn) -> None:
         await conn.execute(text("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'kind'"))
     except Exception:
         pass
+    try:
+        await conn.execute(text(
+            "ALTER TABLE sil_anticheat_events ADD COLUMN IF NOT EXISTS severity INTEGER NOT NULL DEFAULT 1"
+        ))
+    except Exception:
+        pass
 
 
 async def initialize_database() -> bool:

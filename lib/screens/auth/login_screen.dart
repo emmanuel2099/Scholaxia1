@@ -5,7 +5,6 @@ import '../../theme/app_theme.dart';
 import '../kind/kind_shell.dart';
 import '../student/student_shell.dart';
 import '../teacher/teacher_shell.dart';
-import 'exam_subject_setup_screen.dart';
 import 'kid_register_screen.dart';
 import 'register_screen.dart';
 import 'role_select_screen.dart';
@@ -67,20 +66,17 @@ class _LoginScreenState extends State<LoginScreen> {
           (_) => false,
         );
       } else {
-        final complete = await _api.isSetupComplete();
-        if (!mounted) return;
+        final openSil = widget.accountRole == AccountRole.gameChallenge;
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(
             builder: (_) => auth.role == 'kind'
                 ? const KindShell()
-                : (complete
-                    ? const StudentShell()
-                    : const ExamSubjectSetupScreen()),
+                : StudentShell(openSilOnStart: openSil),
           ),
           (_) => false,
         );
-        if (auth.role != 'kind' && complete) _api.ensureStudentProfile();
+        if (auth.role != 'kind') _api.ensureStudentProfile();
       }
       FirebasePushService.instance.registerAfterLogin();
     } on ApiException catch (e) {
@@ -109,6 +105,7 @@ class _LoginScreenState extends State<LoginScreen> {
       case AccountRole.kind:
         return role == 'kind';
       case AccountRole.student:
+      case AccountRole.gameChallenge:
         return role == 'student';
     }
   }
@@ -119,6 +116,8 @@ class _LoginScreenState extends State<LoginScreen> {
         return 'Teacher';
       case AccountRole.kind:
         return 'Kid';
+      case AccountRole.gameChallenge:
+        return 'Game Challenge (Student)';
       case AccountRole.student:
       case null:
         return 'Student';
@@ -131,6 +130,8 @@ class _LoginScreenState extends State<LoginScreen> {
         return 'Teacher Login';
       case AccountRole.kind:
         return 'Kid Login';
+      case AccountRole.gameChallenge:
+        return 'League Login';
       case AccountRole.student:
       case null:
         return 'Welcome Back';
@@ -143,6 +144,8 @@ class _LoginScreenState extends State<LoginScreen> {
         return 'Sign in with the email and password from your school admin.';
       case AccountRole.kind:
         return 'Sign in to your kid learner account.';
+      case AccountRole.gameChallenge:
+        return 'Sign in with your student account to enter\nScholaxia Intellect League.';
       case AccountRole.student:
       case null:
         return 'Enter your credentials to access your\npersonalized learning dashboard.';
@@ -325,6 +328,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               if (widget.accountRole == null ||
                   widget.accountRole == AccountRole.student ||
+                  widget.accountRole == AccountRole.gameChallenge ||
                   widget.accountRole == AccountRole.kind) ...[
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,

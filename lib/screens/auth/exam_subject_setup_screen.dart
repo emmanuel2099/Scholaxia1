@@ -27,7 +27,16 @@ class _ExamSubjectSetupScreenState extends State<ExamSubjectSetupScreen> {
   bool _loadingSubjects = true;
   bool _saving = false;
 
-  bool get _isJss => _educationLevel.toUpperCase().startsWith('JSS');
+  bool get _isJss3 {
+    final n = _educationLevel.toUpperCase().replaceAll(' ', '');
+    return n == 'JSS3';
+  }
+
+  bool get _isCommonEntrance {
+    final n = _educationLevel.toUpperCase().replaceAll(' ', '');
+    return n == 'COMMONENTRANCE';
+  }
+
   bool get _isPrimary6 {
     final n = _educationLevel.toUpperCase().replaceAll(' ', '');
     return n == 'PRIMARY6' || n == 'P6' || n == 'PRY6';
@@ -37,6 +46,18 @@ class _ExamSubjectSetupScreenState extends State<ExamSubjectSetupScreen> {
   void initState() {
     super.initState();
     _loadSubjects();
+  }
+
+  void _goBack() {
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context);
+    } else {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const StudentShell()),
+        (_) => false,
+      );
+    }
   }
 
   Future<void> _loadSubjects() async {
@@ -81,11 +102,12 @@ class _ExamSubjectSetupScreenState extends State<ExamSubjectSetupScreen> {
   void _selectLevel(String level) {
     setState(() {
       _educationLevel = level;
-      if (level.toUpperCase().startsWith('JSS')) {
+      if (_isJss3Level(level) || _isCommonEntranceLevel(level)) {
         _enableJamb = false;
         _enableSsce = true;
-        _ssceBoard = 'WAEC';
+        _ssceBoard = _isCommonEntranceLevel(level) ? 'COMMON_ENTRANCE' : 'WAEC';
         _jambSelected.clear();
+        if (_isCommonEntranceLevel(level)) _ssceSelected.clear();
       } else if (_isPrimary6Level(level)) {
         _enableJamb = false;
         _enableSsce = false;
@@ -102,6 +124,16 @@ class _ExamSubjectSetupScreenState extends State<ExamSubjectSetupScreen> {
   bool _isPrimary6Level(String level) {
     final n = level.toUpperCase().replaceAll(' ', '');
     return n == 'PRIMARY6' || n == 'P6' || n == 'PRY6';
+  }
+
+  bool _isJss3Level(String level) {
+    final n = level.toUpperCase().replaceAll(' ', '');
+    return n == 'JSS3';
+  }
+
+  bool _isCommonEntranceLevel(String level) {
+    final n = level.toUpperCase().replaceAll(' ', '');
+    return n == 'COMMONENTRANCE';
   }
 
   void _toggle(Set<String> selected, String subject, int limit, String label) {
@@ -147,7 +179,38 @@ class _ExamSubjectSetupScreenState extends State<ExamSubjectSetupScreen> {
       return;
     }
 
-    if (_isJss) {
+    if (_isCommonEntrance) {
+      if (_ssceSelected.length != 9) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Common Entrance requires exactly 9 subjects.')),
+        );
+        return;
+      }
+      setState(() => _saving = true);
+      try {
+        await _api.setupExam(
+          educationLevel: _educationLevel,
+          enableJamb: false,
+          enableSsce: true,
+          ssceExamType: 'COMMON_ENTRANCE',
+          ssceSubjects: _ssceSelected.toList(),
+          examType: 'WAEC',
+          subjects: _ssceSelected.toList(),
+        );
+        if (!mounted) return;
+        _goNext();
+      } on ApiException catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+        );
+      } finally {
+        if (mounted) setState(() => _saving = false);
+      }
+      return;
+    }
+
+    if (_isJss3) {
       if (_ssceSelected.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Select at least one subject for Junior WAEC.')),
@@ -236,8 +299,7 @@ class _ExamSubjectSetupScreenState extends State<ExamSubjectSetupScreen> {
     final btnFg = context.isDark ? AppColors.background : Colors.white;
     final levels = const [
       'Primary 6',
-      'JSS1',
-      'JSS2',
+      'Common Entrance',
       'JSS3',
       'SS1',
       'SS2',
@@ -250,7 +312,11 @@ class _ExamSubjectSetupScreenState extends State<ExamSubjectSetupScreen> {
       appBar: AppBar(
         backgroundColor: context.headerColor,
         elevation: 0,
-        automaticallyImplyLeading: false,
+        leading: IconButton(
+          tooltip: 'Back',
+          onPressed: _goBack,
+          icon: Icon(Icons.arrow_back_rounded, color: context.textColor),
+        ),
         title: Text(
           'Set up your exams',
           style: TextStyle(
@@ -304,11 +370,27 @@ class _ExamSubjectSetupScreenState extends State<ExamSubjectSetupScreen> {
                       'Primary 6 opens the Kids app. Common Entrance CBT is uploaded by admin there.',
                     ),
                   ],
-                  if (_isJss) ...[
+                  if (_isCommonEntrance) ...[
                     const SizedBox(height: 24),
                     _infoBox(
                       context,
-                      'JSS uses Junior WAEC (BECE). Admin uploads those questions.',
+                      'Common Entrance CBT is taken one subject at a time. Pick exactly 9 subjects.',
+                    ),
+                    const SizedBox(height: 16),
+                    _label(context, 'COMMON ENTRANCE SUBJECTS (${_ssceSelected.length}/9)'),
+                    const SizedBox(height: 10),
+                    _subjectWrap(
+                      context,
+                      selected: _ssceSelected,
+                      limit: 9,
+                      label: 'Common Entrance',
+                    ),
+                  ],
+                  if (_isJss3) ...[
+                    const SizedBox(height: 24),
+                    _infoBox(
+                      context,
+                      'Junior WAEC (BECE) — take one subject at a time. Admin uploads those questions.',
                     ),
                     const SizedBox(height: 16),
                     _label(context, 'JUNIOR WAEC SUBJECTS'),
@@ -320,7 +402,7 @@ class _ExamSubjectSetupScreenState extends State<ExamSubjectSetupScreen> {
                       label: 'Junior WAEC',
                     ),
                   ],
-                  if (!_isPrimary6 && !_isJss) ...[
+                  if (!_isPrimary6 && !_isJss3 && !_isCommonEntrance) ...[
                     const SizedBox(height: 24),
                     _label(context, 'EXAM BOARDS (PICK ONE OR BOTH)'),
                     const SizedBox(height: 10),

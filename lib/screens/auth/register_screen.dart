@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../api/api_service.dart';
 import '../../theme/app_theme.dart';
+import '../student/student_shell.dart';
 import '../teacher/teacher_shell.dart';
-import 'exam_subject_setup_screen.dart';
 import 'login_screen.dart';
 import 'role_select_screen.dart';
 
@@ -62,9 +62,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
           (_) => false,
         );
       } else {
+        final openSil = widget.accountRole == AccountRole.gameChallenge;
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (_) => const ExamSubjectSetupScreen()),
+          MaterialPageRoute(
+            builder: (_) => StudentShell(openSilOnStart: openSil),
+          ),
           (_) => false,
         );
       }

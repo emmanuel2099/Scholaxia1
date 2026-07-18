@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import '../../../api/api_service.dart';
 import '../../../theme/app_theme.dart';
@@ -21,7 +22,6 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
     ('gadgets', 'Gadgets'),
     ('laptops', 'Laptops'),
     ('phones', 'Phones'),
-    ('clothes', 'Clothes'),
     ('books', 'Books'),
     ('other', 'Other'),
   ];
@@ -113,49 +113,76 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),
               child: Text(
-                'Shop gadgets, laptops, clothes and more. Book an item and Scholaxia will chat with you.',
+                'Shop gadgets, laptops, phones and more. Book an item and Scholaxia will chat with you.',
                 style: TextStyle(color: context.greyColor, fontSize: 13, height: 1.4),
               ),
             ),
             SizedBox(
-              height: 40,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: _tabs.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 8),
-                itemBuilder: (_, i) {
-                  final (id, label) = _tabs[i];
-                  final sel = _category == id;
-                  return GestureDetector(
-                    onTap: () {
-                      if (_category == id) return;
-                      setState(() => _category = id);
-                      _load();
-                    },
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: sel ? context.accentColor : context.cardColor,
+              height: 44,
+              child: ScrollConfiguration(
+                behavior: ScrollConfiguration.of(context).copyWith(
+                  scrollbars: true,
+                  dragDevices: const {
+                    PointerDeviceKind.touch,
+                    PointerDeviceKind.mouse,
+                    PointerDeviceKind.trackpad,
+                    PointerDeviceKind.stylus,
+                  },
+                ),
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  primary: false,
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: _tabs.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (_, i) {
+                    final (id, label) = _tabs[i];
+                    final sel = _category == id;
+                    return Material(
+                      color: Colors.transparent,
+                      child: InkWell(
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: sel
-                              ? context.accentColor
-                              : context.borderColor,
+                        onTap: () {
+                          if (_category == id) return;
+                          setState(() => _category = id);
+                          _load();
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color:
+                                sel ? context.accentColor : context.cardColor,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: sel
+                                  ? context.accentColor
+                                  : context.borderColor,
+                            ),
+                          ),
+                          child: Text(
+                            label,
+                            style: TextStyle(
+                              color: sel ? Colors.white : context.textColor,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                          ),
                         ),
                       ),
-                      child: Text(
-                        label,
-                        style: TextStyle(
-                          color: sel ? Colors.white : context.textColor,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
+              child: Text(
+                'Swipe sideways to see Books, Gadgets and more',
+                style: TextStyle(color: context.greyColor, fontSize: 11),
               ),
             ),
             const SizedBox(height: 12),

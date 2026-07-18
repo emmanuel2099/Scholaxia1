@@ -16,3 +16,14 @@ from app.models.api_key import ApiKey, ApiUsageLog, ApiDailyUsage
 from app.models.review_report import Report, TeacherReview
 from app.models.wallet import TeacherWallet, WalletTransaction, WithdrawalRequest
 from app.models.student_analytics import StudentLearningProfile, LessonSession
+from app.models.sil import (
+    SilLeagueProfile,
+    SilCoinTransaction,
+    SilQuestion,
+    SilMatch,
+    SilChallengeInvite,
+    SilSchoolProfile,
+    SilAntiCheatEvent,
+    SilFlaggedMatch,
+    SilDeviceReport,
+)
