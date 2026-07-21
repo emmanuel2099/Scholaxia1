@@ -34,7 +34,6 @@ from app.services.cbt_access import active_cbt_access, subject_snapshot
 from app.services import paystack_service
 from app.services.live_class_access import (
     activate_live_plan,
-    get_live_access_info,
     parse_uuid,
 )
 from app.services.paystack_service import PaystackError
@@ -116,12 +115,12 @@ async def _resolve_product(
         plan = get_plan(product_id)
         if not plan:
             raise HTTPException(status_code=404, detail="Class package not found")
-        access = await get_live_access_info(db, student_id)
         return {
             "price_naira": float(plan.price),
             "title": plan.name,
-            "already_owned": bool(access.get("can_join")),
-            "extra": {"sessions": plan.sessions, "active_plan": access.get("active_plan")},
+            # Class bundles can be purchased again after their sessions are used.
+            "already_owned": False,
+            "extra": {"sessions": plan.sessions},
         }
 
     raise HTTPException(status_code=400, detail=f"Unknown product_type. Use one of: {sorted(PRODUCT_TYPES)}")

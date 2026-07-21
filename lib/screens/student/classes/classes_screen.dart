@@ -3,7 +3,7 @@ import '../../../api/api_service.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/student_ui.dart';
 import '../../../utils/live_join_helper.dart';
-import '../subscription/subscription_screen.dart';
+import '../../kind/kind_booking_screen.dart';
 
 class ClassesScreen extends StatefulWidget {
   const ClassesScreen({super.key});
@@ -207,10 +207,12 @@ class _ClassesScreenState extends State<ClassesScreen> {
       child: ElevatedButton.icon(
         onPressed: () => Navigator.push(
           ctx,
-          MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
+          MaterialPageRoute(
+            builder: (_) => const KindBookingScreen(kidsOnly: false),
+          ),
         ),
         icon: const Icon(Icons.card_membership_rounded, size: 20),
-        label: const Text('Subscribe — Pay-Per-Class Plan',
+        label: const Text('Book & pay — Pay-Per-Class Plan',
             style: TextStyle(fontWeight: FontWeight.w800)),
         style: ElevatedButton.styleFrom(
           backgroundColor: ctx.accentColor,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../api/api_service.dart';
+import '../../services/paystack_checkout_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/student_ui.dart';
 import '../student/classes/class_packages_screen.dart';
@@ -8,19 +9,23 @@ import '../student/classes/class_packages_screen.dart';
 /// Step 1: pick how many classes (price calculated).
 /// Step 2: fill form and submit a live session request.
 class KindBookingScreen extends StatefulWidget {
-  const KindBookingScreen({super.key});
+  const KindBookingScreen({super.key, this.kidsOnly = true});
+
+  final bool kidsOnly;
 
   @override
   State<KindBookingScreen> createState() => _KindBookingScreenState();
 }
 
 class _KindPlan {
+  final String id;
   final int classes;
   final int priceNaira;
   final String? savings;
   final String subtitle;
 
   const _KindPlan({
+    required this.id,
     required this.classes,
     required this.priceNaira,
     required this.subtitle,
@@ -43,20 +48,28 @@ class _KindPlan {
 
 class _KindBookingScreenState extends State<KindBookingScreen> {
   static const _plans = [
-    _KindPlan(classes: 1, priceNaira: 5000, subtitle: '90 minutes'),
     _KindPlan(
+      id: 'live_tutoring_1',
+      classes: 1,
+      priceNaira: 5000,
+      subtitle: '90 minutes',
+    ),
+    _KindPlan(
+      id: 'live_tutoring_3',
       classes: 3,
       priceNaira: 14000,
       savings: 'Save ₦1,000',
       subtitle: '90 minutes each',
     ),
     _KindPlan(
+      id: 'live_tutoring_5',
       classes: 5,
       priceNaira: 22500,
       savings: 'Save ₦2,500',
       subtitle: '90 minutes each',
     ),
     _KindPlan(
+      id: 'live_tutoring_10',
       classes: 10,
       priceNaira: 43000,
       savings: 'Save ₦7,000',
@@ -70,7 +83,6 @@ class _KindBookingScreenState extends State<KindBookingScreen> {
 
   final _subjectCtrl = TextEditingController();
   final _topicCtrl = TextEditingController();
-  final _parentCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
   final _timeCtrl = TextEditingController();
   final _noteCtrl = TextEditingController();
@@ -80,7 +92,6 @@ class _KindBookingScreenState extends State<KindBookingScreen> {
   void dispose() {
     _subjectCtrl.dispose();
     _topicCtrl.dispose();
-    _parentCtrl.dispose();
     _phoneCtrl.dispose();
     _timeCtrl.dispose();
     _noteCtrl.dispose();
@@ -95,14 +106,6 @@ class _KindBookingScreenState extends State<KindBookingScreen> {
       ).showSnackBar(const SnackBar(content: Text('Please enter a subject.')));
       return;
     }
-    final parent = _parentCtrl.text.trim();
-    if (parent.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a parent / guardian name.')),
-      );
-      return;
-    }
-
     setState(() => _submitting = true);
     final plan = _selected;
     final topic = _topicCtrl.text.trim();
@@ -111,17 +114,25 @@ class _KindBookingScreenState extends State<KindBookingScreen> {
     final note = _noteCtrl.text.trim();
 
     final message = [
-      'Kids pay-per-class booking',
+      widget.kidsOnly
+          ? 'Kids pay-per-class booking (paid)'
+          : 'Student pay-per-class booking (paid)',
       'Bundle: ${plan.classes} class${plan.classes == 1 ? '' : 'es'}',
       'Total: ${plan.priceLabel}',
       if (plan.savings != null) plan.savings!,
-      'Parent/Guardian: $parent',
       if (phone.isNotEmpty) 'Phone: $phone',
       if (time.isNotEmpty) 'Preferred time: $time',
       if (note.isNotEmpty) 'Note: $note',
     ].join('\n');
 
     try {
+      final paid = await PaystackCheckoutService.purchase(
+        context: context,
+        api: _api,
+        productType: 'class_package',
+        productId: plan.id,
+      );
+      if (!mounted || !paid) return;
       await _api.createLiveSessionRequest(
         subject: subject,
         topic: topic.isEmpty ? '${plan.classes}-class kids booking' : topic,
@@ -236,7 +247,8 @@ class _KindBookingScreenState extends State<KindBookingScreen> {
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => const ClassPackagesScreen(kidsOnly: true),
+                    builder: (_) =>
+                        ClassPackagesScreen(kidsOnly: widget.kidsOnly),
                 ),
               ),
               style: OutlinedButton.styleFrom(
@@ -244,7 +256,11 @@ class _KindBookingScreenState extends State<KindBookingScreen> {
                 side: const BorderSide(color: Colors.white54),
               ),
               icon: const Icon(Icons.school_rounded),
-              label: const Text('View Nursery & Primary packages'),
+              label: Text(
+                widget.kidsOnly
+                    ? 'View Nursery & Primary packages'
+                    : 'View Student class packages',
+              ),
             ),
           ],
         ],
@@ -366,9 +382,11 @@ class _KindBookingScreenState extends State<KindBookingScreen> {
         ),
       ),
       const StudentSectionTitle(title: "What's included"),
-      _bullets(context, const [
+      _bullets(context, [
         'Live one-on-one class',
-        "Any subject of the child's choice",
+        widget.kidsOnly
+            ? "Any subject of the child's choice"
+            : 'Any subject of your choice',
         'Experienced tutor',
         'Class notes and learning materials',
         'Questions & answers during the session',
@@ -408,8 +426,6 @@ class _KindBookingScreenState extends State<KindBookingScreen> {
             const SizedBox(height: 10),
             _field(_topicCtrl, 'Topic (optional)'),
             const SizedBox(height: 10),
-            _field(_parentCtrl, 'Parent / guardian name *'),
-            const SizedBox(height: 10),
             _field(
               _phoneCtrl,
               'Phone / WhatsApp',
@@ -429,7 +445,7 @@ class _KindBookingScreenState extends State<KindBookingScreen> {
                 border: Border.all(color: context.borderColor),
               ),
               child: Text(
-                'You selected ${_selected.classes} class${_selected.classes == 1 ? '' : 'es'} for ${_selected.priceLabel}. Payment will be confirmed by Scholaxia after your request.',
+                'You selected ${_selected.classes} class${_selected.classes == 1 ? '' : 'es'} for ${_selected.priceLabel}. Paystack opens when you submit. After payment, Admin will contact you.',
                 style: TextStyle(
                   color: context.greyColor,
                   fontSize: 12,
@@ -482,7 +498,7 @@ class _KindBookingScreenState extends State<KindBookingScreen> {
                             ),
                           )
                         : const Text(
-                            'Submit booking',
+                            'Pay & submit booking',
                             style: TextStyle(
                               fontWeight: FontWeight.w800,
                               fontSize: 15,
