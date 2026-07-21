@@ -219,7 +219,10 @@ class _CbtScreenState extends State<CbtScreen> {
   }
 
   List<String> get _subjects {
-    // WAEC/NECO / Junior WAEC / Common Entrance: show profile subjects.
+    // Prefer the student's selected subjects for the active board.
+    if (_isJambTab && _jambSubjects.isNotEmpty) {
+      return List<String>.from(_jambSubjects);
+    }
     if (_activeTab == 'WAEC_NECO' ||
         _activeTab == 'JUNIOR_WAEC' ||
         _activeTab == 'COMMON_ENTRANCE') {
@@ -237,7 +240,6 @@ class _CbtScreenState extends State<CbtScreen> {
   }
 
   void _ensureDefaultSubject() {
-    if (_isJambTab) return;
     final subjects = _subjects;
     if (subjects.isEmpty) return;
     if (_selectedSubject == null ||
@@ -246,6 +248,52 @@ class _CbtScreenState extends State<CbtScreen> {
         )) {
       _selectedSubject = subjects.first;
     }
+  }
+
+  List<String> get _completeJambYears {
+    final years = <String>[];
+    for (final y in _jambYears) {
+      if (_jambBundleMembersForYear(y).length == 4) years.add(y);
+    }
+    return years;
+  }
+
+  Widget _examCardsForList(
+    BuildContext context,
+    List<Map<String, dynamic>> exams,
+  ) {
+    if (exams.isEmpty) return const SizedBox.shrink();
+    return Column(
+      children: exams.map((exam) {
+        final id = exam['id']?.toString() ?? '';
+        final title = exam['title']?.toString() ?? 'Exam';
+        final desc = exam['description']?.toString() ?? '';
+        final type = exam['exam_type']?.toString() ?? _tabLabel;
+        final dur = (exam['duration_minutes'] as num?)?.toInt();
+        final totalQ = (exam['total_questions'] as num?)?.toInt();
+        final downloaded = _downloaded.contains(id);
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 14),
+          child: _ExamCard(
+            title: title,
+            description: desc,
+            examType: type,
+            durationMins: dur,
+            totalQuestions: totalQ,
+            isBusy: _busyExamId == id,
+            isDownloaded: downloaded,
+            onDownload: () => _downloadExam(id),
+            onStart: () => _startExam(
+              context,
+              id,
+              title,
+              totalQ: totalQ,
+              durMins: dur,
+            ),
+          ),
+        );
+      }).toList(),
+    );
   }
 
   List<Map<String, dynamic>> get _filteredExams {
@@ -590,87 +638,151 @@ class _CbtScreenState extends State<CbtScreen> {
                           ),
                         )
                       else if (_isJambTab) ...[
-                        Text(
-                          'JAMB — choose the pack you want',
-                          style: TextStyle(
-                            color: context.textColor,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Each option downloads your 4 JAMB subjects together and starts as one full UTME exam.',
-                          style: TextStyle(
-                            color: context.greyColor,
-                            fontSize: 12,
-                            height: 1.4,
-                          ),
-                        ),
-                        const SizedBox(height: 14),
                         Builder(
                           builder: (ctx) {
-                            final years = _jambYears;
-                            final validYears = <String>[];
-                            for (final y in years) {
-                              final members = _jambBundleMembersForYear(y);
-                              if (members.length == 4) validYears.add(y);
-                            }
-
-                            if (validYears.isEmpty) {
-                              return const SizedBox.shrink();
+                            final validYears = _completeJambYears;
+                            final hasPacks = validYears.isNotEmpty;
+                            final hasSingles = _jambExams.isNotEmpty;
+                            if (!hasPacks && !hasSingles) {
+                              return _emptyBox(
+                                context,
+                                message:
+                                    'No JAMB exams yet for your subjects. Ask admin to upload them.',
+                              );
                             }
 
                             return Column(
-                              children: validYears.map((y) {
-                                final members = _jambBundleMembersForYear(y);
-                                final isDownloaded =
-                                    _jambBundleDownloadedForMembers(members);
-                                final totalQ = members.fold<int>(
-                                  0,
-                                  (sum, e) =>
-                                      sum +
-                                      ((e['total_questions'] as num?)
-                                              ?.toInt() ??
-                                          0),
-                                );
-                                final durationMins = members.fold<int>(
-                                  0,
-                                  (maxDur, e) =>
-                                      maxDur >
-                                          ((e['duration_minutes'] as num?)
-                                                  ?.toInt() ??
-                                              0)
-                                      ? maxDur
-                                      : ((e['duration_minutes'] as num?)
-                                                ?.toInt() ??
-                                            0),
-                                );
-
-                                return Padding(
-                                  padding: const EdgeInsets.only(bottom: 14),
-                                  child: _ExamCard(
-                                    title: 'JAMB Full Exam',
-                                    description:
-                                        'Year $y · Subjects: ${_jambSubjects.join(' · ')}',
-                                    examType: '4 subjects · combined',
-                                    durationMins: durationMins > 0
-                                        ? durationMins
-                                        : 120,
-                                    totalQuestions: totalQ,
-                                    isBusy:
-                                        _busyExamId == _jambBundleBusyKey(y),
-                                    isDownloaded: isDownloaded,
-                                    onDownload: () =>
-                                        _downloadJambBundleMembers(y, members),
-                                    onStart: () => _startJambBundleMembers(
-                                      ctx,
-                                      y,
-                                      members,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (hasPacks) ...[
+                                  Text(
+                                    'JAMB — full UTME packs',
+                                    style: TextStyle(
+                                      color: context.textColor,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
                                     ),
                                   ),
-                                );
-                              }).toList(),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'When all 4 of your subjects are uploaded for a year, download them together as one exam.',
+                                    style: TextStyle(
+                                      color: context.greyColor,
+                                      fontSize: 12,
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 14),
+                                  ...validYears.map((y) {
+                                    final members =
+                                        _jambBundleMembersForYear(y);
+                                    final isDownloaded =
+                                        _jambBundleDownloadedForMembers(
+                                          members,
+                                        );
+                                    final totalQ = members.fold<int>(
+                                      0,
+                                      (sum, e) =>
+                                          sum +
+                                          ((e['total_questions'] as num?)
+                                                  ?.toInt() ??
+                                              0),
+                                    );
+                                    final durationMins = members.fold<int>(
+                                      0,
+                                      (maxDur, e) =>
+                                          maxDur >
+                                              ((e['duration_minutes'] as num?)
+                                                      ?.toInt() ??
+                                                  0)
+                                          ? maxDur
+                                          : ((e['duration_minutes'] as num?)
+                                                    ?.toInt() ??
+                                                0),
+                                    );
+                                    return Padding(
+                                      padding: const EdgeInsets.only(
+                                        bottom: 14,
+                                      ),
+                                      child: _ExamCard(
+                                        title: 'JAMB Full Exam',
+                                        description:
+                                            'Year $y · Subjects: ${_jambSubjects.join(' · ')}',
+                                        examType: '4 subjects · combined',
+                                        durationMins: durationMins > 0
+                                            ? durationMins
+                                            : 120,
+                                        totalQuestions: totalQ,
+                                        isBusy:
+                                            _busyExamId ==
+                                            _jambBundleBusyKey(y),
+                                        isDownloaded: isDownloaded,
+                                        onDownload: () =>
+                                            _downloadJambBundleMembers(
+                                              y,
+                                              members,
+                                            ),
+                                        onStart: () => _startJambBundleMembers(
+                                          ctx,
+                                          y,
+                                          members,
+                                        ),
+                                      ),
+                                    );
+                                  }),
+                                  if (hasSingles) const SizedBox(height: 10),
+                                ],
+                                Text(
+                                  hasPacks
+                                      ? 'Or practice one subject'
+                                      : 'JAMB — choose a subject',
+                                  style: TextStyle(
+                                    color: context.textColor,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  'Download and start each subject on its own. Full packs appear when all 4 are available.',
+                                  style: TextStyle(
+                                    color: context.greyColor,
+                                    fontSize: 12,
+                                    height: 1.4,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                if (subjects.isEmpty)
+                                  _emptyBox(
+                                    context,
+                                    message:
+                                        'Add your JAMB subjects in Profile, then refresh.',
+                                  )
+                                else ...[
+                                  SizedBox(
+                                    height: 42,
+                                    child: ListView.separated(
+                                      scrollDirection: Axis.horizontal,
+                                      itemCount: subjects.length,
+                                      separatorBuilder: (_, __) =>
+                                          const SizedBox(width: 8),
+                                      itemBuilder: (_, i) {
+                                        final s = subjects[i];
+                                        return _subjectChip(context, s, s);
+                                      },
+                                    ),
+                                  ),
+                                  const SizedBox(height: 20),
+                                  if (exams.isEmpty)
+                                    _emptyBox(
+                                      context,
+                                      message:
+                                          'No ${_selectedSubject ?? 'subject'} pack uploaded yet.',
+                                    )
+                                  else
+                                    _examCardsForList(context, exams),
+                                ],
+                              ],
                             );
                           },
                         ),
@@ -703,38 +815,7 @@ class _CbtScreenState extends State<CbtScreen> {
                         if (exams.isEmpty)
                           const SizedBox.shrink()
                         else
-                          ...exams.map((exam) {
-                            final id = exam['id']?.toString() ?? '';
-                            final title = exam['title']?.toString() ?? 'Exam';
-                            final desc = exam['description']?.toString() ?? '';
-                            final type =
-                                exam['exam_type']?.toString() ?? _boardLabel;
-                            final dur = (exam['duration_minutes'] as num?)
-                                ?.toInt();
-                            final totalQ = (exam['total_questions'] as num?)
-                                ?.toInt();
-                            final downloaded = _downloaded.contains(id);
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 14),
-                              child: _ExamCard(
-                                title: title,
-                                description: desc,
-                                examType: type,
-                                durationMins: dur,
-                                totalQuestions: totalQ,
-                                isBusy: _busyExamId == id,
-                                isDownloaded: downloaded,
-                                onDownload: () => _downloadExam(id),
-                                onStart: () => _startExam(
-                                  context,
-                                  id,
-                                  title,
-                                  totalQ: totalQ,
-                                  durMins: dur,
-                                ),
-                              ),
-                            );
-                          }),
+                          _examCardsForList(context, exams),
                       ],
                       const SizedBox(height: 60),
                     ],
