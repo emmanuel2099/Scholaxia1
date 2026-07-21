@@ -641,22 +641,13 @@ class _CbtScreenState extends State<CbtScreen> {
                         Builder(
                           builder: (ctx) {
                             final validYears = _completeJambYears;
-                            final hasPacks = validYears.isNotEmpty;
-                            final hasSingles = _jambExams.isNotEmpty;
-                            if (!hasPacks && !hasSingles) {
-                              return _emptyBox(
-                                context,
-                                message:
-                                    'No JAMB exams yet for your subjects. Ask admin to upload them.',
-                              );
-                            }
-
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                if (hasPacks) ...[
+                            // All 4 profile subjects uploaded for a year → normal combined UTME.
+                            if (validYears.isNotEmpty) {
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
                                   Text(
-                                    'JAMB — full UTME packs',
+                                    'JAMB — full UTME exam',
                                     style: TextStyle(
                                       color: context.textColor,
                                       fontSize: 14,
@@ -665,7 +656,7 @@ class _CbtScreenState extends State<CbtScreen> {
                                   ),
                                   const SizedBox(height: 6),
                                   Text(
-                                    'When all 4 of your subjects are uploaded for a year, download them together as one exam.',
+                                    'All 4 of your subjects are ready. Download once and take them together as one exam.',
                                     style: TextStyle(
                                       color: context.greyColor,
                                       fontSize: 12,
@@ -707,7 +698,7 @@ class _CbtScreenState extends State<CbtScreen> {
                                       child: _ExamCard(
                                         title: 'JAMB Full Exam',
                                         description:
-                                            'Year $y · Subjects: ${_jambSubjects.join(' · ')}',
+                                            'Subjects: ${_jambSubjects.join(' · ')}',
                                         examType: '4 subjects · combined',
                                         durationMins: durationMins > 0
                                             ? durationMins
@@ -730,12 +721,45 @@ class _CbtScreenState extends State<CbtScreen> {
                                       ),
                                     );
                                   }),
-                                  if (hasSingles) const SizedBox(height: 10),
                                 ],
+                              );
+                            }
+
+                            // Incomplete upload: show only subjects admin has uploaded
+                            // that are also in the student profile — no subject chips.
+                            final available = _jambExams
+                                .whereType<Map>()
+                                .map((e) => Map<String, dynamic>.from(e))
+                                .where((e) {
+                                  if (_jambSubjects.isEmpty) return true;
+                                  return subjectMatches(
+                                    _examSubject(e),
+                                    _jambSubjects,
+                                  );
+                                })
+                                .toList();
+                            if (available.isEmpty) {
+                              return _emptyBox(
+                                context,
+                                message: _jambSubjects.isEmpty
+                                    ? 'Add your JAMB subjects in Profile, then refresh.'
+                                    : 'No JAMB exams yet for your subjects. Ask admin to upload them.',
+                              );
+                            }
+
+                            final subjectNames = <String>{};
+                            for (final e in available) {
+                              final s = _examSubject(e);
+                              if (s.isNotEmpty) subjectNames.add(s);
+                            }
+
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
                                 Text(
-                                  hasPacks
-                                      ? 'Or practice one subject'
-                                      : 'JAMB — choose a subject',
+                                  subjectNames.length == 1
+                                      ? 'JAMB — ${subjectNames.first}'
+                                      : 'JAMB — available subjects',
                                   style: TextStyle(
                                     color: context.textColor,
                                     fontSize: 14,
@@ -744,44 +768,17 @@ class _CbtScreenState extends State<CbtScreen> {
                                 ),
                                 const SizedBox(height: 6),
                                 Text(
-                                  'Download and start each subject on its own. Full packs appear when all 4 are available.',
+                                  subjectNames.length == 1
+                                      ? 'Download and start this subject. When all 4 of your subjects are uploaded, they combine into one full UTME exam.'
+                                      : 'These subjects are ready now. When all 4 of your profile subjects are uploaded, they combine into one full UTME exam.',
                                   style: TextStyle(
                                     color: context.greyColor,
                                     fontSize: 12,
                                     height: 1.4,
                                   ),
                                 ),
-                                const SizedBox(height: 10),
-                                if (subjects.isEmpty)
-                                  _emptyBox(
-                                    context,
-                                    message:
-                                        'Add your JAMB subjects in Profile, then refresh.',
-                                  )
-                                else ...[
-                                  SizedBox(
-                                    height: 42,
-                                    child: ListView.separated(
-                                      scrollDirection: Axis.horizontal,
-                                      itemCount: subjects.length,
-                                      separatorBuilder: (_, __) =>
-                                          const SizedBox(width: 8),
-                                      itemBuilder: (_, i) {
-                                        final s = subjects[i];
-                                        return _subjectChip(context, s, s);
-                                      },
-                                    ),
-                                  ),
-                                  const SizedBox(height: 20),
-                                  if (exams.isEmpty)
-                                    _emptyBox(
-                                      context,
-                                      message:
-                                          'No ${_selectedSubject ?? 'subject'} pack uploaded yet.',
-                                    )
-                                  else
-                                    _examCardsForList(context, exams),
-                                ],
+                                const SizedBox(height: 14),
+                                _examCardsForList(context, available),
                               ],
                             );
                           },
