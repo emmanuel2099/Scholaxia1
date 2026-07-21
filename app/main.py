@@ -9,7 +9,7 @@ from app.core.database import engine, get_db
 from app.core.redis import init_redis, close_redis
 from app.core.startup_db import database_ready, initialize_database
 
-from app.routers import auth, students, admin, live_class, cbt, community, ai_tutor, notifications, payments, flutterwave_payments
+from app.routers import auth, students, admin, live_class, cbt, community, ai_tutor, notifications, payments, flutterwave_payments, paystack_payments
 from app.routers import developer_auth, developer_keys, public_ai_api, reviews_reports, teacher_ai, library, wallet, materials
 from app.routers import recommendations
 from app.routers import performance
@@ -67,6 +67,7 @@ app.include_router(ai_tutor.router, prefix="/api/v1")
 app.include_router(notifications.router, prefix="/api/v1")
 app.include_router(payments.router, prefix="/api/v1")
 app.include_router(flutterwave_payments.router, prefix="/api/v1")
+app.include_router(paystack_payments.router, prefix="/api/v1")
 app.include_router(reviews_reports.router, prefix="/api/v1")
 app.include_router(teacher_ai.router, prefix="/api/v1")
 app.include_router(library.router, prefix="/api/v1")

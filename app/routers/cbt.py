@@ -23,6 +23,14 @@ router = APIRouter(prefix="/cbt", tags=["CBT"])
 PRACTICE_BANK_BASE = "https://www.scholaxiacbtexam.blog/practice-exams"
 
 
+@router.get("/packages")
+async def list_cbt_packages():
+    """Annual CBT products. Prices are controlled by Scholaxia, not clients."""
+    from app.core.cbt_packages import all_cbt_packages
+
+    return {"packages": all_cbt_packages()}
+
+
 @router.get("/practice-bank/{category}")
 async def practice_bank(
     category: str,
@@ -879,18 +887,20 @@ async def teacher_create_school_exam(
     await db.flush()
 
     try:
-        from app.models.notification import Notification, NotificationType
-        prof_res = await db.execute(select(StudentProfile))
-        for prof in prof_res.scalars().all():
-            if not subject_matches(payload.subject, prof.selected_subjects or []):
-                continue
-            db.add(Notification(
-                user_id=prof.user_id,
-                type=NotificationType.cbt_reminder,
-                title="New Scholaxia exam",
-                body=f"{payload.title} ({payload.subject}) — open Exams to take it.",
-                data=json.dumps({"exam_id": str(exam.id)}),
-            ))
+        from app.services.notification_service import send_subject_notification
+
+        await send_subject_notification(
+            db=db,
+            subject=payload.subject,
+            title="New Scholaxia exam",
+            body=f"{payload.title} ({payload.subject}) — open Exams to take it.",
+            notification_type="cbt_reminder",
+            data={
+                "type": "cbt_exam",
+                "exam_id": str(exam.id),
+                "subject": payload.subject,
+            },
+        )
     except Exception:
         pass
 

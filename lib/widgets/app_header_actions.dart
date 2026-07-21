@@ -3,6 +3,7 @@ import '../api/api_service.dart';
 import '../screens/student/notifications/notifications_screen.dart';
 import '../screens/student/profile/profile_screen.dart';
 import '../screens/kind/kind_profile_screen.dart';
+import '../services/support_contact_service.dart';
 import '../theme/app_theme.dart';
 
 /// Notification bell + profile avatar for student/kid top bars.
@@ -84,6 +85,32 @@ class _AppHeaderActionsState extends State<AppHeaderActions> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        Tooltip(
+          message: 'Chat with Scholaxia on WhatsApp',
+          child: GestureDetector(
+            onTap: () async {
+              try {
+                await SupportContactService.openWhatsApp();
+              } catch (_) {
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Could not open WhatsApp.')),
+                );
+              }
+            },
+            child: Container(
+              width: 44,
+              height: 44,
+              decoration: _btnDecoration(),
+              child: const Icon(
+                Icons.chat_rounded,
+                color: Color(0xFF25D366),
+                size: 23,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
         GestureDetector(
           onTap: () async {
             await Navigator.push(
@@ -100,18 +127,25 @@ class _AppHeaderActionsState extends State<AppHeaderActions> {
                 width: 44,
                 height: 44,
                 decoration: _btnDecoration(),
-                child: Icon(Icons.notifications_outlined,
-                    color: _iconColor(), size: 22),
+                child: Icon(
+                  Icons.notifications_outlined,
+                  color: _iconColor(),
+                  size: 22,
+                ),
               ),
               if (_unread > 0)
                 Positioned(
                   right: 2,
                   top: 2,
                   child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                    constraints:
-                        const BoxConstraints(minWidth: 18, minHeight: 18),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 2,
+                    ),
+                    constraints: const BoxConstraints(
+                      minWidth: 18,
+                      minHeight: 18,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFFFBBF24),
                       borderRadius: BorderRadius.circular(10),
@@ -177,8 +211,9 @@ class _AppHeaderActionsState extends State<AppHeaderActions> {
                 : Text(
                     _initial,
                     style: TextStyle(
-                      color:
-                          widget.lightOnGradient ? Colors.white : Colors.white,
+                      color: widget.lightOnGradient
+                          ? Colors.white
+                          : Colors.white,
                       fontWeight: FontWeight.w800,
                       fontSize: 16,
                     ),

@@ -6,12 +6,17 @@ Generates, stores, and verifies OTPs for:
   - Password reset
 
 OTPs are stored in Redis with a TTL (default 10 minutes).
-Email is sent through SendGrid, Mailgun, or Brevo based on configuration.
+Email is sent through Gmail SMTP, SendGrid, Mailgun, or Brevo.
 """
 
+import asyncio
+import html
 import json
 import random
+import smtplib
 import string
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from typing import Any, Optional
 
 import httpx
@@ -19,7 +24,7 @@ from app.core.config import settings
 from app.core.redis import get_redis
 
 OTP_LENGTH = 6
-OTP_TTL = settings.OTP_EXPIRE_MINUTES * 60   # seconds
+OTP_TTL = settings.OTP_EXPIRE_MINUTES * 60  # seconds
 PENDING_TTL = OTP_TTL
 
 BREVO_SEND_URL = "https://api.brevo.com/v3/smtp/email"
@@ -79,9 +84,15 @@ async def send_otp(email: str, full_name: str, purpose: str) -> str:
     await _store_set(_redis_key(purpose, email), otp, OTP_TTL)
     print(f"[OTP] generated for {email} purpose={purpose}")
 
-    subject, body = _build_email(purpose, full_name, otp)
+    subject, html_body, text_body = _build_email(purpose, full_name, otp)
     try:
-        await _send_email(to_email=email, to_name=full_name, subject=subject, body=body)
+        await _send_email(
+            to_email=email,
+            to_name=full_name,
+            subject=subject,
+            html_body=html_body,
+            text_body=text_body,
+        )
     except Exception as e:
         # Keep OTP in store so DEBUG / retry still works even if the provider fails
         print(f"[OTP] email send failed for {email}: {e}")
@@ -90,22 +101,89 @@ async def send_otp(email: str, full_name: str, purpose: str) -> str:
     return otp
 
 
-async def _send_email(to_email: str, to_name: str, subject: str, body: str) -> None:
+async def _send_email(
+    to_email: str,
+    to_name: str,
+    subject: str,
+    html_body: str,
+    text_body: str,
+) -> None:
     """Send transactional email via the configured provider."""
-    provider = (settings.EMAIL_PROVIDER or "sendgrid").strip().lower()
-    if provider == "brevo":
-        await _send_via_brevo(to_email, to_name, subject, body)
+    provider = (settings.EMAIL_PROVIDER or "gmail").strip().lower()
+    if provider == "gmail":
+        await _send_via_gmail(to_email, to_name, subject, html_body, text_body)
+    elif provider == "brevo":
+        await _send_via_brevo(to_email, to_name, subject, html_body)
     elif provider == "mailgun":
-        await _send_via_mailgun(to_email, to_name, subject, body)
+        await _send_via_mailgun(to_email, to_name, subject, html_body, text_body)
     else:
-        await _send_via_sendgrid(to_email, to_name, subject, body)
+        await _send_via_sendgrid(to_email, to_name, subject, html_body, text_body)
 
 
-async def _send_via_sendgrid(to_email: str, to_name: str, subject: str, body: str) -> None:
+def _smtp_send_gmail(
+    to_email: str,
+    to_name: str,
+    subject: str,
+    html_body: str,
+    text_body: str,
+) -> None:
+    sender = (settings.GMAIL_SMTP_EMAIL or "").strip()
+    password = (settings.GMAIL_SMTP_APP_PASSWORD or "").strip().replace(" ", "")
+    name = (settings.GMAIL_SMTP_NAME or "Scholaxia").strip()
+    if not sender or not password:
+        raise RuntimeError(
+            "Gmail SMTP is not configured (GMAIL_SMTP_EMAIL / GMAIL_SMTP_APP_PASSWORD). "
+            "Create a Google App Password and set those env vars."
+        )
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = f"{name} <{sender}>"
+    msg["To"] = f"{to_name} <{to_email}>" if to_name else to_email
+    msg["Reply-To"] = sender
+    msg.attach(MIMEText(text_body, "plain", "utf-8"))
+    msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+    with smtplib.SMTP("smtp.gmail.com", 587, timeout=20) as server:
+        server.ehlo()
+        server.starttls()
+        server.ehlo()
+        server.login(sender, password)
+        server.sendmail(sender, [to_email], msg.as_string())
+
+
+async def _send_via_gmail(
+    to_email: str,
+    to_name: str,
+    subject: str,
+    html_body: str,
+    text_body: str,
+) -> None:
+    """Send via Gmail SMTP so From/@gmail.com authenticates correctly (inbox, not spam)."""
+    await asyncio.to_thread(
+        _smtp_send_gmail, to_email, to_name, subject, html_body, text_body
+    )
+
+
+async def _send_via_sendgrid(
+    to_email: str,
+    to_name: str,
+    subject: str,
+    html_body: str,
+    text_body: str,
+) -> None:
     """Send a transactional email via SendGrid API."""
     if not settings.SENDGRID_API_KEY or not settings.SENDGRID_SENDER_EMAIL:
         raise RuntimeError(
             "SendGrid is not configured (SENDGRID_API_KEY / SENDGRID_SENDER_EMAIL)"
+        )
+
+    sender = settings.SENDGRID_SENDER_EMAIL.strip().lower()
+    if sender.endswith("@gmail.com") or sender.endswith("@googlemail.com"):
+        print(
+            "[OTP] WARNING: SendGrid From is a Gmail address — Gmail often marks "
+            "these as spam. Prefer EMAIL_PROVIDER=gmail with an App Password, "
+            "or authenticate a custom domain in SendGrid."
         )
 
     payload = {
@@ -116,7 +194,22 @@ async def _send_via_sendgrid(to_email: str, to_name: str, subject: str, body: st
             "email": settings.SENDGRID_SENDER_EMAIL,
             "name": settings.SENDGRID_SENDER_NAME,
         },
-        "content": [{"type": "text/html", "value": body}],
+        "reply_to": {
+            "email": settings.SENDGRID_SENDER_EMAIL,
+            "name": settings.SENDGRID_SENDER_NAME,
+        },
+        "content": [
+            {"type": "text/plain", "value": text_body},
+            {"type": "text/html", "value": html_body},
+        ],
+        "categories": ["transactional", "otp"],
+        "mail_settings": {
+            "bypass_list_management": {"enable": True},
+        },
+        "tracking_settings": {
+            "click_tracking": {"enable": False},
+            "open_tracking": {"enable": False},
+        },
     }
 
     async with httpx.AsyncClient() as client:
@@ -134,7 +227,13 @@ async def _send_via_sendgrid(to_email: str, to_name: str, subject: str, body: st
         response.raise_for_status()
 
 
-async def _send_via_mailgun(to_email: str, to_name: str, subject: str, body: str) -> None:
+async def _send_via_mailgun(
+    to_email: str,
+    to_name: str,
+    subject: str,
+    html_body: str,
+    text_body: str,
+) -> None:
     """Send a transactional email via Mailgun API."""
     domain = (settings.MAILGUN_DOMAIN or "").strip()
     if not settings.MAILGUN_API_KEY or not domain:
@@ -149,7 +248,11 @@ async def _send_via_mailgun(to_email: str, to_name: str, subject: str, body: str
         "from": from_header,
         "to": f"{to_name} <{to_email}>",
         "subject": subject,
-        "html": body,
+        "text": text_body,
+        "html": html_body,
+        "o:tracking": "no",
+        "o:tracking-clicks": "no",
+        "o:tracking-opens": "no",
     }
 
     async with httpx.AsyncClient() as client:
@@ -174,10 +277,10 @@ async def verify_otp(email: str, otp: str, purpose: str) -> bool:
     stored = await _store_get(key)
 
     if not stored:
-        return False   # expired or never sent
+        return False  # expired or never sent
 
     if stored.strip() != (otp or "").strip():
-        return False   # wrong code
+        return False  # wrong code
 
     # Consume — delete so it can't be reused
     await _store_delete(key)
@@ -202,33 +305,59 @@ async def clear_pending_signup(email: str) -> None:
     await _store_delete(_pending_key(email))
 
 
-def _build_email(purpose: str, full_name: str, otp: str) -> tuple[str, str]:
+def _build_email(purpose: str, full_name: str, otp: str) -> tuple[str, str, str]:
+    safe_name = html.escape((full_name or "there").strip() or "there")
+    mins = settings.OTP_EXPIRE_MINUTES
+
     if purpose in ("signup", "verify_email"):
-        subject = "Verify your Scholaxia account"
-        body = f"""
-        <p>Hi {full_name},</p>
-        <p>Your Scholaxia email verification code is:</p>
-        <h2 style="letter-spacing:6px;">{otp}</h2>
-        <p>This code expires in {settings.OTP_EXPIRE_MINUTES} minutes.</p>
-        <p>If you did not create a Scholaxia account, ignore this email.</p>
-        """
+        subject = "Your Scholaxia signup code"
+        intro = "Use this code to finish creating your Scholaxia account."
     elif purpose == "reset_password":
-        subject = "Reset your Scholaxia password"
-        body = f"""
-        <p>Hi {full_name},</p>
-        <p>Your password reset code is:</p>
-        <h2 style="letter-spacing:6px;">{otp}</h2>
-        <p>This code expires in {settings.OTP_EXPIRE_MINUTES} minutes.</p>
-        <p>If you did not request a password reset, ignore this email.</p>
-        """
+        subject = "Your Scholaxia password reset code"
+        intro = "Use this code to reset your Scholaxia password."
+    elif purpose == "login":
+        subject = "Your Scholaxia login code"
+        intro = "Use this code to sign in to Scholaxia."
     else:
-        subject = "Your Scholaxia OTP"
-        body = f"<p>Your OTP is: <strong>{otp}</strong>. Expires in {settings.OTP_EXPIRE_MINUTES} minutes.</p>"
+        subject = "Your Scholaxia code"
+        intro = "Use this code for your Scholaxia request."
 
-    return subject, body
+    text_body = (
+        f"Hi {full_name or 'there'},\n\n"
+        f"{intro}\n\n"
+        f"Code: {otp}\n\n"
+        f"This code expires in {mins} minutes.\n"
+        f"If you did not request this, you can ignore this email.\n\n"
+        f"— Scholaxia\n"
+    )
+
+    html_body = f"""<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background:#f6f7fb;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f7fb;padding:24px 12px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="100%" style="max-width:520px;background:#ffffff;border-radius:12px;padding:28px 24px;">
+          <tr><td style="font-size:20px;font-weight:700;color:#5b21b6;padding-bottom:12px;">Scholaxia</td></tr>
+          <tr><td style="font-size:16px;padding-bottom:8px;">Hi {safe_name},</td></tr>
+          <tr><td style="font-size:15px;line-height:1.5;padding-bottom:18px;">{html.escape(intro)}</td></tr>
+          <tr>
+            <td align="center" style="padding:16px 0 20px;">
+              <div style="display:inline-block;letter-spacing:8px;font-size:28px;font-weight:700;color:#111827;background:#f3f4f6;border-radius:10px;padding:14px 22px;">{otp}</div>
+            </td>
+          </tr>
+          <tr><td style="font-size:13px;color:#6b7280;line-height:1.5;">This code expires in {mins} minutes. If you did not request this, ignore this email.</td></tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>"""
+
+    return subject, html_body, text_body
 
 
-async def _send_via_brevo(to_email: str, to_name: str, subject: str, body: str) -> None:
+async def _send_via_brevo(to_email: str, to_name: str, subject: str, html_body: str) -> None:
     """Send a transactional email via Brevo API."""
     payload = {
         "sender": {
@@ -237,7 +366,7 @@ async def _send_via_brevo(to_email: str, to_name: str, subject: str, body: str) 
         },
         "to": [{"email": to_email, "name": to_name}],
         "subject": subject,
-        "htmlContent": body,
+        "htmlContent": html_body,
     }
 
     async with httpx.AsyncClient() as client:

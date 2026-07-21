@@ -5,6 +5,7 @@ import '../../../api/api_service.dart';
 import '../../../theme/app_theme.dart';
 import '../../../utils/post_attachment_picker.dart';
 import '../../../services/profile_avatar_cache.dart';
+import '../../../services/support_contact_service.dart';
 import '../../auth/exam_subject_setup_screen.dart';
 import '../../auth/role_select_screen.dart';
 import '../../kind/kind_shell.dart';
@@ -93,9 +94,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await ProfileAvatarCache.instance.clear();
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => const RoleSelectScreen()),
-        (_) => false);
+      context,
+      MaterialPageRoute(builder: (_) => const RoleSelectScreen()),
+      (_) => false,
+    );
   }
 
   Future<void> _changeProfilePicture() async {
@@ -112,9 +114,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _localAvatar = local;
         _uploadingPhoto = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profile picture updated!')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Profile picture updated!')));
     } on ApiException catch (e) {
       if (mounted) {
         setState(() => _uploadingPhoto = false);
@@ -151,63 +153,90 @@ class _ProfileScreenState extends State<ProfileScreen> {
       body: _loading
           ? Center(child: CircularProgressIndicator(color: context.accentColor))
           : _error != null
-              ? _buildError(context)
-              : RefreshIndicator(
-                  color: context.accentColor,
-                  onRefresh: _load,
-                  child: _buildContent(context),
-                ),
+          ? _buildError(context)
+          : RefreshIndicator(
+              color: context.accentColor,
+              onRefresh: _load,
+              child: _buildContent(context),
+            ),
     );
   }
 
   Widget _buildError(BuildContext context) {
-    final isAuthError = _error != null &&
+    final isAuthError =
+        _error != null &&
         (_error!.contains('Not logged in') ||
             (_error!.contains('profile') && _error!.contains('404')));
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(isAuthError ? Icons.person_outline : Icons.error_outline,
-              color: context.greyColor, size: 48),
-          const SizedBox(height: 12),
-          Text(isAuthError ? 'Profile not set up yet' : 'Could not load profile',
-              style: TextStyle(color: context.textColor, fontSize: 15, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 8),
-          Text(isAuthError
-              ? 'Your student profile is being set up. Please log out and log back in.'
-              : (_error ?? ''),
-              textAlign: TextAlign.center,
-              style: TextStyle(color: context.greyColor, fontSize: 12)),
-          const SizedBox(height: 20),
-          ElevatedButton(
-            onPressed: () { setState(() { _loading = true; _error = null; }); _load(); },
-            style: ElevatedButton.styleFrom(
-                backgroundColor: context.accentColor,
-                foregroundColor: context.isDark ? AppColors.background : Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-            child: const Text('Retry'),
-          ),
-          const SizedBox(height: 12),
-          OutlinedButton(
-            onPressed: _logout,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.red,
-              side: const BorderSide(color: Colors.red),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              isAuthError ? Icons.person_outline : Icons.error_outline,
+              color: context.greyColor,
+              size: 48,
             ),
-            child: const Text('Log out'),
-          ),
-          if (isAuthError) ...[
+            const SizedBox(height: 12),
+            Text(
+              isAuthError ? 'Profile not set up yet' : 'Could not load profile',
+              style: TextStyle(
+                color: context.textColor,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
             const SizedBox(height: 8),
             Text(
-              'Or log out and sign in again.',
+              isAuthError
+                  ? 'Your student profile is being set up. Please log out and log back in.'
+                  : (_error ?? ''),
               textAlign: TextAlign.center,
               style: TextStyle(color: context.greyColor, fontSize: 12),
             ),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () {
+                setState(() {
+                  _loading = true;
+                  _error = null;
+                });
+                _load();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: context.accentColor,
+                foregroundColor: context.isDark
+                    ? AppColors.background
+                    : Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: const Text('Retry'),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton(
+              onPressed: _logout,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.red,
+                side: const BorderSide(color: Colors.red),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: const Text('Log out'),
+            ),
+            if (isAuthError) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Or log out and sign in again.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: context.greyColor, fontSize: 12),
+              ),
+            ],
           ],
-        ]),
+        ),
       ),
     );
   }
@@ -215,7 +244,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildContent(BuildContext context) {
     final p = _profile!;
     final initials = p.fullName.isNotEmpty
-        ? p.fullName.trim().split(' ').map((w) => w[0]).take(2).join().toUpperCase()
+        ? p.fullName
+              .trim()
+              .split(' ')
+              .map((w) => w[0])
+              .take(2)
+              .join()
+              .toUpperCase()
         : '?';
     final examSet = p.examType != null && p.examType!.isNotEmpty;
     final levelSet = p.educationLevel != null && p.educationLevel!.isNotEmpty;
@@ -243,25 +278,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(height: 10),
               Row(
                 children: [
-                  Expanded(child: _detailCard(
-                    context,
-                    icon: Icons.school_rounded,
-                    label: 'Exam target',
-                    value: examSet
-                        ? (p.examType == 'ALL'
-                            ? 'JAMB + ${p.ssceExamType ?? 'WAEC/NECO'}'
-                            : p.examType!)
-                        : 'Not set',
-                    muted: !examSet,
-                  )),
+                  Expanded(
+                    child: _detailCard(
+                      context,
+                      icon: Icons.school_rounded,
+                      label: 'Exam target',
+                      value: examSet
+                          ? (p.examType == 'ALL'
+                                ? 'JAMB + ${p.ssceExamType ?? 'WAEC/NECO'}'
+                                : p.examType!)
+                          : 'Not set',
+                      muted: !examSet,
+                    ),
+                  ),
                   const SizedBox(width: 12),
-                  Expanded(child: _detailCard(
-                    context,
-                    icon: Icons.menu_book_rounded,
-                    label: 'Education',
-                    value: levelSet ? p.educationLevel! : 'Not set',
-                    muted: !levelSet,
-                  )),
+                  Expanded(
+                    child: _detailCard(
+                      context,
+                      icon: Icons.menu_book_rounded,
+                      label: 'Education',
+                      value: levelSet ? p.educationLevel! : 'Not set',
+                      muted: !levelSet,
+                    ),
+                  ),
                 ],
               ),
               if (p.jambSubjects.isNotEmpty) ...[
@@ -300,7 +339,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: p.subjects.map((s) => _subjectChip(context, s)).toList(),
+                  children: p.subjects
+                      .map((s) => _subjectChip(context, s))
+                      .toList(),
                 ),
               ],
               const SizedBox(height: 24),
@@ -328,12 +369,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   'Notifications',
                   onTap: () => Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+                    MaterialPageRoute(
+                      builder: (_) => const NotificationsScreen(),
+                    ),
                   ),
                 ),
                 _settingsRow(
                   context,
-                  context.isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
+                  context.isDark
+                      ? Icons.light_mode_outlined
+                      : Icons.dark_mode_outlined,
                   context.isDark ? 'Light mode' : 'Dark mode',
                   trailing: Switch.adaptive(
                     value: context.isDark,
@@ -353,7 +398,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   'About Scholaxia',
                   onTap: () => Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const AboutScholaxiaScreen()),
+                    MaterialPageRoute(
+                      builder: (_) => const AboutScholaxiaScreen(),
+                    ),
                   ),
                 ),
                 _settingsRow(
@@ -362,12 +409,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   'Terms & Conditions',
                   onTap: () => Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const TermsConditionsScreen()),
+                    MaterialPageRoute(
+                      builder: (_) => const TermsConditionsScreen(),
+                    ),
+                  ),
+                ),
+                _settingsRow(
+                  context,
+                  Icons.support_agent_rounded,
+                  'Contact us',
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const ContactScholaxiaScreen(),
+                    ),
                   ),
                 ),
               ]),
               const SizedBox(height: 24),
               _logoutButton(context),
+              const SizedBox(height: 18),
+              Center(
+                child: TextButton.icon(
+                  onPressed: () => SupportContactService.call(
+                    SupportContactService.primaryPhone,
+                  ),
+                  icon: const Icon(Icons.phone_rounded, size: 18),
+                  label: const Text(SupportContactService.primaryPhone),
+                ),
+              ),
               const SizedBox(height: 100),
             ]),
           ),
@@ -400,19 +470,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(color: context.borderColor),
                         ),
-                        child: Icon(Icons.arrow_back_rounded,
-                            color: context.textColor, size: 20),
+                        child: Icon(
+                          Icons.arrow_back_rounded,
+                          color: context.textColor,
+                          size: 20,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 12),
                   ],
-                  Text('Profile',
-                      style: TextStyle(
-                        color: context.textColor,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.3,
-                      )),
+                  Text(
+                    'Profile',
+                    style: TextStyle(
+                      color: context.textColor,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
                   const Spacer(),
                   _planBadge(context, p.hasActiveSubscription),
                 ],
@@ -437,13 +512,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         backgroundColor: context.accentColor.withOpacity(0.12),
                         backgroundImage: _avatarProvider(p),
                         child: _avatarProvider(p) == null
-                            ? Text(initials,
+                            ? Text(
+                                initials,
                                 style: TextStyle(
                                   color: context.accentColor,
                                   fontSize: 28,
                                   fontWeight: FontWeight.w800,
                                   letterSpacing: 1,
-                                ))
+                                ),
+                              )
                             : null,
                       ),
                     ),
@@ -508,20 +585,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              Text(p.fullName,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: context.textColor,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.5,
-                  )),
+              Text(
+                p.fullName,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: context.textColor,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.5,
+                ),
+              ),
               const SizedBox(height: 6),
-              Text(p.email,
-                  style: TextStyle(
-                    color: context.greyColor,
-                    fontSize: 14,
-                  )),
+              Text(
+                p.email,
+                style: TextStyle(color: context.greyColor, fontSize: 14),
+              ),
             ],
           ),
         ),
@@ -547,7 +625,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
-            premium ? Icons.workspace_premium_rounded : Icons.person_outline_rounded,
+            premium
+                ? Icons.workspace_premium_rounded
+                : Icons.person_outline_rounded,
             size: 14,
             color: premium ? context.accentColor : context.greyColor,
           ),
@@ -593,30 +673,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _statDivider(BuildContext context) {
-    return Container(
-      width: 1,
-      height: 36,
-      color: context.borderColor,
-    );
+    return Container(width: 1, height: 36, color: context.borderColor);
   }
 
-  Widget _statItem(BuildContext context, IconData icon, String value, String label) {
+  Widget _statItem(
+    BuildContext context,
+    IconData icon,
+    String value,
+    String label,
+  ) {
     return Expanded(
       child: Column(
         children: [
           Icon(icon, size: 18, color: context.accentColor.withOpacity(0.85)),
           const SizedBox(height: 8),
-          Text(value,
-              style: TextStyle(
-                color: context.textColor,
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.5,
-              )),
+          Text(
+            value,
+            style: TextStyle(
+              color: context.textColor,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.5,
+            ),
+          ),
           const SizedBox(height: 2),
-          Text(label,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: context.greyColor, fontSize: 11)),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: context.greyColor, fontSize: 11),
+          ),
         ],
       ),
     );
@@ -627,65 +712,81 @@ class _ProfileScreenState extends State<ProfileScreen> {
       onTap: () async {
         await Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => const ExamSubjectSetupScreen(popOnComplete: true)),
+          MaterialPageRoute(
+            builder: (_) => const ExamSubjectSetupScreen(popOnComplete: true),
+          ),
         );
         if (mounted) _load();
       },
       child: Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            context.accentColor.withOpacity(context.isDark ? 0.15 : 0.12),
-            context.accentColor.withOpacity(context.isDark ? 0.08 : 0.05),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: context.accentColor.withOpacity(0.25)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: context.accentColor.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(Icons.edit_note_rounded, color: context.accentColor, size: 22),
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              context.accentColor.withOpacity(context.isDark ? 0.15 : 0.12),
+              context.accentColor.withOpacity(context.isDark ? 0.08 : 0.05),
+            ],
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Complete exam setup',
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: context.accentColor.withOpacity(0.25)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: context.accentColor.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                Icons.edit_note_rounded,
+                color: context.accentColor,
+                size: 22,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Complete exam setup',
                     style: TextStyle(
                       color: context.textColor,
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
-                    )),
-                const SizedBox(height: 2),
-                Text('Set your exam target and subjects.',
-                    style: TextStyle(color: context.greyColor, fontSize: 12, height: 1.35)),
-              ],
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Set your exam target and subjects.',
+                    style: TextStyle(
+                      color: context.greyColor,
+                      fontSize: 12,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _sectionTitle(BuildContext context, String title) {
-    return Text(title,
-        style: TextStyle(
-          color: context.textColor,
-          fontSize: 15,
-          fontWeight: FontWeight.w800,
-          letterSpacing: -0.2,
-        ));
+    return Text(
+      title,
+      style: TextStyle(
+        color: context.textColor,
+        fontSize: 15,
+        fontWeight: FontWeight.w800,
+        letterSpacing: -0.2,
+      ),
+    );
   }
 
   Widget _detailCard(
@@ -717,15 +818,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 12),
           Text(label, style: TextStyle(color: context.greyColor, fontSize: 11)),
           const SizedBox(height: 4),
-          Text(value,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: muted ? context.greyColor : context.textColor,
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                height: 1.25,
-              )),
+          Text(
+            value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: muted ? context.greyColor : context.textColor,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              height: 1.25,
+            ),
+          ),
         ],
       ),
     );
@@ -739,12 +842,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: context.borderColor),
       ),
-      child: Text(subject,
-          style: TextStyle(
-            color: context.textColor,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-          )),
+      child: Text(
+        subject,
+        style: TextStyle(
+          color: context.textColor,
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
     );
   }
 
@@ -756,13 +861,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
         border: Border.all(color: context.borderColor),
       ),
       child: Column(
-        children: List.generate(rows.length, (i) => Column(
-          children: [
-            rows[i],
-            if (i < rows.length - 1)
-              Divider(height: 1, indent: 56, color: context.borderColor),
-          ],
-        )),
+        children: List.generate(
+          rows.length,
+          (i) => Column(
+            children: [
+              rows[i],
+              if (i < rows.length - 1)
+                Divider(height: 1, indent: 56, color: context.borderColor),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -794,15 +902,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(label,
-                    style: TextStyle(
-                      color: context.textColor,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    )),
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: context.textColor,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ),
               trailing ??
-                  Icon(Icons.chevron_right_rounded, color: context.greyColor, size: 20),
+                  Icon(
+                    Icons.chevron_right_rounded,
+                    color: context.greyColor,
+                    size: 20,
+                  ),
             ],
           ),
         ),
@@ -820,21 +934,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 14),
           decoration: BoxDecoration(
-            color: const Color(0xFFEF4444).withOpacity(context.isDark ? 0.12 : 0.08),
+            color: const Color(
+              0xFFEF4444,
+            ).withOpacity(context.isDark ? 0.12 : 0.08),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFEF4444).withOpacity(0.35)),
+            border: Border.all(
+              color: const Color(0xFFEF4444).withOpacity(0.35),
+            ),
           ),
           child: const Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(Icons.logout_rounded, color: Color(0xFFEF4444), size: 18),
               SizedBox(width: 8),
-              Text('Log out',
-                  style: TextStyle(
-                    color: Color(0xFFEF4444),
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                  )),
+              Text(
+                'Log out',
+                style: TextStyle(
+                  color: Color(0xFFEF4444),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
+              ),
             ],
           ),
         ),

@@ -18,7 +18,13 @@ from app.models.community import CommunityPost, CommunityChannel
 from app.models.student_group import StudentGroup, StudentGroupMember
 from app.services.group_community import ensure_group_feed_post
 from app.services.media_service import generate_upload_signature, upload_file
-from app.services.cbt_import import CBT_IMPORT_TEMPLATE, parse_cbt_file
+from app.services.cbt_import import CBT_IMPORT_TEMPLATE, normalize_exam_type, parse_cbt_file
+from app.services.notification_service import (
+    send_all_students_notification,
+    send_all_teachers_notification,
+    send_subject_notification,
+    send_users_notification,
+)
 from app.services.student_cleanup import delete_student_user
 from app.services.user_cleanup import purge_all_user_accounts, delete_teacher_user, clear_all_user_emails
 
@@ -161,6 +167,11 @@ class AddBookRequest(BaseModel):
     cover_image_url: Optional[str] = None
     description: Optional[str] = None
     total_pages: Optional[int] = None
+    category: str = "Books"
+    education_level: Optional[str] = None
+    term: Optional[str] = None
+    scheme_week: Optional[int] = None
+    scheme_topic: Optional[str] = None
     library_target: LibraryTarget = LibraryTarget.student
     is_free: bool = True
     price: float = 0.0
@@ -211,11 +222,22 @@ async def add_book(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    if not payload.is_free and payload.price <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Set a price greater than zero for a paid material.",
+        )
     book = Book(
         title=payload.title, author=payload.author, subject=payload.subject,
         exam_type=payload.exam_type, file_key=payload.file_key,
         cover_image_url=payload.cover_image_url, description=payload.description,
-        total_pages=payload.total_pages, library_target=payload.library_target,
+        total_pages=payload.total_pages,
+        category=(payload.category or "Books").strip(),
+        education_level=payload.education_level,
+        term=payload.term,
+        scheme_week=payload.scheme_week,
+        scheme_topic=payload.scheme_topic,
+        library_target=payload.library_target,
         is_free=payload.is_free,
         price=0.0 if payload.is_free else max(payload.price, 0),
         uploaded_by=current_user["sub"],
@@ -223,6 +245,21 @@ async def add_book(
     )
     db.add(book)
     await db.flush()
+    try:
+        notify = (
+            send_all_teachers_notification
+            if book.library_target == LibraryTarget.teacher
+            else send_all_students_notification
+        )
+        await notify(
+            db=db,
+            title="New library book",
+            body=f"«{book.title}» ({book.subject}) is now in your library.",
+            notification_type="announcement",
+            data={"type": "library_book", "book_id": str(book.id)},
+        )
+    except Exception:
+        pass
     return BookResponse(
         id=str(book.id), title=book.title, subject=book.subject,
         library_target=book.library_target,
@@ -241,8 +278,16 @@ async def list_all_books(
         query = query.where(Book.library_target == library_target)
     result = await db.execute(query.order_by(Book.created_at.desc()))
     books = result.scalars().all()
-    return [{"id": str(b.id), "title": b.title, "subject": b.subject,
-             "library_target": b.library_target, "exam_type": b.exam_type, "created_at": b.created_at}
+    return [{"id": str(b.id), "title": b.title, "author": b.author,
+             "subject": b.subject, "category": getattr(b, "category", "Books"),
+             "education_level": getattr(b, "education_level", None),
+             "term": getattr(b, "term", None),
+             "scheme_week": getattr(b, "scheme_week", None),
+             "scheme_topic": getattr(b, "scheme_topic", None),
+             "library_target": b.library_target, "exam_type": b.exam_type,
+             "is_free": getattr(b, "is_free", True),
+             "price": float(getattr(b, "price", 0) or 0),
+             "created_at": b.created_at}
             for b in books]
 
 
@@ -330,9 +375,10 @@ async def _persist_cbt_exam(
     if year is None:
         raise HTTPException(status_code=400, detail="Exam year is required")
 
-    exam_type = payload.exam_type.upper().strip().replace(" ", "_").replace("-", "_")
-    if exam_type in ("CE", "COMMONENTRANCE"):
-        exam_type = "COMMON_ENTRANCE"
+    try:
+        exam_type = normalize_exam_type(payload.exam_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     exam = CBTExam(
         title=payload.title,
@@ -394,6 +440,27 @@ def _exam_to_response(exam: CBTExam) -> CBTExamResponse:
     )
 
 
+async def _notify_published_exam(db: AsyncSession, exam: CBTExam) -> None:
+    if not exam.is_published:
+        return
+    title = "New CBT exam"
+    body = f"«{exam.title}» ({exam.subject}) is now available."
+    data = {
+        "type": "cbt_exam",
+        "exam_id": str(exam.id),
+        "subject": exam.subject,
+    }
+    assigned = [str(user_id) for user_id in (exam.assigned_student_ids or [])]
+    if assigned:
+        await send_users_notification(
+            db, assigned, title, body, "cbt_reminder", data
+        )
+    else:
+        await send_subject_notification(
+            db, exam.subject, title, body, "cbt_reminder", data
+        )
+
+
 @router.post("/cbt/exams", response_model=CBTExamResponse, status_code=201)
 async def create_cbt_exam(
     payload: CBTExamCreate,
@@ -402,6 +469,10 @@ async def create_cbt_exam(
 ):
     """Admin creates a CBT exam with all questions in one call."""
     exam = await _persist_cbt_exam(db, payload, current_user["sub"])
+    try:
+        await _notify_published_exam(db, exam)
+    except Exception:
+        pass
     return _exam_to_response(exam)
 
 
@@ -429,6 +500,11 @@ async def toggle_publish(
         raise HTTPException(status_code=404, detail="Exam not found")
     exam.is_published = not exam.is_published
     await db.flush()
+    if exam.is_published:
+        try:
+            await _notify_published_exam(db, exam)
+        except Exception:
+            pass
     return {"id": str(exam.id), "is_published": exam.is_published}
 
 
@@ -530,6 +606,10 @@ async def import_cbt_file(
             questions=[CBTQuestionCreate(**q) for q in raw["questions"]],
         )
         exam = await _persist_cbt_exam(db, payload, current_user["sub"])
+        try:
+            await _notify_published_exam(db, exam)
+        except Exception:
+            pass
         created.append(
             {
                 "id": str(exam.id),
@@ -556,6 +636,165 @@ async def import_cbt_file(
     }
 
 
+@router.post("/cbt/import/preview")
+async def preview_cbt_import(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(require_admin),
+):
+    """
+    Extract questions from an uploaded PDF (or JSON/CSV) WITHOUT saving anything.
+    Returns editable questions with per-question confidence + issues so the admin
+    can review and fix them, then save via POST /cbt/import/confirm.
+    """
+    from app.services.cbt_pdf_parser import (
+        LOW_CONFIDENCE_THRESHOLD,
+        PDFParseError,
+        parse_pdf_questions,
+    )
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+    if len(content) > 15 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large. Maximum size is 15MB.")
+
+    name = (file.filename or "").lower()
+    is_pdf = name.endswith(".pdf") or content[:5] == b"%PDF-"
+
+    if is_pdf:
+        try:
+            result = parse_pdf_questions(content)
+        except PDFParseError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        low_conf = sum(
+            1 for q in result["questions"] if q["confidence"] < LOW_CONFIDENCE_THRESHOLD
+        )
+        return {
+            "source": "pdf",
+            "questions": result["questions"],
+            "total_questions": len(result["questions"]),
+            "answer_key_found": result["answer_key_found"],
+            "warnings": result["warnings"],
+            "low_confidence_count": low_conf,
+            "low_confidence_threshold": LOW_CONFIDENCE_THRESHOLD,
+        }
+
+    # JSON/CSV preview — reuse the strict parser but don't persist.
+    defaults = {"title": "Preview", "subject": "Preview", "year": 2000}
+    try:
+        exams = parse_cbt_file(file.filename or "upload.json", content, defaults)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    questions = []
+    for exam in exams:
+        for i, q in enumerate(exam["questions"], start=1):
+            questions.append({**q, "number": i, "confidence": 1.0, "issues": []})
+    return {
+        "source": "json" if name.endswith(".json") else "csv",
+        "questions": questions,
+        "total_questions": len(questions),
+        "answer_key_found": True,
+        "warnings": [],
+        "low_confidence_count": 0,
+        "low_confidence_threshold": 0.0,
+    }
+
+
+class CBTImportConfirmQuestion(BaseModel):
+    question_text: str
+    option_a: str
+    option_b: str
+    option_c: str
+    option_d: str
+    correct_option: str
+    explanation: Optional[str] = None
+    topic: Optional[str] = None
+    confidence: Optional[float] = None  # carried from preview; low values block publishing
+
+
+class CBTImportConfirmRequest(BaseModel):
+    title: str
+    subject: str
+    year: Optional[int] = None
+    exam_type: str = "JAMB"
+    duration_minutes: int = 60
+    is_published: bool = True
+    skip_duplicates: bool = True
+    questions: list[CBTImportConfirmQuestion]
+
+
+@router.post("/cbt/import/confirm")
+async def confirm_cbt_import(
+    payload: CBTImportConfirmRequest,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Save admin-reviewed questions (from /cbt/import/preview) as a CBT exam.
+    If any question still carries a low confidence score, the exam is saved
+    UNPUBLISHED so unverified content never reaches students automatically.
+    """
+    from app.services.cbt_pdf_parser import LOW_CONFIDENCE_THRESHOLD
+
+    if not payload.questions:
+        raise HTTPException(status_code=400, detail="No questions to save")
+
+    if payload.skip_duplicates:
+        existing = await db.execute(
+            select(CBTExam).where(CBTExam.title == payload.title.strip())
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(
+                status_code=409,
+                detail=f"An exam titled '{payload.title.strip()}' already exists.",
+            )
+
+    low_conf = sum(
+        1 for q in payload.questions
+        if q.confidence is not None and q.confidence < LOW_CONFIDENCE_THRESHOLD
+    )
+    publish = payload.is_published and low_conf == 0
+
+    exam_payload = CBTExamCreate(
+        title=payload.title.strip(),
+        subject=payload.subject,
+        year=payload.year,
+        exam_type=payload.exam_type,
+        duration_minutes=payload.duration_minutes,
+        is_published=publish,
+        questions=[
+            CBTQuestionCreate(
+                question_text=q.question_text,
+                option_a=q.option_a,
+                option_b=q.option_b,
+                option_c=q.option_c,
+                option_d=q.option_d,
+                correct_option=q.correct_option,
+                explanation=q.explanation,
+                topic=q.topic,
+            )
+            for q in payload.questions
+        ],
+    )
+    exam = await _persist_cbt_exam(db, exam_payload, current_user["sub"])
+    note = None
+    if payload.is_published and not publish:
+        note = (
+            f"{low_conf} question(s) are still low-confidence, so the exam was saved "
+            "unpublished. Review them in the exam list, then publish."
+        )
+    return {
+        "id": str(exam.id),
+        "title": exam.title,
+        "subject": exam.subject,
+        "year": exam.year,
+        "exam_type": exam.exam_type,
+        "total_questions": exam.total_questions,
+        "is_published": exam.is_published,
+        "note": note,
+    }
+
+
 @router.post("/seed-cbt")
 async def seed_cbt(
     current_user: dict = Depends(require_admin),
@@ -567,6 +806,50 @@ async def seed_cbt(
     created = await seed_cbt_exams(db)
     await db.commit()
     return {"created": created, "count": len(created)}
+
+
+@router.post("/cbt/purge-samples")
+async def purge_sample_cbt_exams(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Delete the built-in SAMPLE exams only (the ones added by seeding).
+    Safety rules: only exams whose title matches the seed list AND that were
+    not created by an admin/teacher are considered; any sample exam a student
+    has already taken is kept so no results are lost.
+    """
+    from app.core.seed import sample_exam_titles
+
+    titles = sample_exam_titles()
+    result = await db.execute(
+        select(CBTExam).where(
+            CBTExam.title.in_(titles),
+            CBTExam.created_by.is_(None),
+        )
+    )
+    exams = result.scalars().all()
+
+    deleted: list[str] = []
+    kept: list[str] = []
+    for exam in exams:
+        sessions = await db.execute(
+            select(func.count()).select_from(CBTSession).where(CBTSession.exam_id == exam.id)
+        )
+        if (sessions.scalar() or 0) > 0:
+            kept.append(exam.title)
+            continue
+        q_res = await db.execute(select(CBTQuestion).where(CBTQuestion.exam_id == exam.id))
+        for q in q_res.scalars().all():
+            await db.delete(q)
+        await db.delete(exam)
+        deleted.append(exam.title)
+
+    return {
+        "deleted": deleted,
+        "deleted_count": len(deleted),
+        "kept_with_results": kept,
+    }
 
 
 CBT_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
@@ -686,6 +969,10 @@ async def admin_create_internal_exam(
             )
         )
     await db.flush()
+    try:
+        await _notify_published_exam(db, exam)
+    except Exception:
+        pass
     return {
         "id": str(exam.id),
         "title": exam.title,
@@ -1269,9 +1556,6 @@ from sqlalchemy import delete, update, func
 from app.models.live_class import LiveClass, ClassAttendance, LiveSessionRequest
 from app.models.wallet import WalletTransaction
 from app.models.review_report import TeacherReview
-from app.services.notification_service import send_subject_notification
-
-
 class AdminHostLiveClassRequest(BaseModel):
     title: str
     subject: str

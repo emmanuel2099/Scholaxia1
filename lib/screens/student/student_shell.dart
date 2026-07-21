@@ -11,7 +11,7 @@ import 'home/home_screen.dart';
 import 'sia/sia_screen.dart';
 import 'cbt/cbt_screen.dart';
 import 'community/community_screen.dart';
-import 'games/games_screen.dart';
+import 'profile/profile_screen.dart';
 import 'sil/sil_entry.dart';
 
 class StudentShell extends StatefulWidget {
@@ -35,15 +35,35 @@ class _StudentShellState extends State<StudentShell>
     const SiaScreen(),
     const CbtScreen(),
     const CommunityScreen(),
-    const GamesScreen(),
+    const ProfileScreen(),
   ];
 
   static const _navItems = [
-    _NavItem(icon: Icons.home_rounded, activeIcon: Icons.home_rounded, label: 'Home'),
-    _NavItem(icon: Icons.auto_awesome_outlined, activeIcon: Icons.auto_awesome_rounded, label: 'Sia'),
-    _NavItem(icon: Icons.quiz_outlined, activeIcon: Icons.quiz_rounded, label: 'CBT'),
-    _NavItem(icon: Icons.people_outline_rounded, activeIcon: Icons.people_rounded, label: 'Community'),
-    _NavItem(icon: Icons.sports_esports_outlined, activeIcon: Icons.sports_esports_rounded, label: 'Games'),
+    _NavItem(
+      icon: Icons.home_rounded,
+      activeIcon: Icons.home_rounded,
+      label: 'Home',
+    ),
+    _NavItem(
+      icon: Icons.auto_awesome_outlined,
+      activeIcon: Icons.auto_awesome_rounded,
+      label: 'Sia',
+    ),
+    _NavItem(
+      icon: Icons.quiz_outlined,
+      activeIcon: Icons.quiz_rounded,
+      label: 'CBT',
+    ),
+    _NavItem(
+      icon: Icons.people_outline_rounded,
+      activeIcon: Icons.people_rounded,
+      label: 'Community',
+    ),
+    _NavItem(
+      icon: Icons.person_outline_rounded,
+      activeIcon: Icons.person_rounded,
+      label: 'Profile',
+    ),
   ];
 
   @override
@@ -151,7 +171,9 @@ class _StudentShellState extends State<StudentShell>
                     offset: const Offset(0, 8),
                   ),
                   BoxShadow(
-                    color: Colors.black.withOpacity(context.isDark ? 0.3 : 0.06),
+                    color: Colors.black.withOpacity(
+                      context.isDark ? 0.3 : 0.06,
+                    ),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
                   ),
@@ -166,77 +188,82 @@ class _StudentShellState extends State<StudentShell>
                   final item = _navItems[i];
                   return Expanded(
                     child: GestureDetector(
-                    onTap: () => _onTabTap(i),
-                    behavior: HitTestBehavior.opaque,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 220),
-                      curve: Curves.easeOutCubic,
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      decoration: BoxDecoration(
-                        color: active
-                            ? activeColor.withOpacity(0.12)
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Stack(
-                            clipBehavior: Clip.none,
-                            children: [
-                              Icon(
-                                active ? item.activeIcon : item.icon,
-                                color: active ? activeColor : inactiveColor,
-                                size: active ? 22 : 20,
-                              ),
-                              if (badge > 0)
-                                Positioned(
-                                  right: -8,
-                                  top: -6,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                        horizontal: 5, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      gradient: const LinearGradient(
-                                        colors: [
-                                          Color(0xFFEF4444),
-                                          Color(0xFFF97316),
-                                        ],
+                      onTap: () => _onTabTap(i),
+                      behavior: HitTestBehavior.opaque,
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 220),
+                        curve: Curves.easeOutCubic,
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        decoration: BoxDecoration(
+                          color: active
+                              ? activeColor.withOpacity(0.12)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                Icon(
+                                  active ? item.activeIcon : item.icon,
+                                  color: active ? activeColor : inactiveColor,
+                                  size: active ? 22 : 20,
+                                ),
+                                if (badge > 0)
+                                  Positioned(
+                                    right: -8,
+                                    top: -6,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 5,
+                                        vertical: 2,
                                       ),
-                                      borderRadius: BorderRadius.circular(10),
-                                      border: Border.all(
-                                          color: Colors.white, width: 1.5),
-                                    ),
-                                    child: Text(
-                                      badge > 9 ? '9+' : '$badge',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 8,
-                                        fontWeight: FontWeight.w800,
+                                      decoration: BoxDecoration(
+                                        gradient: const LinearGradient(
+                                          colors: [
+                                            Color(0xFFEF4444),
+                                            Color(0xFFF97316),
+                                          ],
+                                        ),
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(
+                                          color: Colors.white,
+                                          width: 1.5,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        badge > 9 ? '9+' : '$badge',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 8,
+                                          fontWeight: FontWeight.w800,
+                                        ),
                                       ),
                                     ),
                                   ),
+                              ],
+                            ),
+                            const SizedBox(height: 3),
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                item.label,
+                                maxLines: 1,
+                                style: TextStyle(
+                                  color: active ? activeColor : inactiveColor,
+                                  fontSize: 9.5,
+                                  fontWeight: active
+                                      ? FontWeight.w700
+                                      : FontWeight.w500,
                                 ),
-                            ],
-                          ),
-                          const SizedBox(height: 3),
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              item.label,
-                              maxLines: 1,
-                              style: TextStyle(
-                                color: active ? activeColor : inactiveColor,
-                                fontSize: 9.5,
-                                fontWeight:
-                                    active ? FontWeight.w700 : FontWeight.w500,
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
                   );
                 }),
               ),

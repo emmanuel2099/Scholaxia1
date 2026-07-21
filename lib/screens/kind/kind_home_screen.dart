@@ -3,6 +3,7 @@ import '../../api/api_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/student_ui.dart';
 import '../../widgets/app_header_actions.dart';
+import 'kind_games_screen.dart';
 import 'kind_learn_screen.dart';
 import 'kind_cbt_screen.dart';
 import 'kind_shared.dart';
@@ -119,36 +120,36 @@ class _KindHomeScreenState extends State<KindHomeScreen> {
                               child: Row(
                                 children: [
                                   StudentStatCard(
-                                  icon: Icons.videocam_rounded,
-                                  value: '$_liveCount',
-                                  label: 'Live now',
-                                  gradient: const [
-                                    Color(0xFFA855F7),
-                                    Color(0xFFD946EF),
-                                  ],
-                                ),
-                                const SizedBox(width: 12),
-                                StudentStatCard(
-                                  icon: Icons.auto_awesome_rounded,
-                                  value: 'Sia',
-                                  label: 'AI tutor',
-                                  gradient: const [
-                                    Color(0xFF7C3AED),
-                                    Color(0xFF9333EA),
-                                  ],
-                                ),
-                                const SizedBox(width: 12),
-                                StudentStatCard(
-                                  icon: Icons.menu_book_rounded,
-                                  value: 'Learn',
-                                  label: '& play',
-                                  gradient: const [
-                                    Color(0xFF10B981),
-                                    Color(0xFF34D399),
-                                  ],
-                                ),
-                              ],
-                            ),
+                                    icon: Icons.videocam_rounded,
+                                    value: '$_liveCount',
+                                    label: 'Live now',
+                                    gradient: const [
+                                      Color(0xFFA855F7),
+                                      Color(0xFFD946EF),
+                                    ],
+                                  ),
+                                  const SizedBox(width: 12),
+                                  StudentStatCard(
+                                    icon: Icons.auto_awesome_rounded,
+                                    value: 'Sia',
+                                    label: 'AI tutor',
+                                    gradient: const [
+                                      Color(0xFF7C3AED),
+                                      Color(0xFF9333EA),
+                                    ],
+                                  ),
+                                  const SizedBox(width: 12),
+                                  StudentStatCard(
+                                    icon: Icons.menu_book_rounded,
+                                    value: 'Learn',
+                                    label: '& play',
+                                    gradient: const [
+                                      Color(0xFF10B981),
+                                      Color(0xFF34D399),
+                                    ],
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -194,7 +195,10 @@ class _KindHomeScreenState extends State<KindHomeScreen> {
         'Games',
         '30+ fun learning games.',
         const [Color(0xFF8B5CF6), Color(0xFFA78BFA)],
-        () => widget.onNavigate?.call(4),
+        () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const KindGamesScreen()),
+        ),
       ),
       (
         Icons.menu_book_rounded,
@@ -268,9 +272,7 @@ class _KindHomeScreenState extends State<KindHomeScreen> {
                 : [Colors.white, const Color(0xFFF3EEFF)],
           ),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: context.accentColor.withOpacity(0.2),
-          ),
+          border: Border.all(color: context.accentColor.withOpacity(0.2)),
         ),
         child: Row(
           children: [
@@ -281,8 +283,11 @@ class _KindHomeScreenState extends State<KindHomeScreen> {
                 gradient: AppGradients.primaryButton,
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: const Icon(Icons.shield_rounded,
-                  color: Colors.white, size: 22),
+              child: const Icon(
+                Icons.shield_rounded,
+                color: Colors.white,
+                size: 22,
+              ),
             ),
             const SizedBox(width: 14),
             Expanded(

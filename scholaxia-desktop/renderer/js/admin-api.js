@@ -136,6 +136,33 @@ async function uploadCbtExamFile(file, fields) {
   return data;
 }
 
+async function previewCbtFile(file) {
+  var fd = new FormData();
+  fd.append("file", file);
+  var res = await fetch(API_BASE + "/api/v1/admin/cbt/import/preview", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + getAdminToken() },
+    body: fd,
+    signal: fetchTimeout(120000),
+  });
+  var data = await res.json().catch(function () { return {}; });
+  if (res.status === 401) {
+    clearAdminSession();
+    window.location.href = "admin.html";
+    return null;
+  }
+  if (!res.ok) throw new Error(formatApiError(data.detail) || "Could not read the file (" + res.status + ")");
+  return data;
+}
+
+async function confirmCbtImport(payload) {
+  return adminApi("/api/v1/admin/cbt/import/confirm", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    timeout: 120000,
+  });
+}
+
 async function uploadAdminFile(url, file) {
   var fd = new FormData();
   fd.append("file", file);

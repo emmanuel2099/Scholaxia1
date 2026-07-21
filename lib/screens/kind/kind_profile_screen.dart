@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../api/api_service.dart';
+import '../../services/support_contact_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/student_ui.dart';
 import '../../widgets/theme_toggle_tile.dart';
@@ -61,8 +62,7 @@ class _KindProfileScreenState extends State<KindProfileScreen> {
     return Scaffold(
       backgroundColor: context.bgColor,
       body: _loading
-          ? Center(
-              child: CircularProgressIndicator(color: context.accentColor))
+          ? Center(child: CircularProgressIndicator(color: context.accentColor))
           : RefreshIndicator(
               color: context.accentColor,
               onRefresh: _load,
@@ -87,75 +87,82 @@ class _KindProfileScreenState extends State<KindProfileScreen> {
                                 decoration: BoxDecoration(
                                   color: context.cardColor,
                                   borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: context.borderColor),
+                                  border: Border.all(
+                                    color: context.borderColor,
+                                  ),
                                 ),
-                                child: Icon(Icons.arrow_back_rounded,
-                                    color: context.textColor, size: 20),
+                                child: Icon(
+                                  Icons.arrow_back_rounded,
+                                  color: context.textColor,
+                                  size: 20,
+                                ),
                               ),
                             ),
                           ),
                         Container(
-                      width: double.infinity,
-                      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                      padding: const EdgeInsets.fromLTRB(22, 28, 22, 32),
-                      decoration: BoxDecoration(
-                        gradient: AppGradients.hero(context),
-                        borderRadius: BorderRadius.circular(28),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFF7C3AED).withOpacity(0.35),
-                            blurRadius: 24,
-                            offset: const Offset(0, 12),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        children: [
-                          Container(
-                            width: 80,
-                            height: 80,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.white.withOpacity(0.2),
-                              border: Border.all(
-                                color: Colors.white.withOpacity(0.4),
-                                width: 3,
+                          width: double.infinity,
+                          margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                          padding: const EdgeInsets.fromLTRB(22, 28, 22, 32),
+                          decoration: BoxDecoration(
+                            gradient: AppGradients.hero(context),
+                            borderRadius: BorderRadius.circular(28),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(
+                                  0xFF7C3AED,
+                                ).withOpacity(0.35),
+                                blurRadius: 24,
+                                offset: const Offset(0, 12),
                               ),
-                            ),
-                            child: Center(
-                              child: Text(
-                                initial,
+                            ],
+                          ),
+                          child: Column(
+                            children: [
+                              Container(
+                                width: 80,
+                                height: 80,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.white.withOpacity(0.2),
+                                  border: Border.all(
+                                    color: Colors.white.withOpacity(0.4),
+                                    width: 3,
+                                  ),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    initial,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 34,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              Text(
+                                name,
                                 style: const TextStyle(
                                   color: Colors.white,
-                                  fontSize: 34,
+                                  fontSize: 22,
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          Text(
-                            name,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 22,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          if (age.isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 4),
-                              child: Text(
-                                'Ages $age · Kid learner',
-                                style: TextStyle(
-                                  color: Colors.white.withOpacity(0.8),
-                                  fontSize: 13,
+                              if (age.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text(
+                                    'Ages $age · Kid learner',
+                                    style: TextStyle(
+                                      color: Colors.white.withOpacity(0.8),
+                                      fontSize: 13,
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -165,14 +172,19 @@ class _KindProfileScreenState extends State<KindProfileScreen> {
                     child: Column(
                       children: [
                         if (email.isNotEmpty)
-                          _infoTile(context, Icons.mail_outline_rounded,
-                              'Email', email),
+                          _infoTile(
+                            context,
+                            Icons.mail_outline_rounded,
+                            'Email',
+                            email,
+                          ),
                         if (parent.isNotEmpty)
                           _infoTile(
-                              context,
-                              Icons.family_restroom_outlined,
-                              'Parent email',
-                              parent),
+                            context,
+                            Icons.family_restroom_outlined,
+                            'Parent email',
+                            parent,
+                          ),
                         const SizedBox(height: 8),
                         ThemeToggleTile(accentColor: context.accentColor),
                         const SizedBox(height: 16),
@@ -200,14 +212,28 @@ class _KindProfileScreenState extends State<KindProfileScreen> {
                             ),
                           ),
                         ),
+                        _linkTile(
+                          context,
+                          Icons.support_agent_rounded,
+                          'Contact us',
+                          'Call, email, or chat on WhatsApp',
+                          () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const ContactScholaxiaScreen(),
+                            ),
+                          ),
+                        ),
                         const SizedBox(height: 20),
                         SizedBox(
                           width: double.infinity,
                           height: 50,
                           child: OutlinedButton.icon(
                             onPressed: _logout,
-                            icon: const Icon(Icons.logout_rounded,
-                                color: Color(0xFFEF4444)),
+                            icon: const Icon(
+                              Icons.logout_rounded,
+                              color: Color(0xFFEF4444),
+                            ),
                             label: const Text(
                               'Log out',
                               style: TextStyle(
@@ -222,6 +248,18 @@ class _KindProfileScreenState extends State<KindProfileScreen> {
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(16),
                               ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Center(
+                          child: TextButton.icon(
+                            onPressed: () => SupportContactService.call(
+                              SupportContactService.primaryPhone,
+                            ),
+                            icon: const Icon(Icons.phone_rounded, size: 18),
+                            label: const Text(
+                              SupportContactService.primaryPhone,
                             ),
                           ),
                         ),
@@ -299,7 +337,11 @@ class _KindProfileScreenState extends State<KindProfileScreen> {
   }
 
   Widget _infoTile(
-      BuildContext context, IconData icon, String label, String value) {
+    BuildContext context,
+    IconData icon,
+    String label,
+    String value,
+  ) {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(16),
@@ -331,15 +373,19 @@ class _KindProfileScreenState extends State<KindProfileScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label,
-                    style: TextStyle(
-                        color: context.greyColor, fontSize: 11)),
+                Text(
+                  label,
+                  style: TextStyle(color: context.greyColor, fontSize: 11),
+                ),
                 const SizedBox(height: 2),
-                Text(value,
-                    style: TextStyle(
-                        color: context.textColor,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600)),
+                Text(
+                  value,
+                  style: TextStyle(
+                    color: context.textColor,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ],
             ),
           ),

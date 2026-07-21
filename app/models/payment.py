@@ -48,9 +48,29 @@ class Payment(Base):
     stripe_payment_intent_id: Mapped[str] = mapped_column(String(255), nullable=True)
     flutterwave_tx_ref: Mapped[str] = mapped_column(String(255), nullable=True, index=True)
     flutterwave_transaction_id: Mapped[str] = mapped_column(String(255), nullable=True)
+    # Generic provider metadata (Paystack and future gateways)
+    provider: Mapped[str] = mapped_column(String(30), nullable=True, index=True)
+    provider_reference: Mapped[str] = mapped_column(String(255), nullable=True, index=True)
+    provider_transaction_id: Mapped[str] = mapped_column(String(255), nullable=True)
+    # What was purchased — e.g. product_type="library_book", product_id="<book uuid>"
+    product_type: Mapped[str] = mapped_column(String(40), nullable=True, index=True)
+    product_id: Mapped[str] = mapped_column(String(120), nullable=True, index=True)
     live_class_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
     material_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
     book_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
     live_plan_id: Mapped[str] = mapped_column(String(80), nullable=True, index=True)
     description: Mapped[str] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class StudentEntitlement(Base):
+    """Time-boxed access granted by a purchase (e.g. a CBT practice package)."""
+    __tablename__ = "student_entitlements"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    student_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), index=True)
+    entitlement_type: Mapped[str] = mapped_column(String(40), nullable=False, index=True)  # e.g. "cbt_package"
+    entitlement_key: Mapped[str] = mapped_column(String(120), nullable=False, index=True)  # e.g. package id
+    payment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("payments.id"), nullable=True)
+    granted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)

@@ -64,14 +64,28 @@ class Settings(BaseSettings):
     LIVE_CLASS_JOIN_AMOUNT: float = 2000.0  # NGN per live class session
     LIVE_CLASS_MONTHLY_DAYS: int = 30  # one payment unlocks all live classes for 30 days
 
+    # Paystack (library books, CBT packages, class packages)
+    PAYSTACK_PUBLIC_KEY: str = ""
+    PAYSTACK_SECRET_KEY: str = ""
+    # Optional browser redirect after Paystack checkout (left blank for mobile SDK flows)
+    PAYSTACK_CALLBACK_URL: str = ""
+
     # Firebase — use FIREBASE_CREDENTIALS_JSON on Render (paste full JSON), or file locally
     FIREBASE_CREDENTIALS_PATH: str = "firebase-credentials.json"
     FIREBASE_CREDENTIALS_JSON: str = ""
 
-    # Email OTP provider — "sendgrid" | "mailgun" | "brevo"
+    # Email OTP provider — "gmail" | "sendgrid" | "mailgun" | "brevo"
+    # Prefer "gmail" when From is a Gmail address (better inbox delivery).
+    # Prefer "sendgrid" only with an authenticated custom domain (not @gmail.com).
     EMAIL_PROVIDER: str = "sendgrid"
 
-    # SendGrid (OTP Email)
+    # Gmail SMTP (recommended for @gmail.com senders — authenticates as real Gmail)
+    # Create an App Password: Google Account → Security → 2-Step Verification → App passwords
+    GMAIL_SMTP_EMAIL: str = ""
+    GMAIL_SMTP_APP_PASSWORD: str = ""
+    GMAIL_SMTP_NAME: str = "Scholaxia"
+
+    # SendGrid (OTP Email) — use with a verified custom domain, not @gmail.com
     SENDGRID_API_KEY: str = ""
     SENDGRID_SENDER_EMAIL: str = ""   # must be a Verified Sender in SendGrid
     SENDGRID_SENDER_NAME: str = "Scholaxia"
@@ -144,6 +158,11 @@ class Settings(BaseSettings):
     ALOC_ACCESS_TOKEN: str = ""
     ALOC_BASE_URL: str = "https://questions.aloc.com.ng"
     ALOC_DEFAULT_YEAR: str = ""  # optional, e.g. 2010 — blank = random UTME years
+
+    # When True, sample WAEC/NECO/JAMB CBT exams are re-seeded on every startup.
+    # Default False so deleted sample exams stay deleted (admin can still seed
+    # manually via POST /api/v1/admin/seed-cbt).
+    SEED_SAMPLE_CBT: bool = False
 
     ADMIN_EMAIL: str = "admin@scholaxia.com"
     ADMIN_PASSWORD: str = "changeme"

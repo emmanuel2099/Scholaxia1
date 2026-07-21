@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../student/saved/saved_classes_screen.dart';
-import 'kind_games_screen.dart';
 import 'kind_home_screen.dart';
 import 'kind_live_screen.dart';
+import 'kind_profile_screen.dart';
 import 'kind_sia_screen.dart';
 
 /// Kid learner app — polished UI matching the student experience.
@@ -30,7 +30,7 @@ class _KindShellState extends State<KindShell> {
           const KindSiaScreen(),
           const KindLiveScreen(),
           SavedClassesScreen(key: _savedKey),
-          const KindGamesScreen(),
+          const KindProfileScreen(),
         ];
 
         const navItems = [
@@ -55,9 +55,9 @@ class _KindShellState extends State<KindShell> {
             label: 'Saved',
           ),
           _NavItem(
-            icon: Icons.videogame_asset_outlined,
-            activeIcon: Icons.videogame_asset_rounded,
-            label: 'Games',
+            icon: Icons.person_outline_rounded,
+            activeIcon: Icons.person_rounded,
+            label: 'Profile',
           ),
         ];
 
@@ -86,7 +86,9 @@ class _KindShellState extends State<KindShell> {
                     offset: const Offset(0, 8),
                   ),
                   BoxShadow(
-                    color: Colors.black.withOpacity(context.isDark ? 0.3 : 0.06),
+                    color: Colors.black.withOpacity(
+                      context.isDark ? 0.3 : 0.06,
+                    ),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
                   ),

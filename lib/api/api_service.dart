@@ -39,6 +39,7 @@ class ApiService {
   static const _kSetupComplete = 'setup_complete';
   static const _kOnboardingSeen = 'onboarding_seen';
   static const _kProfilePicture = 'profile_picture_url';
+
   /// Where to land after app restart: `league` or `student`.
   static const _kAppResumeMode = 'app_resume_mode';
   static const _studentMe = '/api/v1/students/me';
@@ -174,9 +175,9 @@ class ApiService {
   }
 
   Map<String, String> _jsonHeaders() => {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      };
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+  };
 
   Future<Map<String, String>> _authHeaders() async {
     final token = await getToken();
@@ -249,8 +250,9 @@ class ApiService {
       headers: _jsonHeaders(),
       body: jsonEncode(body),
     );
-    final auth =
-        AuthResponse.fromJson(Map<String, dynamic>.from(_parse(res) as Map));
+    final auth = AuthResponse.fromJson(
+      Map<String, dynamic>.from(_parse(res) as Map),
+    );
     await _saveAuth(auth);
     return auth;
   }
@@ -273,7 +275,8 @@ class ApiService {
         'full_name': fullName,
         'role': role,
         'age_group': ageGroup,
-        if (gradeLevel != null && gradeLevel.isNotEmpty) 'grade_level': gradeLevel,
+        if (gradeLevel != null && gradeLevel.isNotEmpty)
+          'grade_level': gradeLevel,
         if (parentEmail != null && parentEmail.isNotEmpty)
           'parent_email': parentEmail,
       }),
@@ -290,8 +293,9 @@ class ApiService {
       headers: _jsonHeaders(),
       body: jsonEncode({'email': email, 'otp': otp}),
     );
-    final auth =
-        AuthResponse.fromJson(Map<String, dynamic>.from(_parse(res) as Map));
+    final auth = AuthResponse.fromJson(
+      Map<String, dynamic>.from(_parse(res) as Map),
+    );
     await _saveAuth(auth);
     return auth;
   }
@@ -328,13 +332,15 @@ class ApiService {
         'age_group': ageGroup,
         if (fullName != null && fullName.isNotEmpty) 'full_name': fullName,
         if (password != null && password.isNotEmpty) 'password': password,
-        if (gradeLevel != null && gradeLevel.isNotEmpty) 'grade_level': gradeLevel,
+        if (gradeLevel != null && gradeLevel.isNotEmpty)
+          'grade_level': gradeLevel,
         if (parentEmail != null && parentEmail.isNotEmpty)
           'parent_email': parentEmail,
       }),
     );
-    final auth =
-        AuthResponse.fromJson(Map<String, dynamic>.from(_parse(res) as Map));
+    final auth = AuthResponse.fromJson(
+      Map<String, dynamic>.from(_parse(res) as Map),
+    );
     await _saveAuth(auth);
     return auth;
   }
@@ -353,8 +359,9 @@ class ApiService {
         'full_name': fullName,
       }),
     );
-    final auth =
-        AuthResponse.fromJson(Map<String, dynamic>.from(_parse(res) as Map));
+    final auth = AuthResponse.fromJson(
+      Map<String, dynamic>.from(_parse(res) as Map),
+    );
     await _saveAuth(auth);
     return auth;
   }
@@ -381,8 +388,9 @@ class ApiService {
           'parent_email': parentEmail,
       }),
     );
-    final auth =
-        AuthResponse.fromJson(Map<String, dynamic>.from(_parse(res) as Map));
+    final auth = AuthResponse.fromJson(
+      Map<String, dynamic>.from(_parse(res) as Map),
+    );
     await _saveAuth(auth);
     return auth;
   }
@@ -503,7 +511,8 @@ class ApiService {
       );
     }
     return KindQuizResult(
-      intro: data['intro']?.toString() ??
+      intro:
+          data['intro']?.toString() ??
           data['sia_kind']?.toString() ??
           'Tap an answer for each question!',
       rawText: data['sia_kind']?.toString() ?? '',
@@ -523,9 +532,7 @@ class ApiService {
     String? ssceExamType,
     List<String>? ssceSubjects,
   }) async {
-    final body = <String, dynamic>{
-      'education_level': educationLevel,
-    };
+    final body = <String, dynamic>{'education_level': educationLevel};
     if (examType != null) body['exam_type'] = examType;
     if (subjects != null) body['subjects'] = subjects;
     if (enableJamb != null) body['enable_jamb'] = enableJamb;
@@ -605,10 +612,7 @@ class ApiService {
   }
 
   Future<StudentProfile> getStudentProfile() async {
-    final res = await http.get(
-      _uri(_studentMe),
-      headers: await _authHeaders(),
-    );
+    final res = await http.get(_uri(_studentMe), headers: await _authHeaders());
     final profile = StudentProfile.fromJson(_parseMap(res));
     final fromApi = resolveMediaUrl(profile.profilePicture);
     if (fromApi.isNotEmpty) {
@@ -626,7 +630,8 @@ class ApiService {
   /// Upload an image then save it as the current user's profile picture.
   Future<String> updateProfilePicture(List<int> bytes, String filename) async {
     final uploaded = await communityUpload(bytes, filename);
-    var url = uploaded['file_url']?.toString() ??
+    var url =
+        uploaded['file_url']?.toString() ??
         uploaded['secure_url']?.toString() ??
         uploaded['url']?.toString() ??
         '';
@@ -640,9 +645,7 @@ class ApiService {
       body: jsonEncode({'profile_picture': url}),
     );
     final data = _parseMap(res);
-    final saved = resolveMediaUrl(
-      data['profile_picture']?.toString() ?? url,
-    );
+    final saved = resolveMediaUrl(data['profile_picture']?.toString() ?? url);
     await cacheProfilePicture(saved);
     // Keep a local copy so the avatar still shows if the CDN is slow/offline.
     try {
@@ -740,10 +743,7 @@ class ApiService {
     final res = await http.post(
       _uri(ApiEndpoints.silPractice),
       headers: await _authHeaders(),
-      body: jsonEncode({
-        'subject': subject,
-        'question_count': questionCount,
-      }),
+      body: jsonEncode({'subject': subject, 'question_count': questionCount}),
     );
     return _parseMap(res);
   }
@@ -787,7 +787,9 @@ class ApiService {
     String opponentSchool = 'Rival Academy',
   }) async {
     final res = await http.post(
-      _uri(ApiEndpoints.silSchoolChallenge, {'opponent_school': opponentSchool}),
+      _uri(ApiEndpoints.silSchoolChallenge, {
+        'opponent_school': opponentSchool,
+      }),
       headers: await _authHeaders(),
       body: '{}',
     );
@@ -906,10 +908,18 @@ class ApiService {
   Future<List<dynamic>> libraryStudentBooks({
     String? subject,
     String? examType,
+    String? searchQuery,
+    String? category,
   }) async {
     final query = <String, String>{};
     if (subject != null && subject.isNotEmpty) query['subject'] = subject;
     if (examType != null && examType.isNotEmpty) query['exam_type'] = examType;
+    if (searchQuery != null && searchQuery.isNotEmpty) {
+      query['q'] = searchQuery;
+    }
+    if (category != null && category.isNotEmpty && category != 'All') {
+      query['category'] = category;
+    }
     final res = await http.get(
       _uri(ApiEndpoints.libraryStudent, query.isEmpty ? null : query),
       headers: await _authHeaders(),
@@ -921,6 +931,39 @@ class ApiService {
     final res = await http.get(
       _uri(ApiEndpoints.libraryRead(bookId)),
       headers: await _authHeaders(),
+    );
+    return _parseMap(res);
+  }
+
+  Future<void> libraryUpdateProgress(String bookId, int page) async {
+    final res = await http.post(
+      _uri('/api/v1/library/$bookId/progress'),
+      headers: await _authHeaders(),
+      body: jsonEncode({'current_page': page}),
+    );
+    _parse(res);
+  }
+
+  Future<Map<String, dynamic>> initializePaystack({
+    required String productType,
+    required String productId,
+  }) async {
+    final res = await http.post(
+      _uri('/api/v1/payments/paystack/initialize'),
+      headers: await _authHeaders(),
+      body: jsonEncode({
+        'product_type': productType,
+        'product_id': productId,
+      }),
+    );
+    return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> verifyPaystack(String reference) async {
+    final res = await http.post(
+      _uri('/api/v1/payments/paystack/verify'),
+      headers: await _authHeaders(),
+      body: jsonEncode({'reference': reference}),
     );
     return _parseMap(res);
   }
@@ -1104,10 +1147,7 @@ class ApiService {
     return CbtResult.fromJson(_parseMap(res));
   }
 
-  Future<List<dynamic>> cbtExams({
-    String? examType,
-    String? subject,
-  }) async {
+  Future<List<dynamic>> cbtExams({String? examType, String? subject}) async {
     final query = <String, String>{};
     if (examType != null && examType.isNotEmpty) {
       query['exam_type'] = examType;
@@ -1188,10 +1228,7 @@ class ApiService {
     final res = await http.post(
       _uri('/api/v1/cbt/internal-exams/$examId/submit'),
       headers: await _authHeaders(),
-      body: jsonEncode({
-        'answers': answers,
-        'is_auto_submit': isAutoSubmit,
-      }),
+      body: jsonEncode({'answers': answers, 'is_auto_submit': isAutoSubmit}),
     );
     return CbtResult.fromJson(_parseMap(res));
   }
@@ -1594,7 +1631,8 @@ class ApiService {
         'go_live_now': goLiveNow,
         'visibility': visibility,
         if (visibility == 'private') 'invited_student_ids': invitedStudentIds,
-        if (visibility == 'private') 'invited_student_emails': invitedStudentEmails,
+        if (visibility == 'private')
+          'invited_student_emails': invitedStudentEmails,
         if (visibility == 'school_group' && schoolGroupId != null)
           'school_group_id': schoolGroupId,
       }),
@@ -1632,10 +1670,7 @@ class ApiService {
     int limit = 50,
     int offset = 0,
   }) async {
-    final query = <String, String>{
-      'limit': '$limit',
-      'offset': '$offset',
-    };
+    final query = <String, String>{'limit': '$limit', 'offset': '$offset'};
     if (subject != null && subject.isNotEmpty) query['subject'] = subject;
     if (status != null && status.isNotEmpty) query['status'] = status;
 
@@ -1783,10 +1818,7 @@ class ApiService {
         ? ApiEndpoints.liveClassRequestsMine
         : ApiEndpoints.liveClassRequests;
 
-    final query = <String, String>{
-      'limit': '$limit',
-      'offset': '$offset',
-    };
+    final query = <String, String>{'limit': '$limit', 'offset': '$offset'};
     if (status != null && status.isNotEmpty) query['status'] = status;
 
     final res = await http.get(
@@ -1905,13 +1937,16 @@ class ApiService {
     String filename,
   ) async {
     final uploaded = await communityUpload(bytes, filename);
-    final raw = uploaded['file_url']?.toString() ??
+    final raw =
+        uploaded['file_url']?.toString() ??
         uploaded['url']?.toString() ??
         uploaded['secure_url']?.toString() ??
         '';
     final url = resolveMediaUrl(raw);
     if (url.isEmpty) {
-      throw const ApiException.message('Upload failed — no image URL returned.');
+      throw const ApiException.message(
+        'Upload failed — no image URL returned.',
+      );
     }
     final updated = await updateStudentGroup(groupId, imageUrl: url);
     final saved = resolveMediaUrl(updated['image_url']?.toString() ?? url);
@@ -1963,7 +1998,8 @@ class ApiService {
       _uri(ApiEndpoints.studentGroupJoinRequest(groupId)),
       headers: await _authHeaders(),
       body: jsonEncode({
-        if (message != null && message.trim().isNotEmpty) 'message': message.trim(),
+        if (message != null && message.trim().isNotEmpty)
+          'message': message.trim(),
       }),
     );
     return _parseMap(res);
@@ -1977,7 +2013,10 @@ class ApiService {
     return _parseList(res);
   }
 
-  Future<List<dynamic>> listGroupMessages(String groupId, {int limit = 120}) async {
+  Future<List<dynamic>> listGroupMessages(
+    String groupId, {
+    int limit = 120,
+  }) async {
     final res = await http.get(
       _uri(ApiEndpoints.studentGroupMessages(groupId), {'limit': '$limit'}),
       headers: await _authHeaders(),
@@ -1985,7 +2024,10 @@ class ApiService {
     return _parseList(res);
   }
 
-  Future<Map<String, dynamic>> sendGroupMessage(String groupId, String content) async {
+  Future<Map<String, dynamic>> sendGroupMessage(
+    String groupId,
+    String content,
+  ) async {
     final res = await http.post(
       _uri(ApiEndpoints.studentGroupMessages(groupId)),
       headers: await _authHeaders(),
@@ -2149,10 +2191,7 @@ class ApiService {
     int limit = 20,
     int offset = 0,
   }) async {
-    final query = <String, String>{
-      'limit': '$limit',
-      'offset': '$offset',
-    };
+    final query = <String, String>{'limit': '$limit', 'offset': '$offset'};
     if (subject != null && subject.isNotEmpty) query['subject'] = subject;
     if (examType != null && examType.isNotEmpty) query['exam_type'] = examType;
 
@@ -2192,11 +2231,12 @@ class AuthResponse {
     return AuthResponse(
       accessToken: json['access_token'] as String? ?? '',
       refreshToken: json['refresh_token'] as String? ?? '',
-      role: (json['role']?.toString() ??
-              (user is Map ? user['role']?.toString() : null) ??
-              'student')
-          .toLowerCase()
-          .trim(),
+      role:
+          (json['role']?.toString() ??
+                  (user is Map ? user['role']?.toString() : null) ??
+                  'student')
+              .toLowerCase()
+              .trim(),
       userId: user is Map ? user['id']?.toString() : null,
     );
   }
@@ -2239,10 +2279,12 @@ class StudentProfile {
       subjects: rawSubjects is List
           ? rawSubjects.map((e) => e.toString()).toList()
           : const [],
-      jambSubjects:
-          jamb is List ? jamb.map((e) => e.toString()).toList() : const [],
-      ssceSubjects:
-          ssce is List ? ssce.map((e) => e.toString()).toList() : const [],
+      jambSubjects: jamb is List
+          ? jamb.map((e) => e.toString()).toList()
+          : const [],
+      ssceSubjects: ssce is List
+          ? ssce.map((e) => e.toString()).toList()
+          : const [],
       ssceExamType: json['ssce_exam_type'] as String?,
       hasActiveSubscription: json['has_active_subscription'] == true,
       profilePicture: json['profile_picture'] as String?,
@@ -2279,11 +2321,11 @@ class SiaResponse {
   });
 
   factory SiaResponse.fromJson(Map<String, dynamic> json) => SiaResponse(
-        sia: json['sia']?.toString() ?? '',
-        board: SiaBoardItem.listFromJson(json['board']),
-        student: json['student'] as String?,
-        level: json['level'] as String?,
-      );
+    sia: json['sia']?.toString() ?? '',
+    board: SiaBoardItem.listFromJson(json['board']),
+    student: json['student'] as String?,
+    level: json['level'] as String?,
+  );
 }
 
 class KindSiaResponse {
@@ -2306,7 +2348,8 @@ class KindQuizQuestion {
     this.correct = '',
   });
 
-  bool get hasAnswerKey => correct == 'A' || correct == 'B' || correct == 'C' || correct == 'D';
+  bool get hasAnswerKey =>
+      correct == 'A' || correct == 'B' || correct == 'C' || correct == 'D';
 
   /// Parse plain-text quizzes shaped like Q1. ... A) ... B) ...
   static List<KindQuizQuestion> parseFromText(String text) {
@@ -2372,11 +2415,11 @@ class CbtSession {
   });
 
   factory CbtSession.fromJson(Map<String, dynamic> json) => CbtSession(
-        sessionId: json['session_id']?.toString() ?? '',
-        examId: json['exam_id']?.toString() ?? '',
-        durationMinutes: (json['duration_minutes'] as num?)?.toInt() ?? 60,
-        totalQuestions: (json['total_questions'] as num?)?.toInt() ?? 0,
-      );
+    sessionId: json['session_id']?.toString() ?? '',
+    examId: json['exam_id']?.toString() ?? '',
+    durationMinutes: (json['duration_minutes'] as num?)?.toInt() ?? 60,
+    totalQuestions: (json['total_questions'] as num?)?.toInt() ?? 0,
+  );
 }
 
 class CbtQuestion {
@@ -2385,6 +2428,7 @@ class CbtQuestion {
   final List<String> options;
   final String? topic;
   final String? imageUrl;
+
   /// Present in offline practice packs for local scoring (never shown in UI).
   final String? correctOption;
 
@@ -2407,13 +2451,15 @@ class CbtQuestion {
       json['option_d']?.toString() ?? '',
     ].where((o) => o.isNotEmpty).toList();
 
-    final image = json['image_url']?.toString() ??
+    final image =
+        json['image_url']?.toString() ??
         json['imageUrl']?.toString() ??
         json['diagram_url']?.toString() ??
         json['diagram']?.toString() ??
         json['image']?.toString();
 
-    final correct = json['correct_option']?.toString() ??
+    final correct =
+        json['correct_option']?.toString() ??
         json['correctOption']?.toString() ??
         json['answer']?.toString();
 
@@ -2446,12 +2492,12 @@ class CbtResult {
   });
 
   factory CbtResult.fromJson(Map<String, dynamic> json) => CbtResult(
-        score: (json['score'] as num?)?.toDouble() ?? 0,
-        percentage: (json['percentage'] as num?)?.toDouble() ?? 0,
-        totalCorrect: (json['total_correct'] as num?)?.toInt() ?? 0,
-        totalWrong: (json['total_wrong'] as num?)?.toInt() ?? 0,
-        weakTopics: json['weak_topics'] is List
-            ? (json['weak_topics'] as List).map((e) => e.toString()).toList()
-            : const [],
-      );
+    score: (json['score'] as num?)?.toDouble() ?? 0,
+    percentage: (json['percentage'] as num?)?.toDouble() ?? 0,
+    totalCorrect: (json['total_correct'] as num?)?.toInt() ?? 0,
+    totalWrong: (json['total_wrong'] as num?)?.toInt() ?? 0,
+    weakTopics: json['weak_topics'] is List
+        ? (json['weak_topics'] as List).map((e) => e.toString()).toList()
+        : const [],
+  );
 }

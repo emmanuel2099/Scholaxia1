@@ -70,10 +70,10 @@ class _LeagueAuthScreenState extends State<LeagueAuthScreen> {
         }
       }
       if (!mounted) return;
-      try {
-        FirebasePushService.instance.registerAfterLogin();
-      } catch (_) {}
+      await FirebasePushService.instance.registerAfterLogin();
+      if (!mounted) return;
       await _api.setAppResumeMode('league');
+      if (!mounted) return;
       // League login / signup → open Intellect League (not study dashboard alone).
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(

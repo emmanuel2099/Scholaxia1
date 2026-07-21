@@ -43,6 +43,7 @@ discord-community/.env.local
 /android/app/debug
 /android/app/profile
 /android/app/release
+/android/.kotlin/
 
 # Release binaries — do not commit
 *.apk

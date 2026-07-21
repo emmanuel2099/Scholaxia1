@@ -17,6 +17,7 @@ class LiveClassPlan:
     features: tuple[str, ...]
     education_levels: tuple[str, ...]
     exam_types: tuple[str, ...]
+    billing: str = "monthly"
 
 
 LIVE_CLASS_PLANS: tuple[LiveClassPlan, ...] = (
@@ -24,14 +25,16 @@ LIVE_CLASS_PLANS: tuple[LiveClassPlan, ...] = (
         id="nursery_standard",
         category="Nursery",
         name="Nursery Standard",
-        price=45000,
+        price=50000,
         sessions=8,
         session_minutes=45,
         max_subjects=2,
         features=(
-            "Homework assistance",
+            "Reading",
+            "Phonics",
+            "Counting",
+            "Fun games",
             "Learning activities",
-            "Monthly progress report",
             "Parent feedback session",
         ),
         education_levels=("NURSERY", "KG", "PRE-NURSERY", "NURSERY 1", "NURSERY 2"),
@@ -64,10 +67,13 @@ LIVE_CLASS_PLANS: tuple[LiveClassPlan, ...] = (
         session_minutes=60,
         max_subjects=3,
         features=(
-            "Homework support",
-            "Weekly practice exercises",
-            "Monthly progress report",
-            "Performance tracking",
+            "Mathematics",
+            "Phonics",
+            "English Language",
+            "Moral values",
+            "Homework",
+            "Parent feedback session",
+            "Progress report",
         ),
         education_levels=tuple(f"PRIMARY {i}" for i in range(1, 7))
         + tuple(f"PRY{i}" for i in range(1, 7))
@@ -123,10 +129,11 @@ LIVE_CLASS_PLANS: tuple[LiveClassPlan, ...] = (
         session_minutes=60,
         max_subjects=3,
         features=(
-            "Assignment support",
+            "Three subjects of choice",
+            "One-on-one tutor",
             "Topic-based assessments",
-            "Monthly progress report",
             "Performance analytics",
+            "Unlimited Sia AI Tutor",
         ),
         education_levels=tuple(f"JSS{i}" for i in range(1, 4))
         + tuple(f"SS{i}" for i in range(1, 4))
@@ -211,6 +218,100 @@ LIVE_CLASS_PLANS: tuple[LiveClassPlan, ...] = (
         education_levels=("JAMB", "UTME", "WAEC", "NECO", "IGCSE"),
         exam_types=("JAMB", "WAEC", "NECO", "POST_UTME"),
     ),
+    LiveClassPlan(
+        id="holiday_primary",
+        category="Holiday Classes",
+        name="Primary Holiday Classes",
+        price=15000,
+        sessions=5,
+        session_minutes=60,
+        max_subjects=4,
+        features=("Mathematics", "English Language", "Phonics", "Moral values"),
+        education_levels=tuple(f"PRIMARY {i}" for i in range(1, 7))
+        + ("PRIMARY",),
+        exam_types=("COMMON_ENTRANCE",),
+        billing="holiday",
+    ),
+    LiveClassPlan(
+        id="holiday_jss",
+        category="Holiday Classes",
+        name="Junior Secondary (JSS 1–3)",
+        price=10500,
+        sessions=5,
+        session_minutes=60,
+        max_subjects=5,
+        features=(
+            "Mathematics",
+            "English Language",
+            "Phonics",
+            "French",
+            "Computer",
+            "Five classes weekly",
+        ),
+        education_levels=("JSS", "JSS1", "JSS2", "JSS3"),
+        exam_types=("JUNIOR_WAEC",),
+        billing="holiday",
+    ),
+    LiveClassPlan(
+        id="holiday_ss_science",
+        category="Holiday Classes",
+        name="SS 1–3 Science",
+        price=11000,
+        sessions=5,
+        session_minutes=60,
+        max_subjects=5,
+        features=(
+            "Mathematics",
+            "English",
+            "Physics",
+            "Chemistry",
+            "Biology",
+            "Five classes weekly",
+        ),
+        education_levels=("SS", "SS1", "SS2", "SS3"),
+        exam_types=("WAEC", "NECO"),
+        billing="holiday",
+    ),
+    LiveClassPlan(
+        id="holiday_ss_art",
+        category="Holiday Classes",
+        name="SS 1–3 Art",
+        price=11000,
+        sessions=5,
+        session_minutes=60,
+        max_subjects=5,
+        features=(
+            "Mathematics",
+            "English",
+            "Literature-in-English",
+            "CRS/IRS",
+            "Government",
+            "Five classes weekly",
+        ),
+        education_levels=("SS", "SS1", "SS2", "SS3"),
+        exam_types=("WAEC", "NECO"),
+        billing="holiday",
+    ),
+    LiveClassPlan(
+        id="holiday_ss_commercial",
+        category="Holiday Classes",
+        name="SS 1–3 Commercial",
+        price=11000,
+        sessions=5,
+        session_minutes=60,
+        max_subjects=5,
+        features=(
+            "Mathematics",
+            "English",
+            "Financial Accounting",
+            "Commerce",
+            "Economics",
+            "Five classes weekly",
+        ),
+        education_levels=("SS", "SS1", "SS2", "SS3"),
+        exam_types=("WAEC", "NECO"),
+        billing="holiday",
+    ),
 )
 
 _PLAN_MAP = {p.id: p for p in LIVE_CLASS_PLANS}
@@ -231,7 +332,7 @@ def plan_to_dict(plan: LiveClassPlan) -> dict:
         "session_minutes": plan.session_minutes,
         "max_subjects": plan.max_subjects if plan.max_subjects < 99 else "All core subjects",
         "features": list(plan.features),
-        "billing": "monthly",
+        "billing": plan.billing,
     }
 
 

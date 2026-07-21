@@ -7,8 +7,38 @@ import io
 import json
 from typing import Any
 
-VALID_EXAM_TYPES = {"JAMB", "WAEC", "NECO", "SCHOOL", "POST_UTME", "COMMON_ENTRANCE", "CE"}
+VALID_EXAM_TYPES = {
+    "JAMB",
+    "WAEC",
+    "NECO",
+    "SCHOOL",
+    "POST_UTME",
+    "JUNIOR_WAEC",
+    "COMMON_ENTRANCE",
+}
+# Aliases admins commonly type → canonical exam type
+EXAM_TYPE_ALIASES = {
+    "CE": "COMMON_ENTRANCE",
+    "COMMONENTRANCE": "COMMON_ENTRANCE",
+    "COMMON_ENTRANCE_EXAM": "COMMON_ENTRANCE",
+    "JUNIORWAEC": "JUNIOR_WAEC",
+    "JNR_WAEC": "JUNIOR_WAEC",
+    "JSS_WAEC": "JUNIOR_WAEC",
+    "BECE": "JUNIOR_WAEC",
+    "POSTUTME": "POST_UTME",
+}
 VALID_OPTIONS = {"A", "B", "C", "D"}
+
+
+def normalize_exam_type(raw: str) -> str:
+    """Canonicalize an exam type string; raises ValueError when unknown."""
+    exam_type = str(raw or "").strip().upper().replace(" ", "_").replace("-", "_")
+    exam_type = EXAM_TYPE_ALIASES.get(exam_type, exam_type)
+    if exam_type not in VALID_EXAM_TYPES:
+        raise ValueError(
+            f"exam_type must be one of {', '.join(sorted(VALID_EXAM_TYPES))} (got {raw!r})"
+        )
+    return exam_type
 
 
 def _norm_key(key: str) -> str:
@@ -93,19 +123,16 @@ def normalize_exam(raw: dict[str, Any], defaults: dict[str, Any] | None = None) 
     subject = str(
         _pick(raw, "subject", "exam_subject") or defaults.get("subject") or ""
     ).strip()
-    exam_type = str(
-        _pick(raw, "exam_type", "type", "board") or defaults.get("exam_type") or "JAMB"
-    ).strip().upper().replace(" ", "_").replace("-", "_")
-    if exam_type in ("CE", "COMMONENTRANCE"):
-        exam_type = "COMMON_ENTRANCE"
     if not title:
         raise ValueError("Exam title is required")
     if not subject:
         raise ValueError(f"Exam '{title}': subject is required")
-    if exam_type not in VALID_EXAM_TYPES:
-        raise ValueError(
-            f"Exam '{title}': exam_type must be one of {', '.join(sorted(VALID_EXAM_TYPES))}"
+    try:
+        exam_type = normalize_exam_type(
+            _pick(raw, "exam_type", "type", "board") or defaults.get("exam_type") or "JAMB"
         )
+    except ValueError as exc:
+        raise ValueError(f"Exam '{title}': {exc}") from exc
 
     year_raw = _pick(raw, "year", "exam_year", "session")
     if year_raw is None:
@@ -198,6 +225,42 @@ def parse_csv_import(content: bytes, defaults: dict[str, Any]) -> list[dict[str,
     return [normalize_exam({"questions": questions}, defaults)]
 
 
+def parse_pdf_import(content: bytes, defaults: dict[str, Any]) -> list[dict[str, Any]]:
+    """Direct (no-preview) PDF import. Only allowed when every extracted
+    question is complete and high-confidence — anything uncertain must go
+    through the admin preview/confirm flow so it is never auto-published."""
+    from app.services.cbt_pdf_parser import LOW_CONFIDENCE_THRESHOLD, parse_pdf_questions
+
+    if not defaults.get("title") or not defaults.get("subject"):
+        raise ValueError("PDF upload needs title and subject (in the upload form)")
+
+    result = parse_pdf_questions(content)
+    extracted = result["questions"]
+    needs_review = [
+        q for q in extracted
+        if q["confidence"] < LOW_CONFIDENCE_THRESHOLD or q["issues"] or not q["correct_option"]
+    ]
+    if needs_review:
+        raise ValueError(
+            f"{len(needs_review)} of {len(extracted)} extracted questions need review "
+            "(missing options/answers or low confidence). Use the PDF preview to check "
+            "and confirm them before saving."
+        )
+
+    questions = [
+        {
+            "question_text": q["question_text"],
+            "option_a": q["option_a"],
+            "option_b": q["option_b"],
+            "option_c": q["option_c"],
+            "option_d": q["option_d"],
+            "correct_option": q["correct_option"],
+        }
+        for q in extracted
+    ]
+    return [normalize_exam({"questions": questions}, defaults)]
+
+
 def parse_cbt_file(
     filename: str,
     content: bytes,
@@ -211,13 +274,15 @@ def parse_cbt_file(
         return parse_json_import(content, defaults)
     if name.endswith(".csv"):
         return parse_csv_import(content, defaults or {})
+    if name.endswith(".pdf") or content[:5] == b"%PDF-":
+        return parse_pdf_import(content, defaults or {})
 
     try:
         return parse_json_import(content, defaults)
     except (json.JSONDecodeError, ValueError):
         if defaults and defaults.get("title") and defaults.get("subject"):
             return parse_csv_import(content, defaults)
-        raise ValueError("Unsupported file. Upload a .json or .csv CBT file.") from None
+        raise ValueError("Unsupported file. Upload a .json, .csv, or .pdf CBT file.") from None
 
 
 CBT_IMPORT_TEMPLATE: dict[str, Any] = {

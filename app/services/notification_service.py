@@ -1,6 +1,6 @@
 import json
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from app.models.user import StudentProfile, User, UserRole
 from app.models.notification import Notification, DeviceToken, NotificationType
 import firebase_admin
@@ -186,11 +186,16 @@ async def send_subject_notification(
         if p.selected_subjects and subject_matches(subject, list(p.selected_subjects))
     ]
 
+    try:
+        ntype = NotificationType(notification_type)
+    except ValueError:
+        ntype = NotificationType.cbt_reminder
+
     # Save in-app notifications
     for student_id in student_ids:
         notification = Notification(
             user_id=student_id,
-            type=NotificationType.live_class,
+            type=ntype,
             title=title,
             body=body,
             data=json.dumps(data or {}),
@@ -201,6 +206,19 @@ async def send_subject_notification(
 
     # Send push notifications via FCM
     await _send_push_to_users(db, student_ids, title, body, data or {})
+
+
+def _is_unregistered_token_error(error: Exception) -> bool:
+    if isinstance(error, messaging.UnregisteredError):
+        return True
+    code = str(getattr(error, "code", "") or "").lower()
+    name = error.__class__.__name__.lower()
+    message = str(error).lower()
+    return (
+        "unregistered" in name
+        or code in {"unregistered", "registration-token-not-registered"}
+        or "registration token is not registered" in message
+    )
 
 
 async def _send_push_to_users(db: AsyncSession, user_ids: list, title: str, body: str, data: dict):
@@ -224,8 +242,58 @@ async def _send_push_to_users(db: AsyncSession, user_ids: list, title: str, body
             notification=messaging.Notification(title=title, body=body),
             data={k: str(v) for k, v in data.items()},
             tokens=batch,
+            android=messaging.AndroidConfig(priority="high"),
+            apns=messaging.APNSConfig(headers={"apns-priority": "10"}),
         )
-        messaging.send_each_for_multicast(message)
+        response = messaging.send_each_for_multicast(message)
+        invalid_tokens = [
+            token
+            for token, send_response in zip(batch, response.responses)
+            if not send_response.success
+            and send_response.exception is not None
+            and _is_unregistered_token_error(send_response.exception)
+        ]
+        if invalid_tokens:
+            await db.execute(
+                delete(DeviceToken).where(DeviceToken.token.in_(invalid_tokens))
+            )
+            await db.flush()
+
+
+async def send_users_notification(
+    db: AsyncSession,
+    user_ids: list[str],
+    title: str,
+    body: str,
+    notification_type: str,
+    data: dict = None,
+    exclude_user_id: str = None,
+):
+    """Notify a specific set of users (in-app + push), without duplicates."""
+    recipients = list(dict.fromkeys(
+        str(user_id) for user_id in user_ids
+        if user_id and (
+            not exclude_user_id or str(user_id) != str(exclude_user_id)
+        )
+    ))
+    if not recipients:
+        return
+
+    try:
+        ntype = NotificationType(notification_type)
+    except ValueError:
+        ntype = NotificationType.announcement
+
+    for user_id in recipients:
+        db.add(Notification(
+            user_id=user_id,
+            type=ntype,
+            title=title,
+            body=body,
+            data=json.dumps(data or {}),
+        ))
+    await db.flush()
+    await _send_push_to_users(db, recipients, title, body, data or {})
 
 
 async def send_user_notification(

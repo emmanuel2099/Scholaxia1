@@ -14,7 +14,7 @@ Rules (same for both):
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
@@ -41,6 +41,11 @@ def _book_response(book: Book, read_url: str = None, current_page: int = 1,
         "cover_image_url": book.cover_image_url,
         "description": book.description,
         "total_pages": book.total_pages,
+        "category": getattr(book, "category", "Books") or "Books",
+        "education_level": getattr(book, "education_level", None),
+        "term": getattr(book, "term", None),
+        "scheme_week": getattr(book, "scheme_week", None),
+        "scheme_topic": getattr(book, "scheme_topic", None),
         "library_target": book.library_target,
         "source": "scholaxia",
         "is_free": getattr(book, "is_free", True),
@@ -77,6 +82,8 @@ async def _student_has_book_access(db: AsyncSession, student_id: str, book: Book
 async def student_library(
     subject: Optional[str] = None,
     exam_type: Optional[str] = None,
+    q: Optional[str] = None,
+    category: Optional[str] = None,
     current_user: dict = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ):
@@ -88,16 +95,43 @@ async def student_library(
     if subject:
         query = query.where(Book.subject == subject)
     if exam_type:
-        query = query.where(Book.exam_type == exam_type)
+        query = query.where(Book.exam_type.ilike(exam_type))
+    if category:
+        query = query.where(Book.category.ilike(category))
+    if q and q.strip():
+        term = f"%{q.strip()}%"
+        query = query.where(
+            or_(
+                Book.title.ilike(term),
+                Book.author.ilike(term),
+                Book.subject.ilike(term),
+                Book.description.ilike(term),
+                Book.scheme_topic.ilike(term),
+                Book.category.ilike(term),
+            )
+        )
 
     result = await db.execute(query.order_by(Book.created_at.desc()))
     books = result.scalars().all()
 
-    out = []
-    for b in books:
-        has_access = await _student_has_book_access(db, current_user["sub"], b)
-        out.append(_book_response(b, has_access=has_access))
-    return out
+    paid_ids = [b.id for b in books if not getattr(b, "is_free", True)]
+    purchased_ids = set()
+    if paid_ids:
+        purchases = await db.execute(
+            select(BookPurchase.book_id).where(
+                BookPurchase.student_id == current_user["sub"],
+                BookPurchase.book_id.in_(paid_ids),
+            )
+        )
+        purchased_ids = set(purchases.scalars().all())
+
+    return [
+        _book_response(
+            book,
+            has_access=getattr(book, "is_free", True) or book.id in purchased_ids,
+        )
+        for book in books
+    ]
 
 
 # ── Teacher Library ───────────────────────────────────────────────────────────

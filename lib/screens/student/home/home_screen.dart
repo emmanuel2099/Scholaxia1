@@ -12,6 +12,7 @@ import '../saved/saved_classes_screen.dart';
 import '../notifications/notifications_screen.dart';
 import '../sia/sia_screen.dart';
 import '../cbt/internal_exams_screen.dart';
+import '../games/games_screen.dart';
 import '../library/library_screen.dart';
 import '../marketplace/marketplace_screen.dart';
 import '../sil/sil_entry.dart';
@@ -47,7 +48,10 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadProfile();
     _loadHomeFeed();
     _loadNotificationBadge();
-    _livePollTimer = Timer.periodic(const Duration(seconds: 25), (_) => _loadHomeFeed());
+    _livePollTimer = Timer.periodic(
+      const Duration(seconds: 25),
+      (_) => _loadHomeFeed(),
+    );
   }
 
   @override
@@ -66,7 +70,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadProfile() async {
     try {
-      final p = await _api.getStudentProfile().timeout(const Duration(seconds: 12));
+      final p = await _api.getStudentProfile().timeout(
+        const Duration(seconds: 12),
+      );
       if (mounted) {
         setState(() => _profile = p);
         _loadHomeFeed();
@@ -89,7 +95,9 @@ class _HomeScreenState extends State<HomeScreen> {
         .toList();
   }
 
-  List<Map<String, dynamic>> _dedupeSessions(List<Map<String, dynamic>> sessions) {
+  List<Map<String, dynamic>> _dedupeSessions(
+    List<Map<String, dynamic>> sessions,
+  ) {
     final seen = <String>{};
     final out = <Map<String, dynamic>>[];
     for (final s in sessions) {
@@ -167,20 +175,33 @@ class _HomeScreenState extends State<HomeScreen> {
     return _field(m, ['status'], '').toLowerCase() == 'live';
   }
 
-  String _field(Map<String, dynamic> m, List<String> keys, [String fallback = '']) {
+  String _field(
+    Map<String, dynamic> m,
+    List<String> keys, [
+    String fallback = '',
+  ]) {
     for (final k in keys) {
       final v = m[k];
-      if (v != null && v.toString().trim().isNotEmpty) return v.toString().trim();
+      if (v != null && v.toString().trim().isNotEmpty)
+        return v.toString().trim();
     }
     return fallback;
   }
 
   double _progress(Map<String, dynamic> m) {
-    final raw = m['progress'] ?? m['progress_percent'] ?? m['completion'] ?? m['percent_complete'];
-    if (raw is num) return raw > 1 ? (raw / 100).clamp(0.0, 1.0) : raw.toDouble().clamp(0.0, 1.0);
+    final raw =
+        m['progress'] ??
+        m['progress_percent'] ??
+        m['completion'] ??
+        m['percent_complete'];
+    if (raw is num)
+      return raw > 1
+          ? (raw / 100).clamp(0.0, 1.0)
+          : raw.toDouble().clamp(0.0, 1.0);
     if (raw is String) {
       final n = double.tryParse(raw.replaceAll('%', '').trim());
-      if (n != null) return n > 1 ? (n / 100).clamp(0.0, 1.0) : n.clamp(0.0, 1.0);
+      if (n != null)
+        return n > 1 ? (n / 100).clamp(0.0, 1.0) : n.clamp(0.0, 1.0);
     }
     return 0;
   }
@@ -199,7 +220,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _joinSession(Map<String, dynamic> session) async {
-    final classId = _field(session, ['id', 'class_id', 'uuid', 'live_class_id']);
+    final classId = _field(session, [
+      'id',
+      'class_id',
+      'uuid',
+      'live_class_id',
+    ]);
     setState(() => _joiningClassId = classId.isNotEmpty ? classId : 'join');
     try {
       final code = _field(session, ['join_code']);
@@ -259,7 +285,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(
-                            builder: (_) => const SilEntryScreen()),
+                          builder: (_) => const SilEntryScreen(),
+                        ),
                       ),
                     ),
                     StudentBannerSlide(
@@ -277,7 +304,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(
-                            builder: (_) => const SilEntryScreen()),
+                          builder: (_) => const SilEntryScreen(),
+                        ),
                       ),
                     ),
                     StudentBannerSlide(
@@ -295,7 +323,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       onTap: () => Navigator.push(
                         context,
                         MaterialPageRoute(
-                            builder: (_) => const SilEntryScreen()),
+                          builder: (_) => const SilEntryScreen(),
+                        ),
                       ),
                     ),
                   ],
@@ -370,25 +399,34 @@ class _HomeScreenState extends State<HomeScreen> {
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(color: Colors.white.withOpacity(0.3)),
                     ),
-                    child: const Icon(Icons.school_rounded,
-                        color: Colors.white, size: 24),
+                    child: const Icon(
+                      Icons.school_rounded,
+                      color: Colors.white,
+                      size: 24,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Scholaxia',
-                            style: TextStyle(
-                                color: Colors.white.withOpacity(0.75),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.5)),
-                        Text('Hello, $name 👋',
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 20,
-                                fontWeight: FontWeight.w800)),
+                        Text(
+                          'Scholaxia',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.75),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        Text(
+                          'Hello, $name 👋',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -400,8 +438,10 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 20),
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(20),
@@ -409,8 +449,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.emoji_events_outlined,
-                        color: Color(0xFFFBBF24), size: 16),
+                    const Icon(
+                      Icons.emoji_events_outlined,
+                      color: Color(0xFFFBBF24),
+                      size: 16,
+                    ),
                     const SizedBox(width: 6),
                     Text(
                       '$exam prep mode',
@@ -427,9 +470,10 @@ class _HomeScreenState extends State<HomeScreen> {
               Text(
                 'Ready to level up today?',
                 style: TextStyle(
-                    color: Colors.white.withOpacity(0.9),
-                    fontSize: 15,
-                    height: 1.4),
+                  color: Colors.white.withOpacity(0.9),
+                  fontSize: 15,
+                  height: 1.4,
+                ),
               ),
             ],
           ),
@@ -484,49 +528,74 @@ class _HomeScreenState extends State<HomeScreen> {
         SizedBox(
           height: 188,
           child: _loadingFeed
-              ? Center(child: CircularProgressIndicator(color: context.accentColor))
+              ? Center(
+                  child: CircularProgressIndicator(color: context.accentColor),
+                )
               : _recommendations.isEmpty
-                  ? Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      child: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          color: context.cardColor,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: context.borderColor),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.lightbulb_outline_rounded,
-                                color: context.accentColor, size: 36),
-                            const SizedBox(height: 12),
-                            Text(
-                              'Complete a CBT or chat with Sia to unlock personalized picks.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                  color: context.greyColor, fontSize: 13),
-                            ),
-                          ],
-                        ),
-                      ),
-                    )
-                  : ListView.separated(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      scrollDirection: Axis.horizontal,
-                      itemCount: _recommendations.length,
-                      separatorBuilder: (_, __) => const SizedBox(width: 14),
-                      itemBuilder: (_, i) {
-                        final item = _recommendations[i];
-                        final subject = _field(item, ['subject', 'category'], 'Study');
-                        final title = _field(item, ['title', 'topic', 'name'], 'Recommended lesson');
-                        final duration = _field(item, ['duration', 'estimated_time', 'time'], '—');
-                        final progress = _progress(item);
-                        final color = _cardColors[i % _cardColors.length];
-                        return _courseCard(context, subject, title, duration, progress, color);
-                      },
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: context.cardColor,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: context.borderColor),
                     ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.lightbulb_outline_rounded,
+                          color: context.accentColor,
+                          size: 36,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Complete a CBT or chat with Sia to unlock personalized picks.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: context.greyColor,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _recommendations.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 14),
+                  itemBuilder: (_, i) {
+                    final item = _recommendations[i];
+                    final subject = _field(item, [
+                      'subject',
+                      'category',
+                    ], 'Study');
+                    final title = _field(item, [
+                      'title',
+                      'topic',
+                      'name',
+                    ], 'Recommended lesson');
+                    final duration = _field(item, [
+                      'duration',
+                      'estimated_time',
+                      'time',
+                    ], '—');
+                    final progress = _progress(item);
+                    final color = _cardColors[i % _cardColors.length];
+                    return _courseCard(
+                      context,
+                      subject,
+                      title,
+                      duration,
+                      progress,
+                      color,
+                    );
+                  },
+                ),
         ),
       ],
     );
@@ -561,16 +630,19 @@ class _HomeScreenState extends State<HomeScreen> {
             height: 56,
             width: double.infinity,
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [color, color.withOpacity(0.7)],
+              gradient: LinearGradient(colors: [color, color.withOpacity(0.7)]),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(19),
               ),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(19)),
             ),
             padding: const EdgeInsets.all(12),
             child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.25),
                     borderRadius: BorderRadius.circular(8),
@@ -594,24 +666,36 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title,
-                      style: TextStyle(
-                          color: context.textColor,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                          height: 1.25),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis),
+                  Text(
+                    title,
+                    style: TextStyle(
+                      color: context.textColor,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      height: 1.25,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   const Spacer(),
                   Row(
                     children: [
-                      Icon(Icons.schedule_rounded, size: 13, color: context.greyColor),
+                      Icon(
+                        Icons.schedule_rounded,
+                        size: 13,
+                        color: context.greyColor,
+                      ),
                       const SizedBox(width: 4),
                       Expanded(
-                        child: Text(duration,
-                            style: TextStyle(color: context.greyColor, fontSize: 11),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis),
+                        child: Text(
+                          duration,
+                          style: TextStyle(
+                            color: context.greyColor,
+                            fontSize: 11,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ],
                   ),
@@ -627,11 +711,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    progress > 0 ? '${(progress * 100).toInt()}% complete' : 'Not started',
+                    progress > 0
+                        ? '${(progress * 100).toInt()}% complete'
+                        : 'Not started',
                     style: TextStyle(
-                        color: context.greyColor,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600),
+                      color: context.greyColor,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ],
               ),
@@ -678,6 +765,13 @@ class _HomeScreenState extends State<HomeScreen> {
         'Read study books & materials.',
         const [Color(0xFF0EA5E9), Color(0xFF38BDF8)],
         const LibraryScreen(),
+      ),
+      (
+        Icons.sports_esports_rounded,
+        'Games',
+        'Brain breaks and learning games.',
+        const [Color(0xFFEC4899), Color(0xFFF472B6)],
+        const GamesScreen(),
       ),
       (
         Icons.storefront_rounded,
@@ -752,7 +846,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 ? Text(
                     'Complete a CBT practice exam to see your real scores here.',
                     style: TextStyle(
-                        color: context.greyColor, fontSize: 13, height: 1.4),
+                      color: context.greyColor,
+                      fontSize: 13,
+                      height: 1.4,
+                    ),
                   )
                 : Column(
                     children: [
@@ -761,7 +858,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           Padding(
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             child: Divider(
-                                height: 1, color: context.borderColor),
+                              height: 1,
+                              color: context.borderColor,
+                            ),
                           ),
                         _perfFromSession(context, _recentCbt[i], i),
                       ],
@@ -774,7 +873,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _perfFromSession(
-      BuildContext context, Map<String, dynamic> s, int index) {
+    BuildContext context,
+    Map<String, dynamic> s,
+    int index,
+  ) {
     final title = (s['exam_title']?.toString().trim().isNotEmpty == true)
         ? s['exam_title'].toString()
         : (s['subject']?.toString() ?? 'CBT Exam');
@@ -782,8 +884,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final correct = (s['total_correct'] as num?)?.toInt();
     final wrong = (s['total_wrong'] as num?)?.toInt();
     final total = (correct != null && wrong != null) ? correct + wrong : null;
-    final scoreLabel =
-        total != null ? '$correct/$total' : '$pct%';
+    final scoreLabel = total != null ? '$correct/$total' : '$pct%';
     String tag;
     Color color;
     if (pct >= 70) {
@@ -803,9 +904,14 @@ class _HomeScreenState extends State<HomeScreen> {
     return _perfRow(context, title, scoreLabel, tag, color, pctOverride: pct);
   }
 
-  Widget _perfRow(BuildContext context, String title, String score, String tag,
-      Color color,
-      {int? pctOverride}) {
+  Widget _perfRow(
+    BuildContext context,
+    String title,
+    String score,
+    String tag,
+    Color color, {
+    int? pctOverride,
+  }) {
     final pct = pctOverride ?? int.tryParse(score.split('/').first) ?? 0;
     return Row(
       children: [
@@ -837,15 +943,20 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      color: context.textColor,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700)),
-              Text(score,
-                  style: TextStyle(color: context.greyColor, fontSize: 12)),
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: context.textColor,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Text(
+                score,
+                style: TextStyle(color: context.greyColor, fontSize: 12),
+              ),
             ],
           ),
         ),
@@ -869,9 +980,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 size: 14,
               ),
               const SizedBox(width: 4),
-              Text(tag,
-                  style: TextStyle(
-                      color: color, fontSize: 11, fontWeight: FontWeight.w700)),
+              Text(
+                tag,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
             ],
           ),
         ),
@@ -887,7 +1003,9 @@ class _HomeScreenState extends State<HomeScreen> {
         if (_loadingFeed)
           Padding(
             padding: const EdgeInsets.all(24),
-            child: Center(child: CircularProgressIndicator(color: ctx.accentColor)),
+            child: Center(
+              child: CircularProgressIndicator(color: ctx.accentColor),
+            ),
           )
         else if (_liveSessions.isEmpty)
           Padding(
@@ -902,15 +1020,19 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               child: Column(
                 children: [
-                  Icon(Icons.videocam_off_outlined,
-                      color: ctx.greyColor, size: 40),
+                  Icon(
+                    Icons.videocam_off_outlined,
+                    color: ctx.greyColor,
+                    size: 40,
+                  ),
                   const SizedBox(height: 12),
                   Text(
                     'No live sessions right now',
                     style: TextStyle(
-                        color: ctx.textColor,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700),
+                      color: ctx.textColor,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(height: 6),
                   Text(
@@ -924,9 +1046,19 @@ class _HomeScreenState extends State<HomeScreen> {
           )
         else
           ..._liveSessions.map((s) {
-            final classId = _field(s, ['id', 'class_id', 'uuid', 'live_class_id']);
+            final classId = _field(s, [
+              'id',
+              'class_id',
+              'uuid',
+              'live_class_id',
+            ]);
             final title = _field(s, ['title', 'topic', 'name'], 'Live Session');
-            final teacher = _field(s, ['teacher_name', 'teacher', 'instructor', 'host'], 'Tutor');
+            final teacher = _field(s, [
+              'teacher_name',
+              'teacher',
+              'instructor',
+              'host',
+            ], 'Tutor');
             final time = _formatSessionTime(
               _field(s, ['start_time', 'scheduled_at', 'preferred_time']),
             );
@@ -948,8 +1080,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: (isLive ? const Color(0xFFEF4444) : const Color(0xFF7C3AED))
-                          .withOpacity(0.08),
+                      color:
+                          (isLive
+                                  ? const Color(0xFFEF4444)
+                                  : const Color(0xFF7C3AED))
+                              .withOpacity(0.08),
                       blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),
@@ -963,8 +1098,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: isLive
-                              ? [const Color(0xFFEF4444), const Color(0xFFF97316)]
-                              : [const Color(0xFF7C3AED), const Color(0xFFA855F7)],
+                              ? [
+                                  const Color(0xFFEF4444),
+                                  const Color(0xFFF97316),
+                                ]
+                              : [
+                                  const Color(0xFF7C3AED),
+                                  const Color(0xFFA855F7),
+                                ],
                         ),
                         borderRadius: BorderRadius.circular(16),
                       ),
@@ -983,9 +1124,13 @@ class _HomeScreenState extends State<HomeScreen> {
                             Container(
                               margin: const EdgeInsets.only(bottom: 6),
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 3),
+                                horizontal: 8,
+                                vertical: 3,
+                              ),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFEF4444).withOpacity(0.12),
+                                color: const Color(
+                                  0xFFEF4444,
+                                ).withOpacity(0.12),
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: const Text(
@@ -998,15 +1143,21 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                               ),
                             ),
-                          Text(title,
-                              style: TextStyle(
-                                  color: ctx.textColor,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700)),
+                          Text(
+                            title,
+                            style: TextStyle(
+                              color: ctx.textColor,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
                           const SizedBox(height: 4),
                           Text(
                             time.isNotEmpty ? '$teacher • $time' : teacher,
-                            style: TextStyle(color: ctx.greyColor, fontSize: 12),
+                            style: TextStyle(
+                              color: ctx.greyColor,
+                              fontSize: 12,
+                            ),
                           ),
                         ],
                       ),
@@ -1015,11 +1166,17 @@ class _HomeScreenState extends State<HomeScreen> {
                       onTap: joining ? null : () => _joinSession(s),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 10),
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
                         decoration: BoxDecoration(
                           gradient: isLive
                               ? const LinearGradient(
-                                  colors: [Color(0xFFEF4444), Color(0xFFF97316)])
+                                  colors: [
+                                    Color(0xFFEF4444),
+                                    Color(0xFFF97316),
+                                  ],
+                                )
                               : AppGradients.primaryButton,
                           borderRadius: BorderRadius.circular(14),
                           boxShadow: [

@@ -6,6 +6,7 @@ import '../../../theme/app_theme.dart';
 import '../../../utils/subject_match.dart';
 import '../../../widgets/student_ui.dart';
 import 'cbt_exam_screen.dart';
+import 'cbt_packages_screen.dart';
 import 'cbt_sessions_screen.dart';
 
 /// CBT hub: JAMB = all 4 subjects together; others = one subject at a time.
@@ -25,7 +26,8 @@ class _CbtScreenState extends State<CbtScreen> {
   List<dynamic> _jambExams = [];
   List<dynamic> _ssceExams = [];
   List<String> _boards = [];
-  String _activeTab = 'JAMB'; // JAMB | WAEC_NECO | JUNIOR_WAEC | COMMON_ENTRANCE
+  String _activeTab =
+      'JAMB'; // JAMB | WAEC_NECO | JUNIOR_WAEC | COMMON_ENTRANCE
   List<String> _jambSubjects = [];
   List<String> _ssceSubjects = [];
   Set<String> _downloaded = {};
@@ -134,7 +136,8 @@ class _CbtScreenState extends State<CbtScreen> {
       if (mounted && e.message.toLowerCase().contains('setup')) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text('Complete exam setup in your profile first.')),
+            content: Text('Complete exam setup in your profile first.'),
+          ),
         );
       }
     } catch (_) {
@@ -210,7 +213,9 @@ class _CbtScreenState extends State<CbtScreen> {
 
   bool _jambBundleDownloadedForMembers(List<Map<String, dynamic>> members) {
     if (members.length != 4) return false;
-    return members.every((e) => _downloaded.contains(e['id']?.toString() ?? ''));
+    return members.every(
+      (e) => _downloaded.contains(e['id']?.toString() ?? ''),
+    );
   }
 
   List<String> get _subjects {
@@ -236,7 +241,9 @@ class _CbtScreenState extends State<CbtScreen> {
     final subjects = _subjects;
     if (subjects.isEmpty) return;
     if (_selectedSubject == null ||
-        !subjects.any((s) => s.toLowerCase() == _selectedSubject!.toLowerCase())) {
+        !subjects.any(
+          (s) => s.toLowerCase() == _selectedSubject!.toLowerCase(),
+        )) {
       _selectedSubject = subjects.first;
     }
   }
@@ -268,7 +275,9 @@ class _CbtScreenState extends State<CbtScreen> {
     if (members.length != 4) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('All 4 JAMB subject packs must be available from admin.'),
+          content: Text(
+            'All 4 JAMB subject packs must be available from admin.',
+          ),
         ),
       );
       return;
@@ -287,7 +296,9 @@ class _CbtScreenState extends State<CbtScreen> {
       setState(() => _downloaded = ids);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('JAMB full exam downloaded — 4 subjects ready offline.'),
+          content: Text(
+            'JAMB full exam downloaded — 4 subjects ready offline.',
+          ),
         ),
       );
     } on ApiException catch (e) {
@@ -364,7 +375,8 @@ class _CbtScreenState extends State<CbtScreen> {
         final rawQs = (pack['questions'] as List?) ?? [];
         for (final q in rawQs.whereType<Map>()) {
           final map = Map<String, dynamic>.from(q);
-          final img = map['image_url']?.toString() ??
+          final img =
+              map['image_url']?.toString() ??
               map['diagram_url']?.toString() ??
               map['image']?.toString();
           if (img != null && img.isNotEmpty) {
@@ -374,8 +386,7 @@ class _CbtScreenState extends State<CbtScreen> {
         }
       }
       if (!ctx.mounted) return;
-      final title =
-          'JAMB Full Exam (${_jambSubjects.join(' · ')}) · $year';
+      final title = 'JAMB Full Exam (${_jambSubjects.join(' · ')}) · $year';
       Navigator.push(
         ctx,
         MaterialPageRoute(
@@ -408,7 +419,9 @@ class _CbtScreenState extends State<CbtScreen> {
       if (!mounted) return;
       setState(() => _downloaded = ids);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Downloaded — you can start offline now.')),
+        const SnackBar(
+          content: Text('Downloaded — you can start offline now.'),
+        ),
       );
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -420,8 +433,13 @@ class _CbtScreenState extends State<CbtScreen> {
     }
   }
 
-  Future<void> _startExam(BuildContext ctx, String examId, String title,
-      {int? totalQ, int? durMins}) async {
+  Future<void> _startExam(
+    BuildContext ctx,
+    String examId,
+    String title, {
+    int? totalQ,
+    int? durMins,
+  }) async {
     // Start never auto-downloads — user must tap Download first.
     if (!_downloaded.contains(examId)) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -448,7 +466,8 @@ class _CbtScreenState extends State<CbtScreen> {
       final rawQs = (pack['questions'] as List?) ?? [];
       final questions = rawQs.whereType<Map>().map((q) {
         final map = Map<String, dynamic>.from(q);
-        final img = map['image_url']?.toString() ??
+        final img =
+            map['image_url']?.toString() ??
             map['diagram_url']?.toString() ??
             map['image']?.toString();
         if (img != null && img.isNotEmpty) {
@@ -460,7 +479,8 @@ class _CbtScreenState extends State<CbtScreen> {
       // Rewrite absolute diagram URLs into the cached pack for true offline use.
       final resolvedQs = rawQs.whereType<Map>().map((q) {
         final map = Map<String, dynamic>.from(q);
-        final img = map['image_url']?.toString() ??
+        final img =
+            map['image_url']?.toString() ??
             map['diagram_url']?.toString() ??
             map['image']?.toString();
         if (img != null && img.isNotEmpty) {
@@ -480,7 +500,8 @@ class _CbtScreenState extends State<CbtScreen> {
       }
 
       if (!ctx.mounted) return;
-      final duration = session?.durationMinutes ??
+      final duration =
+          session?.durationMinutes ??
           (pack['duration_minutes'] as num?)?.toInt() ??
           durMins ??
           60;
@@ -489,8 +510,9 @@ class _CbtScreenState extends State<CbtScreen> {
         MaterialPageRoute(
           builder: (_) => CbtExamScreen(
             subject: title,
-            totalQuestions:
-                questions.isNotEmpty ? questions.length : (totalQ ?? 0),
+            totalQuestions: questions.isNotEmpty
+                ? questions.length
+                : (totalQ ?? 0),
             durationSeconds: duration * 60,
             sessionId: session?.sessionId,
             questions: questions,
@@ -532,10 +554,12 @@ class _CbtScreenState extends State<CbtScreen> {
                     children: [
                       if (_boards.length > 1 ||
                           (_boards.contains('JAMB') &&
-                              _boards.any((b) =>
-                                  b == 'WAEC_NECO' ||
-                                  b == 'JUNIOR_WAEC' ||
-                                  b == 'COMMON_ENTRANCE'))) ...[
+                              _boards.any(
+                                (b) =>
+                                    b == 'WAEC_NECO' ||
+                                    b == 'JUNIOR_WAEC' ||
+                                    b == 'COMMON_ENTRANCE',
+                              ))) ...[
                         Wrap(
                           spacing: 10,
                           runSpacing: 10,
@@ -548,7 +572,10 @@ class _CbtScreenState extends State<CbtScreen> {
                               _boardTab(context, 'Junior WAEC', 'JUNIOR_WAEC'),
                             if (_boards.contains('COMMON_ENTRANCE'))
                               _boardTab(
-                                  context, 'Common Entrance', 'COMMON_ENTRANCE'),
+                                context,
+                                'Common Entrance',
+                                'COMMON_ENTRANCE',
+                              ),
                           ],
                         ),
                         const SizedBox(height: 18),
@@ -558,7 +585,8 @@ class _CbtScreenState extends State<CbtScreen> {
                           child: Padding(
                             padding: const EdgeInsets.symmetric(vertical: 40),
                             child: CircularProgressIndicator(
-                                color: context.accentColor),
+                              color: context.accentColor,
+                            ),
                           ),
                         )
                       else if (_isJambTab) ...[
@@ -574,9 +602,10 @@ class _CbtScreenState extends State<CbtScreen> {
                         Text(
                           'Each option downloads your 4 JAMB subjects together and starts as one full UTME exam.',
                           style: TextStyle(
-                              color: context.greyColor,
-                              fontSize: 12,
-                              height: 1.4),
+                            color: context.greyColor,
+                            fontSize: 12,
+                            height: 1.4,
+                          ),
                         ),
                         const SizedBox(height: 14),
                         Builder(
@@ -600,14 +629,22 @@ class _CbtScreenState extends State<CbtScreen> {
                                 final totalQ = members.fold<int>(
                                   0,
                                   (sum, e) =>
-                                      sum + ((e['total_questions'] as num?)?.toInt() ?? 0),
+                                      sum +
+                                      ((e['total_questions'] as num?)
+                                              ?.toInt() ??
+                                          0),
                                 );
                                 final durationMins = members.fold<int>(
                                   0,
-                                  (maxDur, e) => maxDur >
-                                          ((e['duration_minutes'] as num?)?.toInt() ?? 0)
+                                  (maxDur, e) =>
+                                      maxDur >
+                                          ((e['duration_minutes'] as num?)
+                                                  ?.toInt() ??
+                                              0)
                                       ? maxDur
-                                      : ((e['duration_minutes'] as num?)?.toInt() ?? 0),
+                                      : ((e['duration_minutes'] as num?)
+                                                ?.toInt() ??
+                                            0),
                                 );
 
                                 return Padding(
@@ -617,12 +654,20 @@ class _CbtScreenState extends State<CbtScreen> {
                                     description:
                                         'Year $y · Subjects: ${_jambSubjects.join(' · ')}',
                                     examType: '4 subjects · combined',
-                                    durationMins: durationMins > 0 ? durationMins : 120,
+                                    durationMins: durationMins > 0
+                                        ? durationMins
+                                        : 120,
                                     totalQuestions: totalQ,
-                                    isBusy: _busyExamId == _jambBundleBusyKey(y),
+                                    isBusy:
+                                        _busyExamId == _jambBundleBusyKey(y),
                                     isDownloaded: isDownloaded,
-                                    onDownload: () => _downloadJambBundleMembers(y, members),
-                                    onStart: () => _startJambBundleMembers(ctx, y, members),
+                                    onDownload: () =>
+                                        _downloadJambBundleMembers(y, members),
+                                    onStart: () => _startJambBundleMembers(
+                                      ctx,
+                                      y,
+                                      members,
+                                    ),
                                   ),
                                 );
                               }).toList(),
@@ -660,16 +705,14 @@ class _CbtScreenState extends State<CbtScreen> {
                         else
                           ...exams.map((exam) {
                             final id = exam['id']?.toString() ?? '';
-                            final title =
-                                exam['title']?.toString() ?? 'Exam';
-                            final desc =
-                                exam['description']?.toString() ?? '';
+                            final title = exam['title']?.toString() ?? 'Exam';
+                            final desc = exam['description']?.toString() ?? '';
                             final type =
                                 exam['exam_type']?.toString() ?? _boardLabel;
-                            final dur =
-                                (exam['duration_minutes'] as num?)?.toInt();
-                            final totalQ =
-                                (exam['total_questions'] as num?)?.toInt();
+                            final dur = (exam['duration_minutes'] as num?)
+                                ?.toInt();
+                            final totalQ = (exam['total_questions'] as num?)
+                                ?.toInt();
                             final downloaded = _downloaded.contains(id);
                             return Padding(
                               padding: const EdgeInsets.only(bottom: 14),
@@ -719,7 +762,8 @@ class _CbtScreenState extends State<CbtScreen> {
           color: sel ? context.accentColor : context.cardColor,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-              color: sel ? context.accentColor : context.borderColor),
+            color: sel ? context.accentColor : context.borderColor,
+          ),
         ),
         child: Text(
           label,
@@ -767,22 +811,27 @@ class _CbtScreenState extends State<CbtScreen> {
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 60),
-        child: Column(children: [
-          Icon(Icons.inbox_outlined, color: context.greyColor, size: 48),
-          const SizedBox(height: 12),
-          Text('No CBT exams available',
+        child: Column(
+          children: [
+            Icon(Icons.inbox_outlined, color: context.greyColor, size: 48),
+            const SizedBox(height: 12),
+            Text(
+              'No CBT exams available',
               style: TextStyle(
-                  color: context.textColor,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600)),
-          const SizedBox(height: 6),
-          Text(
-            message ??
-                'Admin will upload $_boardLabel packs for your subjects.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: context.greyColor, fontSize: 13),
-          ),
-        ]),
+                color: context.textColor,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              message ??
+                  'Admin will upload $_boardLabel packs for your subjects.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: context.greyColor, fontSize: 13),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -809,22 +858,49 @@ class _CbtScreenState extends State<CbtScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('CBT Practice',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800)),
-                Text('$_boardLabel · download then use offline',
-                    style: TextStyle(
-                        color: Colors.white.withOpacity(0.88), fontSize: 13)),
+                const Text(
+                  'CBT Practice',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                Text(
+                  '$_boardLabel · download then use offline',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.88),
+                    fontSize: 13,
+                  ),
+                ),
               ],
             ),
           ),
           GestureDetector(
             onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (_) => const CbtSessionsScreen())),
+              context,
+              MaterialPageRoute(builder: (_) => const CbtPackagesScreen()),
+            ),
+            child: Container(
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.white.withOpacity(0.3)),
+              ),
+              child: const Icon(
+                Icons.workspace_premium_rounded,
+                color: Colors.white,
+                size: 18,
+              ),
+            ),
+          ),
+          GestureDetector(
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const CbtSessionsScreen()),
+            ),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
@@ -832,15 +908,20 @@ class _CbtScreenState extends State<CbtScreen> {
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: Colors.white.withOpacity(0.3)),
               ),
-              child: const Row(children: [
-                Icon(Icons.history_rounded, color: Colors.white, size: 16),
-                SizedBox(width: 6),
-                Text('History',
+              child: const Row(
+                children: [
+                  Icon(Icons.history_rounded, color: Colors.white, size: 16),
+                  SizedBox(width: 6),
+                  Text(
+                    'History',
                     style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700)),
-              ]),
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -881,65 +962,90 @@ class _ExamCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: context.accentColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: context.accentColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.menu_book_outlined,
+                  color: context.accentColor,
+                  size: 24,
+                ),
               ),
-              child: Icon(Icons.menu_book_outlined,
-                  color: context.accentColor, size: 24),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
                       style: TextStyle(
-                          color: context.textColor,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold)),
-                  if (examType.isNotEmpty)
-                    Text(examType,
+                        color: context.textColor,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    if (examType.isNotEmpty)
+                      Text(
+                        examType,
                         style: TextStyle(
-                            color: context.accentColor,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500)),
-                  if (isDownloaded)
-                    Text('Downloaded · ready offline',
+                          color: context.accentColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    if (isDownloaded)
+                      Text(
+                        'Downloaded · ready offline',
                         style: TextStyle(
-                            color: Colors.green.shade400,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600)),
-                ],
+                          color: Colors.green.shade400,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
-          ]),
+            ],
+          ),
           if (description.isNotEmpty) ...[
             const SizedBox(height: 10),
-            Text(description,
-                style: TextStyle(
-                    color: context.greyColor, fontSize: 13, height: 1.5)),
+            Text(
+              description,
+              style: TextStyle(
+                color: context.greyColor,
+                fontSize: 13,
+                height: 1.5,
+              ),
+            ),
           ],
           const SizedBox(height: 12),
-          Row(children: [
-            if (durationMins != null) ...[
-              Icon(Icons.timer_outlined, color: context.greyColor, size: 14),
-              const SizedBox(width: 4),
-              Text('$durationMins Mins',
-                  style: TextStyle(color: context.greyColor, fontSize: 12)),
-              const SizedBox(width: 16),
+          Row(
+            children: [
+              if (durationMins != null) ...[
+                Icon(Icons.timer_outlined, color: context.greyColor, size: 14),
+                const SizedBox(width: 4),
+                Text(
+                  '$durationMins Mins',
+                  style: TextStyle(color: context.greyColor, fontSize: 12),
+                ),
+                const SizedBox(width: 16),
+              ],
+              if (totalQuestions != null) ...[
+                Icon(Icons.help_outline, color: context.greyColor, size: 14),
+                const SizedBox(width: 4),
+                Text(
+                  '$totalQuestions Questions',
+                  style: TextStyle(color: context.greyColor, fontSize: 12),
+                ),
+              ],
             ],
-            if (totalQuestions != null) ...[
-              Icon(Icons.help_outline, color: context.greyColor, size: 14),
-              const SizedBox(width: 4),
-              Text('$totalQuestions Questions',
-                  style: TextStyle(color: context.greyColor, fontSize: 12)),
-            ],
-          ]),
+          ),
           const SizedBox(height: 12),
           Row(
             children: [
@@ -950,8 +1056,12 @@ class _ExamCard extends StatelessWidget {
                     foregroundColor: context.accentColor,
                     side: BorderSide(color: context.accentColor),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 12,
+                    ),
                     minimumSize: const Size(0, 42),
                   ),
                   child: isBusy
@@ -959,7 +1069,10 @@ class _ExamCard extends StatelessWidget {
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(
-                              strokeWidth: 2, color: context.accentColor))
+                            strokeWidth: 2,
+                            color: context.accentColor,
+                          ),
+                        )
                       : Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           mainAxisSize: MainAxisSize.min,
@@ -977,7 +1090,9 @@ class _ExamCard extends StatelessWidget {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
-                                    fontWeight: FontWeight.w600, fontSize: 12),
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                ),
                               ),
                             ),
                           ],
@@ -991,17 +1106,23 @@ class _ExamCard extends StatelessWidget {
                   onPressed: (isBusy || !isDownloaded) ? null : onStart,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: context.accentColor,
-                    foregroundColor:
-                        context.isDark ? AppColors.background : Colors.white,
-                    disabledBackgroundColor:
-                        context.accentColor.withOpacity(0.35),
+                    foregroundColor: context.isDark
+                        ? AppColors.background
+                        : Colors.white,
+                    disabledBackgroundColor: context.accentColor.withOpacity(
+                      0.35,
+                    ),
                     disabledForegroundColor:
                         (context.isDark ? AppColors.background : Colors.white)
                             .withOpacity(0.7),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                     elevation: 0,
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 12,
+                    ),
                     minimumSize: const Size(0, 42),
                   ),
                   child: Text(
@@ -1010,7 +1131,9 @@ class _ExamCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
                     style: const TextStyle(
-                        fontWeight: FontWeight.bold, fontSize: 12),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
                   ),
                 ),
               ),

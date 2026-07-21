@@ -5,6 +5,7 @@ Seeds community channels + WAEC/NECO CBT exam data on startup.
 """
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from app.core.config import settings
 from app.models.community import CommunityChannel, ChannelType
 from app.models.cbt import CBTExam, CBTQuestion
 from app.core.cbt_seed_data import JAMB_EXAMS
@@ -12,7 +13,10 @@ from app.core.cbt_seed_data import JAMB_EXAMS
 
 async def seed_database(db: AsyncSession):
     await _seed_channels(db)
-    await _seed_cbt_exams(db)
+    # Sample CBT exams are only auto-seeded when explicitly enabled, so admins
+    # who delete them do not see them reappear on the next deploy/restart.
+    if settings.SEED_SAMPLE_CBT:
+        await _seed_cbt_exams(db)
     await db.commit()
 
 
@@ -142,6 +146,11 @@ _EXAMS = [
 ]
 
 _ALL_CBT_EXAMS = _EXAMS + JAMB_EXAMS
+
+
+def sample_exam_titles() -> set[str]:
+    """Titles of the built-in sample exams (used by the admin purge endpoint)."""
+    return {exam["title"] for exam in _ALL_CBT_EXAMS}
 
 
 async def seed_cbt_exams(db: AsyncSession) -> list[str]:

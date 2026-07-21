@@ -1103,6 +1103,24 @@ async function importCbtFile() {
     fields.title = fields.exam_type + " " + fields.subject + " " + fields.year;
   }
 
+  var isPdf = /\.pdf$/i.test(file.name || "");
+  if (isPdf) {
+    btn.disabled = true;
+    btn.textContent = "Extracting questions…";
+    try {
+      var preview = await previewCbtFile(file);
+      if (!preview) return;
+      renderCbtPreview(preview);
+      ok.textContent = "Extracted " + preview.total_questions + " question(s). Review them below, then confirm.";
+    } catch (e) {
+      err.textContent = e.message;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Upload & create exam(s)";
+    }
+    return;
+  }
+
   btn.disabled = true;
   btn.textContent = "Uploading…";
   try {
@@ -1134,6 +1152,145 @@ async function downloadCbtTemplate() {
     await downloadCbtImportTemplate();
   } catch (e) {
     alert(e.message);
+  }
+}
+
+/* ── PDF import preview / confirm ── */
+var cbtPreviewData = null;
+
+function renderCbtPreview(preview) {
+  cbtPreviewData = preview;
+  var panel = document.getElementById("cbt-preview-panel");
+  var list = document.getElementById("cbt-preview-list");
+  var summary = document.getElementById("cbt-preview-summary");
+  var warnBox = document.getElementById("cbt-preview-warnings");
+  document.getElementById("cbt-preview-error").textContent = "";
+
+  var lowConf = preview.low_confidence_count || 0;
+  summary.textContent = preview.total_questions + " question(s) extracted" +
+    (preview.answer_key_found ? " (answer key found)" : " (no answer key found)") +
+    (lowConf ? " — " + lowConf + " need review" : "");
+
+  warnBox.innerHTML = (preview.warnings || []).map(function (w) {
+    return '<p class="cbt-hint small" style="color:#c47f17">&#9888; ' + escHtml(w) + '</p>';
+  }).join("");
+
+  var threshold = preview.low_confidence_threshold || 0;
+  list.innerHTML = (preview.questions || []).map(function (q, i) {
+    var flagged = (q.confidence != null && q.confidence < threshold) || (q.issues || []).length > 0;
+    var issues = (q.issues || []).map(function (s) {
+      return '<p class="cbt-hint small" style="color:#c47f17;margin:2px 0">&#9888; ' + escHtml(s) + '</p>';
+    }).join("");
+    var optSel = ["", "A", "B", "C", "D"].map(function (o) {
+      var label = o || "— pick answer —";
+      var sel = (q.correct_option || "") === o ? " selected" : "";
+      return '<option value="' + o + '"' + sel + ">" + label + "</option>";
+    }).join("");
+    return '<div class="panel" style="margin:10px 0;padding:12px;' +
+      (flagged ? "border:1px solid #e8a33d" : "") + '" id="pv-q-' + i + '">' +
+      '<div class="form-row" style="justify-content:space-between;align-items:center">' +
+        '<label class="chk-label"><input type="checkbox" id="pv-inc-' + i + '" checked /> ' +
+        "Question " + escHtml(String(q.number || i + 1)) +
+        (q.confidence != null ? ' <span class="cbt-hint small">(confidence ' + Math.round(q.confidence * 100) + "%)</span>" : "") +
+        "</label>" +
+      "</div>" +
+      issues +
+      '<label><span>Question</span><textarea id="pv-text-' + i + '" rows="2" style="width:100%">' + escHtml(q.question_text) + "</textarea></label>" +
+      '<div class="form-grid">' +
+        '<label><span>Option A</span><input id="pv-a-' + i + '" value="' + escHtml(q.option_a) + '" /></label>' +
+        '<label><span>Option B</span><input id="pv-b-' + i + '" value="' + escHtml(q.option_b) + '" /></label>' +
+        '<label><span>Option C</span><input id="pv-c-' + i + '" value="' + escHtml(q.option_c) + '" /></label>' +
+        '<label><span>Option D</span><input id="pv-d-' + i + '" value="' + escHtml(q.option_d) + '" /></label>' +
+        '<label><span>Correct option</span><select id="pv-ans-' + i + '">' + optSel + "</select></label>" +
+      "</div>" +
+    "</div>";
+  }).join("");
+
+  panel.style.display = "";
+  panel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function cancelCbtPreview() {
+  cbtPreviewData = null;
+  document.getElementById("cbt-preview-panel").style.display = "none";
+  document.getElementById("cbt-preview-list").innerHTML = "";
+}
+
+async function confirmCbtPreviewUi() {
+  if (!cbtPreviewData) return;
+  var err = document.getElementById("cbt-preview-error");
+  var btn = document.getElementById("btn-confirm-cbt-preview");
+  err.textContent = "";
+
+  var subject = document.getElementById("cbt-import-subject").value.trim();
+  var year = document.getElementById("cbt-import-year").value.trim();
+  var examType = document.getElementById("cbt-import-type").value;
+  var title = document.getElementById("cbt-import-title").value.trim() ||
+    (examType + " " + subject + " " + year);
+  if (!subject) { err.textContent = "Pick a subject in the upload form above."; return; }
+  if (!year) { err.textContent = "Pick the exam year in the upload form above."; return; }
+
+  var threshold = cbtPreviewData.low_confidence_threshold || 0;
+  var questions = [];
+  for (var i = 0; i < cbtPreviewData.questions.length; i++) {
+    var inc = document.getElementById("pv-inc-" + i);
+    if (!inc || !inc.checked) continue;
+    var orig = cbtPreviewData.questions[i];
+    var q = {
+      question_text: document.getElementById("pv-text-" + i).value.trim(),
+      option_a: document.getElementById("pv-a-" + i).value.trim(),
+      option_b: document.getElementById("pv-b-" + i).value.trim(),
+      option_c: document.getElementById("pv-c-" + i).value.trim(),
+      option_d: document.getElementById("pv-d-" + i).value.trim(),
+      correct_option: document.getElementById("pv-ans-" + i).value,
+    };
+    if (!q.question_text || !q.option_a || !q.option_b || !q.option_c || !q.option_d || !q.correct_option) {
+      err.textContent = "Question " + (orig.number || i + 1) +
+        " is incomplete — fill in the text, all four options, and the correct answer (or untick it).";
+      return;
+    }
+    // An edited-and-completed question counts as reviewed; only carry the low
+    // confidence flag when nothing was fixed and the extractor flagged it.
+    var edited = q.question_text !== (orig.question_text || "").trim() ||
+      q.correct_option !== (orig.correct_option || "");
+    if (orig.confidence != null && orig.confidence < threshold && !edited) {
+      q.confidence = orig.confidence;
+    }
+    questions.push(q);
+  }
+  if (!questions.length) {
+    err.textContent = "Keep at least one question ticked.";
+    return;
+  }
+
+  var payload = {
+    title: title,
+    subject: subject,
+    year: parseInt(year, 10),
+    exam_type: examType,
+    duration_minutes: parseInt(document.getElementById("cbt-import-duration").value, 10) || 60,
+    is_published: document.getElementById("cbt-import-publish").checked,
+    skip_duplicates: document.getElementById("cbt-import-skip-dup").checked,
+    questions: questions,
+  };
+
+  btn.disabled = true;
+  btn.textContent = "Saving…";
+  try {
+    var r = await confirmCbtImport(payload);
+    if (!r) return;
+    var msg = "Created \"" + r.title + "\" with " + r.total_questions + " question(s)." +
+      (r.is_published ? "" : " Saved unpublished.");
+    if (r.note) msg += " " + r.note;
+    document.getElementById("cbt-import-success").textContent = msg;
+    document.getElementById("cbt-import-file").value = "";
+    cancelCbtPreview();
+    loadCbt();
+  } catch (e) {
+    err.textContent = e.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Confirm & save exam";
   }
 }
 
@@ -1851,10 +2008,13 @@ async function loadLibraryAdmin() {
       return;
     }
     el.innerHTML =
-      '<table class="data-table"><thead><tr><th>Title</th><th>Subject</th><th>Board</th><th>Target</th><th></th></tr></thead><tbody>' +
+      '<table class="data-table"><thead><tr><th>Title</th><th>Type</th><th>Subject</th><th>Board</th><th>Access</th><th>Target</th><th></th></tr></thead><tbody>' +
       rows.map(function (b) {
-        return "<tr><td>" + escHtml(b.title) + "</td><td>" + escHtml(b.subject || "—") +
-          "</td><td>" + escHtml(b.exam_type || "—") + "</td><td>" + escHtml(b.library_target || "student") +
+        var access = b.is_free ? "Free" : "₦" + Number(b.price || 0).toLocaleString();
+        return "<tr><td>" + escHtml(b.title) + "</td><td>" + escHtml(b.category || "Books") +
+          "</td><td>" + escHtml(b.subject || "—") +
+          "</td><td>" + escHtml(b.exam_type || "—") + "</td><td>" + escHtml(access) +
+          "</td><td>" + escHtml(b.library_target || "student") +
           '</td><td class="actions"><button class="btn-sm danger" onclick="deleteLibraryBook(\'' +
           b.id + "')\">Remove</button></td></tr>";
       }).join("") +
@@ -1862,6 +2022,11 @@ async function loadLibraryAdmin() {
   } catch (e) {
     el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
   }
+}
+
+function toggleLibraryPrice() {
+  var paid = document.getElementById("lib-access").value === "paid";
+  document.getElementById("lib-price-wrap").style.display = paid ? "" : "none";
 }
 
 async function uploadLibraryBook() {
@@ -1875,6 +2040,13 @@ async function uploadLibraryBook() {
   var exam = document.getElementById("lib-exam").value;
   var author = document.getElementById("lib-author").value.trim();
   var desc = document.getElementById("lib-desc").value.trim();
+  var category = document.getElementById("lib-category").value;
+  var level = document.getElementById("lib-level").value;
+  var term = document.getElementById("lib-term").value;
+  var week = Number(document.getElementById("lib-week").value || 0);
+  var topic = document.getElementById("lib-topic").value.trim();
+  var isFree = document.getElementById("lib-access").value === "free";
+  var price = Number(document.getElementById("lib-price").value || 0);
   var fileInput = document.getElementById("lib-file");
   if (!title || !subject) {
     err.textContent = "Title and subject are required.";
@@ -1882,6 +2054,10 @@ async function uploadLibraryBook() {
   }
   if (!fileInput.files || !fileInput.files[0]) {
     err.textContent = "Choose a PDF file.";
+    return;
+  }
+  if (!isFree && price <= 0) {
+    err.textContent = "Enter a price greater than zero.";
     return;
   }
   btn.disabled = true;
@@ -1898,14 +2074,22 @@ async function uploadLibraryBook() {
         exam_type: exam,
         file_key: up.file_key,
         description: desc || null,
+        category: category,
+        education_level: level || null,
+        term: term || null,
+        scheme_week: week || null,
+        scheme_topic: topic || null,
         library_target: "student",
-        is_free: true,
-        price: 0,
+        is_free: isFree,
+        price: isFree ? 0 : price,
       }),
     });
     document.getElementById("lib-title").value = "";
     document.getElementById("lib-author").value = "";
     document.getElementById("lib-desc").value = "";
+    document.getElementById("lib-price").value = "";
+    document.getElementById("lib-week").value = "";
+    document.getElementById("lib-topic").value = "";
     fileInput.value = "";
     ok.textContent = "Book uploaded to the student library.";
     loadLibraryAdmin();

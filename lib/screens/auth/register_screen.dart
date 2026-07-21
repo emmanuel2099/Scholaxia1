@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../api/api_service.dart';
+import '../../services/firebase_analytics_service.dart';
+import '../../services/firebase_push_service.dart';
 import '../../theme/app_theme.dart';
 import '../student/student_shell.dart';
 import '../teacher/teacher_shell.dart';
@@ -46,17 +48,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     if (name.isEmpty || email.isEmpty || pass.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please fill in name, email and password.')));
+        const SnackBar(
+          content: Text('Please fill in name, email and password.'),
+        ),
+      );
       return;
     }
     if (pass.length < 8) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Password must be at least 8 characters.')));
+        const SnackBar(
+          content: Text('Password must be at least 8 characters.'),
+        ),
+      );
       return;
     }
     if (pass != conf) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Passwords do not match.')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Passwords do not match.')));
       return;
     }
     setState(() => _loading = true);
@@ -73,17 +82,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
         _pendingEmail = result['email']?.toString() ?? email;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('OTP sent. Check your email and spam folder.')),
+        const SnackBar(
+          content: Text('OTP sent. Check your email and spam folder.'),
+        ),
       );
     } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message), backgroundColor: Colors.red));
+        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+      );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
           content: Text(e.toString().replaceFirst('Bad state: ', '')),
-          backgroundColor: Colors.red));
+          backgroundColor: Colors.red,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -93,12 +108,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final otp = _otpCtrl.text.trim();
     if (otp.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Enter the code sent to your email.')));
+        const SnackBar(content: Text('Enter the code sent to your email.')),
+      );
       return;
     }
     setState(() => _loading = true);
     try {
       final auth = await _api.signupVerify(email: _pendingEmail, otp: otp);
+      await FirebaseAnalyticsService.instance.logSignUp(
+        role: auth.role,
+        userId: auth.userId,
+      );
+      await FirebasePushService.instance.registerAfterLogin();
       if (!mounted) return;
       if (auth.role == 'teacher') {
         Navigator.pushAndRemoveUntil(
@@ -115,12 +136,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
     } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message), backgroundColor: Colors.red));
+        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+      );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
           content: Text(e.toString().replaceFirst('Bad state: ', '')),
-          backgroundColor: Colors.red));
+          backgroundColor: Colors.red,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -145,11 +170,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
             }
           },
         ),
-        title: Text(_otpStep ? 'Verify Email' : 'Create Account',
-            style: TextStyle(
-                color: context.textColor,
-                fontSize: 17,
-                fontWeight: FontWeight.w600)),
+        title: Text(
+          _otpStep ? 'Verify Email' : 'Create Account',
+          style: TextStyle(
+            color: context.textColor,
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -160,9 +188,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
             Text(
               _otpStep ? 'Enter email code' : 'Welcome to Scholaxia',
               style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: context.textColor),
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: context.textColor,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
@@ -170,22 +199,31 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ? 'We sent a code to $_pendingEmail'
                   : 'Create your account and verify your email with a one-time code.',
               style: TextStyle(
-                  fontSize: 13, color: context.greyColor, height: 1.5),
+                fontSize: 13,
+                color: context.greyColor,
+                height: 1.5,
+              ),
             ),
             const SizedBox(height: 28),
             if (!_otpStep) ...[
               _label(context, 'Full Name'),
               const SizedBox(height: 6),
-              _field(context, ctrl: _nameCtrl, hint: 'John Doe', icon: Icons.person_outline),
+              _field(
+                context,
+                ctrl: _nameCtrl,
+                hint: 'John Doe',
+                icon: Icons.person_outline,
+              ),
               const SizedBox(height: 16),
               _label(context, 'Email'),
               const SizedBox(height: 6),
               _field(
-                  context,
-                  ctrl: _emailCtrl,
-                  hint: 'you@example.com',
-                  icon: Icons.email_outlined,
-                  type: TextInputType.emailAddress),
+                context,
+                ctrl: _emailCtrl,
+                hint: 'you@example.com',
+                icon: Icons.email_outlined,
+                type: TextInputType.emailAddress,
+              ),
               const SizedBox(height: 16),
               _label(context, 'Password'),
               const SizedBox(height: 6),
@@ -198,7 +236,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 suffix: GestureDetector(
                   onTap: () => setState(() => _obscurePass = !_obscurePass),
                   child: Icon(
-                    _obscurePass ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                    _obscurePass
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
                     color: context.greyLColor,
                     size: 20,
                   ),
@@ -214,9 +254,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 icon: Icons.lock_outline,
                 obscure: _obscureConfirm,
                 suffix: GestureDetector(
-                  onTap: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                  onTap: () =>
+                      setState(() => _obscureConfirm = !_obscureConfirm),
                   child: Icon(
-                    _obscureConfirm ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                    _obscureConfirm
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
                     color: context.greyLColor,
                     size: 20,
                   ),
@@ -226,11 +269,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
               _label(context, 'Email OTP'),
               const SizedBox(height: 6),
               _field(
-                  context,
-                  ctrl: _otpCtrl,
-                  hint: '6-digit code',
-                  icon: Icons.mark_email_read_outlined,
-                  type: TextInputType.number),
+                context,
+                ctrl: _otpCtrl,
+                hint: '6-digit code',
+                icon: Icons.mark_email_read_outlined,
+                type: TextInputType.number,
+              ),
             ],
             const SizedBox(height: 28),
             SizedBox(
@@ -243,20 +287,29 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   foregroundColor: btnFg,
                   disabledBackgroundColor: context.greyColor.withOpacity(0.3),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                   elevation: 0,
                 ),
                 child: _loading
                     ? SizedBox(
                         width: 22,
                         height: 22,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: btnFg))
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: btnFg,
+                        ),
+                      )
                     : Text(
-                        _otpStep ? 'Verify & Create Account' : 'Send Email Code',
+                        _otpStep
+                            ? 'Verify & Create Account'
+                            : 'Send Email Code',
                         style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: btnFg)),
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: btnFg,
+                        ),
+                      ),
               ),
             ),
             const SizedBox(height: 16),
@@ -264,8 +317,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text('Already have an account? ',
-                      style: TextStyle(color: context.greyColor, fontSize: 13)),
+                  Text(
+                    'Already have an account? ',
+                    style: TextStyle(color: context.greyColor, fontSize: 13),
+                  ),
                   GestureDetector(
                     onTap: () => Navigator.pushReplacement(
                       context,
@@ -276,11 +331,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         ),
                       ),
                     ),
-                    child: Text('Log In',
-                        style: TextStyle(
-                            color: context.accentColor,
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold)),
+                    child: Text(
+                      'Log In',
+                      style: TextStyle(
+                        color: context.accentColor,
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -292,11 +350,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
     );
   }
 
-  Widget _label(BuildContext context, String t) => Text(t,
-      style: TextStyle(
-          color: context.textColor,
-          fontSize: 13,
-          fontWeight: FontWeight.w600));
+  Widget _label(BuildContext context, String t) => Text(
+    t,
+    style: TextStyle(
+      color: context.textColor,
+      fontSize: 13,
+      fontWeight: FontWeight.w600,
+    ),
+  );
 
   Widget _field(
     BuildContext context, {
@@ -306,26 +367,25 @@ class _RegisterScreenState extends State<RegisterScreen> {
     TextInputType type = TextInputType.text,
     bool obscure = false,
     Widget? suffix,
-  }) =>
-      Container(
-        decoration: BoxDecoration(
-          color: context.surfColor,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: context.borderColor),
-        ),
-        child: TextField(
-          controller: ctrl,
-          keyboardType: type,
-          obscureText: obscure,
-          style: TextStyle(color: context.textColor, fontSize: 15),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: TextStyle(color: context.greyLColor),
-            prefixIcon: Icon(icon, color: context.greyLColor, size: 20),
-            suffixIcon: suffix,
-            border: InputBorder.none,
-            contentPadding: const EdgeInsets.symmetric(vertical: 16),
-          ),
-        ),
-      );
+  }) => Container(
+    decoration: BoxDecoration(
+      color: context.surfColor,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: context.borderColor),
+    ),
+    child: TextField(
+      controller: ctrl,
+      keyboardType: type,
+      obscureText: obscure,
+      style: TextStyle(color: context.textColor, fontSize: 15),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: TextStyle(color: context.greyLColor),
+        prefixIcon: Icon(icon, color: context.greyLColor, size: 20),
+        suffixIcon: suffix,
+        border: InputBorder.none,
+        contentPadding: const EdgeInsets.symmetric(vertical: 16),
+      ),
+    ),
+  );
 }

@@ -233,12 +233,14 @@
       <div class="panel" style="margin-bottom:16px">
         <h3>Upload CBT file</h3>
         <p class="cbt-hint small">
-          Upload a <strong>.json</strong> or <strong>.csv</strong> file. Pick the <strong>subject</strong> and <strong>year</strong>
+          Upload a <strong>.json</strong>, <strong>.csv</strong>, or <strong>.pdf</strong> file. Pick the <strong>subject</strong> and <strong>year</strong>
           first — that is how students find this pack on the platform.
+          PDF papers are extracted into questions you review and confirm before they are saved
+          (scanned/photo PDFs are not supported — the PDF must contain selectable text).
         </p>
         <div class="form-grid">
-          <label><span>JSON / CSV file</span>
-            <input id="cbt-import-file" type="file" accept=".json,.csv,application/json,text/csv" />
+          <label><span>JSON / CSV / PDF file</span>
+            <input id="cbt-import-file" type="file" accept=".json,.csv,.pdf,application/json,text/csv,application/pdf" />
           </label>
           <label><span>Title (optional for CSV)</span><input id="cbt-import-title" placeholder="JAMB Physics Mock 1" /></label>
           <label><span>Subject *</span>
@@ -282,6 +284,23 @@
         </div>
         <p id="cbt-import-error" class="error-msg"></p>
         <p id="cbt-import-success" class="cbt-hint small" style="color:#2d8a5e"></p>
+      </div>
+
+      <div class="panel" id="cbt-preview-panel" style="display:none;margin-bottom:16px">
+        <h3>Review extracted questions</h3>
+        <p class="cbt-hint small">
+          Check every question, fix any mistakes, and set the correct option where it is missing.
+          Untick a question to leave it out. Questions flagged in orange were extracted with low
+          confidence — the exam will be saved <strong>unpublished</strong> if any flagged question is kept unfixed.
+        </p>
+        <p id="cbt-preview-summary" class="cbt-hint small" style="font-weight:600"></p>
+        <div id="cbt-preview-warnings"></div>
+        <div id="cbt-preview-list"></div>
+        <div class="cbt-actions">
+          <button type="button" class="btn-primary" id="btn-confirm-cbt-preview" onclick="confirmCbtPreviewUi()">Confirm &amp; save exam</button>
+          <button type="button" class="btn-sm" onclick="cancelCbtPreview()">Cancel</button>
+        </div>
+        <p id="cbt-preview-error" class="error-msg"></p>
       </div>
 
       <div class="panel cbt-builder">
@@ -392,6 +411,42 @@
               <option>ALL</option>
             </select>
           </label>
+          <label><span>Material type *</span>
+            <select id="lib-category">
+              <option>Books</option>
+              <option>Study Materials</option>
+              <option>Scheme of Work</option>
+              <option>Past Questions</option>
+              <option>Notes</option>
+            </select>
+          </label>
+          <label><span>Education level</span>
+            <select id="lib-level">
+              <option value="">All levels</option>
+              <option>Nursery</option>
+              <option>Primary</option>
+              <option>Junior Secondary</option>
+              <option>Senior Secondary</option>
+              <option>Exam Preparation</option>
+            </select>
+          </label>
+          <label><span>Term</span>
+            <select id="lib-term">
+              <option value="">Not applicable</option>
+              <option>First Term</option>
+              <option>Second Term</option>
+              <option>Third Term</option>
+            </select>
+          </label>
+          <label><span>Scheme week</span><input id="lib-week" type="number" min="1" max="20" placeholder="e.g. 4" /></label>
+          <label><span>Scheme topic</span><input id="lib-topic" placeholder="Topic taught this week" /></label>
+          <label><span>Access *</span>
+            <select id="lib-access" onchange="toggleLibraryPrice()">
+              <option value="paid" selected>Paid</option>
+              <option value="free">Free</option>
+            </select>
+          </label>
+          <label id="lib-price-wrap"><span>Price (₦) *</span><input id="lib-price" type="number" min="100" step="50" placeholder="e.g. 1500" /></label>
           <label><span>PDF file *</span><input id="lib-file" type="file" accept=".pdf,application/pdf" /></label>
           <label><span>Description</span><input id="lib-desc" placeholder="Short note for students" /></label>
         </div>

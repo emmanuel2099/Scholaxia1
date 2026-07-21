@@ -24,6 +24,11 @@ class Book(Base):
     cover_image_url: Mapped[str] = mapped_column(String(500), nullable=True)
     description: Mapped[str] = mapped_column(Text, nullable=True)
     total_pages: Mapped[int] = mapped_column(Integer, nullable=True)
+    category: Mapped[str] = mapped_column(String(80), default="Books", nullable=False)
+    education_level: Mapped[str] = mapped_column(String(80), nullable=True)
+    term: Mapped[str] = mapped_column(String(40), nullable=True)
+    scheme_week: Mapped[int] = mapped_column(Integer, nullable=True)
+    scheme_topic: Mapped[str] = mapped_column(String(255), nullable=True)
 
     # Library target — who can see this book
     library_target: Mapped[LibraryTarget] = mapped_column(

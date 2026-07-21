@@ -107,8 +107,45 @@ async def _run_schema_migrations(conn) -> None:
         "ALTER TABLE books ADD COLUMN IF NOT EXISTS price DOUBLE PRECISION NOT NULL DEFAULT 0"
     ))
     await conn.execute(text(
+        "ALTER TABLE books ADD COLUMN IF NOT EXISTS category VARCHAR(80) NOT NULL DEFAULT 'Books'"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE books ADD COLUMN IF NOT EXISTS education_level VARCHAR(80) NULL"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE books ADD COLUMN IF NOT EXISTS term VARCHAR(40) NULL"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE books ADD COLUMN IF NOT EXISTS scheme_week INTEGER NULL"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE books ADD COLUMN IF NOT EXISTS scheme_topic VARCHAR(255) NULL"
+    ))
+    await conn.execute(text(
         "ALTER TABLE payments ADD COLUMN IF NOT EXISTS book_id UUID NULL"
     ))
+    await conn.execute(text(
+        "ALTER TABLE payments ADD COLUMN IF NOT EXISTS provider VARCHAR(30) NULL"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE payments ADD COLUMN IF NOT EXISTS provider_reference VARCHAR(255) NULL"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE payments ADD COLUMN IF NOT EXISTS provider_transaction_id VARCHAR(255) NULL"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE payments ADD COLUMN IF NOT EXISTS product_type VARCHAR(40) NULL"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE payments ADD COLUMN IF NOT EXISTS product_id VARCHAR(120) NULL"
+    ))
+    try:
+        await conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ux_payments_provider_reference "
+            "ON payments (provider_reference) WHERE provider_reference IS NOT NULL"
+        ))
+    except Exception:
+        pass
     await conn.execute(text(
         """
         CREATE TABLE IF NOT EXISTS school_groups (

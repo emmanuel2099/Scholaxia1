@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../api/api_service.dart';
 import '../../theme/app_theme.dart';
 import '../student/cbt/cbt_exam_screen.dart';
+import '../student/cbt/cbt_packages_screen.dart';
 
 /// Primary 6 Common Entrance CBT for the Kids app.
 /// Exams are created/published from the admin panel (exam type COMMON_ENTRANCE).
@@ -67,8 +68,9 @@ class _KindCbtScreenState extends State<KindCbtScreen> {
         MaterialPageRoute(
           builder: (_) => CbtExamScreen(
             subject: title,
-            totalQuestions:
-                questions.isNotEmpty ? questions.length : session.totalQuestions,
+            totalQuestions: questions.isNotEmpty
+                ? questions.length
+                : session.totalQuestions,
             durationSeconds: session.durationMinutes * 60,
             sessionId: session.sessionId,
             questions: questions,
@@ -102,8 +104,10 @@ class _KindCbtScreenState extends State<KindCbtScreen> {
                       width: 40,
                       height: 40,
                       alignment: Alignment.center,
-                      child: Icon(Icons.arrow_back_rounded,
-                          color: context.textColor),
+                      child: Icon(
+                        Icons.arrow_back_rounded,
+                        color: context.textColor,
+                      ),
                     ),
                   ),
                   Expanded(
@@ -117,8 +121,24 @@ class _KindCbtScreenState extends State<KindCbtScreen> {
                     ),
                   ),
                   IconButton(
+                    tooltip: 'Annual package',
+                    onPressed: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const CbtPackagesScreen(kidsOnly: true),
+                      ),
+                    ),
+                    icon: Icon(
+                      Icons.workspace_premium_rounded,
+                      color: context.accentColor,
+                    ),
+                  ),
+                  IconButton(
                     onPressed: _loading ? null : _load,
-                    icon: Icon(Icons.refresh_rounded, color: context.accentColor),
+                    icon: Icon(
+                      Icons.refresh_rounded,
+                      color: context.accentColor,
+                    ),
                   ),
                 ],
               ),
@@ -127,13 +147,19 @@ class _KindCbtScreenState extends State<KindCbtScreen> {
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
               child: Text(
                 'Primary 6 practice exams — added by admin. Take each subject to prepare for Common Entrance.',
-                style: TextStyle(color: context.greyColor, fontSize: 13, height: 1.4),
+                style: TextStyle(
+                  color: context.greyColor,
+                  fontSize: 13,
+                  height: 1.4,
+                ),
               ),
             ),
             Expanded(
               child: _loading
                   ? Center(
-                      child: CircularProgressIndicator(color: context.accentColor),
+                      child: CircularProgressIndicator(
+                        color: context.accentColor,
+                      ),
                     )
                   : RefreshIndicator(
                       color: context.accentColor,
@@ -143,8 +169,11 @@ class _KindCbtScreenState extends State<KindCbtScreen> {
                               physics: const AlwaysScrollableScrollPhysics(),
                               children: [
                                 const SizedBox(height: 80),
-                                Icon(Icons.assignment_outlined,
-                                    size: 48, color: context.greyColor),
+                                Icon(
+                                  Icons.assignment_outlined,
+                                  size: 48,
+                                  color: context.greyColor,
+                                ),
                                 const SizedBox(height: 12),
                                 Text(
                                   _error ?? 'No Common Entrance exams yet',
@@ -160,7 +189,9 @@ class _KindCbtScreenState extends State<KindCbtScreen> {
                                   'Ask admin to add exams with type COMMON_ENTRANCE.',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
-                                      color: context.greyColor, fontSize: 13),
+                                    color: context.greyColor,
+                                    fontSize: 13,
+                                  ),
                                 ),
                               ],
                             )
@@ -168,16 +199,16 @@ class _KindCbtScreenState extends State<KindCbtScreen> {
                               padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
                               itemCount: _exams.length,
                               itemBuilder: (context, i) {
-                                final exam =
-                                    Map<String, dynamic>.from(_exams[i] as Map);
+                                final exam = Map<String, dynamic>.from(
+                                  _exams[i] as Map,
+                                );
                                 final id = exam['id']?.toString() ?? '';
                                 final title =
                                     exam['title']?.toString() ?? 'Exam';
                                 final subject =
                                     exam['subject']?.toString() ?? '';
                                 final dur = exam['duration_minutes'] as int?;
-                                final totalQ =
-                                    exam['total_questions'] as int?;
+                                final totalQ = exam['total_questions'] as int?;
                                 final starting = _startingExamId == id;
                                 return Padding(
                                   padding: const EdgeInsets.only(bottom: 14),
@@ -188,11 +219,15 @@ class _KindCbtScreenState extends State<KindCbtScreen> {
                                     borderRadius: BorderRadius.circular(18),
                                     child: InkWell(
                                       borderRadius: BorderRadius.circular(18),
-                                      onTap: starting ? null : () => _startExam(exam),
+                                      onTap: starting
+                                          ? null
+                                          : () => _startExam(exam),
                                       child: Container(
                                         padding: const EdgeInsets.all(16),
                                         decoration: BoxDecoration(
-                                          borderRadius: BorderRadius.circular(18),
+                                          borderRadius: BorderRadius.circular(
+                                            18,
+                                          ),
                                           border: Border.all(
                                             color: context.accentColor
                                                 .withOpacity(0.18),
@@ -215,12 +250,14 @@ class _KindCbtScreenState extends State<KindCbtScreen> {
                                               ),
                                               child: starting
                                                   ? const Padding(
-                                                      padding: EdgeInsets.all(12),
+                                                      padding: EdgeInsets.all(
+                                                        12,
+                                                      ),
                                                       child:
                                                           CircularProgressIndicator(
-                                                        strokeWidth: 2,
-                                                        color: Colors.white,
-                                                      ),
+                                                            strokeWidth: 2,
+                                                            color: Colors.white,
+                                                          ),
                                                     )
                                                   : const Icon(
                                                       Icons.quiz_rounded,
@@ -237,7 +274,8 @@ class _KindCbtScreenState extends State<KindCbtScreen> {
                                                     title,
                                                     style: TextStyle(
                                                       color: context.textColor,
-                                                      fontWeight: FontWeight.w800,
+                                                      fontWeight:
+                                                          FontWeight.w800,
                                                       fontSize: 15,
                                                     ),
                                                   ),
@@ -259,9 +297,11 @@ class _KindCbtScreenState extends State<KindCbtScreen> {
                                                 ],
                                               ),
                                             ),
-                                            Icon(Icons.play_circle_fill_rounded,
-                                                color: context.accentColor,
-                                                size: 28),
+                                            Icon(
+                                              Icons.play_circle_fill_rounded,
+                                              color: context.accentColor,
+                                              size: 28,
+                                            ),
                                           ],
                                         ),
                                       ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../api/api_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/student_ui.dart';
+import '../student/classes/class_packages_screen.dart';
 
 /// Kids pay-per-class packages + booking form.
 /// Step 1: pick how many classes (price calculated).
@@ -42,11 +43,7 @@ class _KindPlan {
 
 class _KindBookingScreenState extends State<KindBookingScreen> {
   static const _plans = [
-    _KindPlan(
-      classes: 1,
-      priceNaira: 5000,
-      subtitle: '90 minutes',
-    ),
+    _KindPlan(classes: 1, priceNaira: 5000, subtitle: '90 minutes'),
     _KindPlan(
       classes: 3,
       priceNaira: 14000,
@@ -93,9 +90,9 @@ class _KindBookingScreenState extends State<KindBookingScreen> {
   Future<void> _submit() async {
     final subject = _subjectCtrl.text.trim();
     if (subject.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a subject.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please enter a subject.')));
       return;
     }
     final parent = _parentCtrl.text.trim();
@@ -190,7 +187,10 @@ class _KindBookingScreenState extends State<KindBookingScreen> {
                 padding: const EdgeInsets.fromLTRB(0, 8, 0, 32),
                 children: [
                   _hero(context),
-                  if (_step == 0) ..._packageStep(context) else ..._formStep(context),
+                  if (_step == 0)
+                    ..._packageStep(context)
+                  else
+                    ..._formStep(context),
                 ],
               ),
             ),
@@ -230,6 +230,23 @@ class _KindBookingScreenState extends State<KindBookingScreen> {
               fontSize: 14,
             ),
           ),
+          if (_step == 0) ...[
+            const SizedBox(height: 14),
+            OutlinedButton.icon(
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ClassPackagesScreen(kidsOnly: true),
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.white,
+                side: const BorderSide(color: Colors.white54),
+              ),
+              icon: const Icon(Icons.school_rounded),
+              label: const Text('View Nursery & Primary packages'),
+            ),
+          ],
         ],
       ),
     );
@@ -281,7 +298,9 @@ class _KindBookingScreenState extends State<KindBookingScreen> {
                           Text(
                             p.subtitle,
                             style: TextStyle(
-                                color: context.greyColor, fontSize: 12),
+                              color: context.greyColor,
+                              fontSize: 12,
+                            ),
                           ),
                           if (p.savings != null) ...[
                             const SizedBox(height: 4),
@@ -391,8 +410,11 @@ class _KindBookingScreenState extends State<KindBookingScreen> {
             const SizedBox(height: 10),
             _field(_parentCtrl, 'Parent / guardian name *'),
             const SizedBox(height: 10),
-            _field(_phoneCtrl, 'Phone / WhatsApp',
-                keyboard: TextInputType.phone),
+            _field(
+              _phoneCtrl,
+              'Phone / WhatsApp',
+              keyboard: TextInputType.phone,
+            ),
             const SizedBox(height: 10),
             _field(_timeCtrl, 'Preferred day & time'),
             const SizedBox(height: 10),
@@ -420,8 +442,9 @@ class _KindBookingScreenState extends State<KindBookingScreen> {
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed:
-                        _submitting ? null : () => setState(() => _step = 0),
+                    onPressed: _submitting
+                        ? null
+                        : () => setState(() => _step = 0),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: context.accentColor,
                       side: BorderSide(color: context.accentColor),
@@ -430,8 +453,10 @@ class _KindBookingScreenState extends State<KindBookingScreen> {
                         borderRadius: BorderRadius.circular(14),
                       ),
                     ),
-                    child: const Text('Back',
-                        style: TextStyle(fontWeight: FontWeight.w700)),
+                    child: const Text(
+                      'Back',
+                      style: TextStyle(fontWeight: FontWeight.w700),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -452,12 +477,16 @@ class _KindBookingScreenState extends State<KindBookingScreen> {
                             width: 22,
                             height: 22,
                             child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white),
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
                         : const Text(
                             'Submit booking',
                             style: TextStyle(
-                                fontWeight: FontWeight.w800, fontSize: 15),
+                              fontWeight: FontWeight.w800,
+                              fontSize: 15,
+                            ),
                           ),
                   ),
                 ),
@@ -497,8 +526,10 @@ class _KindBookingScreenState extends State<KindBookingScreen> {
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide(color: context.accentColor, width: 1.5),
         ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
       ),
     );
   }
@@ -514,8 +545,11 @@ class _KindBookingScreenState extends State<KindBookingScreen> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.check_circle_rounded,
-                        color: context.accentColor, size: 18),
+                    Icon(
+                      Icons.check_circle_rounded,
+                      color: context.accentColor,
+                      size: 18,
+                    ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(

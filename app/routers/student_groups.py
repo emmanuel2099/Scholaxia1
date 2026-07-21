@@ -11,6 +11,7 @@ from app.core.deps import require_student_or_kind
 from app.services.live_class_access import parse_uuid
 from app.services.group_community import ensure_group_feed_post
 from app.services.moderation_service import check_message_content
+from app.services.notification_service import send_users_notification
 from app.models.student_group import (
     StudentGroup,
     StudentGroupMember,
@@ -65,6 +66,30 @@ class GroupPostBody(BaseModel):
 
 class AddMemberBody(BaseModel):
     email: str
+
+
+async def _notify_group_members(
+    db: AsyncSession,
+    group: StudentGroup,
+    sender_id,
+    sender_name: str,
+    body: str,
+    data: dict,
+) -> None:
+    members = await db.execute(
+        select(StudentGroupMember.user_id).where(
+            StudentGroupMember.group_id == group.id
+        )
+    )
+    await send_users_notification(
+        db=db,
+        user_ids=[str(user_id) for user_id in members.scalars().all()],
+        title=f"{sender_name} · {group.name}",
+        body=body,
+        notification_type="community_mention",
+        data=data,
+        exclude_user_id=str(sender_id),
+    )
 
 
 def _group_dict(grp: StudentGroup, mem, pending, member_count: int, creator_name: str = "Student") -> dict:
@@ -648,6 +673,26 @@ async def create_group_post(
     user_res = await db.execute(select(User).where(User.id == uid))
     user = user_res.scalar_one_or_none()
     author_name = user.full_name if user else "Student"
+    try:
+        preview = post.content or (
+            "Shared a voice note"
+            if post.media_type == "audio"
+            else "Shared a new post"
+        )
+        await _notify_group_members(
+            db,
+            group,
+            uid,
+            author_name,
+            preview[:180],
+            {
+                "type": "group_post",
+                "group_id": str(group.id),
+                "post_id": str(post.id),
+            },
+        )
+    except Exception:
+        pass
 
     return {
         "id": str(post.id),
@@ -738,10 +783,26 @@ async def send_group_message(
     await db.flush()
     user_res = await db.execute(select(User).where(User.id == uid))
     user = user_res.scalar_one_or_none()
+    author_name = user.full_name if user else "Student"
+    try:
+        await _notify_group_members(
+            db,
+            group,
+            uid,
+            author_name,
+            text[:180],
+            {
+                "type": "group_message",
+                "group_id": str(group.id),
+                "message_id": str(msg.id),
+            },
+        )
+    except Exception:
+        pass
     return {
         "id": str(msg.id),
         "user_id": str(uid),
-        "author_name": user.full_name if user else "Student",
+        "author_name": author_name,
         "author_picture": user.profile_picture if user else None,
         "profile_picture": user.profile_picture if user else None,
         "content": text,

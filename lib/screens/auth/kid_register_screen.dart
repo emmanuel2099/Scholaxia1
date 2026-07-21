@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../api/api_service.dart';
+import '../../services/firebase_analytics_service.dart';
+import '../../services/firebase_push_service.dart';
 import '../../theme/app_theme.dart';
 import '../kind/kind_shared.dart';
 import '../kind/kind_shell.dart';
@@ -57,7 +59,12 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
       }
       setState(() => _loading = true);
       try {
-        await _api.signupVerify(email: _pendingEmail, otp: otp);
+        final auth = await _api.signupVerify(email: _pendingEmail, otp: otp);
+        await FirebaseAnalyticsService.instance.logSignUp(
+          role: auth.role,
+          userId: auth.userId,
+        );
+        await FirebasePushService.instance.registerAfterLogin();
         if (!mounted) return;
         Navigator.pushAndRemoveUntil(
           context,
@@ -85,19 +92,23 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
 
     if (name.isEmpty || email.isEmpty || pass.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill in name, email and password.')),
+        const SnackBar(
+          content: Text('Please fill in name, email and password.'),
+        ),
       );
       return;
     }
     if (pass != conf) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Passwords do not match.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Passwords do not match.')));
       return;
     }
     if (pass.length < 8) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Password must be at least 8 characters.')),
+        const SnackBar(
+          content: Text('Password must be at least 8 characters.'),
+        ),
       );
       return;
     }
@@ -118,7 +129,9 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
         _pendingEmail = result['email']?.toString() ?? email;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('OTP sent. Check your email and spam folder.')),
+        const SnackBar(
+          content: Text('OTP sent. Check your email and spam folder.'),
+        ),
       );
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -155,11 +168,14 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
             }
           },
         ),
-        title: Text(_otpStep ? 'Verify Email' : 'Kid Sign Up',
-            style: TextStyle(
-                color: context.textColor,
-                fontSize: 17,
-                fontWeight: FontWeight.w600)),
+        title: Text(
+          _otpStep ? 'Verify Email' : 'Kid Sign Up',
+          style: TextStyle(
+            color: context.textColor,
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -170,9 +186,10 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
             Text(
               _otpStep ? 'Enter email code' : 'Create a kid learner account',
               style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: context.textColor),
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: context.textColor,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
@@ -180,14 +197,21 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
                   ? 'We sent a code to $_pendingEmail'
                   : 'For young learners ages 3–12. Verify the account by email.',
               style: TextStyle(
-                  fontSize: 13, color: context.greyColor, height: 1.5),
+                fontSize: 13,
+                color: context.greyColor,
+                height: 1.5,
+              ),
             ),
             const SizedBox(height: 28),
             if (!_otpStep) ...[
               _label(context, "Child's Name"),
               const SizedBox(height: 6),
-              _field(context,
-                  ctrl: _nameCtrl, hint: 'Amina', icon: Icons.child_care_outlined),
+              _field(
+                context,
+                ctrl: _nameCtrl,
+                hint: 'Amina',
+                icon: Icons.child_care_outlined,
+              ),
               const SizedBox(height: 16),
               _label(context, 'Age Group'),
               const SizedBox(height: 6),
@@ -205,10 +229,12 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
                     dropdownColor: context.cardColor,
                     style: TextStyle(color: context.textColor, fontSize: 15),
                     items: _ageGroups
-                        .map((g) => DropdownMenuItem(
-                              value: g,
-                              child: Text('Ages $g'),
-                            ))
+                        .map(
+                          (g) => DropdownMenuItem(
+                            value: g,
+                            child: Text('Ages $g'),
+                          ),
+                        )
                         .toList(),
                     onChanged: (v) {
                       if (v != null) setState(() => _ageGroup = v);
@@ -256,7 +282,8 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
                 icon: Icons.lock_outline,
                 obscure: _obscureConfirm,
                 suffix: GestureDetector(
-                  onTap: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                  onTap: () =>
+                      setState(() => _obscureConfirm = !_obscureConfirm),
                   child: Icon(
                     _obscureConfirm
                         ? Icons.visibility_outlined
@@ -288,7 +315,8 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
                   foregroundColor: Colors.white,
                   disabledBackgroundColor: context.greyColor.withOpacity(0.3),
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                   elevation: 0,
                 ),
                 child: _loading
@@ -296,12 +324,18 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
                         width: 22,
                         height: 22,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
-                    : Text(_otpStep ? 'Verify Email Code' : 'Send Email Code',
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Text(
+                        _otpStep ? 'Verify Email Code' : 'Send Email Code',
                         style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white)),
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
               ),
             ),
             const SizedBox(height: 16),
@@ -309,8 +343,10 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text('Already have an account? ',
-                      style: TextStyle(color: context.greyColor, fontSize: 13)),
+                  Text(
+                    'Already have an account? ',
+                    style: TextStyle(color: context.greyColor, fontSize: 13),
+                  ),
                   GestureDetector(
                     onTap: () => Navigator.pushReplacement(
                       context,
@@ -319,11 +355,14 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
                             LoginScreen(accountRole: AccountRole.kind),
                       ),
                     ),
-                    child: Text('Log In',
-                        style: TextStyle(
-                            color: KidColors.accent,
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold)),
+                    child: Text(
+                      'Log In',
+                      style: TextStyle(
+                        color: KidColors.accent,
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -335,11 +374,14 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
     );
   }
 
-  Widget _label(BuildContext context, String t) => Text(t,
-      style: TextStyle(
-          color: context.textColor,
-          fontSize: 13,
-          fontWeight: FontWeight.w600));
+  Widget _label(BuildContext context, String t) => Text(
+    t,
+    style: TextStyle(
+      color: context.textColor,
+      fontSize: 13,
+      fontWeight: FontWeight.w600,
+    ),
+  );
 
   Widget _field(
     BuildContext context, {
@@ -349,26 +391,25 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
     TextInputType type = TextInputType.text,
     bool obscure = false,
     Widget? suffix,
-  }) =>
-      Container(
-        decoration: BoxDecoration(
-          color: context.surfColor,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: context.borderColor),
-        ),
-        child: TextField(
-          controller: ctrl,
-          keyboardType: type,
-          obscureText: obscure,
-          style: TextStyle(color: context.textColor, fontSize: 15),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle: TextStyle(color: context.greyLColor),
-            prefixIcon: Icon(icon, color: context.greyLColor, size: 20),
-            suffixIcon: suffix,
-            border: InputBorder.none,
-            contentPadding: const EdgeInsets.symmetric(vertical: 16),
-          ),
-        ),
-      );
+  }) => Container(
+    decoration: BoxDecoration(
+      color: context.surfColor,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: context.borderColor),
+    ),
+    child: TextField(
+      controller: ctrl,
+      keyboardType: type,
+      obscureText: obscure,
+      style: TextStyle(color: context.textColor, fontSize: 15),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: TextStyle(color: context.greyLColor),
+        prefixIcon: Icon(icon, color: context.greyLColor, size: 20),
+        suffixIcon: suffix,
+        border: InputBorder.none,
+        contentPadding: const EdgeInsets.symmetric(vertical: 16),
+      ),
+    ),
+  );
 }

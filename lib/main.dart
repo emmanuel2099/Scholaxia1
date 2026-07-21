@@ -1,10 +1,10 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'screens/splash/splash_screen.dart';
 import 'services/app_update_service.dart';
+import 'services/firebase_analytics_service.dart';
 import 'services/firebase_push_service.dart';
 import 'services/local_notification_service.dart';
 import 'theme/app_theme.dart';
@@ -40,6 +40,11 @@ Future<void> _bootstrap() async {
     await FirebasePushService.instance.init();
   } catch (e, st) {
     debugPrint('Firebase init failed: $e\n$st');
+  }
+  try {
+    await FirebaseAnalyticsService.instance.init();
+  } catch (e, st) {
+    debugPrint('Firebase Analytics init failed: $e\n$st');
   }
 }
 
@@ -84,15 +89,20 @@ class _ScholaxiaAppState extends State<ScholaxiaApp> {
       themeMode: themeNotifier.mode,
       builder: (context, child) {
         final brightness = Theme.of(context).brightness;
-        SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
-          statusBarColor: Colors.transparent,
-          statusBarIconBrightness:
-              brightness == Brightness.dark ? Brightness.light : Brightness.dark,
-          systemNavigationBarColor:
-              brightness == Brightness.dark ? AppColors.surface : Colors.white,
-          systemNavigationBarIconBrightness:
-              brightness == Brightness.dark ? Brightness.light : Brightness.dark,
-        ));
+        SystemChrome.setSystemUIOverlayStyle(
+          SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: brightness == Brightness.dark
+                ? Brightness.light
+                : Brightness.dark,
+            systemNavigationBarColor: brightness == Brightness.dark
+                ? AppColors.surface
+                : Colors.white,
+            systemNavigationBarIconBrightness: brightness == Brightness.dark
+                ? Brightness.light
+                : Brightness.dark,
+          ),
+        );
         return child ?? const SizedBox.shrink();
       },
       home: const SplashScreen(),
