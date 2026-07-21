@@ -24,7 +24,7 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
   bool _obscureConfirm = true;
   bool _loading = false;
   bool _otpStep = false;
-  String _pendingPhone = '';
+  String _pendingEmail = '';
   String _ageGroup = '6-8';
   final _api = ApiService();
 
@@ -43,7 +43,7 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
 
   Future<void> _create() async {
     final name = _nameCtrl.text.trim();
-    final phone = _emailCtrl.text.trim();
+    final email = _emailCtrl.text.trim();
     final pass = _passCtrl.text;
     final conf = _confirmCtrl.text;
 
@@ -51,13 +51,13 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
       final otp = _otpCtrl.text.trim();
       if (otp.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Enter the SMS code.')),
+          const SnackBar(content: Text('Enter the code we emailed you.')),
         );
         return;
       }
       setState(() => _loading = true);
       try {
-        await _api.signupVerify(phone: _pendingPhone, otp: otp);
+        await _api.signupVerify(email: _pendingEmail, otp: otp);
         if (!mounted) return;
         Navigator.pushAndRemoveUntil(
           context,
@@ -75,9 +75,9 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
       return;
     }
 
-    if (name.isEmpty || phone.isEmpty || pass.isEmpty) {
+    if (name.isEmpty || email.isEmpty || pass.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill in name, phone and password.')),
+        const SnackBar(content: Text('Please fill in name, email and password.')),
       );
       return;
     }
@@ -97,19 +97,20 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
     setState(() => _loading = true);
     try {
       final res = await _api.signupStart(
-        phone: phone,
+        email: email,
         password: pass,
         fullName: name,
         role: 'kind',
         ageGroup: _ageGroup,
+        parentEmail: _parentEmailCtrl.text.trim(),
       );
       if (!mounted) return;
       setState(() {
         _otpStep = true;
-        _pendingPhone = res['phone']?.toString() ?? phone;
+        _pendingEmail = res['email']?.toString() ?? email;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('SMS code sent. Check your phone.')),
+        const SnackBar(content: Text('Verification code sent. Check your email.')),
       );
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -199,24 +200,24 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            _label(context, 'Phone Number'),
+            _label(context, 'Email'),
             const SizedBox(height: 6),
             _field(
               context,
               ctrl: _emailCtrl,
-              hint: '08012345678',
-              icon: Icons.phone_outlined,
-              type: TextInputType.phone,
+              hint: 'you@example.com',
+              icon: Icons.email_outlined,
+              type: TextInputType.emailAddress,
             ),
             if (_otpStep) ...[
               const SizedBox(height: 16),
-              _label(context, 'SMS OTP Code'),
+              _label(context, 'Email OTP Code'),
               const SizedBox(height: 6),
               _field(
                 context,
                 ctrl: _otpCtrl,
                 hint: '6-digit code',
-                icon: Icons.sms_outlined,
+                icon: Icons.mark_email_read_outlined,
                 type: TextInputType.number,
               ),
             ],
@@ -280,7 +281,7 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
                         height: 22,
                         child: CircularProgressIndicator(
                             strokeWidth: 2, color: Colors.white))
-                    : Text(_otpStep ? 'Verify SMS Code' : 'Send SMS Code',
+                    : Text(_otpStep ? 'Verify Email Code' : 'Send Email Code',
                         style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,

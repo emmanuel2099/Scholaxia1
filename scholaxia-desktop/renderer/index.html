@@ -82,8 +82,8 @@
 
           <form id="form-login" class="auth-form">
             <label class="field">
-              <span class="field-label">Phone number</span>
-              <input type="tel" id="login-phone" placeholder="08012345678" autocomplete="tel" required />
+              <span class="field-label">Email</span>
+              <input type="email" id="login-email" placeholder="you@example.com" autocomplete="email" required />
             </label>
             <label class="field">
               <span class="field-label">Password</span>
@@ -107,8 +107,8 @@
                 <input type="text" id="signup-name" placeholder="Full name" autocomplete="name" required />
               </label>
               <label class="field">
-                <span class="field-label">Phone number</span>
-                <input type="tel" id="signup-phone" placeholder="08012345678" autocomplete="tel" required />
+                <span class="field-label">Email</span>
+                <input type="email" id="signup-email" placeholder="you@example.com" autocomplete="email" required />
               </label>
               <label class="field">
                 <span class="field-label">Password</span>
@@ -128,17 +128,17 @@
                 </label>
               </div>
               <p id="signup-error" class="error-msg"></p>
-              <button type="submit" class="btn-primary" id="btn-signup">SEND SMS CODE</button>
+              <button type="submit" class="btn-primary" id="btn-signup">SEND EMAIL CODE</button>
             </div>
             <div id="signup-step-otp" class="hidden">
-              <p class="otp-hint">We sent an SMS code to <strong id="signup-otp-phone-label"></strong></p>
+              <p class="otp-hint">We sent a verification code to <strong id="signup-otp-email-label"></strong></p>
               <label class="field">
-                <span class="field-label">SMS OTP code</span>
+                <span class="field-label">Email OTP code</span>
                 <input type="text" id="signup-otp" placeholder="6-digit code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" required />
               </label>
               <p id="signup-otp-error" class="error-msg"></p>
               <button type="button" class="btn-primary" id="btn-verify-otp" onclick="verifySignupOtp()">VERIFY &amp; CREATE ACCOUNT</button>
-              <p class="switch-text"><button type="button" class="link-btn" onclick="resendSignupOtp()">Resend code</button> · <button type="button" class="link-btn" onclick="backToSignupDetails()">Change number</button></p>
+              <p class="switch-text"><button type="button" class="link-btn" onclick="resendSignupOtp()">Resend code</button> · <button type="button" class="link-btn" onclick="backToSignupDetails()">Change email</button></p>
             </div>
             <p class="switch-text">Already have an account? <button type="button" class="link-btn" id="go-login">Log in</button></p>
           </form>

@@ -239,16 +239,10 @@ class ApiService {
     required String password,
   }) async {
     final body = <String, dynamic>{'password': password};
-    if (phone != null && phone.trim().isNotEmpty) {
+    if (email != null && email.trim().isNotEmpty) {
+      body['email'] = email.trim();
+    } else if (phone != null && phone.trim().isNotEmpty) {
       body['phone'] = phone.trim();
-    } else if (email != null && email.trim().isNotEmpty) {
-      // Phone-first: if value has no @, send as phone
-      final id = email.trim();
-      if (id.contains('@')) {
-        body['email'] = id;
-      } else {
-        body['phone'] = id;
-      }
     }
     final res = await http.post(
       _uri(ApiEndpoints.login),
@@ -262,7 +256,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> signupStart({
-    required String phone,
+    required String email,
     required String password,
     required String fullName,
     String role = 'student',
@@ -274,7 +268,7 @@ class ApiService {
       _uri(ApiEndpoints.signupStart),
       headers: _jsonHeaders(),
       body: jsonEncode({
-        'phone': phone,
+        'email': email,
         'password': password,
         'full_name': fullName,
         'role': role,
@@ -288,13 +282,13 @@ class ApiService {
   }
 
   Future<AuthResponse> signupVerify({
-    required String phone,
+    required String email,
     required String otp,
   }) async {
     final res = await http.post(
       _uri(ApiEndpoints.signupVerify),
       headers: _jsonHeaders(),
-      body: jsonEncode({'phone': phone, 'otp': otp}),
+      body: jsonEncode({'email': email, 'otp': otp}),
     );
     final auth =
         AuthResponse.fromJson(Map<String, dynamic>.from(_parse(res) as Map));
@@ -302,14 +296,14 @@ class ApiService {
     return auth;
   }
 
-  Future<Map<String, dynamic>> sendSmsOtp({
-    required String phone,
+  Future<Map<String, dynamic>> sendEmailOtp({
+    required String email,
     String purpose = 'signup',
   }) async {
     final res = await http.post(
       _uri(ApiEndpoints.otpSend),
       headers: _jsonHeaders(),
-      body: jsonEncode({'phone': phone, 'purpose': purpose}),
+      body: jsonEncode({'email': email, 'purpose': purpose}),
     );
     return _parseMap(res);
   }

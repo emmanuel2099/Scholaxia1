@@ -9,16 +9,23 @@ OTPs are stored in Redis with a TTL (default 10 minutes).
 Brevo sends the email via their transactional email API.
 """
 
+import json
 import random
 import string
+from typing import Any, Optional
+
 import httpx
 from app.core.config import settings
 from app.core.redis import get_redis
 
 OTP_LENGTH = 6
 OTP_TTL = settings.OTP_EXPIRE_MINUTES * 60   # seconds
+PENDING_TTL = OTP_TTL
 
 BREVO_SEND_URL = "https://api.brevo.com/v3/smtp/email"
+
+# In-memory fallback when Redis is down (dev only)
+_MEMORY_STORE: dict[str, str] = {}
 
 
 def _generate_otp() -> str:
@@ -29,19 +36,46 @@ def _redis_key(purpose: str, email: str) -> str:
     return f"otp:{purpose}:{email.lower()}"
 
 
+def _pending_key(email: str) -> str:
+    return f"signup_pending:{email.lower()}"
+
+
+async def _store_set(key: str, value: str, ex: int) -> None:
+    try:
+        redis = await get_redis()
+        await redis.set(key, value, ex=ex)
+    except Exception:
+        _MEMORY_STORE[key] = value
+        print(f"[OTP] Redis unavailable — stored in memory for {key}")
+
+
+async def _store_get(key: str) -> Optional[str]:
+    try:
+        redis = await get_redis()
+        raw = await redis.get(key)
+        if raw is None:
+            return _MEMORY_STORE.get(key)
+        return raw.decode() if isinstance(raw, bytes) else str(raw)
+    except Exception:
+        return _MEMORY_STORE.get(key)
+
+
+async def _store_delete(key: str) -> None:
+    try:
+        redis = await get_redis()
+        await redis.delete(key)
+    except Exception:
+        pass
+    _MEMORY_STORE.pop(key, None)
+
+
 async def send_otp(email: str, full_name: str, purpose: str) -> None:
     """
     Generate an OTP, store it in Redis, and send it via Brevo email.
-    purpose: "verify_email" | "reset_password"
+    purpose: "signup" | "verify_email" | "reset_password" | "login"
     """
     otp = _generate_otp()
-    try:
-        redis = await get_redis()
-        key = _redis_key(purpose, email)
-        await redis.set(key, otp, ex=OTP_TTL)
-    except Exception:
-        # Redis not available — log and continue (OTP won't be verifiable but signup won't crash)
-        print(f"[OTP] Redis unavailable — OTP for {email}: {otp}")
+    await _store_set(_redis_key(purpose, email), otp, OTP_TTL)
 
     subject, body = _build_email(purpose, full_name, otp)
     await _send_via_brevo(to_email=email, to_name=full_name, subject=subject, body=body)
@@ -51,25 +85,42 @@ async def verify_otp(email: str, otp: str, purpose: str) -> bool:
     """
     Verify the OTP for a given email and purpose.
     Returns True if valid, False otherwise.
-    Deletes the OTP from Redis on successful verification (one-time use).
+    Deletes the OTP on successful verification (one-time use).
     """
-    redis = await get_redis()
     key = _redis_key(purpose, email)
-    stored = await redis.get(key)
+    stored = await _store_get(key)
 
     if not stored:
         return False   # expired or never sent
 
-    if stored.decode() != otp.strip():
+    if stored.strip() != (otp or "").strip():
         return False   # wrong code
 
     # Consume — delete so it can't be reused
-    await redis.delete(key)
+    await _store_delete(key)
     return True
 
 
+async def store_pending_signup(email: str, payload: dict[str, Any]) -> None:
+    await _store_set(_pending_key(email), json.dumps(payload), PENDING_TTL)
+
+
+async def load_pending_signup(email: str) -> Optional[dict[str, Any]]:
+    raw = await _store_get(_pending_key(email))
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except Exception:
+        return None
+
+
+async def clear_pending_signup(email: str) -> None:
+    await _store_delete(_pending_key(email))
+
+
 def _build_email(purpose: str, full_name: str, otp: str) -> tuple[str, str]:
-    if purpose == "verify_email":
+    if purpose in ("signup", "verify_email"):
         subject = "Verify your Scholaxia account"
         body = f"""
         <p>Hi {full_name},</p>

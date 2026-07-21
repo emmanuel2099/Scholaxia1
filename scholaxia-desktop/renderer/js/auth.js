@@ -54,10 +54,10 @@ function initAuthPage() {
     return;
   }
 
-  var remembered = localStorage.getItem("sia_remember_phone") || localStorage.getItem("sia_remember_email");
+  var remembered = localStorage.getItem("sia_remember_email");
   if (remembered) {
-    var loginPhoneEl = document.getElementById("login-phone");
-    if (loginPhoneEl) loginPhoneEl.value = remembered;
+    var loginEmailEl = document.getElementById("login-email");
+    if (loginEmailEl) loginEmailEl.value = remembered;
     document.getElementById("remember-me").checked = true;
   }
 
@@ -337,7 +337,7 @@ async function routeAfterAuth(accessToken, role, email, nameOverride) {
 
 async function login(e) {
   e.preventDefault();
-  var phone = document.getElementById("login-phone").value.trim();
+  var email = document.getElementById("login-email").value.trim();
   var password = document.getElementById("login-password").value;
   var err = document.getElementById("login-error");
   var btn = document.getElementById("btn-login");
@@ -347,16 +347,16 @@ async function login(e) {
   btn.textContent = "LOGGING IN...";
 
   if (document.getElementById("remember-me").checked) {
-    localStorage.setItem("sia_remember_phone", phone);
+    localStorage.setItem("sia_remember_email", email);
   } else {
-    localStorage.removeItem("sia_remember_phone");
+    localStorage.removeItem("sia_remember_email");
   }
 
   try {
     var res = await fetch(API_BASE + "/api/v1/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone: phone, password: password }),
+      body: JSON.stringify({ email: email, password: password }),
       signal: fetchTimeout(45000),
     });
     var data = await res.json();
@@ -368,7 +368,7 @@ async function login(e) {
       err.textContent = roleMismatchMessage(selectedAccountRole, data.role);
       return;
     }
-    var label = (data.user && (data.user.phone || data.user.email)) || phone;
+    var label = (data.user && data.user.email) || email;
     await routeAfterAuth(data.access_token, data.role, label, data.user && data.user.full_name);
   } catch (ex) {
     if (typeof navigator !== "undefined" && !navigator.onLine) {
@@ -384,13 +384,13 @@ async function login(e) {
   }
 }
 
-var pendingSignupPhone = "";
+var pendingSignupEmail = "";
 
-function showSignupOtpStep(phone) {
-  pendingSignupPhone = phone;
+function showSignupOtpStep(email) {
+  pendingSignupEmail = email;
   document.getElementById("signup-step-details").classList.add("hidden");
   document.getElementById("signup-step-otp").classList.remove("hidden");
-  document.getElementById("signup-otp-phone-label").textContent = phone;
+  document.getElementById("signup-otp-email-label").textContent = email;
   document.getElementById("signup-otp").value = "";
   document.getElementById("signup-otp-error").textContent = "";
 }
@@ -398,7 +398,7 @@ function showSignupOtpStep(phone) {
 function backToSignupDetails() {
   document.getElementById("signup-step-otp").classList.add("hidden");
   document.getElementById("signup-step-details").classList.remove("hidden");
-  pendingSignupPhone = "";
+  pendingSignupEmail = "";
 }
 
 async function signup(e) {
@@ -410,14 +410,14 @@ async function signup(e) {
   }
 
   var name = document.getElementById("signup-name").value.trim();
-  var phone = document.getElementById("signup-phone").value.trim();
+  var email = document.getElementById("signup-email").value.trim();
   var password = document.getElementById("signup-password").value;
   var err = document.getElementById("signup-error");
   var btn = document.getElementById("btn-signup");
   err.textContent = "";
 
-  if (!name || !phone || !password) {
-    err.textContent = "Please fill in name, phone and password.";
+  if (!name || !email || !password) {
+    err.textContent = "Please fill in name, email and password.";
     return;
   }
   if (password.length < 8) {
@@ -426,11 +426,11 @@ async function signup(e) {
   }
 
   btn.disabled = true;
-  btn.textContent = "SENDING SMS...";
+  btn.textContent = "SENDING EMAIL...";
 
   try {
     var body = {
-      phone: phone,
+      email: email,
       password: password,
       full_name: name,
       role: selectedAccountRole === "kind" ? "kind" : "student",
@@ -450,7 +450,7 @@ async function signup(e) {
       err.textContent = typeof data.detail === "string" ? data.detail : "Could not send OTP.";
       return;
     }
-    showSignupOtpStep(data.phone || phone);
+    showSignupOtpStep(data.email || email);
   } catch (ex) {
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       err.textContent = "There is no internet on your data.";
@@ -461,7 +461,7 @@ async function signup(e) {
     }
   } finally {
     btn.disabled = false;
-    btn.textContent = "SEND SMS CODE";
+    btn.textContent = "SEND EMAIL CODE";
   }
 }
 
@@ -471,8 +471,8 @@ async function verifySignupOtp() {
   var btn = document.getElementById("btn-verify-otp");
   var cfg = ROLE_CONFIG[selectedAccountRole] || ROLE_CONFIG.student;
   err.textContent = "";
-  if (!otp || !pendingSignupPhone) {
-    err.textContent = "Enter the SMS code we sent you.";
+  if (!otp || !pendingSignupEmail) {
+    err.textContent = "Enter the code we emailed you.";
     return;
   }
   btn.disabled = true;
@@ -481,7 +481,7 @@ async function verifySignupOtp() {
     var res = await fetch(API_BASE + "/api/v1/auth/signup/verify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone: pendingSignupPhone, otp: otp }),
+      body: JSON.stringify({ email: pendingSignupEmail, otp: otp }),
       signal: fetchTimeout(45000),
     });
     var data = await res.json();
@@ -489,7 +489,7 @@ async function verifySignupOtp() {
       err.textContent = typeof data.detail === "string" ? data.detail : "Invalid OTP.";
       return;
     }
-    var label = (data.user && (data.user.phone || data.user.email)) || pendingSignupPhone;
+    var label = (data.user && data.user.email) || pendingSignupEmail;
     await routeAfterAuth(data.access_token, data.role || cfg.expectedRole, label, data.user && data.user.full_name);
   } catch (ex) {
     err.textContent = "Network error. Check your connection.";
@@ -502,12 +502,12 @@ async function verifySignupOtp() {
 async function resendSignupOtp() {
   var err = document.getElementById("signup-otp-error");
   err.textContent = "";
-  if (!pendingSignupPhone) return;
+  if (!pendingSignupEmail) return;
   try {
     var res = await fetch(API_BASE + "/api/v1/auth/otp/send", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone: pendingSignupPhone, purpose: "signup" }),
+      body: JSON.stringify({ email: pendingSignupEmail, purpose: "signup" }),
       signal: fetchTimeout(45000),
     });
     var data = await res.json();

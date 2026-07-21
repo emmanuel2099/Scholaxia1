@@ -7,11 +7,9 @@ from app.core.database import get_db
 from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token
 from app.core.config import settings
 from app.models.user import User, UserRole, StudentProfile, TeacherProfile, KindProfile
-from app.services.sms_otp_service import (
-    normalize_phone,
-    phone_to_email,
-    send_sms_otp,
-    verify_sms_otp,
+from app.services.otp_service import (
+    send_otp,
+    verify_otp,
     store_pending_signup,
     load_pending_signup,
     clear_pending_signup,
@@ -39,17 +37,17 @@ class KindSignupRequest(BaseModel):
 
 class LoginRequest(BaseModel):
     password: str
-    phone: Optional[str] = None
-    email: Optional[str] = None  # legacy email login still supported
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None  # legacy phone login (older clients)
 
 
 class SendOtpRequest(BaseModel):
-    phone: str = Field(..., min_length=7, max_length=40)
+    email: EmailStr
     purpose: str = "signup"  # signup | login
 
 
 class SignupStartRequest(BaseModel):
-    phone: str = Field(..., min_length=7, max_length=40)
+    email: EmailStr
     full_name: str = Field(..., min_length=2, max_length=255)
     password: str = Field(..., min_length=8, max_length=128)
     role: str = "student"  # student | kind
@@ -59,7 +57,7 @@ class SignupStartRequest(BaseModel):
 
 
 class SignupVerifyRequest(BaseModel):
-    phone: str = Field(..., min_length=7, max_length=40)
+    email: EmailStr
     otp: str = Field(..., min_length=4, max_length=10)
 
 
@@ -132,40 +130,35 @@ async def _build_user_info(user: User, db: AsyncSession) -> UserInfo:
     return info
 
 
-async def _find_user_by_phone(db: AsyncSession, phone_e164: str) -> Optional[User]:
-    res = await db.execute(select(User).where(User.phone == phone_e164))
-    user = res.scalar_one_or_none()
-    if user:
-        return user
-    # Fallback for accounts created before phone column / synthetic email
-    email = phone_to_email(phone_e164)
-    res = await db.execute(select(User).where(User.email == email))
+async def _find_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
+    res = await db.execute(select(User).where(User.email == email.lower()))
     return res.scalar_one_or_none()
 
 
 @router.post("/otp/send")
-async def send_otp_sms(payload: SendOtpRequest, db: AsyncSession = Depends(get_db)):
+async def send_otp_email(payload: SendOtpRequest, db: AsyncSession = Depends(get_db)):
     """
-    Send SMS OTP via Bird.
-    purpose=signup → phone must NOT be registered
-    purpose=login  → phone must already exist
+    Send email OTP via Brevo.
+    purpose=signup → email must NOT be registered
+    purpose=login  → email must already exist
     """
-    phone = normalize_phone(payload.phone)
+    email = payload.email.lower().strip()
     purpose = (payload.purpose or "signup").strip().lower()
     if purpose not in ("signup", "login"):
         raise HTTPException(status_code=400, detail="purpose must be signup or login")
 
-    existing = await _find_user_by_phone(db, phone)
+    existing = await _find_user_by_email(db, email)
     if purpose == "signup" and existing:
-        raise HTTPException(status_code=400, detail="Phone number already registered. Please log in.")
+        raise HTTPException(status_code=400, detail="Email already registered. Please log in.")
     if purpose == "login" and not existing:
-        raise HTTPException(status_code=404, detail="No account found for this phone number.")
+        raise HTTPException(status_code=404, detail="No account found for this email.")
 
-    await send_sms_otp(phone, purpose=purpose)
+    name = existing.full_name if existing else "there"
+    await send_otp(email, name, purpose)
     return {
         "ok": True,
-        "message": "OTP sent by SMS",
-        "phone": phone,
+        "message": "OTP sent to your email",
+        "email": email,
         "expires_in_minutes": settings.OTP_EXPIRE_MINUTES,
     }
 
@@ -173,10 +166,10 @@ async def send_otp_sms(payload: SendOtpRequest, db: AsyncSession = Depends(get_d
 @router.post("/signup/start")
 async def signup_start(payload: SignupStartRequest, db: AsyncSession = Depends(get_db)):
     """
-    Step 1 — collect phone, name, password; send SMS OTP.
+    Step 1 — collect email, name, password; send email OTP.
     Call /auth/signup/verify with the OTP to create the account.
     """
-    phone = normalize_phone(payload.phone)
+    email = payload.email.lower().strip()
     role = (payload.role or "student").strip().lower()
     if role not in ("student", "kind"):
         raise HTTPException(status_code=400, detail="role must be student or kind")
@@ -185,12 +178,12 @@ async def signup_start(payload: SignupStartRequest, db: AsyncSession = Depends(g
     if role == "kind" and payload.age_group not in ("3-5", "6-8", "9-12"):
         raise HTTPException(status_code=400, detail="age_group must be 3-5, 6-8, or 9-12")
 
-    existing = await _find_user_by_phone(db, phone)
+    existing = await _find_user_by_email(db, email)
     if existing:
-        raise HTTPException(status_code=400, detail="Phone number already registered. Please log in.")
+        raise HTTPException(status_code=400, detail="Email already registered. Please log in.")
 
     pending = {
-        "phone": phone,
+        "email": email,
         "full_name": payload.full_name.strip(),
         "password_hash": hash_password(payload.password),
         "role": role,
@@ -198,40 +191,45 @@ async def signup_start(payload: SignupStartRequest, db: AsyncSession = Depends(g
         "grade_level": payload.grade_level,
         "parent_email": payload.parent_email,
     }
-    await store_pending_signup(phone, pending)
-    await send_sms_otp(phone, purpose="signup")
+    await store_pending_signup(email, pending)
+    try:
+        await send_otp(email, payload.full_name.strip(), "signup")
+    except Exception as e:
+        print(f"[OTP] Brevo send failed for {email}: {e}")
+        raise HTTPException(
+            status_code=502,
+            detail="Could not send verification email. Check the address and try again.",
+        )
     return {
         "ok": True,
-        "message": "OTP sent to your phone",
-        "phone": phone,
+        "message": "OTP sent to your email",
+        "email": email,
         "expires_in_minutes": settings.OTP_EXPIRE_MINUTES,
     }
 
 
 @router.post("/signup/verify", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def signup_verify(payload: SignupVerifyRequest, db: AsyncSession = Depends(get_db)):
-    """Step 2 — verify SMS OTP and create the account."""
-    phone = normalize_phone(payload.phone)
-    if not await verify_sms_otp(phone, payload.otp, purpose="signup"):
+    """Step 2 — verify email OTP and create the account."""
+    email = payload.email.lower().strip()
+    if not await verify_otp(email, payload.otp, purpose="signup"):
         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
 
-    pending = await load_pending_signup(phone)
+    pending = await load_pending_signup(email)
     if not pending:
         raise HTTPException(
             status_code=400,
             detail="Signup session expired. Please start signup again.",
         )
 
-    existing = await _find_user_by_phone(db, phone)
+    existing = await _find_user_by_email(db, email)
     if existing:
-        await clear_pending_signup(phone)
-        raise HTTPException(status_code=400, detail="Phone number already registered")
+        await clear_pending_signup(email)
+        raise HTTPException(status_code=400, detail="Email already registered")
 
     role = pending.get("role") or "student"
-    email = phone_to_email(phone)
     user = User(
         email=email,
-        phone=phone,
         hashed_password=pending["password_hash"],
         full_name=pending["full_name"],
         role=UserRole.kind if role == "kind" else UserRole.student,
@@ -253,7 +251,7 @@ async def signup_verify(payload: SignupVerifyRequest, db: AsyncSession = Depends
     else:
         db.add(StudentProfile(user_id=user.id, selected_subjects=[]))
     await db.flush()
-    await clear_pending_signup(phone)
+    await clear_pending_signup(email)
 
     user_info = await _build_user_info(user, db)
     return TokenResponse(
@@ -335,24 +333,15 @@ async def kind_signup(payload: KindSignupRequest, db: AsyncSession = Depends(get
 @router.post("/login")
 async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
     user = None
-    phone_raw = (payload.phone or "").strip()
     email_raw = (payload.email or "").strip()
+    phone_raw = (payload.phone or "").strip()
 
-    # Allow clients that still put phone in the email field
-    if not phone_raw and email_raw and ("@" not in email_raw or email_raw.endswith("@phone.scholaxia.local")):
-        if "@" not in email_raw:
-            phone_raw = email_raw
+    if email_raw:
+        user = await _find_user_by_email(db, email_raw)
 
-    if phone_raw:
-        try:
-            phone = normalize_phone(phone_raw)
-        except HTTPException:
-            phone = None
-        if phone:
-            user = await _find_user_by_phone(db, phone)
-
-    if user is None and email_raw and "@" in email_raw:
-        result = await db.execute(select(User).where(User.email == email_raw.lower()))
+    # Legacy clients that registered with a phone number
+    if user is None and phone_raw:
+        result = await db.execute(select(User).where(User.phone == phone_raw))
         user = result.scalar_one_or_none()
 
     if not user or not user.hashed_password or not verify_password(payload.password, user.hashed_password):

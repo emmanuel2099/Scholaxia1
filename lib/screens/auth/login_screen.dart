@@ -37,12 +37,12 @@ class _LoginScreenState extends State<LoginScreen> {
     final pass = _passCtrl.text;
     if (email.isEmpty || pass.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please enter your phone number and password.')));
+          const SnackBar(content: Text('Please enter your email and password.')));
       return;
     }
     setState(() => _loading = true);
     try {
-      final auth = await _api.login(phone: email, password: pass);
+      final auth = await _api.login(email: email, password: pass);
       if (!mounted) return;
 
       final role = auth.role.toLowerCase().trim();
@@ -220,14 +220,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
               const SizedBox(height: 28),
-              _label(context, 'PHONE NUMBER'),
+              _label(context, 'EMAIL'),
               const SizedBox(height: 6),
               _field(
                 context,
                 controller: _emailCtrl,
-                hint: '08012345678',
-                icon: Icons.phone_outlined,
-                type: TextInputType.phone,
+                hint: 'you@example.com',
+                icon: Icons.email_outlined,
+                type: TextInputType.emailAddress,
               ),
               const SizedBox(height: 20),
               Row(

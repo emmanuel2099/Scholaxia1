@@ -17,7 +17,7 @@ class RegisterScreen extends StatefulWidget {
 
 class _RegisterScreenState extends State<RegisterScreen> {
   final _nameCtrl = TextEditingController();
-  final _phoneCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
   final _otpCtrl = TextEditingController();
@@ -25,13 +25,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _obscureConfirm = true;
   bool _loading = false;
   bool _otpStep = false;
-  String _pendingPhone = '';
+  String _pendingEmail = '';
   final _api = ApiService();
 
   @override
   void dispose() {
     _nameCtrl.dispose();
-    _phoneCtrl.dispose();
+    _emailCtrl.dispose();
     _passCtrl.dispose();
     _confirmCtrl.dispose();
     _otpCtrl.dispose();
@@ -40,13 +40,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   Future<void> _sendOtp() async {
     final name = _nameCtrl.text.trim();
-    final phone = _phoneCtrl.text.trim();
+    final email = _emailCtrl.text.trim();
     final pass = _passCtrl.text;
     final conf = _confirmCtrl.text;
 
-    if (name.isEmpty || phone.isEmpty || pass.isEmpty) {
+    if (name.isEmpty || email.isEmpty || pass.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please fill in name, phone and password.')));
+          const SnackBar(content: Text('Please fill in name, email and password.')));
       return;
     }
     if (pass.length < 8) {
@@ -62,7 +62,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _loading = true);
     try {
       final res = await _api.signupStart(
-        phone: phone,
+        email: email,
         password: pass,
         fullName: name,
         role: 'student',
@@ -70,10 +70,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (!mounted) return;
       setState(() {
         _otpStep = true;
-        _pendingPhone = res['phone']?.toString() ?? phone;
+        _pendingEmail = res['email']?.toString() ?? email;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('SMS code sent. Check your phone.')),
+        const SnackBar(content: Text('Verification code sent. Check your email.')),
       );
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -82,7 +82,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Could not send SMS. Check your connection.'),
+          content: Text('Could not send email. Check your connection.'),
           backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -91,14 +91,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   Future<void> _verifyOtp() async {
     final otp = _otpCtrl.text.trim();
-    if (otp.isEmpty || _pendingPhone.isEmpty) {
+    if (otp.isEmpty || _pendingEmail.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Enter the SMS code.')));
+          const SnackBar(content: Text('Enter the code we emailed you.')));
       return;
     }
     setState(() => _loading = true);
     try {
-      final auth = await _api.signupVerify(phone: _pendingPhone, otp: otp);
+      final auth = await _api.signupVerify(email: _pendingEmail, otp: otp);
       if (!mounted) return;
       if (auth.role == 'teacher') {
         Navigator.pushAndRemoveUntil(
@@ -145,7 +145,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             }
           },
         ),
-        title: Text(_otpStep ? 'Verify SMS' : 'Create Account',
+        title: Text(_otpStep ? 'Verify Email' : 'Create Account',
             style: TextStyle(
                 color: context.textColor,
                 fontSize: 17,
@@ -158,7 +158,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           children: [
             const SizedBox(height: 8),
             Text(
-              _otpStep ? 'Enter SMS code' : 'Welcome to Scholaxia',
+              _otpStep ? 'Enter email code' : 'Welcome to Scholaxia',
               style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
@@ -167,8 +167,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
             const SizedBox(height: 8),
             Text(
               _otpStep
-                  ? 'We sent a code to $_pendingPhone'
-                  : 'Sign up with your phone number. You will get an SMS OTP.',
+                  ? 'We sent a code to $_pendingEmail'
+                  : 'Sign up with your email. You will get a verification code.',
               style: TextStyle(
                   fontSize: 13, color: context.greyColor, height: 1.5),
             ),
@@ -178,14 +178,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
               const SizedBox(height: 6),
               _field(context, ctrl: _nameCtrl, hint: 'John Doe', icon: Icons.person_outline),
               const SizedBox(height: 16),
-              _label(context, 'Phone Number'),
+              _label(context, 'Email'),
               const SizedBox(height: 6),
               _field(
                   context,
-                  ctrl: _phoneCtrl,
-                  hint: '08012345678',
-                  icon: Icons.phone_outlined,
-                  type: TextInputType.phone),
+                  ctrl: _emailCtrl,
+                  hint: 'you@example.com',
+                  icon: Icons.email_outlined,
+                  type: TextInputType.emailAddress),
               const SizedBox(height: 16),
               _label(context, 'Password'),
               const SizedBox(height: 6),
@@ -223,13 +223,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ),
               ),
             ] else ...[
-              _label(context, 'SMS OTP'),
+              _label(context, 'Email OTP'),
               const SizedBox(height: 6),
               _field(
                   context,
                   ctrl: _otpCtrl,
                   hint: '6-digit code',
-                  icon: Icons.sms_outlined,
+                  icon: Icons.mark_email_read_outlined,
                   type: TextInputType.number),
             ],
             const SizedBox(height: 28),
@@ -252,7 +252,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         height: 22,
                         child: CircularProgressIndicator(strokeWidth: 2, color: btnFg))
                     : Text(
-                        _otpStep ? 'Verify & Create Account' : 'Send SMS Code',
+                        _otpStep ? 'Verify & Create Account' : 'Send Email Code',
                         style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,

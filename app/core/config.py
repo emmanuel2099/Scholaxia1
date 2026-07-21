@@ -74,11 +74,6 @@ class Settings(BaseSettings):
     BREVO_SENDER_NAME: str = "Scholaxia"
     OTP_EXPIRE_MINUTES: int = 10
 
-    # Bird SMS OTP (https://bird.com)
-    BIRD_API_KEY: str = ""
-    BIRD_BASE_URL: str = "https://us1.platform.bird.com"
-    BIRD_OTP_TEMPLATE: str = "bird_otp_verification"
-
     # ── AI Engine ─────────────────────────────────────────────────────────────
     # "deepseek" = DeepSeek (primary — strong + cheap)
     # "openai"   = OpenAI GPT-4o
