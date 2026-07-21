@@ -1126,6 +1126,7 @@ async function importCbtFile() {
           option_c: q.option_c,
           option_d: q.option_d,
           correct_option: q.correct_option || "",
+          explanation: q.explanation || null,
           confidence: q.confidence,
         };
       });

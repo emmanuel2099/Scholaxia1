@@ -95,10 +95,21 @@ def _extract_docx_text(content: bytes) -> str:
 # "1." or "1)" at the start of a line begins a question.
 _QUESTION_START = re.compile(r"^[ \t]*(\d{1,4})[.)][ \t]+", re.MULTILINE)
 
-# Inline answer inside a question block, e.g. "Answer: B", "Ans. C", "ANS = D"
+# Inline answer inside a question block, e.g. "Answer: B", "Ans. C", "Answer: C. Cell"
 _INLINE_ANSWER = re.compile(
-    r"\b(?:answer|ans|correct(?:\s+option)?)\s*[:=.\-]?\s*\(?([A-Da-d])\)?\b",
-    re.IGNORECASE,
+    r"(?im)^[ \t]*(?:answer|ans|correct(?:\s+option)?)\s*[:=.\-]?\s*\(?([A-Da-d])\)?"
+    r"(?:\s*[.)]\s*[^\n]*)?[ \t]*$"
+)
+
+# Explanation line after the answer, e.g. "➡ The cell is..." or "Explanation: ..."
+_EXPLANATION_LINE = re.compile(
+    r"(?im)^[ \t]*(?:➡|→|➜|►|>{1,3}|explanation)\s*[:=\-]?\s*.+$"
+)
+
+# Safety: if answer/explanation still trails an option, cut it off.
+_OPTION_TRAILING_JUNK = re.compile(
+    r"(?is)\s*(?:(?:answer|ans|correct(?:\s+option)?)\s*[:=.\-].*|"
+    r"(?:➡|→|➜|►)\s*.*)$"
 )
 
 # Heading that starts an answer-key section.
@@ -131,15 +142,48 @@ def _clean_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def _parse_question_block(number: int, block: str) -> dict[str, Any]:
-    issues: list[str] = []
-    confidence = 1.0
+def _clean_option_text(text: str) -> str:
+    cleaned = _OPTION_TRAILING_JUNK.sub("", text)
+    cleaned = _clean_text(cleaned)
+    # Drop a leftover ". Cell" style fragment if answer text leaked in.
+    cleaned = re.sub(r"\s*[.]\s*[A-Za-z][A-Za-z0-9 +\-/]{0,40}$", "", cleaned).strip()
+    return cleaned
 
+
+def _strip_answer_and_explanation(block: str) -> tuple[str, str, str]:
+    """Remove answer/explanation lines from a question block.
+
+    Returns (cleaned_block, correct_option_letter, explanation_text).
+    """
     inline_answer = ""
+
     ans_match = _INLINE_ANSWER.search(block)
     if ans_match:
         inline_answer = ans_match.group(1).upper()
         block = block[: ans_match.start()] + block[ans_match.end():]
+
+    expl_parts: list[str] = []
+    for match in list(_EXPLANATION_LINE.finditer(block))[::-1]:
+        part = _clean_text(
+            re.sub(
+                r"^(?:➡|→|➜|►|>{1,3}|explanation)\s*[:=\-]?\s*",
+                "",
+                match.group(0),
+                flags=re.I,
+            )
+        )
+        if part:
+            expl_parts.insert(0, part)
+        block = block[: match.start()] + block[match.end():]
+
+    return block, inline_answer, " ".join(expl_parts).strip()
+
+
+def _parse_question_block(number: int, block: str) -> dict[str, Any]:
+    issues: list[str] = []
+    confidence = 1.0
+
+    block, inline_answer, explanation = _strip_answer_and_explanation(block)
 
     options = {"A": "", "B": "", "C": "", "D": ""}
     positions = _find_option_positions(block)
@@ -148,7 +192,7 @@ def _parse_question_block(number: int, block: str) -> dict[str, Any]:
         question_text = _clean_text(block[: positions[0][1]])
         for idx, (letter, _start, text_start) in enumerate(positions):
             end = positions[idx + 1][1] if idx + 1 < len(positions) else len(block)
-            options[letter] = _clean_text(block[text_start:end])
+            options[letter] = _clean_option_text(block[text_start:end])
     else:
         question_text = _clean_text(block)
 
@@ -172,6 +216,7 @@ def _parse_question_block(number: int, block: str) -> dict[str, Any]:
         "option_c": options["C"],
         "option_d": options["D"],
         "correct_option": inline_answer,
+        "explanation": explanation or None,
         "confidence": confidence,
         "issues": issues,
     }
