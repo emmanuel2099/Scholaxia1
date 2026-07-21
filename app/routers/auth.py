@@ -250,7 +250,7 @@ async def firebase_phone_auth(payload: FirebaseAuthRequest, db: AsyncSession = D
 @router.post("/otp/send")
 async def send_otp_email(payload: SendOtpRequest, db: AsyncSession = Depends(get_db)):
     """
-    Send email OTP via Brevo.
+    Send an OTP through the configured email provider.
     purpose=signup → email must NOT be registered
     purpose=login  → email must already exist
     """
@@ -311,7 +311,7 @@ async def signup_start(payload: SignupStartRequest, db: AsyncSession = Depends(g
     try:
         otp = await send_otp(email, payload.full_name.strip(), "signup")
     except Exception as e:
-        print(f"[OTP] Brevo send failed for {email}: {e}")
+        print(f"[OTP] email send failed for {email}: {e}")
         raise HTTPException(
             status_code=502,
             detail="Could not send verification email. Check the address and try again.",

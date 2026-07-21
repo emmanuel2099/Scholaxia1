@@ -1,12 +1,12 @@
 """
-OTP Service — Brevo (formerly Sendinblue)
------------------------------------------
+OTP Service
+-----------
 Generates, stores, and verifies OTPs for:
   - Email verification on signup
   - Password reset
 
 OTPs are stored in Redis with a TTL (default 10 minutes).
-Brevo sends the email via their transactional email API.
+Email is sent through SendGrid, Mailgun, or Brevo based on configuration.
 """
 
 import json
@@ -71,7 +71,7 @@ async def _store_delete(key: str) -> None:
 
 async def send_otp(email: str, full_name: str, purpose: str) -> str:
     """
-    Generate an OTP, store it in Redis, and send it via Brevo email.
+    Generate an OTP, store it, and send it through the configured email provider.
     purpose: "signup" | "verify_email" | "reset_password" | "login"
     Returns the OTP (only expose to clients when DEBUG=True).
     """
@@ -81,13 +81,87 @@ async def send_otp(email: str, full_name: str, purpose: str) -> str:
 
     subject, body = _build_email(purpose, full_name, otp)
     try:
-        await _send_via_brevo(to_email=email, to_name=full_name, subject=subject, body=body)
+        await _send_email(to_email=email, to_name=full_name, subject=subject, body=body)
     except Exception as e:
-        # Keep OTP in store so DEBUG / retry still works even if Brevo/Gmail fails
-        print(f"[OTP] Brevo send failed for {email}: {e}")
+        # Keep OTP in store so DEBUG / retry still works even if the provider fails
+        print(f"[OTP] email send failed for {email}: {e}")
         if not settings.DEBUG:
             raise
     return otp
+
+
+async def _send_email(to_email: str, to_name: str, subject: str, body: str) -> None:
+    """Send transactional email via the configured provider."""
+    provider = (settings.EMAIL_PROVIDER or "sendgrid").strip().lower()
+    if provider == "brevo":
+        await _send_via_brevo(to_email, to_name, subject, body)
+    elif provider == "mailgun":
+        await _send_via_mailgun(to_email, to_name, subject, body)
+    else:
+        await _send_via_sendgrid(to_email, to_name, subject, body)
+
+
+async def _send_via_sendgrid(to_email: str, to_name: str, subject: str, body: str) -> None:
+    """Send a transactional email via SendGrid API."""
+    if not settings.SENDGRID_API_KEY or not settings.SENDGRID_SENDER_EMAIL:
+        raise RuntimeError(
+            "SendGrid is not configured (SENDGRID_API_KEY / SENDGRID_SENDER_EMAIL)"
+        )
+
+    payload = {
+        "personalizations": [
+            {"to": [{"email": to_email, "name": to_name}], "subject": subject}
+        ],
+        "from": {
+            "email": settings.SENDGRID_SENDER_EMAIL,
+            "name": settings.SENDGRID_SENDER_NAME,
+        },
+        "content": [{"type": "text/html", "value": body}],
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            "https://api.sendgrid.com/v3/mail/send",
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {settings.SENDGRID_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            timeout=15.0,
+        )
+        if response.status_code >= 400:
+            print(f"[OTP] SendGrid error {response.status_code}: {response.text[:300]}")
+        response.raise_for_status()
+
+
+async def _send_via_mailgun(to_email: str, to_name: str, subject: str, body: str) -> None:
+    """Send a transactional email via Mailgun API."""
+    domain = (settings.MAILGUN_DOMAIN or "").strip()
+    if not settings.MAILGUN_API_KEY or not domain:
+        raise RuntimeError("Mailgun is not configured (MAILGUN_API_KEY / MAILGUN_DOMAIN)")
+
+    base = (settings.MAILGUN_BASE_URL or "https://api.mailgun.net").rstrip("/")
+    url = f"{base}/v3/{domain}/messages"
+    sender_email = (settings.MAILGUN_SENDER_EMAIL or f"postmaster@{domain}").strip()
+    from_header = f"{settings.MAILGUN_SENDER_NAME} <{sender_email}>"
+
+    data = {
+        "from": from_header,
+        "to": f"{to_name} <{to_email}>",
+        "subject": subject,
+        "html": body,
+    }
+
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            url,
+            auth=("api", settings.MAILGUN_API_KEY),
+            data=data,
+            timeout=15.0,
+        )
+        if response.status_code >= 400:
+            print(f"[OTP] Mailgun error {response.status_code}: {response.text[:300]}")
+        response.raise_for_status()
 
 
 async def verify_otp(email: str, otp: str, purpose: str) -> bool:

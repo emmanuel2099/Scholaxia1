@@ -68,7 +68,22 @@ class Settings(BaseSettings):
     FIREBASE_CREDENTIALS_PATH: str = "firebase-credentials.json"
     FIREBASE_CREDENTIALS_JSON: str = ""
 
-    # Brevo (OTP Email)
+    # Email OTP provider — "sendgrid" | "mailgun" | "brevo"
+    EMAIL_PROVIDER: str = "sendgrid"
+
+    # SendGrid (OTP Email)
+    SENDGRID_API_KEY: str = ""
+    SENDGRID_SENDER_EMAIL: str = ""   # must be a Verified Sender in SendGrid
+    SENDGRID_SENDER_NAME: str = "Scholaxia"
+
+    # Mailgun (OTP Email)
+    MAILGUN_API_KEY: str = ""
+    MAILGUN_DOMAIN: str = ""          # e.g. sandboxXXXX.mailgun.org or mg.yourdomain.com
+    MAILGUN_BASE_URL: str = "https://api.mailgun.net"  # EU: https://api.eu.mailgun.net
+    MAILGUN_SENDER_EMAIL: str = ""    # defaults to postmaster@<domain> if empty
+    MAILGUN_SENDER_NAME: str = "Scholaxia"
+
+    # Brevo (OTP Email — legacy fallback)
     BREVO_API_KEY: str = ""
     BREVO_SENDER_EMAIL: str = "noreply@scholaxia.com"
     BREVO_SENDER_NAME: str = "Scholaxia"

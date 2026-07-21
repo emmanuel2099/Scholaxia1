@@ -142,6 +142,46 @@ async def delete_kind_user(db: AsyncSession, user_id: uuid.UUID) -> bool:
     return True
 
 
+async def clear_all_user_emails(
+    db: AsyncSession,
+    keep_admin_id: Optional[uuid.UUID] = None,
+) -> dict:
+    """
+    Free every non-admin email for re-signup by renaming accounts.
+    Keeps admin/developer rows. Does not hard-delete related data.
+    """
+    keep_ids = set()
+    if keep_admin_id:
+        keep_ids.add(keep_admin_id)
+
+    admin_dev = await db.execute(
+        select(User.id).where(User.role.in_([UserRole.admin, UserRole.developer]))
+    )
+    for uid in admin_dev.scalars().all():
+        keep_ids.add(uid)
+
+    users = (
+        await db.execute(
+            select(User).where(User.role.in_([UserRole.student, UserRole.teacher, UserRole.kind]))
+        )
+    ).scalars().all()
+
+    cleared = 0
+    emails = []
+    for user in users:
+        if user.id in keep_ids:
+            continue
+        old = user.email
+        user.email = f"cleared_{user.id.hex}@cleared.local"
+        user.phone = None
+        user.is_active = False
+        cleared += 1
+        emails.append(old)
+
+    await db.flush()
+    return {"cleared": cleared, "emails": emails}
+
+
 async def purge_all_user_accounts(
     db: AsyncSession,
     keep_admin_id: Optional[uuid.UUID] = None,

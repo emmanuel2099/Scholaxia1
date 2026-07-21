@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../api/api_service.dart';
-import '../../services/firebase_phone_auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../kind/kind_shared.dart';
 import '../kind/kind_shell.dart';
@@ -16,7 +15,7 @@ class KidRegisterScreen extends StatefulWidget {
 
 class _KidRegisterScreenState extends State<KidRegisterScreen> {
   final _nameCtrl = TextEditingController();
-  final _phoneCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
   final _parentEmailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
@@ -25,17 +24,16 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
   bool _obscureConfirm = true;
   bool _loading = false;
   bool _otpStep = false;
-  String _pendingPhone = '';
+  String _pendingEmail = '';
   String _ageGroup = '6-8';
   final _api = ApiService();
-  final _phoneAuth = FirebasePhoneAuthService.instance;
 
   static const _ageGroups = ['3-5', '6-8', '9-12'];
 
   @override
   void dispose() {
     _nameCtrl.dispose();
-    _phoneCtrl.dispose();
+    _emailCtrl.dispose();
     _parentEmailCtrl.dispose();
     _passCtrl.dispose();
     _confirmCtrl.dispose();
@@ -45,7 +43,7 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
 
   Future<void> _create() async {
     final name = _nameCtrl.text.trim();
-    final phone = _phoneCtrl.text.trim();
+    final email = _emailCtrl.text.trim();
     final pass = _passCtrl.text;
     final conf = _confirmCtrl.text;
 
@@ -53,14 +51,19 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
       final otp = _otpCtrl.text.trim();
       if (otp.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Enter the SMS code.')),
+          const SnackBar(content: Text('Enter the code sent to your email.')),
         );
         return;
       }
       setState(() => _loading = true);
       try {
-        final idToken = await _phoneAuth.confirmOtp(otp);
-        await _finishSignup(idToken);
+        await _api.signupVerify(email: _pendingEmail, otp: otp);
+        if (!mounted) return;
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const KindShell()),
+          (_) => false,
+        );
       } on ApiException catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -80,9 +83,9 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
       return;
     }
 
-    if (name.isEmpty || phone.isEmpty || pass.isEmpty) {
+    if (name.isEmpty || email.isEmpty || pass.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill in name, phone and password.')),
+        const SnackBar(content: Text('Please fill in name, email and password.')),
       );
       return;
     }
@@ -101,18 +104,21 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
 
     setState(() => _loading = true);
     try {
-      final result = await _phoneAuth.sendOtp(phone);
+      final result = await _api.signupStart(
+        email: email,
+        password: pass,
+        fullName: name,
+        role: 'kind',
+        ageGroup: _ageGroup,
+        parentEmail: _parentEmailCtrl.text.trim(),
+      );
       if (!mounted) return;
-      if (result.idToken != null) {
-        await _finishSignup(result.idToken!);
-        return;
-      }
       setState(() {
         _otpStep = true;
-        _pendingPhone = FirebasePhoneAuthService.normalizePhone(phone);
+        _pendingEmail = result['email']?.toString() ?? email;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('SMS code sent. Check your phone.')),
+        const SnackBar(content: Text('OTP sent. Check your email and spam folder.')),
       );
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -132,25 +138,6 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
     }
   }
 
-  Future<void> _finishSignup(String idToken) async {
-    await _api.firebasePhoneAuth(
-      idToken: idToken,
-      mode: 'signup',
-      fullName: _nameCtrl.text.trim(),
-      password: _passCtrl.text,
-      role: 'kind',
-      ageGroup: _ageGroup,
-      parentEmail: _parentEmailCtrl.text.trim(),
-    );
-    if (!mounted) return;
-    await _phoneAuth.signOut();
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (_) => const KindShell()),
-      (_) => false,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -168,7 +155,7 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
             }
           },
         ),
-        title: Text(_otpStep ? 'Verify SMS' : 'Kid Sign Up',
+        title: Text(_otpStep ? 'Verify Email' : 'Kid Sign Up',
             style: TextStyle(
                 color: context.textColor,
                 fontSize: 17,
@@ -181,7 +168,7 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
           children: [
             const SizedBox(height: 8),
             Text(
-              _otpStep ? 'Enter SMS code' : 'Create a kid learner account',
+              _otpStep ? 'Enter email code' : 'Create a kid learner account',
               style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
@@ -190,8 +177,8 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
             const SizedBox(height: 8),
             Text(
               _otpStep
-                  ? 'We sent a code to $_pendingPhone'
-                  : 'For young learners ages 3–12. Firebase sends the SMS OTP.',
+                  ? 'We sent a code to $_pendingEmail'
+                  : 'For young learners ages 3–12. Verify the account by email.',
               style: TextStyle(
                   fontSize: 13, color: context.greyColor, height: 1.5),
             ),
@@ -230,14 +217,14 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
                 ),
               ),
               const SizedBox(height: 16),
-              _label(context, 'Phone Number'),
+              _label(context, 'Email'),
               const SizedBox(height: 6),
               _field(
                 context,
-                ctrl: _phoneCtrl,
-                hint: '08012345678',
-                icon: Icons.phone_outlined,
-                type: TextInputType.phone,
+                ctrl: _emailCtrl,
+                hint: 'you@example.com',
+                icon: Icons.email_outlined,
+                type: TextInputType.emailAddress,
               ),
               const SizedBox(height: 16),
               _label(context, 'Password'),
@@ -280,13 +267,13 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
                 ),
               ),
             ] else ...[
-              _label(context, 'SMS OTP Code'),
+              _label(context, 'Email OTP Code'),
               const SizedBox(height: 6),
               _field(
                 context,
                 ctrl: _otpCtrl,
                 hint: '6-digit code',
-                icon: Icons.sms_outlined,
+                icon: Icons.mark_email_read_outlined,
                 type: TextInputType.number,
               ),
             ],
@@ -310,7 +297,7 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
                         height: 22,
                         child: CircularProgressIndicator(
                             strokeWidth: 2, color: Colors.white))
-                    : Text(_otpStep ? 'Verify SMS Code' : 'Send SMS Code',
+                    : Text(_otpStep ? 'Verify Email Code' : 'Send Email Code',
                         style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,

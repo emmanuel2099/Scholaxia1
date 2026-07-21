@@ -20,7 +20,7 @@ from app.services.group_community import ensure_group_feed_post
 from app.services.media_service import generate_upload_signature, upload_file
 from app.services.cbt_import import CBT_IMPORT_TEMPLATE, parse_cbt_file
 from app.services.student_cleanup import delete_student_user
-from app.services.user_cleanup import purge_all_user_accounts, delete_teacher_user
+from app.services.user_cleanup import purge_all_user_accounts, delete_teacher_user, clear_all_user_emails
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -1182,6 +1182,24 @@ async def purge_all_users(
 
     admin_id = _uuid.UUID(current_user["sub"])
     result = await purge_all_user_accounts(db, keep_admin_id=admin_id)
+    await db.flush()
+    return result
+
+
+@router.post("/users/clear-emails")
+async def clear_all_emails(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Free all student/teacher/kind emails for re-signup.
+    Renames them to cleared_<id>@cleared.local and disables those accounts.
+    Admin accounts are kept.
+    """
+    import uuid as _uuid
+
+    admin_id = _uuid.UUID(current_user["sub"])
+    result = await clear_all_user_emails(db, keep_admin_id=admin_id)
     await db.flush()
     return result
 
