@@ -1509,14 +1509,15 @@ async function deleteCommunityPost(id) {
 }
 
 async function clearAllConversations() {
-  if (!confirm("Clear ALL conversations? This removes every announcement, community message, post, and group chat history.")) return;
+  if (!confirm("Clear ALL conversations? This removes every announcement, community message/post, group chat, and deletes all student groups from Discover.")) return;
   if (!confirm("Are you sure? This cannot be undone.")) return;
   try {
     var r = await adminApi("/api/v1/admin/community/conversations", { method: "DELETE", timeout: 180000 });
     alert(
-      "Cleared " + ((r && r.community_posts_deleted) || 0) + " post(s), " +
-      ((r && r.community_messages_deleted) || 0) + " message(s), and " +
-      ((r && r.group_messages_deleted) || 0) + " group chat message(s)."
+      "Cleared " + ((r && r.community_posts_deleted) || 0) + " post(s)/announcement(s), " +
+      ((r && r.community_messages_deleted) || 0) + " message(s), " +
+      ((r && r.group_messages_deleted) || 0) + " group chat message(s), and " +
+      ((r && r.groups_deleted) || 0) + " group(s)."
     );
     loadCommunityPosts();
   } catch (e) { alert(e.message); }

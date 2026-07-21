@@ -1584,17 +1584,31 @@ async def admin_clear_all_conversations(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Wipe every conversation: community chat messages, feed posts and comments,
-    and the chat history of every student group. Group listings stay.
+    Wipe every conversation: General chat, announcements, feed posts/comments,
+    all student groups (and their chats), and group discover listings.
     """
     from sqlalchemy import delete as sa_delete, update as sa_update, func as sa_func
     from app.models.community import CommunityMessage
-    from app.models.student_group import StudentGroupMessage
+    from app.models.student_group import (
+        StudentGroup,
+        StudentGroupMember,
+        StudentGroupJoinRequest,
+        StudentGroupMessage,
+    )
 
     group_msg_count = (
         await db.execute(select(sa_func.count()).select_from(StudentGroupMessage))
     ).scalar() or 0
-    await db.execute(sa_delete(StudentGroupMessage))
+    group_count = (
+        await db.execute(select(sa_func.count()).select_from(StudentGroup))
+    ).scalar() or 0
+
+    # Soft-delete ALL feed posts first (General + Announcements + group cards)
+    post_res = await db.execute(
+        sa_update(CommunityPost)
+        .where(CommunityPost.is_deleted == False)  # noqa: E712
+        .values(is_deleted=True)
+    )
 
     msg_res = await db.execute(
         sa_update(CommunityMessage)
@@ -1602,17 +1616,21 @@ async def admin_clear_all_conversations(
         .values(is_deleted=True)
     )
 
-    post_res = await db.execute(
+    # Remove groups and related rows (FK-safe order)
+    await db.execute(sa_delete(StudentGroupMessage))
+    await db.execute(sa_delete(StudentGroupJoinRequest))
+    await db.execute(sa_delete(StudentGroupMember))
+    # Detach posts from groups so groups can be deleted without orphan FK issues
+    await db.execute(
         sa_update(CommunityPost)
-        .where(
-            CommunityPost.is_deleted == False,  # noqa: E712
-            ~CommunityPost.content.like("@group:%"),
-        )
-        .values(is_deleted=True)
+        .where(CommunityPost.group_id.is_not(None))
+        .values(group_id=None)
     )
+    await db.execute(sa_delete(StudentGroup))
 
     await db.flush()
     return {
+        "groups_deleted": int(group_count),
         "group_messages_deleted": int(group_msg_count),
         "community_messages_deleted": int(msg_res.rowcount or 0),
         "community_posts_deleted": int(post_res.rowcount or 0),
@@ -1812,6 +1830,38 @@ async def delete_live_class(
 
 
 # ── Student group approval ────────────────────────────────────────────────────
+
+@router.get("/student-groups")
+async def list_all_student_groups(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """All student groups (for admin moderation / clear follow-up)."""
+    result = await db.execute(
+        select(StudentGroup, User)
+        .join(User, User.id == StudentGroup.creator_id)
+        .order_by(StudentGroup.created_at.desc())
+    )
+    out = []
+    for grp, creator in result.all():
+        mem_count = await db.execute(
+            select(func.count()).select_from(StudentGroupMember).where(
+                StudentGroupMember.group_id == grp.id
+            )
+        )
+        out.append({
+            "id": str(grp.id),
+            "name": grp.name,
+            "description": grp.description or "",
+            "creator_name": creator.full_name or creator.email,
+            "creator_email": creator.email,
+            "is_community_listed": grp.is_community_listed,
+            "is_approved": grp.is_approved,
+            "member_count": int(mem_count.scalar() or 0),
+            "created_at": grp.created_at.isoformat() if grp.created_at else None,
+        })
+    return out
+
 
 @router.get("/student-groups/pending")
 async def list_pending_student_groups(
