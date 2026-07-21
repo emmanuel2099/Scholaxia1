@@ -69,16 +69,25 @@ async def _store_delete(key: str) -> None:
     _MEMORY_STORE.pop(key, None)
 
 
-async def send_otp(email: str, full_name: str, purpose: str) -> None:
+async def send_otp(email: str, full_name: str, purpose: str) -> str:
     """
     Generate an OTP, store it in Redis, and send it via Brevo email.
     purpose: "signup" | "verify_email" | "reset_password" | "login"
+    Returns the OTP (only expose to clients when DEBUG=True).
     """
     otp = _generate_otp()
     await _store_set(_redis_key(purpose, email), otp, OTP_TTL)
+    print(f"[OTP] generated for {email} purpose={purpose}")
 
     subject, body = _build_email(purpose, full_name, otp)
-    await _send_via_brevo(to_email=email, to_name=full_name, subject=subject, body=body)
+    try:
+        await _send_via_brevo(to_email=email, to_name=full_name, subject=subject, body=body)
+    except Exception as e:
+        # Keep OTP in store so DEBUG / retry still works even if Brevo/Gmail fails
+        print(f"[OTP] Brevo send failed for {email}: {e}")
+        if not settings.DEBUG:
+            raise
+    return otp
 
 
 async def verify_otp(email: str, otp: str, purpose: str) -> bool:

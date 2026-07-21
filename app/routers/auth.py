@@ -14,6 +14,11 @@ from app.services.otp_service import (
     load_pending_signup,
     clear_pending_signup,
 )
+from app.services.firebase_auth_service import (
+    normalize_phone,
+    phone_to_email,
+    phone_from_firebase_token,
+)
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -59,6 +64,18 @@ class SignupStartRequest(BaseModel):
 class SignupVerifyRequest(BaseModel):
     email: EmailStr
     otp: str = Field(..., min_length=4, max_length=10)
+
+
+class FirebaseAuthRequest(BaseModel):
+    """Complete signup/login after Firebase Phone Auth SMS verification."""
+    id_token: str = Field(..., min_length=20)
+    mode: str = "login"  # login | signup
+    full_name: Optional[str] = None
+    password: Optional[str] = None
+    role: str = "student"  # student | kind
+    age_group: str = "6-8"
+    grade_level: Optional[str] = None
+    parent_email: Optional[str] = None
 
 
 class OAuthRequest(BaseModel):
@@ -135,6 +152,101 @@ async def _find_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
     return res.scalar_one_or_none()
 
 
+async def _find_user_by_phone(db: AsyncSession, phone_e164: str) -> Optional[User]:
+    res = await db.execute(select(User).where(User.phone == phone_e164))
+    user = res.scalar_one_or_none()
+    if user:
+        return user
+    email = phone_to_email(phone_e164)
+    res = await db.execute(select(User).where(User.email == email))
+    return res.scalar_one_or_none()
+
+
+@router.post("/firebase", response_model=TokenResponse)
+async def firebase_phone_auth(payload: FirebaseAuthRequest, db: AsyncSession = Depends(get_db)):
+    """
+    After the client verifies SMS with Firebase Phone Auth, send the ID token here.
+    mode=login  → phone must already exist
+    mode=signup → create student/kind account (requires full_name + password)
+    """
+    phone = phone_from_firebase_token(payload.id_token)
+    mode = (payload.mode or "login").strip().lower()
+    if mode not in ("login", "signup"):
+        raise HTTPException(status_code=400, detail="mode must be login or signup")
+
+    user = await _find_user_by_phone(db, phone)
+
+    if mode == "login":
+        if not user:
+            raise HTTPException(
+                status_code=404,
+                detail="No account for this phone. Please sign up first.",
+            )
+        if not user.is_active:
+            raise HTTPException(status_code=403, detail="Account disabled")
+        user.is_verified = True
+        await db.flush()
+        user_info = await _build_user_info(user, db)
+        return TokenResponse(
+            access_token=create_access_token(str(user.id), user.role),
+            refresh_token=create_refresh_token(str(user.id)),
+            role=user.role,
+            user=user_info,
+        )
+
+    # signup
+    if user:
+        raise HTTPException(status_code=400, detail="Phone already registered. Please log in.")
+
+    full_name = (payload.full_name or "").strip()
+    if len(full_name) < 2:
+        raise HTTPException(status_code=400, detail="full_name is required for signup")
+    password = payload.password or ""
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+
+    role = (payload.role or "student").strip().lower()
+    if role not in ("student", "kind"):
+        raise HTTPException(status_code=400, detail="role must be student or kind")
+    if role == "kind" and payload.age_group not in ("3-5", "6-8", "9-12"):
+        raise HTTPException(status_code=400, detail="age_group must be 3-5, 6-8, or 9-12")
+
+    user = User(
+        email=phone_to_email(phone),
+        phone=phone,
+        hashed_password=hash_password(password),
+        full_name=full_name,
+        role=UserRole.kind if role == "kind" else UserRole.student,
+        is_verified=True,
+        oauth_provider="firebase_phone",
+        oauth_id=phone,
+    )
+    db.add(user)
+    await db.flush()
+
+    if role == "kind":
+        db.add(
+            KindProfile(
+                user_id=user.id,
+                age_group=payload.age_group or "6-8",
+                grade_level=payload.grade_level,
+                parent_email=payload.parent_email,
+                favorite_subjects=[],
+            )
+        )
+    else:
+        db.add(StudentProfile(user_id=user.id, selected_subjects=[]))
+    await db.flush()
+
+    user_info = await _build_user_info(user, db)
+    return TokenResponse(
+        access_token=create_access_token(str(user.id), user.role),
+        refresh_token=create_refresh_token(str(user.id)),
+        role=user.role,
+        user=user_info,
+    )
+
+
 @router.post("/otp/send")
 async def send_otp_email(payload: SendOtpRequest, db: AsyncSession = Depends(get_db)):
     """
@@ -154,13 +266,17 @@ async def send_otp_email(payload: SendOtpRequest, db: AsyncSession = Depends(get
         raise HTTPException(status_code=404, detail="No account found for this email.")
 
     name = existing.full_name if existing else "there"
-    await send_otp(email, name, purpose)
-    return {
+    otp = await send_otp(email, name, purpose)
+    out = {
         "ok": True,
         "message": "OTP sent to your email",
         "email": email,
         "expires_in_minutes": settings.OTP_EXPIRE_MINUTES,
     }
+    if settings.DEBUG:
+        out["debug_otp"] = otp
+        out["message"] = f"OTP sent to your email (debug code: {otp})"
+    return out
 
 
 @router.post("/signup/start")
@@ -193,19 +309,23 @@ async def signup_start(payload: SignupStartRequest, db: AsyncSession = Depends(g
     }
     await store_pending_signup(email, pending)
     try:
-        await send_otp(email, payload.full_name.strip(), "signup")
+        otp = await send_otp(email, payload.full_name.strip(), "signup")
     except Exception as e:
         print(f"[OTP] Brevo send failed for {email}: {e}")
         raise HTTPException(
             status_code=502,
             detail="Could not send verification email. Check the address and try again.",
         )
-    return {
+    out = {
         "ok": True,
         "message": "OTP sent to your email",
         "email": email,
         "expires_in_minutes": settings.OTP_EXPIRE_MINUTES,
     }
+    if settings.DEBUG:
+        out["debug_otp"] = otp
+        out["message"] = f"OTP sent to your email (debug code: {otp})"
+    return out
 
 
 @router.post("/signup/verify", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
@@ -341,8 +461,11 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
 
     # Legacy clients that registered with a phone number
     if user is None and phone_raw:
-        result = await db.execute(select(User).where(User.phone == phone_raw))
-        user = result.scalar_one_or_none()
+        try:
+            phone = normalize_phone(phone_raw)
+        except HTTPException:
+            phone = phone_raw
+        user = await _find_user_by_phone(db, phone)
 
     if not user or not user.hashed_password or not verify_password(payload.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Invalid credentials")

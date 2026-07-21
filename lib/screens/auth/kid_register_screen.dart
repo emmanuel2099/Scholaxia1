@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../api/api_service.dart';
+import '../../services/firebase_phone_auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../kind/kind_shared.dart';
 import '../kind/kind_shell.dart';
@@ -15,7 +16,7 @@ class KidRegisterScreen extends StatefulWidget {
 
 class _KidRegisterScreenState extends State<KidRegisterScreen> {
   final _nameCtrl = TextEditingController();
-  final _emailCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
   final _parentEmailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
@@ -24,16 +25,17 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
   bool _obscureConfirm = true;
   bool _loading = false;
   bool _otpStep = false;
-  String _pendingEmail = '';
+  String _pendingPhone = '';
   String _ageGroup = '6-8';
   final _api = ApiService();
+  final _phoneAuth = FirebasePhoneAuthService.instance;
 
   static const _ageGroups = ['3-5', '6-8', '9-12'];
 
   @override
   void dispose() {
     _nameCtrl.dispose();
-    _emailCtrl.dispose();
+    _phoneCtrl.dispose();
     _parentEmailCtrl.dispose();
     _passCtrl.dispose();
     _confirmCtrl.dispose();
@@ -43,7 +45,7 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
 
   Future<void> _create() async {
     final name = _nameCtrl.text.trim();
-    final email = _emailCtrl.text.trim();
+    final phone = _phoneCtrl.text.trim();
     final pass = _passCtrl.text;
     final conf = _confirmCtrl.text;
 
@@ -51,23 +53,26 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
       final otp = _otpCtrl.text.trim();
       if (otp.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Enter the code we emailed you.')),
+          const SnackBar(content: Text('Enter the SMS code.')),
         );
         return;
       }
       setState(() => _loading = true);
       try {
-        await _api.signupVerify(email: _pendingEmail, otp: otp);
-        if (!mounted) return;
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (_) => const KindShell()),
-          (_) => false,
-        );
+        final idToken = await _phoneAuth.confirmOtp(otp);
+        await _finishSignup(idToken);
       } on ApiException catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+        );
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceFirst('Bad state: ', '')),
+            backgroundColor: Colors.red,
+          ),
         );
       } finally {
         if (mounted) setState(() => _loading = false);
@@ -75,9 +80,9 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
       return;
     }
 
-    if (name.isEmpty || email.isEmpty || pass.isEmpty) {
+    if (name.isEmpty || phone.isEmpty || pass.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill in name, email and password.')),
+        const SnackBar(content: Text('Please fill in name, phone and password.')),
       );
       return;
     }
@@ -96,38 +101,54 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
 
     setState(() => _loading = true);
     try {
-      final res = await _api.signupStart(
-        email: email,
-        password: pass,
-        fullName: name,
-        role: 'kind',
-        ageGroup: _ageGroup,
-        parentEmail: _parentEmailCtrl.text.trim(),
-      );
+      final result = await _phoneAuth.sendOtp(phone);
       if (!mounted) return;
+      if (result.idToken != null) {
+        await _finishSignup(result.idToken!);
+        return;
+      }
       setState(() {
         _otpStep = true;
-        _pendingEmail = res['email']?.toString() ?? email;
+        _pendingPhone = FirebasePhoneAuthService.normalizePhone(phone);
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Verification code sent. Check your email.')),
+        const SnackBar(content: Text('SMS code sent. Check your phone.')),
       );
     } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.message), backgroundColor: Colors.red),
       );
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Something went wrong. Please try again.'),
+        SnackBar(
+          content: Text(e.toString().replaceFirst('Bad state: ', '')),
           backgroundColor: Colors.red,
         ),
       );
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _finishSignup(String idToken) async {
+    await _api.firebasePhoneAuth(
+      idToken: idToken,
+      mode: 'signup',
+      fullName: _nameCtrl.text.trim(),
+      password: _passCtrl.text,
+      role: 'kind',
+      ageGroup: _ageGroup,
+      parentEmail: _parentEmailCtrl.text.trim(),
+    );
+    if (!mounted) return;
+    await _phoneAuth.signOut();
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => const KindShell()),
+      (_) => false,
+    );
   }
 
   @override
@@ -139,9 +160,15 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
         elevation: 0,
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: context.textColor),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+            if (_otpStep) {
+              setState(() => _otpStep = false);
+            } else {
+              Navigator.pop(context);
+            }
+          },
         ),
-        title: Text('Kid Sign Up',
+        title: Text(_otpStep ? 'Verify SMS' : 'Kid Sign Up',
             style: TextStyle(
                 color: context.textColor,
                 fontSize: 17,
@@ -154,7 +181,7 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
           children: [
             const SizedBox(height: 8),
             Text(
-              'Create a kid learner account',
+              _otpStep ? 'Enter SMS code' : 'Create a kid learner account',
               style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.bold,
@@ -162,105 +189,107 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
             ),
             const SizedBox(height: 8),
             Text(
-              'For young learners ages 3–12 with kid-safe AI tutoring.',
+              _otpStep
+                  ? 'We sent a code to $_pendingPhone'
+                  : 'For young learners ages 3–12. Firebase sends the SMS OTP.',
               style: TextStyle(
                   fontSize: 13, color: context.greyColor, height: 1.5),
             ),
             const SizedBox(height: 28),
-            _label(context, "Child's Name"),
-            const SizedBox(height: 6),
-            _field(context,
-                ctrl: _nameCtrl, hint: 'Amina', icon: Icons.child_care_outlined),
-            const SizedBox(height: 16),
-            _label(context, 'Age Group'),
-            const SizedBox(height: 6),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: context.surfColor,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: context.borderColor),
-              ),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: _ageGroup,
-                  isExpanded: true,
-                  dropdownColor: context.cardColor,
-                  style: TextStyle(color: context.textColor, fontSize: 15),
-                  items: _ageGroups
-                      .map((g) => DropdownMenuItem(
-                            value: g,
-                            child: Text('Ages $g'),
-                          ))
-                      .toList(),
-                  onChanged: (v) {
-                    if (v != null) setState(() => _ageGroup = v);
-                  },
+            if (!_otpStep) ...[
+              _label(context, "Child's Name"),
+              const SizedBox(height: 6),
+              _field(context,
+                  ctrl: _nameCtrl, hint: 'Amina', icon: Icons.child_care_outlined),
+              const SizedBox(height: 16),
+              _label(context, 'Age Group'),
+              const SizedBox(height: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: context.surfColor,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: context.borderColor),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: _ageGroup,
+                    isExpanded: true,
+                    dropdownColor: context.cardColor,
+                    style: TextStyle(color: context.textColor, fontSize: 15),
+                    items: _ageGroups
+                        .map((g) => DropdownMenuItem(
+                              value: g,
+                              child: Text('Ages $g'),
+                            ))
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) setState(() => _ageGroup = v);
+                    },
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-            _label(context, 'Email'),
-            const SizedBox(height: 6),
-            _field(
-              context,
-              ctrl: _emailCtrl,
-              hint: 'you@example.com',
-              icon: Icons.email_outlined,
-              type: TextInputType.emailAddress,
-            ),
-            if (_otpStep) ...[
               const SizedBox(height: 16),
-              _label(context, 'Email OTP Code'),
+              _label(context, 'Phone Number'),
+              const SizedBox(height: 6),
+              _field(
+                context,
+                ctrl: _phoneCtrl,
+                hint: '08012345678',
+                icon: Icons.phone_outlined,
+                type: TextInputType.phone,
+              ),
+              const SizedBox(height: 16),
+              _label(context, 'Password'),
+              const SizedBox(height: 6),
+              _field(
+                context,
+                ctrl: _passCtrl,
+                hint: '••••••••',
+                icon: Icons.lock_outline,
+                obscure: _obscurePass,
+                suffix: GestureDetector(
+                  onTap: () => setState(() => _obscurePass = !_obscurePass),
+                  child: Icon(
+                    _obscurePass
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                    color: context.greyLColor,
+                    size: 20,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              _label(context, 'Confirm Password'),
+              const SizedBox(height: 6),
+              _field(
+                context,
+                ctrl: _confirmCtrl,
+                hint: '••••••••',
+                icon: Icons.lock_outline,
+                obscure: _obscureConfirm,
+                suffix: GestureDetector(
+                  onTap: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                  child: Icon(
+                    _obscureConfirm
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                    color: context.greyLColor,
+                    size: 20,
+                  ),
+                ),
+              ),
+            ] else ...[
+              _label(context, 'SMS OTP Code'),
               const SizedBox(height: 6),
               _field(
                 context,
                 ctrl: _otpCtrl,
                 hint: '6-digit code',
-                icon: Icons.mark_email_read_outlined,
+                icon: Icons.sms_outlined,
                 type: TextInputType.number,
               ),
             ],
-            const SizedBox(height: 16),
-            _label(context, 'Password'),
-            const SizedBox(height: 6),
-            _field(
-              context,
-              ctrl: _passCtrl,
-              hint: '••••••••',
-              icon: Icons.lock_outline,
-              obscure: _obscurePass,
-              suffix: GestureDetector(
-                onTap: () => setState(() => _obscurePass = !_obscurePass),
-                child: Icon(
-                  _obscurePass
-                      ? Icons.visibility_outlined
-                      : Icons.visibility_off_outlined,
-                  color: context.greyLColor,
-                  size: 20,
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            _label(context, 'Confirm Password'),
-            const SizedBox(height: 6),
-            _field(
-              context,
-              ctrl: _confirmCtrl,
-              hint: '••••••••',
-              icon: Icons.lock_outline,
-              obscure: _obscureConfirm,
-              suffix: GestureDetector(
-                onTap: () => setState(() => _obscureConfirm = !_obscureConfirm),
-                child: Icon(
-                  _obscureConfirm
-                      ? Icons.visibility_outlined
-                      : Icons.visibility_off_outlined,
-                  color: context.greyLColor,
-                  size: 20,
-                ),
-              ),
-            ),
             const SizedBox(height: 28),
             SizedBox(
               width: double.infinity,
@@ -281,7 +310,7 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
                         height: 22,
                         child: CircularProgressIndicator(
                             strokeWidth: 2, color: Colors.white))
-                    : Text(_otpStep ? 'Verify Email Code' : 'Send Email Code',
+                    : Text(_otpStep ? 'Verify SMS Code' : 'Send SMS Code',
                         style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,

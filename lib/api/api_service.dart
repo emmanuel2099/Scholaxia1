@@ -308,6 +308,37 @@ class ApiService {
     return _parseMap(res);
   }
 
+  Future<AuthResponse> firebasePhoneAuth({
+    required String idToken,
+    required String mode, // login | signup
+    String? fullName,
+    String? password,
+    String role = 'student',
+    String ageGroup = '6-8',
+    String? gradeLevel,
+    String? parentEmail,
+  }) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.firebaseAuth),
+      headers: _jsonHeaders(),
+      body: jsonEncode({
+        'id_token': idToken,
+        'mode': mode,
+        'role': role,
+        'age_group': ageGroup,
+        if (fullName != null && fullName.isNotEmpty) 'full_name': fullName,
+        if (password != null && password.isNotEmpty) 'password': password,
+        if (gradeLevel != null && gradeLevel.isNotEmpty) 'grade_level': gradeLevel,
+        if (parentEmail != null && parentEmail.isNotEmpty)
+          'parent_email': parentEmail,
+      }),
+    );
+    final auth =
+        AuthResponse.fromJson(Map<String, dynamic>.from(_parse(res) as Map));
+    await _saveAuth(auth);
+    return auth;
+  }
+
   Future<AuthResponse> studentSignup({
     required String email,
     required String password,

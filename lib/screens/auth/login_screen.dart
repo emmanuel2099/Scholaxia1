@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../api/api_service.dart';
+import '../../services/firebase_phone_auth_service.dart';
 import '../../services/firebase_push_service.dart';
 import '../../theme/app_theme.dart';
 import '../kind/kind_shell.dart';
@@ -37,12 +38,17 @@ class _LoginScreenState extends State<LoginScreen> {
     final pass = _passCtrl.text;
     if (email.isEmpty || pass.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please enter your email and password.')));
+          const SnackBar(content: Text('Please enter your phone/email and password.')));
       return;
     }
     setState(() => _loading = true);
     try {
-      final auth = await _api.login(email: email, password: pass);
+      final AuthResponse auth;
+      if (email.contains('@')) {
+        auth = await _api.login(email: email, password: pass);
+      } else {
+        auth = await _api.login(phone: email, password: pass);
+      }
       if (!mounted) return;
 
       final role = auth.role.toLowerCase().trim();
@@ -107,6 +113,109 @@ class _LoginScreenState extends State<LoginScreen> {
     } finally {
       if (mounted) setState(() => _loading = false);
     }
+  }
+
+  Future<void> _loginWithSms() async {
+    final phone = _emailCtrl.text.trim();
+    if (phone.isEmpty || phone.contains('@')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter your phone number to login with SMS.')),
+      );
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      final phoneAuth = FirebasePhoneAuthService.instance;
+      final sent = await phoneAuth.sendOtp(phone);
+      String idToken;
+      if (sent.idToken != null) {
+        idToken = sent.idToken!;
+      } else {
+        if (!mounted) return;
+        final code = await showDialog<String>(
+          context: context,
+          builder: (ctx) {
+            final ctrl = TextEditingController();
+            return AlertDialog(
+              title: const Text('SMS code'),
+              content: TextField(
+                controller: ctrl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(hintText: '6-digit code'),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+                  child: const Text('Verify'),
+                ),
+              ],
+            );
+          },
+        );
+        if (code == null || code.isEmpty) return;
+        idToken = await phoneAuth.confirmOtp(code);
+      }
+      final auth = await _api.firebasePhoneAuth(idToken: idToken, mode: 'login');
+      await phoneAuth.signOut();
+      if (!mounted) return;
+      await _goHome(auth);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message), backgroundColor: Colors.red));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(e.toString().replaceFirst('Bad state: ', '')),
+          backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _goHome(AuthResponse auth) async {
+    final role = auth.role.toLowerCase().trim();
+    if (!_roleMatches(role)) {
+      await _api.clearTokens();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'That account is not a ${_expectedRoleLabel()} account. Pick the correct type.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+    Widget home;
+    if (role == 'teacher') {
+      home = const TeacherShell();
+    } else if (role == 'kind') {
+      home = const KindShell();
+    } else if (widget.accountRole == AccountRole.gameChallenge) {
+      await _api.setAppResumeMode('league');
+      home = const StudentShell(openSilOnStart: true);
+    } else {
+      await _api.setAppResumeMode('student');
+      home = const StudentShell(openSilOnStart: false);
+    }
+    if (!mounted) return;
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => home),
+      (_) => false,
+    );
+    if (role == 'student') {
+      // ignore: unawaited_futures
+      _api.ensureStudentProfile();
+    }
+    try {
+      // ignore: unawaited_futures
+      FirebasePushService.instance.registerAfterLogin();
+    } catch (_) {}
   }
 
   bool _roleMatches(String role) {
@@ -220,14 +329,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
               const SizedBox(height: 28),
-              _label(context, 'EMAIL'),
+              _label(context, 'PHONE OR EMAIL'),
               const SizedBox(height: 6),
               _field(
                 context,
                 controller: _emailCtrl,
-                hint: 'you@example.com',
-                icon: Icons.email_outlined,
-                type: TextInputType.emailAddress,
+                hint: '08012345678 or you@email.com',
+                icon: Icons.person_outline,
+                type: TextInputType.text,
               ),
               const SizedBox(height: 20),
               Row(
@@ -302,7 +411,18 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: _loading ? null : _loginWithSms,
+                child: Text(
+                  'Login with SMS OTP instead',
+                  style: TextStyle(
+                    color: context.accentColor,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
               Row(children: [
                 Expanded(child: Divider(color: context.borderColor)),
                 Padding(

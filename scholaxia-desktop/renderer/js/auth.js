@@ -451,6 +451,11 @@ async function signup(e) {
       return;
     }
     showSignupOtpStep(data.email || email);
+    if (data.debug_otp) {
+      document.getElementById("signup-otp").value = data.debug_otp;
+      document.getElementById("signup-otp-error").textContent =
+        "Email delayed by Gmail — use this code: " + data.debug_otp;
+    }
   } catch (ex) {
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       err.textContent = "There is no internet on your data.";

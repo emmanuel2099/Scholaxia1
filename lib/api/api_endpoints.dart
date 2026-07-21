@@ -12,6 +12,7 @@ class ApiEndpoints {
   static const String signupStart = '$_v1/auth/signup/start';
   static const String signupVerify = '$_v1/auth/signup/verify';
   static const String otpSend = '$_v1/auth/otp/send';
+  static const String firebaseAuth = '$_v1/auth/firebase';
   static const String kindMe = '$_v1/kind/me';
   static const String kindSubjects = '$_v1/kind/subjects';
   static const String kindSiaChat = '$_v1/kind/sia/chat';
