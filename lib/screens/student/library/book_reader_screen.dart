@@ -40,7 +40,12 @@ class _BookReaderScreenState extends State<BookReaderScreen> {
   Future<void> _prepare() async {
     final saved = await BookOfflineStore.instance.savedPath(widget.bookId);
     if (!mounted) return;
-    setState(() => _path = saved);
+    setState(() {
+      _path = saved;
+      if (saved == null && widget.signedUrl.trim().isEmpty) {
+        _error = 'This book is not available offline yet.';
+      }
+    });
   }
 
   Future<void> _saveOffline() async {
@@ -129,11 +134,13 @@ class _BookReaderScreenState extends State<BookReaderScreen> {
                     initialPageNumber: widget.initialPage,
                     params: PdfViewerParams(onPageChanged: _saveProgress),
                   )
-                : PdfViewer.uri(
-                    Uri.parse(widget.signedUrl),
-                    initialPageNumber: widget.initialPage,
-                    params: PdfViewerParams(onPageChanged: _saveProgress),
-                  ),
+                : widget.signedUrl.trim().isEmpty
+                    ? const Center(child: CircularProgressIndicator())
+                    : PdfViewer.uri(
+                        Uri.parse(widget.signedUrl),
+                        initialPageNumber: widget.initialPage,
+                        params: PdfViewerParams(onPageChanged: _saveProgress),
+                      ),
           ),
         ],
       ),

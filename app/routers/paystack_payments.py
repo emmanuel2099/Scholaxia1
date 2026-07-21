@@ -29,6 +29,7 @@ from app.core.deps import require_student_or_kind
 from app.core.live_class_plans import get_plan
 from app.models.content import Book, BookPurchase
 from app.models.payment import Payment, PaymentStatus, StudentEntitlement
+from app.models.marketplace import MarketplaceBooking, MarketplaceProduct
 from app.models.user import StudentProfile, User
 from app.services.cbt_access import active_cbt_access, subject_snapshot
 from app.services import paystack_service
@@ -47,7 +48,13 @@ PROVIDER = "paystack"
 PRODUCT_LIBRARY_BOOK = "library_book"
 PRODUCT_CBT_PACKAGE = "cbt_package"
 PRODUCT_CLASS_PACKAGE = "class_package"
-PRODUCT_TYPES = {PRODUCT_LIBRARY_BOOK, PRODUCT_CBT_PACKAGE, PRODUCT_CLASS_PACKAGE}
+PRODUCT_MARKETPLACE_BOOKING = "marketplace_booking"
+PRODUCT_TYPES = {
+    PRODUCT_LIBRARY_BOOK,
+    PRODUCT_CBT_PACKAGE,
+    PRODUCT_CLASS_PACKAGE,
+    PRODUCT_MARKETPLACE_BOOKING,
+}
 
 ENTITLEMENT_CBT_PACKAGE = "cbt_package"
 
@@ -67,7 +74,12 @@ def _require_configured() -> None:
 
 
 def _new_reference(product_type: str) -> str:
-    short = {"library_book": "book", "cbt_package": "cbt", "class_package": "class"}[product_type]
+    short = {
+        "library_book": "book",
+        "cbt_package": "cbt",
+        "class_package": "class",
+        "marketplace_booking": "market",
+    }[product_type]
     return f"pstk-{short}-{uuid.uuid4().hex}"
 
 
@@ -121,6 +133,35 @@ async def _resolve_product(
             # Class bundles can be purchased again after their sessions are used.
             "already_owned": False,
             "extra": {"sessions": plan.sessions},
+        }
+
+    if product_type == PRODUCT_MARKETPLACE_BOOKING:
+        try:
+            booking_uuid = parse_uuid(product_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid marketplace booking id")
+        result = await db.execute(
+            select(MarketplaceBooking, MarketplaceProduct)
+            .join(
+                MarketplaceProduct,
+                MarketplaceProduct.id == MarketplaceBooking.product_id,
+            )
+            .where(
+                MarketplaceBooking.id == booking_uuid,
+                MarketplaceBooking.user_id == parse_uuid(student_id),
+            )
+        )
+        row = result.first()
+        if not row:
+            raise HTTPException(status_code=404, detail="Marketplace booking not found")
+        booking, product = row
+        if not product.price or product.price <= 0:
+            raise HTTPException(status_code=400, detail="This product has no online price")
+        return {
+            "price_naira": float(product.price),
+            "title": product.title,
+            "already_owned": booking.status == "paid",
+            "extra": {"booking_id": str(booking.id)},
         }
 
     raise HTTPException(status_code=400, detail=f"Unknown product_type. Use one of: {sorted(PRODUCT_TYPES)}")
@@ -183,6 +224,17 @@ async def _grant_class_package(db: AsyncSession, payment: Payment) -> None:
     await activate_live_plan(db, str(payment.student_id), payment.product_id or "")
 
 
+async def _grant_marketplace_booking(db: AsyncSession, payment: Payment) -> None:
+    result = await db.execute(
+        select(MarketplaceBooking).where(
+            MarketplaceBooking.id == parse_uuid(payment.product_id or "")
+        )
+    )
+    booking = result.scalar_one_or_none()
+    if booking and booking.status == "pending":
+        booking.status = "paid"
+
+
 async def _fulfill(db: AsyncSession, payment: Payment, tx_data: dict) -> None:
     """Mark the payment successful and grant the product. Safe to call repeatedly."""
     already_fulfilled = payment.status == PaymentStatus.success
@@ -198,6 +250,8 @@ async def _fulfill(db: AsyncSession, payment: Payment, tx_data: dict) -> None:
     elif payment.product_type == PRODUCT_CLASS_PACKAGE and not already_fulfilled:
         # Not repeated on replays — re-activation would reset session counters.
         await _grant_class_package(db, payment)
+    elif payment.product_type == PRODUCT_MARKETPLACE_BOOKING:
+        await _grant_marketplace_booking(db, payment)
 
     await db.flush()
 

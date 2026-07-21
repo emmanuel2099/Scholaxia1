@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../api/api_service.dart';
+import '../../services/profile_avatar_cache.dart';
 import '../../services/support_contact_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/post_attachment_picker.dart';
 import '../../widgets/student_ui.dart';
 import '../../widgets/theme_toggle_tile.dart';
 import '../auth/role_select_screen.dart';
@@ -19,6 +21,7 @@ class _KindProfileScreenState extends State<KindProfileScreen> {
   final _api = ApiService();
   Map<String, dynamic>? _profile;
   bool _loading = true;
+  bool _uploadingPhoto = false;
 
   @override
   void initState() {
@@ -43,6 +46,7 @@ class _KindProfileScreenState extends State<KindProfileScreen> {
 
   Future<void> _logout() async {
     await _api.clearTokens();
+    await ProfileAvatarCache.instance.clear();
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
@@ -51,12 +55,48 @@ class _KindProfileScreenState extends State<KindProfileScreen> {
     );
   }
 
+  Future<void> _changeProfilePicture() async {
+    if (_uploadingPhoto) return;
+    try {
+      final picked = await pickPostAttachment('photo');
+      if (picked == null) return;
+      setState(() => _uploadingPhoto = true);
+      final url = await _api.updateProfilePicture(picked.bytes, picked.name);
+      if (!mounted) return;
+      setState(() {
+        _profile = {...?_profile, 'profile_picture': url};
+        _uploadingPhoto = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile picture updated!')),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _uploadingPhoto = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _uploadingPhoto = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not update picture. Try another image.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final name = _profile?['full_name']?.toString() ?? 'Learner';
     final email = _profile?['email']?.toString() ?? '';
     final age = _profile?['age_group']?.toString() ?? '';
     final parent = _profile?['parent_email']?.toString() ?? '';
+    final picture = _api.resolveMediaUrl(
+      _profile?['profile_picture']?.toString() ?? '',
+    );
     final initial = name.isNotEmpty ? name[0].toUpperCase() : 'K';
 
     return Scaffold(
@@ -118,26 +158,60 @@ class _KindProfileScreenState extends State<KindProfileScreen> {
                           ),
                           child: Column(
                             children: [
-                              Container(
-                                width: 80,
-                                height: 80,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Colors.white.withOpacity(0.2),
-                                  border: Border.all(
-                                    color: Colors.white.withOpacity(0.4),
-                                    width: 3,
-                                  ),
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    initial,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 34,
-                                      fontWeight: FontWeight.w800,
+                              GestureDetector(
+                                onTap: _changeProfilePicture,
+                                child: Stack(
+                                  clipBehavior: Clip.none,
+                                  children: [
+                                    CircleAvatar(
+                                      radius: 40,
+                                      backgroundColor:
+                                          Colors.white.withOpacity(0.2),
+                                      backgroundImage: picture.isNotEmpty
+                                          ? NetworkImage(picture)
+                                          : null,
+                                      child: picture.isEmpty
+                                          ? Text(
+                                              initial,
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 34,
+                                                fontWeight: FontWeight.w800,
+                                              ),
+                                            )
+                                          : null,
                                     ),
-                                  ),
+                                    Positioned(
+                                      right: -4,
+                                      bottom: -4,
+                                      child: CircleAvatar(
+                                        radius: 15,
+                                        backgroundColor: Colors.white,
+                                        child: _uploadingPhoto
+                                            ? const SizedBox(
+                                                width: 15,
+                                                height: 15,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                  strokeWidth: 2,
+                                                ),
+                                              )
+                                            : const Icon(
+                                                Icons.camera_alt_rounded,
+                                                size: 17,
+                                                color: Color(0xFF7C3AED),
+                                              ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Tap photo to change',
+                                style: TextStyle(
+                                  color: Colors.white.withOpacity(0.8),
+                                  fontSize: 11,
                                 ),
                               ),
                               const SizedBox(height: 14),

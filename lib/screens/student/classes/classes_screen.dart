@@ -4,6 +4,7 @@ import '../../../theme/app_theme.dart';
 import '../../../widgets/student_ui.dart';
 import '../../../utils/live_join_helper.dart';
 import '../../kind/kind_booking_screen.dart';
+import 'class_packages_screen.dart';
 
 class ClassesScreen extends StatefulWidget {
   const ClassesScreen({super.key});
@@ -204,22 +205,62 @@ class _ClassesScreenState extends State<ClassesScreen> {
         color: ctx.headerColor,
         border: Border(top: BorderSide(color: ctx.borderColor)),
       ),
-      child: ElevatedButton.icon(
-        onPressed: () => Navigator.push(
-          ctx,
-          MaterialPageRoute(
-            builder: (_) => const KindBookingScreen(kidsOnly: false),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ElevatedButton.icon(
+            onPressed: () => Navigator.push(
+              ctx,
+              MaterialPageRoute(
+                builder: (_) =>
+                    const ClassPackagesScreen(holidayOnly: true),
+              ),
+            ),
+            icon: const Icon(Icons.school_rounded, size: 20),
+            label: const Text(
+              'Scholaxia Holiday Promo Classes',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF16A34A),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              minimumSize: const Size.fromHeight(48),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
           ),
-        ),
-        icon: const Icon(Icons.card_membership_rounded, size: 20),
-        label: const Text('Book & pay — Pay-Per-Class Plan',
-            style: TextStyle(fontWeight: FontWeight.w800)),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: ctx.accentColor,
-          foregroundColor: Colors.black,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        ),
+          const SizedBox(height: 8),
+          Text(
+            'SS Science, Art & Commercial — ₦11,000 · JSS — ₦10,500',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: ctx.greyColor, fontSize: 11),
+          ),
+          const SizedBox(height: 8),
+          ElevatedButton.icon(
+            onPressed: () => Navigator.push(
+              ctx,
+              MaterialPageRoute(
+                builder: (_) => const KindBookingScreen(kidsOnly: false),
+              ),
+            ),
+            icon: const Icon(Icons.card_membership_rounded, size: 20),
+            label: const Text(
+              'Book & pay — Pay-Per-Class Plan',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: ctx.accentColor,
+              foregroundColor: Colors.black,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              minimumSize: const Size.fromHeight(48),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

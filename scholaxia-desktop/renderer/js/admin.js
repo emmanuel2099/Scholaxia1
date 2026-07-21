@@ -1509,7 +1509,7 @@ async function deleteCommunityPost(id) {
 }
 
 async function clearAllConversations() {
-  if (!confirm("Clear ALL conversations? This removes every community message, post, and group chat history.")) return;
+  if (!confirm("Clear ALL conversations? This removes every announcement, community message, post, and group chat history.")) return;
   if (!confirm("Are you sure? This cannot be undone.")) return;
   try {
     var r = await adminApi("/api/v1/admin/community/conversations", { method: "DELETE", timeout: 180000 });
@@ -1594,7 +1594,7 @@ async function loadMarketplaceBookings() {
               "</a>"
             : escHtml(b.whatsapp || "—");
           var contactedBtn =
-            b.status === "pending"
+            b.status === "pending" || b.status === "paid"
               ? '<button class="btn-sm" onclick="markMarketplaceContacted(\'' +
                 b.id +
                 "')\">Mark contacted</button>"

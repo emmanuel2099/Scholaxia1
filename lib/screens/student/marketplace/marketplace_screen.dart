@@ -1,6 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import '../../../api/api_service.dart';
+import '../../../services/paystack_checkout_service.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/student_ui.dart';
 
@@ -431,7 +432,7 @@ class _BookProductSheetState extends State<_BookProductSheet> {
         );
         return;
       }
-      await widget.api.bookMarketplaceProduct(
+      final response = await widget.api.bookMarketplaceProduct(
         productId: id,
         fullName: name,
         whatsapp: wa,
@@ -439,12 +440,28 @@ class _BookProductSheetState extends State<_BookProductSheet> {
         email: email,
         note: _noteCtrl.text.trim(),
       );
+      final bookingId =
+          (response['booking'] as Map?)?['id']?.toString() ?? '';
+      final price = (widget.product['price'] as num?)?.toDouble() ?? 0;
+      if (price > 0) {
+        if (!mounted) return;
+        if (bookingId.isEmpty) {
+          throw ApiException.message('Booking was created without a payment id.');
+        }
+        final paid = await PaystackCheckoutService.purchase(
+          context: context,
+          api: widget.api,
+          productType: 'marketplace_booking',
+          productId: bookingId,
+        );
+        if (!mounted || !paid) return;
+      }
       if (!mounted) return;
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Booking sent! Scholaxia will contact you on WhatsApp or phone.',
+            'Booking confirmed! Admin will handle the rest and contact you.',
           ),
         ),
       );
@@ -504,7 +521,7 @@ class _BookProductSheetState extends State<_BookProductSheet> {
             ),
             const SizedBox(height: 6),
             Text(
-              'Fill your details. Admin will chat with you about this product.',
+              'Fill your details. Paid products open Paystack, then Admin handles the rest.',
               style: TextStyle(color: context.greyColor, fontSize: 12),
             ),
             const SizedBox(height: 14),
@@ -540,9 +557,9 @@ class _BookProductSheetState extends State<_BookProductSheet> {
                         child: CircularProgressIndicator(
                             strokeWidth: 2, color: Colors.white),
                       )
-                    : const Text(
-                        'Submit booking',
-                        style: TextStyle(fontWeight: FontWeight.w800),
+                    : Text(
+                        'Book${((widget.product['price'] as num?)?.toDouble() ?? 0) > 0 ? ' & pay' : ''}',
+                        style: const TextStyle(fontWeight: FontWeight.w800),
                       ),
               ),
             ),

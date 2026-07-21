@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -9,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'api_endpoints.dart';
 import '../models/sia_board_item.dart';
 import '../services/profile_avatar_cache.dart';
+import '../services/offline_status_service.dart';
 
 // ── Errors ────────────────────────────────────────────────────────────────────
 
@@ -187,6 +189,129 @@ class ApiService {
     };
   }
 
+  Future<String> _offlineCacheKey(Uri uri) async {
+    final user = await getUserId() ?? 'anonymous';
+    final encoded = base64Url.encode(utf8.encode(uri.toString()));
+    return 'offline_get_${user}_$encoded';
+  }
+
+  Future<http.Response?> _cachedResponse(Uri uri) async {
+    if (!_isOfflineCacheable(uri)) return null;
+    final prefs = await SharedPreferences.getInstance();
+    final body = prefs.getString(await _offlineCacheKey(uri));
+    if (body == null) return null;
+    return http.Response(
+      body,
+      200,
+      headers: const {
+        'content-type': 'application/json',
+        'x-scholaxia-offline-cache': 'true',
+      },
+    );
+  }
+
+  bool _isOfflineCacheable(Uri uri) {
+    final path = uri.path.toLowerCase();
+    return !path.contains('/download') &&
+        !path.contains('/read') &&
+        !path.contains('/join') &&
+        !path.contains('/stream');
+  }
+
+  Future<http.Response> _cachedGet(
+    Uri uri, {
+    Map<String, String>? headers,
+  }) async {
+    try {
+      final response = await http
+          .get(uri, headers: headers)
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        OfflineStatusService.instance.markOnline();
+        final trimmed = response.body.trimLeft();
+        if (_isOfflineCacheable(uri) &&
+            response.bodyBytes.length <= 1024 * 1024 &&
+            (trimmed.startsWith('{') || trimmed.startsWith('['))) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString(await _offlineCacheKey(uri), response.body);
+        }
+        return response;
+      }
+      if (response.statusCode >= 500) {
+        final cached = await _cachedResponse(uri);
+        if (cached != null) {
+          OfflineStatusService.instance.markOffline();
+          return cached;
+        }
+      }
+      return response;
+    } catch (_) {
+      OfflineStatusService.instance.markOffline();
+      final cached = await _cachedResponse(uri);
+      if (cached != null) return cached;
+      throw const ApiException.message(
+        'Internet is required for this information. Connect and try again.',
+      );
+    }
+  }
+
+  Future<http.Response> _onlinePost(
+    Uri uri, {
+    Map<String, String>? headers,
+    Object? body,
+  }) async {
+    try {
+      final response = await http
+          .post(uri, headers: headers, body: body)
+          .timeout(const Duration(seconds: 30));
+      OfflineStatusService.instance.markOnline();
+      return response;
+    } catch (_) {
+      OfflineStatusService.instance.markOffline();
+      throw const ApiException.message(
+        'This action requires internet data. Connect and try again.',
+      );
+    }
+  }
+
+  Future<http.Response> _onlinePatch(
+    Uri uri, {
+    Map<String, String>? headers,
+    Object? body,
+  }) async {
+    try {
+      final response = await http
+          .patch(uri, headers: headers, body: body)
+          .timeout(const Duration(seconds: 30));
+      OfflineStatusService.instance.markOnline();
+      return response;
+    } catch (_) {
+      OfflineStatusService.instance.markOffline();
+      throw const ApiException.message(
+        'This action requires internet data. Connect and try again.',
+      );
+    }
+  }
+
+  Future<http.Response> _onlineDelete(
+    Uri uri, {
+    Map<String, String>? headers,
+    Object? body,
+  }) async {
+    try {
+      final response = await http
+          .delete(uri, headers: headers, body: body)
+          .timeout(const Duration(seconds: 30));
+      OfflineStatusService.instance.markOnline();
+      return response;
+    } catch (_) {
+      OfflineStatusService.instance.markOffline();
+      throw const ApiException.message(
+        'This action requires internet data. Connect and try again.',
+      );
+    }
+  }
+
   dynamic _parse(http.Response res) {
     final status = res.statusCode;
     dynamic body;
@@ -249,7 +374,7 @@ class ApiService {
     } else if (phone != null && phone.trim().isNotEmpty) {
       body['phone'] = phone.trim();
     }
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.login),
       headers: _jsonHeaders(),
       body: jsonEncode(body),
@@ -270,7 +395,7 @@ class ApiService {
     String? gradeLevel,
     String? parentEmail,
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.signupStart),
       headers: _jsonHeaders(),
       body: jsonEncode({
@@ -292,7 +417,7 @@ class ApiService {
     required String email,
     required String otp,
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.signupVerify),
       headers: _jsonHeaders(),
       body: jsonEncode({'email': email, 'otp': otp}),
@@ -308,7 +433,7 @@ class ApiService {
     required String email,
     String purpose = 'signup',
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.otpSend),
       headers: _jsonHeaders(),
       body: jsonEncode({'email': email, 'purpose': purpose}),
@@ -326,7 +451,7 @@ class ApiService {
     String? gradeLevel,
     String? parentEmail,
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.firebaseAuth),
       headers: _jsonHeaders(),
       body: jsonEncode({
@@ -354,7 +479,7 @@ class ApiService {
     required String password,
     required String fullName,
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.studentSignup),
       headers: _jsonHeaders(),
       body: jsonEncode({
@@ -378,7 +503,7 @@ class ApiService {
     String? gradeLevel,
     String? parentEmail,
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.kindSignup),
       headers: _jsonHeaders(),
       body: jsonEncode({
@@ -402,7 +527,7 @@ class ApiService {
   // ── Kind (young learners) ──────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> getKindMe() async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.kindMe),
       headers: await _authHeaders(),
     );
@@ -410,7 +535,7 @@ class ApiService {
   }
 
   Future<List<String>> kindSubjects() async {
-    final res = await http.get(_uri(ApiEndpoints.kindSubjects));
+    final res = await _cachedGet(_uri(ApiEndpoints.kindSubjects));
     final data = _parseMap(res);
     final raw = data['subjects'];
     if (raw is List) return raw.map((e) => e.toString()).toList();
@@ -419,7 +544,7 @@ class ApiService {
 
   /// Admin-authored questions for a kids game (merged with built-in banks).
   Future<List<Map<String, dynamic>>> kindGameQuestions(String gameId) async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.kindGameQuestions(gameId)),
       headers: await _authHeaders(),
     );
@@ -460,7 +585,7 @@ class ApiService {
     required String topic,
     String subject = 'General',
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.kindSiaLearn),
       headers: await _authHeaders(),
       body: jsonEncode({'topic': topic, 'subject': subject}),
@@ -474,7 +599,7 @@ class ApiService {
     String subject = 'General',
     int numQuestions = 5,
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.kindSiaQuiz),
       headers: await _authHeaders(),
       body: jsonEncode({
@@ -544,7 +669,7 @@ class ApiService {
     if (jambSubjects != null) body['jamb_subjects'] = jambSubjects;
     if (ssceExamType != null) body['ssce_exam_type'] = ssceExamType;
     if (ssceSubjects != null) body['ssce_subjects'] = ssceSubjects;
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.setupExam),
       headers: await _authHeaders(),
       body: jsonEncode(body),
@@ -569,7 +694,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> setupStatus() async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.setupStatus),
       headers: await _authHeaders(),
     );
@@ -577,7 +702,7 @@ class ApiService {
   }
 
   Future<List<String>> listAvailableSubjects() async {
-    final res = await http.get(_uri(ApiEndpoints.studentSubjects));
+    final res = await _cachedGet(_uri(ApiEndpoints.studentSubjects));
     final data = _parseMap(res);
     final raw = data['subjects'];
     if (raw is List) {
@@ -607,7 +732,7 @@ class ApiService {
   /// Triggers GET /students/me so the server auto-creates a profile if missing.
   Future<void> ensureStudentProfile() async {
     try {
-      final res = await http.get(
+      final res = await _cachedGet(
         _uri(_studentMe),
         headers: await _authHeaders(),
       );
@@ -616,7 +741,7 @@ class ApiService {
   }
 
   Future<StudentProfile> getStudentProfile() async {
-    final res = await http.get(_uri(_studentMe), headers: await _authHeaders());
+    final res = await _cachedGet(_uri(_studentMe), headers: await _authHeaders());
     final profile = StudentProfile.fromJson(_parseMap(res));
     final fromApi = resolveMediaUrl(profile.profilePicture);
     if (fromApi.isNotEmpty) {
@@ -643,7 +768,7 @@ class ApiService {
     if (url.isEmpty) {
       throw ApiException.message('Upload succeeded but no image URL returned.');
     }
-    final res = await http.patch(
+    final res = await _onlinePatch(
       _uri(ApiEndpoints.profilePicture),
       headers: await _authHeaders(),
       body: jsonEncode({'profile_picture': url}),
@@ -659,7 +784,7 @@ class ApiService {
   }
 
   Future<StudentProfile> getStudentProfileById(String userId) async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.studentProfile(userId)),
       headers: await _authHeaders(),
     );
@@ -667,7 +792,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> walletMe() async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.walletMe),
       headers: await _authHeaders(),
     );
@@ -677,12 +802,12 @@ class ApiService {
   // ── Scholaxia Intellect League ──────────────────────────────────────────────
 
   Future<Map<String, dynamic>> silMeta() async {
-    final res = await http.get(_uri(ApiEndpoints.silMeta));
+    final res = await _cachedGet(_uri(ApiEndpoints.silMeta));
     return _parseMap(res);
   }
 
   Future<Map<String, dynamic>> silStatus() async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.silStatus),
       headers: await _authHeaders(),
     );
@@ -690,7 +815,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> silRegister(Map<String, dynamic> body) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.silRegister),
       headers: await _authHeaders(),
       body: jsonEncode(body),
@@ -703,7 +828,7 @@ class ApiService {
     String? matchId,
     bool livenessOk = true,
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.silFaceVerify),
       headers: await _authHeaders(),
       body: jsonEncode({
@@ -716,7 +841,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> silWallet() async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.silWallet),
       headers: await _authHeaders(),
     );
@@ -724,7 +849,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> silWalletBuy(String package) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.silWalletBuy),
       headers: await _authHeaders(),
       body: jsonEncode({'package': package}),
@@ -733,7 +858,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> silDashboard() async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.silDashboard),
       headers: await _authHeaders(),
     );
@@ -744,7 +869,7 @@ class ApiService {
     String subject = 'General Knowledge',
     int questionCount = 10,
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.silPractice),
       headers: await _authHeaders(),
       body: jsonEncode({'subject': subject, 'question_count': questionCount}),
@@ -753,7 +878,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> silStartAi(int level) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.silAi),
       headers: await _authHeaders(),
       body: jsonEncode({'level': level}),
@@ -766,7 +891,7 @@ class ApiService {
     int betCoins = 100,
     String subject = 'General Knowledge',
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.silStudentChallenge),
       headers: await _authHeaders(),
       body: jsonEncode({
@@ -779,7 +904,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> silStartClassChallenge() async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.silClassChallenge),
       headers: await _authHeaders(),
       body: '{}',
@@ -790,7 +915,7 @@ class ApiService {
   Future<Map<String, dynamic>> silStartSchoolChallenge({
     String opponentSchool = 'Rival Academy',
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.silSchoolChallenge, {
         'opponent_school': opponentSchool,
       }),
@@ -801,7 +926,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> silStartFriday() async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.silFriday),
       headers: await _authHeaders(),
       body: '{}',
@@ -813,7 +938,7 @@ class ApiService {
     String matchId,
     List<Map<String, dynamic>> answers,
   ) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.silMatchFinish(matchId)),
       headers: await _authHeaders(),
       body: jsonEncode({'answers': answers}),
@@ -827,7 +952,7 @@ class ApiService {
     String? detail,
     Map<String, dynamic>? meta,
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.silMatchAnticheat(matchId)),
       headers: await _authHeaders(),
       body: jsonEncode({
@@ -846,7 +971,7 @@ class ApiService {
     double? luminance,
     String? detail,
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.silMatchHeartbeat(matchId)),
       headers: await _authHeaders(),
       body: jsonEncode({
@@ -868,7 +993,7 @@ class ApiService {
     String? matchId,
     Map<String, dynamic>? raw,
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.silDeviceReport),
       headers: await _authHeaders(),
       body: jsonEncode({
@@ -892,7 +1017,7 @@ class ApiService {
     final query = <String, String>{'scope': scope};
     if (state != null) query['state'] = state;
     if (school != null) query['school'] = school;
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.silLeaderboard, query),
       headers: await _authHeaders(),
     );
@@ -900,7 +1025,7 @@ class ApiService {
   }
 
   Future<List<dynamic>> silHistory() async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.silHistory),
       headers: await _authHeaders(),
     );
@@ -924,7 +1049,7 @@ class ApiService {
     if (category != null && category.isNotEmpty && category != 'All') {
       query['category'] = category;
     }
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.libraryStudent, query.isEmpty ? null : query),
       headers: await _authHeaders(),
     );
@@ -932,7 +1057,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> libraryReadBook(String bookId) async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.libraryRead(bookId)),
       headers: await _authHeaders(),
     );
@@ -940,7 +1065,7 @@ class ApiService {
   }
 
   Future<void> libraryUpdateProgress(String bookId, int page) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri('/api/v1/library/$bookId/progress'),
       headers: await _authHeaders(),
       body: jsonEncode({'current_page': page}),
@@ -952,7 +1077,7 @@ class ApiService {
     required String productType,
     required String productId,
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri('/api/v1/payments/paystack/initialize'),
       headers: await _authHeaders(),
       body: jsonEncode({
@@ -964,7 +1089,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> verifyPaystack(String reference) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri('/api/v1/payments/paystack/verify'),
       headers: await _authHeaders(),
       body: jsonEncode({'reference': reference}),
@@ -973,7 +1098,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> cbtPackageAccess() async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri('/api/v1/payments/paystack/cbt-access'),
       headers: await _authHeaders(),
     );
@@ -981,7 +1106,7 @@ class ApiService {
   }
 
   Future<List<dynamic>> cbtPackageCatalog() async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri('/api/v1/payments/paystack/cbt-packages'),
       headers: await _authHeaders(),
     );
@@ -992,7 +1117,7 @@ class ApiService {
   // ── Marketplace ────────────────────────────────────────────────────────────
 
   Future<List<dynamic>> marketplaceCategories() async {
-    final res = await http.get(_uri(ApiEndpoints.marketplaceCategories));
+    final res = await _cachedGet(_uri(ApiEndpoints.marketplaceCategories));
     final data = _parseMap(res);
     final raw = data['categories'];
     return raw is List ? raw : const [];
@@ -1003,7 +1128,7 @@ class ApiService {
     if (category != null && category.isNotEmpty && category != 'all') {
       query['category'] = category;
     }
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.marketplaceProducts, query.isEmpty ? null : query),
       headers: await _authHeaders(),
     );
@@ -1018,7 +1143,7 @@ class ApiService {
     required String email,
     String? note,
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.marketplaceBookProduct(productId)),
       headers: await _authHeaders(),
       body: jsonEncode({
@@ -1035,7 +1160,7 @@ class ApiService {
   // ── Teacher ────────────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> getTeacherMe() async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.teacherMe),
       headers: await _authHeaders(),
     );
@@ -1050,7 +1175,7 @@ class ApiService {
     if (bio != null) body['bio'] = bio;
     if (subjects != null) body['subjects'] = subjects;
 
-    final res = await http.patch(
+    final res = await _onlinePatch(
       _uri(ApiEndpoints.teacherMe),
       headers: await _authHeaders(),
       body: jsonEncode(body),
@@ -1144,7 +1269,7 @@ class ApiService {
   // ── CBT ─────────────────────────────────────────────────────────────────────
 
   Future<CbtSession> cbtStartSession(String examId) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.cbtStartSession(examId)),
       headers: await _authHeaders(),
     );
@@ -1156,7 +1281,7 @@ class ApiService {
     required Map<String, String> answers,
     bool isAutoSubmit = false,
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.cbtSubmitSession),
       headers: await _authHeaders(),
       body: jsonEncode({
@@ -1175,14 +1300,14 @@ class ApiService {
     }
     if (subject != null && subject.isNotEmpty) query['subject'] = subject;
 
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.cbtExams, query.isEmpty ? null : query),
     );
     return _parseList(res);
   }
 
   Future<Map<String, dynamic>> cbtExamsForMe() async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.cbtExamsForMe),
       headers: await _authHeaders(),
     );
@@ -1190,7 +1315,7 @@ class ApiService {
   }
 
   Future<List<CbtQuestion>> cbtDownloadExam(String examId) async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.cbtExamDownload(examId)),
       headers: await _authHeaders(),
     );
@@ -1204,7 +1329,7 @@ class ApiService {
   }
 
   Future<CbtResult> cbtSessionResult(String sessionId) async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.cbtSessionResult(sessionId)),
       headers: await _authHeaders(),
     );
@@ -1212,7 +1337,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> cbtSessionReview(String sessionId) async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.cbtSessionReview(sessionId)),
       headers: await _authHeaders(),
     );
@@ -1222,7 +1347,7 @@ class ApiService {
   /// Full offline pack for an exam (metadata + questions, no answers). Used to
   /// cache internal exams locally so they can be taken offline.
   Future<Map<String, dynamic>> cbtDownloadExamRaw(String examId) async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.cbtExamDownload(examId)),
       headers: await _authHeaders(),
     );
@@ -1232,7 +1357,7 @@ class ApiService {
   // ── Internal exams (downloadable, offline, routed to subject teachers) ──────
 
   Future<List<dynamic>> internalExamsForMe() async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri('/api/v1/cbt/internal-exams/for-me'),
       headers: await _authHeaders(),
     );
@@ -1246,7 +1371,7 @@ class ApiService {
     required Map<String, String> answers,
     bool isAutoSubmit = false,
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri('/api/v1/cbt/internal-exams/$examId/submit'),
       headers: await _authHeaders(),
       body: jsonEncode({'answers': answers, 'is_auto_submit': isAutoSubmit}),
@@ -1255,7 +1380,7 @@ class ApiService {
   }
 
   Future<List<dynamic>> teacherInternalSubmissions() async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri('/api/v1/cbt/internal-exams/submissions'),
       headers: await _authHeaders(),
     );
@@ -1265,7 +1390,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> getAppVersion() async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri('/api/v1/app/version'),
       headers: _jsonHeaders(),
     );
@@ -1281,7 +1406,7 @@ class ApiService {
     String? preferredStart,
     String? notes,
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri('/api/v1/payments/flutterwave/skills/$skillId/init'),
       headers: await _authHeaders(),
       body: jsonEncode({
@@ -1298,7 +1423,7 @@ class ApiService {
   }
 
   Future<List<dynamic>> cbtMySessions() async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.cbtMySessions),
       headers: await _authHeaders(),
     );
@@ -1306,7 +1431,7 @@ class ApiService {
   }
 
   Future<List<dynamic>> teacherSchoolExams() async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.cbtSchoolExamsMine),
       headers: await _authHeaders(),
     );
@@ -1324,7 +1449,7 @@ class ApiService {
     bool aiLocked = false,
     bool blockMinimize = false,
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.cbtSchoolExamsCreate),
       headers: await _authHeaders(),
       body: jsonEncode({
@@ -1343,7 +1468,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> schoolExamResults(String examId) async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.cbtSchoolExamResults(examId)),
       headers: await _authHeaders(),
     );
@@ -1353,7 +1478,7 @@ class ApiService {
   // ── Community ───────────────────────────────────────────────────────────────
 
   Future<List<dynamic>> communityChannels() async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.communityChannels),
       headers: await _authHeaders(),
     );
@@ -1365,7 +1490,7 @@ class ApiService {
     int limit = 100,
     int offset = 0,
   }) async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.communityMessages, {
         'channel_id': channelId,
         'limit': '$limit',
@@ -1382,7 +1507,7 @@ class ApiService {
     String? mediaUrl,
     String? mediaType,
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.communityMessages),
       headers: await _authHeaders(),
       body: jsonEncode({
@@ -1396,7 +1521,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> joinChannel({required String channelId}) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.communityJoin),
       headers: await _authHeaders(),
       body: jsonEncode({'channel_id': channelId}),
@@ -1425,9 +1550,64 @@ class ApiService {
       ),
     );
 
-    final streamed = await request.send();
-    final res = await http.Response.fromStream(streamed);
+    try {
+      final streamed =
+          await request.send().timeout(const Duration(seconds: 60));
+      OfflineStatusService.instance.markOnline();
+      final res = await http.Response.fromStream(streamed);
+      return _parseMap(res);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      OfflineStatusService.instance.markOffline();
+      throw const ApiException.message(
+        'Uploading requires internet data. Connect and try again.',
+      );
+    }
+  }
+
+  Future<List<dynamic>> listTeacherAnnouncements() async {
+    final res = await _cachedGet(
+      _uri(ApiEndpoints.communityAnnouncements),
+      headers: await _authHeaders(),
+    );
+    return _parseList(res);
+  }
+
+  Future<List<dynamic>> listPublicTeachers() async {
+    final res = await _cachedGet(
+      _uri(ApiEndpoints.teachersList),
+      headers: await _authHeaders(),
+    );
+    return _parseList(res);
+  }
+
+  Future<Map<String, dynamic>> submitAssignment({
+    required String channelId,
+    required String teacherId,
+    required String fileUrl,
+    String? caption,
+  }) async {
+    final res = await _onlinePost(
+      _uri(ApiEndpoints.communityAssignments),
+      headers: await _authHeaders(),
+      body: jsonEncode({
+        'channel_id': channelId,
+        'tagged_teacher_id': teacherId,
+        'file_url': fileUrl,
+        'file_type': 'pdf',
+        if (caption != null && caption.trim().isNotEmpty)
+          'caption': caption.trim(),
+      }),
+    );
     return _parseMap(res);
+  }
+
+  Future<List<dynamic>> myAssignmentSubmissions() async {
+    final res = await _cachedGet(
+      _uri('${ApiEndpoints.communityAssignments}/mine'),
+      headers: await _authHeaders(),
+    );
+    return _parseList(res);
   }
 
   MediaType? _communityUploadMime(String filename) {
@@ -1453,7 +1633,7 @@ class ApiService {
     int limit = 30,
     int offset = 0,
   }) async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.communityPosts, {
         'channel_id': channelId,
         'limit': '$limit',
@@ -1473,7 +1653,7 @@ class ApiService {
     String? mediaType,
     String? cbtExamId,
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.communityPosts),
       headers: await _authHeaders(),
       body: jsonEncode({
@@ -1493,7 +1673,7 @@ class ApiService {
     required String postId,
     required String content,
   }) async {
-    final res = await http.patch(
+    final res = await _onlinePatch(
       _uri(ApiEndpoints.communityPostUpdate(postId)),
       headers: await _authHeaders(),
       body: jsonEncode({'content': content}),
@@ -1502,7 +1682,7 @@ class ApiService {
   }
 
   Future<void> deleteCommunityPost(String postId) async {
-    final res = await http.delete(
+    final res = await _onlineDelete(
       _uri(ApiEndpoints.communityPostDelete(postId)),
       headers: await _authHeaders(),
     );
@@ -1510,7 +1690,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> startGroupVoiceCall(String groupId) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.studentGroupCallStart(groupId)),
       headers: await _authHeaders(),
     );
@@ -1518,7 +1698,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>?> getActiveGroupCall(String groupId) async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.studentGroupCallActive(groupId)),
       headers: await _authHeaders(),
     );
@@ -1529,7 +1709,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> joinGroupVoiceCall(String groupId) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.studentGroupCallJoin(groupId)),
       headers: await _authHeaders(),
     );
@@ -1537,7 +1717,7 @@ class ApiService {
   }
 
   Future<void> endGroupVoiceCall(String groupId) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.studentGroupCallEnd(groupId)),
       headers: await _authHeaders(),
     );
@@ -1545,7 +1725,7 @@ class ApiService {
   }
 
   Future<void> declineGroupVoiceCall(String groupId) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.studentGroupCallDecline(groupId)),
       headers: await _authHeaders(),
     );
@@ -1553,7 +1733,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> toggleLike(String postId) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.communityPostLike(postId)),
       headers: await _authHeaders(),
     );
@@ -1561,7 +1741,7 @@ class ApiService {
   }
 
   Future<List<dynamic>> getPinnedPosts(String channelId) async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.communityChannelPinned(channelId)),
       headers: await _authHeaders(),
     );
@@ -1588,7 +1768,7 @@ class ApiService {
     int limit = 300,
     int offset = 0,
   }) async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.communityPostComments, {
         'channel_id': channelId,
         'limit': '$limit',
@@ -1639,7 +1819,7 @@ class ApiService {
     List<String> invitedStudentEmails = const [],
     String? schoolGroupId,
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.liveClassCreate),
       headers: await _authHeaders(),
       body: jsonEncode({
@@ -1662,7 +1842,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> startLiveClass(String classId) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.liveClassStart(classId)),
       headers: await _authHeaders(),
     );
@@ -1670,7 +1850,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> joinLiveClass(String classId) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.liveClassJoin(classId)),
       headers: await _authHeaders(),
     );
@@ -1678,7 +1858,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> getLiveClassToken(String classId) async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.liveClassToken(classId)),
       headers: await _authHeaders(),
     );
@@ -1695,7 +1875,7 @@ class ApiService {
     if (subject != null && subject.isNotEmpty) query['subject'] = subject;
     if (status != null && status.isNotEmpty) query['status'] = status;
 
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.liveClassList, query),
       headers: await _authHeaders(),
     );
@@ -1703,7 +1883,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> getLiveClassDetail(String classId) async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.liveClassDetail(classId)),
       headers: await _authHeaders(),
     );
@@ -1711,7 +1891,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> endLiveClass(String classId) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.liveClassEnd(classId)),
       headers: await _authHeaders(),
     );
@@ -1719,7 +1899,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> leaveLiveClass(String classId) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.liveClassLeave(classId)),
       headers: await _authHeaders(),
     );
@@ -1727,7 +1907,7 @@ class ApiService {
   }
 
   Future<List<dynamic>> listLiveClassStudents(String classId) async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.liveClassStudents(classId)),
       headers: await _authHeaders(),
     );
@@ -1735,7 +1915,7 @@ class ApiService {
   }
 
   Future<void> unmuteLiveClassStudent(String classId, String studentId) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.liveClassUnmute(classId, studentId)),
       headers: await _authHeaders(),
     );
@@ -1743,7 +1923,7 @@ class ApiService {
   }
 
   Future<void> muteLiveClassStudent(String classId, String studentId) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.liveClassMute(classId, studentId)),
       headers: await _authHeaders(),
     );
@@ -1751,7 +1931,7 @@ class ApiService {
   }
 
   Future<void> allowLiveClassCamera(String classId, String studentId) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.liveClassAllowCamera(classId, studentId)),
       headers: await _authHeaders(),
     );
@@ -1759,7 +1939,7 @@ class ApiService {
   }
 
   Future<void> revokeLiveClassCamera(String classId, String studentId) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.liveClassRevokeCamera(classId, studentId)),
       headers: await _authHeaders(),
     );
@@ -1767,7 +1947,7 @@ class ApiService {
   }
 
   Future<List<dynamic>> listSchoolGroups() async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.schoolGroupsMine),
       headers: await _authHeaders(),
     );
@@ -1775,7 +1955,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> getSchoolGroup(String groupId) async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.schoolGroup(groupId)),
       headers: await _authHeaders(),
     );
@@ -1788,7 +1968,7 @@ class ApiService {
     List<String> studentIds = const [],
     List<String> studentEmails = const [],
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.schoolGroupsCreate),
       headers: await _authHeaders(),
       body: jsonEncode({
@@ -1813,7 +1993,7 @@ class ApiService {
     if (name != null) body['name'] = name;
     if (studentIds != null) body['student_ids'] = studentIds;
     if (studentEmails != null) body['student_emails'] = studentEmails;
-    final res = await http.patch(
+    final res = await _onlinePatch(
       _uri(ApiEndpoints.schoolGroup(groupId)),
       headers: await _authHeaders(),
       body: jsonEncode(body),
@@ -1822,7 +2002,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> getLiveKitStatus() async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.liveClassLivekitStatus),
       headers: await _authHeaders(),
     );
@@ -1842,7 +2022,7 @@ class ApiService {
     final query = <String, String>{'limit': '$limit', 'offset': '$offset'};
     if (status != null && status.isNotEmpty) query['status'] = status;
 
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(path, query),
       headers: await _authHeaders(),
     );
@@ -1869,7 +2049,7 @@ class ApiService {
         body['preferred_time'] = parsed.toUtc().toIso8601String();
       }
     }
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.liveClassRequests),
       headers: await _authHeaders(),
       body: jsonEncode(body),
@@ -1878,7 +2058,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> myAccessCodes() async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.liveClassAccessCodesMine),
       headers: await _authHeaders(),
     );
@@ -1886,7 +2066,7 @@ class ApiService {
   }
 
   Future<void> markAccessCodesRead() async {
-    await http.post(
+    await _onlinePost(
       _uri(ApiEndpoints.liveClassAccessCodesMarkRead),
       headers: await _authHeaders(),
     );
@@ -1894,7 +2074,7 @@ class ApiService {
 
   Future<Map<String, dynamic>> joinPreviewByCode(String code) async {
     final normalized = code.trim().toUpperCase();
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.liveClassJoinPreview, {'code': normalized}),
       headers: await _authHeaders(),
     );
@@ -1903,7 +2083,7 @@ class ApiService {
 
   Future<Map<String, dynamic>> joinLiveClassByCode(String code) async {
     final normalized = code.trim().toUpperCase();
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.liveClassJoinByCode),
       headers: await _authHeaders(),
       body: jsonEncode({'code': normalized}),
@@ -1919,7 +2099,7 @@ class ApiService {
     bool isPublic = true,
     bool isCommunityListed = true,
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.studentGroups),
       headers: await _authHeaders(),
       body: jsonEncode({
@@ -1943,7 +2123,7 @@ class ApiService {
     if (name != null) body['name'] = name.trim();
     if (description != null) body['description'] = description.trim();
     if (imageUrl != null) body['image_url'] = imageUrl.trim();
-    final res = await http.patch(
+    final res = await _onlinePatch(
       _uri(ApiEndpoints.studentGroup(groupId)),
       headers: await _authHeaders(),
       body: jsonEncode(body),
@@ -1980,7 +2160,7 @@ class ApiService {
   }
 
   Future<List<dynamic>> myStudentGroups() async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.studentGroupsMine),
       headers: await _authHeaders(),
     );
@@ -1988,7 +2168,7 @@ class ApiService {
   }
 
   Future<List<dynamic>> discoverStudentGroups() async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.studentGroupsDiscover),
       headers: await _authHeaders(),
     );
@@ -1996,7 +2176,7 @@ class ApiService {
   }
 
   Future<List<dynamic>> communityListedGroups() async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.studentGroupsCommunityListed),
       headers: await _authHeaders(),
     );
@@ -2004,7 +2184,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> getStudentGroup(String groupId) async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.studentGroup(groupId)),
       headers: await _authHeaders(),
     );
@@ -2015,7 +2195,7 @@ class ApiService {
     String groupId, {
     String? message,
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.studentGroupJoinRequest(groupId)),
       headers: await _authHeaders(),
       body: jsonEncode({
@@ -2027,7 +2207,7 @@ class ApiService {
   }
 
   Future<List<dynamic>> listGroupMembers(String groupId) async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.studentGroupMembers(groupId)),
       headers: await _authHeaders(),
     );
@@ -2038,7 +2218,7 @@ class ApiService {
     String groupId, {
     int limit = 120,
   }) async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.studentGroupMessages(groupId), {'limit': '$limit'}),
       headers: await _authHeaders(),
     );
@@ -2049,7 +2229,7 @@ class ApiService {
     String groupId,
     String content,
   ) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.studentGroupMessages(groupId)),
       headers: await _authHeaders(),
       body: jsonEncode({'content': content.trim()}),
@@ -2058,7 +2238,7 @@ class ApiService {
   }
 
   Future<List<dynamic>> listGroupJoinRequests(String groupId) async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.studentGroupJoinRequests(groupId)),
       headers: await _authHeaders(),
     );
@@ -2069,7 +2249,7 @@ class ApiService {
     String groupId,
     String requestId,
   ) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.studentGroupApproveJoinRequest(groupId, requestId)),
       headers: await _authHeaders(),
     );
@@ -2077,7 +2257,7 @@ class ApiService {
   }
 
   Future<List<dynamic>> mySchoolGroups() async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.schoolGroupsStudentMine),
       headers: await _authHeaders(),
     );
@@ -2087,7 +2267,7 @@ class ApiService {
   // ── Materials ───────────────────────────────────────────────────────────────
 
   Future<List<dynamic>> teacherMaterials() async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.materialsMine),
       headers: await _authHeaders(),
     );
@@ -2103,7 +2283,7 @@ class ApiService {
     bool isFree = true,
     double price = 0,
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.materialsCreate),
       headers: await _authHeaders(),
       body: jsonEncode({
@@ -2122,7 +2302,7 @@ class ApiService {
   // ── Grading ─────────────────────────────────────────────────────────────────
 
   Future<List<dynamic>> teacherPendingAssignments() async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.communityAssignmentsPending),
       headers: await _authHeaders(),
     );
@@ -2135,7 +2315,7 @@ class ApiService {
     String? resultScore,
     String? resultFeedback,
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.communityAssignmentResult(submissionId)),
       headers: await _authHeaders(),
       body: jsonEncode({
@@ -2150,7 +2330,7 @@ class ApiService {
   // ── Notifications ───────────────────────────────────────────────────────────
 
   Future<List<dynamic>> notifications() async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.notifications),
       headers: await _authHeaders(),
     );
@@ -2158,7 +2338,7 @@ class ApiService {
   }
 
   Future<void> markAllNotificationsRead() async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.notificationsReadAll),
       headers: await _authHeaders(),
     );
@@ -2196,7 +2376,7 @@ class ApiService {
     required String token,
     required String platform,
   }) async {
-    final res = await http.post(
+    final res = await _onlinePost(
       _uri(ApiEndpoints.notificationsDeviceToken),
       headers: await _authHeaders(),
       body: jsonEncode({'token': token, 'platform': platform}),
@@ -2216,7 +2396,7 @@ class ApiService {
     if (subject != null && subject.isNotEmpty) query['subject'] = subject;
     if (examType != null && examType.isNotEmpty) query['exam_type'] = examType;
 
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.recommendationsFeed, query),
       headers: await _authHeaders(),
     );
@@ -2224,7 +2404,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> getHomeFeed() async {
-    final res = await http.get(
+    final res = await _cachedGet(
       _uri(ApiEndpoints.homeFeed),
       headers: await _authHeaders(),
     );

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../api/api_service.dart';
 import '../../../theme/app_theme.dart';
 import '../teacher_shared.dart';
+import '../../student/assignments/assignment_screen.dart';
 
 class TeacherGradingScreen extends StatefulWidget {
   const TeacherGradingScreen({super.key});
@@ -48,6 +49,7 @@ class _TeacherGradingScreenState extends State<TeacherGradingScreen> {
           id: m['id']?.toString() ?? '',
           studentName: studentName,
           caption: m['caption']?.toString() ?? 'Assignment submission',
+          fileUrl: m['file_url']?.toString() ?? '',
           fileType: m['file_type']?.toString() ?? 'file',
           submittedAt: TeacherUtils.relativeTime(m['submitted_at']?.toString() ?? ''),
         ));
@@ -167,6 +169,19 @@ class _TeacherGradingScreenState extends State<TeacherGradingScreen> {
     );
   }
 
+  void _openSubmission(_Submission sub) {
+    if (sub.fileUrl.isEmpty) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AssignmentPdfScreen(
+          url: sub.fileUrl,
+          title: sub.caption,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final accent = context.accentColor;
@@ -240,6 +255,7 @@ class _TeacherGradingScreenState extends State<TeacherGradingScreen> {
                               separatorBuilder: (_, __) => const SizedBox(height: 10),
                               itemBuilder: (_, i) => _SubmissionCard(
                                 submission: _submissions[i],
+                                onOpen: () => _openSubmission(_submissions[i]),
                                 onGrade: () => _showGradeSheet(_submissions[i]),
                               ),
                             ),
@@ -256,12 +272,14 @@ class _Submission {
   final String id;
   final String studentName;
   final String caption;
+  final String fileUrl;
   final String fileType;
   final String submittedAt;
   const _Submission({
     required this.id,
     required this.studentName,
     required this.caption,
+    required this.fileUrl,
     required this.fileType,
     required this.submittedAt,
   });
@@ -298,7 +316,12 @@ class _SummaryChip extends StatelessWidget {
 class _SubmissionCard extends StatelessWidget {
   final _Submission submission;
   final VoidCallback onGrade;
-  const _SubmissionCard({required this.submission, required this.onGrade});
+  final VoidCallback onOpen;
+  const _SubmissionCard({
+    required this.submission,
+    required this.onOpen,
+    required this.onGrade,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -340,14 +363,23 @@ class _SubmissionCard extends StatelessWidget {
               ],
             ),
           ),
-          ElevatedButton(
-            onPressed: onGrade,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: context.accentColor,
-              foregroundColor: Colors.black,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            ),
-            child: const Text('Grade', style: TextStyle(fontSize: 12)),
+          Column(
+            children: [
+              TextButton(
+                onPressed: onOpen,
+                child: const Text('Open PDF'),
+              ),
+              ElevatedButton(
+                onPressed: onGrade,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: context.accentColor,
+                  foregroundColor: Colors.black,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                ),
+                child: const Text('Grade', style: TextStyle(fontSize: 12)),
+              ),
+            ],
           ),
         ],
       ),

@@ -41,23 +41,13 @@ class _SplashScreenState extends State<SplashScreen>
         final role = await api.resolveSessionRole();
         if (!mounted) return;
 
-        if (role == null) {
-          await api.clearTokens();
-          if (!mounted) return;
-          final seenOnboarding = await api.hasSeenOnboarding();
-          Navigator.of(context).pushReplacement(PageRouteBuilder(
-            pageBuilder: (_, __, ___) =>
-                seenOnboarding ? const RoleSelectScreen() : const OnboardingScreen(),
-            transitionsBuilder: (_, a, __, c) => FadeTransition(opacity: a, child: c),
-            transitionDuration: const Duration(milliseconds: 500),
-          ));
-          return;
-        }
+        // Keep the session when role cannot be revalidated offline.
+        final effectiveRole = role ?? 'student';
 
         Widget dest;
-        if (role == 'teacher') {
+        if (effectiveRole == 'teacher') {
           dest = const TeacherShell();
-        } else if (role == 'kind') {
+        } else if (effectiveRole == 'kind') {
           dest = const KindShell();
         } else {
           // Stay in League after restart if that was the last screen.
@@ -72,7 +62,7 @@ class _SplashScreenState extends State<SplashScreen>
           transitionDuration: const Duration(milliseconds: 500),
         ));
 
-        if (role == 'student') {
+        if (effectiveRole == 'student') {
           api.ensureStudentProfile();
         }
         try {

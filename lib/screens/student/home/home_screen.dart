@@ -15,6 +15,7 @@ import '../cbt/internal_exams_screen.dart';
 import '../games/games_screen.dart';
 import '../library/library_screen.dart';
 import '../marketplace/marketplace_screen.dart';
+import '../assignments/assignment_screen.dart';
 import '../sil/sil_entry.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -737,6 +738,13 @@ class _HomeScreenState extends State<HomeScreen> {
         'Download & take teacher-set exams.',
         const [Color(0xFF7C3AED), Color(0xFF9333EA)],
         const InternalExamsScreen(),
+      ),
+      (
+        Icons.assignment_turned_in_rounded,
+        'Assignments',
+        'Open teacher PDFs, submit work & see scores.',
+        const [Color(0xFF16A34A), Color(0xFF22C55E)],
+        const AssignmentScreen(),
       ),
       (
         Icons.workspace_premium_rounded,

@@ -8,6 +8,7 @@ import 'package:webview_flutter/webview_flutter.dart' as mobile;
 import 'package:webview_windows/webview_windows.dart' as windows;
 
 import '../api/api_service.dart';
+import 'offline_status_service.dart';
 
 class PaystackCheckoutService {
   PaystackCheckoutService._();
@@ -18,6 +19,11 @@ class PaystackCheckoutService {
     required String productType,
     required String productId,
   }) async {
+    if (OfflineStatusService.instance.isOffline.value) {
+      throw const ApiException.message(
+        'Payment requires internet data. Connect and try again.',
+      );
+    }
     final initialized = await api.initializePaystack(
       productType: productType,
       productId: productId,

@@ -7,6 +7,7 @@ import 'services/app_update_service.dart';
 import 'services/firebase_analytics_service.dart';
 import 'services/firebase_push_service.dart';
 import 'services/local_notification_service.dart';
+import 'services/offline_status_service.dart';
 import 'theme/app_theme.dart';
 
 final GlobalKey<NavigatorState> appNavigatorKey = GlobalKey<NavigatorState>();
@@ -103,7 +104,9 @@ class _ScholaxiaAppState extends State<ScholaxiaApp> {
                 : Brightness.dark,
           ),
         );
-        return child ?? const SizedBox.shrink();
+        return OfflineStatusBanner(
+          child: child ?? const SizedBox.shrink(),
+        );
       },
       home: const SplashScreen(),
     );

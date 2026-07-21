@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../api/api_service.dart';
+import '../../../services/book_offline_store.dart';
 import '../../../services/paystack_checkout_service.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/student_ui.dart';
@@ -109,6 +110,24 @@ class _LibraryScreenState extends State<LibraryScreen> {
     if (id.isEmpty || _openingId != null) return;
     setState(() => _openingId = id);
     try {
+      // Prefer a previously saved PDF so offline reading works without a signed URL.
+      final localPath = await BookOfflineStore.instance.savedPath(id);
+      if (localPath != null) {
+        if (!mounted) return;
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => BookReaderScreen(
+              bookId: id,
+              title: book['title']?.toString() ?? 'Book',
+              signedUrl: '',
+              initialPage: 1,
+            ),
+          ),
+        );
+        return;
+      }
+
       final detail = await _api.libraryReadBook(id);
       final url = detail['read_url']?.toString() ?? '';
       if (url.isEmpty) {
@@ -211,6 +230,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Payment confirmed. Book unlocked.')),
       );
+      setState(() => _openingId = null);
+      await _openBook(book);
     } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

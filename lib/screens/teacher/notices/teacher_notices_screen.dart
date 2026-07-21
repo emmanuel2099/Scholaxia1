@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import '../../../api/api_service.dart';
 import '../../../services/community_badge.dart';
 import '../../../theme/app_theme.dart';
@@ -33,6 +34,8 @@ class _TeacherNoticesScreenState extends State<TeacherNoticesScreen>
   Map<String, dynamic>? _replyingTo;
   List<int>? _voiceBytes;
   String? _voiceFilename;
+  List<int>? _pdfBytes;
+  String? _pdfFilename;
 
   @override
   void initState() {
@@ -123,6 +126,7 @@ class _TeacherNoticesScreenState extends State<TeacherNoticesScreen>
   Future<void> _sendNotice() async {
     final text = _bodyController.text.trim();
     final hasVoice = _voiceBytes != null && _voiceFilename != null;
+    final hasPdf = _pdfBytes != null && _pdfFilename != null;
     String title;
     String body;
     if (text.contains('\n')) {
@@ -133,10 +137,10 @@ class _TeacherNoticesScreenState extends State<TeacherNoticesScreen>
       title = text;
       body = text;
     }
-    if (text.isEmpty && !hasVoice) {
+    if (text.isEmpty && !hasVoice && !hasPdf) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text('Write a message or record a voice note.')),
+            content: Text('Write a message, attach a PDF, or record a voice note.')),
       );
       return;
     }
@@ -150,13 +154,17 @@ class _TeacherNoticesScreenState extends State<TeacherNoticesScreen>
     try {
       String? mediaUrl;
       String? mediaType;
-      if (hasVoice) {
+      if (hasPdf) {
+        final res = await _api.communityUpload(_pdfBytes!, _pdfFilename!);
+        mediaUrl = res['file_url'] as String?;
+        mediaType = 'pdf';
+      } else if (hasVoice) {
         final res = await _api.communityUpload(_voiceBytes!, _voiceFilename!);
         mediaUrl = res['file_url'] as String?;
         mediaType = 'audio';
       }
-      final content = hasVoice && title.isEmpty && body.isEmpty
-          ? 'Voice announcement'
+      final content = text.isEmpty
+          ? (hasPdf ? 'PDF assignment' : 'Voice announcement')
           : '$title\n\n$body';
       final post = await _api.createPost(
         channelId: _announcementChannelId,
@@ -172,6 +180,8 @@ class _TeacherNoticesScreenState extends State<TeacherNoticesScreen>
           _sent = [Map<String, dynamic>.from(post), ..._sent];
           _voiceBytes = null;
           _voiceFilename = null;
+          _pdfBytes = null;
+          _pdfFilename = null;
         });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Announcement sent to all students!')),
@@ -186,6 +196,23 @@ class _TeacherNoticesScreenState extends State<TeacherNoticesScreen>
     } finally {
       if (mounted) setState(() => _sending = false);
     }
+  }
+
+  Future<void> _pickAssignmentPdf() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['pdf'],
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.single;
+    if (file.bytes == null) return;
+    setState(() {
+      _pdfBytes = file.bytes;
+      _pdfFilename = file.name;
+      _voiceBytes = null;
+      _voiceFilename = null;
+    });
   }
 
   static String? _commentPostId(String content) {
@@ -523,8 +550,9 @@ class _TeacherNoticesScreenState extends State<TeacherNoticesScreen>
 
   Widget _composeBar(Color accent, {bool chat = false}) {
     final hasVoice = _voiceBytes != null;
+    final hasPdf = _pdfBytes != null;
     final hasText = _bodyController.text.trim().isNotEmpty;
-    final canSend = !_sending && (hasText || hasVoice);
+    final canSend = !_sending && (hasText || hasVoice || (!chat && hasPdf));
     final sendFg = context.isDark ? AppColors.background : Colors.white;
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final navPad = bottomInset > 0 ? 12.0 : 88.0;
@@ -583,11 +611,43 @@ class _TeacherNoticesScreenState extends State<TeacherNoticesScreen>
                 ),
               ]),
             ),
+          if (!chat && hasPdf)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                children: [
+                  const Icon(Icons.picture_as_pdf_rounded,
+                      color: Colors.red, size: 18),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      _pdfFilename ?? 'Assignment PDF',
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: context.greyColor, fontSize: 12),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => setState(() {
+                      _pdfBytes = null;
+                      _pdfFilename = null;
+                    }),
+                    child: Icon(Icons.close, color: context.greyColor, size: 18),
+                  ),
+                ],
+              ),
+            ),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Icon(chat ? Icons.chat_bubble_outline : Icons.campaign_outlined,
                   color: accent, size: 22),
+              if (!chat)
+                IconButton(
+                  tooltip: 'Attach assignment PDF',
+                  onPressed: _sending ? null : _pickAssignmentPdf,
+                  icon: const Icon(Icons.attach_file_rounded),
+                  color: accent,
+                ),
               const SizedBox(width: 4),
               Expanded(
                 child: TextField(

@@ -6,9 +6,14 @@ import '../../../services/support_contact_service.dart';
 import '../../../theme/app_theme.dart';
 
 class ClassPackagesScreen extends StatelessWidget {
-  const ClassPackagesScreen({super.key, this.kidsOnly = false});
+  const ClassPackagesScreen({
+    super.key,
+    this.kidsOnly = false,
+    this.holidayOnly = false,
+  });
 
   final bool kidsOnly;
+  final bool holidayOnly;
 
   /// Exact Scholaxia packages from product pricing.
   static const _kidSections = [
@@ -145,13 +150,25 @@ class ClassPackagesScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final sections = kidsOnly ? _kidSections : _studentSections;
+    final sections = kidsOnly
+        ? _kidSections
+        : holidayOnly
+            ? _studentSections
+                .where((section) => section.title.contains('Holiday'))
+                .toList()
+            : _studentSections;
     final total = sections.fold<int>(0, (sum, s) => sum + s.plans.length);
 
     return Scaffold(
       backgroundColor: context.bgColor,
       appBar: AppBar(
-        title: Text(kidsOnly ? 'Kids class packages' : 'Class packages'),
+        title: Text(
+          kidsOnly
+              ? 'Kids class packages'
+              : holidayOnly
+                  ? 'Holiday Promo Classes'
+                  : 'Class packages',
+        ),
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
@@ -159,7 +176,9 @@ class ClassPackagesScreen extends StatelessWidget {
           Text(
             kidsOnly
                 ? 'Nursery & Primary packages'
-                : 'Secondary & Holiday packages',
+                : holidayOnly
+                    ? 'Scholaxia Holiday Promo Classes'
+                    : 'Secondary & Holiday packages',
             style: TextStyle(
               color: context.textColor,
               fontSize: 23,
@@ -170,7 +189,9 @@ class ClassPackagesScreen extends StatelessWidget {
           Text(
             kidsOnly
                 ? '$total packages for Nursery and Primary learners.'
-                : '$total packages — scroll to see every High School and Holiday option.',
+                : holidayOnly
+                    ? 'SS 1–3 and JSS 1–3 · Five classes weekly.'
+                    : '$total packages — scroll to see every High School and Holiday option.',
             style: TextStyle(color: context.greyColor),
           ),
           const SizedBox(height: 18),
