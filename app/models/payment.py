@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, Float, Enum
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, Float, Enum, JSON
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
@@ -74,3 +74,6 @@ class StudentEntitlement(Base):
     payment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("payments.id"), nullable=True)
     granted_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    # Purchase-time subjects. Changing a paid subject invalidates board access
+    # until the student buys a package for the new selection.
+    details: Mapped[dict | None] = mapped_column(JSON, nullable=True)

@@ -350,6 +350,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _settingsGroup(context, [
                 _settingsRow(
                   context,
+                  Icons.edit_rounded,
+                  'Edit subjects',
+                  onTap: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            const ExamSubjectSetupScreen(popOnComplete: true),
+                      ),
+                    );
+                    if (mounted) _load();
+                  },
+                ),
+                _settingsRow(
+                  context,
                   Icons.school_outlined,
                   'Exam settings',
                   onTap: () async {

@@ -3,6 +3,7 @@ import '../../api/api_service.dart';
 import '../../theme/app_theme.dart';
 import '../kind/kind_shell.dart';
 import '../student/student_shell.dart';
+import '../student/cbt/cbt_packages_screen.dart';
 
 /// Post-signup: class level + exams. SS students can select both JAMB and WAEC/NECO
 /// with separate subject lists.
@@ -26,6 +27,9 @@ class _ExamSubjectSetupScreenState extends State<ExamSubjectSetupScreen> {
   List<String> _availableSubjects = [];
   bool _loadingSubjects = true;
   bool _saving = false;
+  Set<String> _originalJambSubjects = {};
+  Set<String> _originalSsceSubjects = {};
+  String? _originalSsceBoard;
 
   bool get _isJss3 {
     final n = _educationLevel.toUpperCase().replaceAll(' ', '');
@@ -62,11 +66,18 @@ class _ExamSubjectSetupScreenState extends State<ExamSubjectSetupScreen> {
 
   Future<void> _loadSubjects() async {
     setState(() => _loadingSubjects = true);
+    StudentProfile? existing;
+    if (widget.popOnComplete) {
+      try {
+        existing = await _api.getStudentProfile();
+      } catch (_) {}
+    }
     try {
       final data = await _api.listAvailableSubjects();
       if (mounted) {
         setState(() {
           _availableSubjects = data;
+          _applyExistingProfile(existing);
           _loadingSubjects = false;
         });
       }
@@ -93,10 +104,48 @@ class _ExamSubjectSetupScreenState extends State<ExamSubjectSetupScreen> {
             'Basic Technology',
             'Social Studies',
           ];
+          _applyExistingProfile(existing);
           _loadingSubjects = false;
         });
       }
     }
+  }
+
+  void _applyExistingProfile(StudentProfile? profile) {
+    if (profile == null) return;
+    if ((profile.educationLevel ?? '').isNotEmpty) {
+      _educationLevel = profile.educationLevel!;
+    }
+    _jambSelected
+      ..clear()
+      ..addAll(profile.jambSubjects);
+    _ssceSelected
+      ..clear()
+      ..addAll(profile.ssceSubjects);
+    _enableJamb = _jambSelected.isNotEmpty;
+    _enableSsce = _ssceSelected.isNotEmpty;
+    _ssceBoard = (profile.ssceExamType ?? 'WAEC').toUpperCase();
+    _originalJambSubjects = Set<String>.from(_jambSelected);
+    _originalSsceSubjects = Set<String>.from(_ssceSelected);
+    _originalSsceBoard = _ssceBoard;
+  }
+
+  bool get _paidSelectionChanged {
+    if (!widget.popOnComplete) return false;
+    return !_setEquals(_originalJambSubjects, _jambSelected) ||
+        !_setEquals(_originalSsceSubjects, _ssceSelected) ||
+        _originalSsceBoard != _ssceBoard;
+  }
+
+  bool _setEquals(Set<String> a, Set<String> b) =>
+      a.length == b.length && a.containsAll(b);
+
+  Future<void> _offerPaymentAfterEdit() async {
+    if (!_paidSelectionChanged || !mounted) return;
+    await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const CbtPackagesScreen()),
+    );
   }
 
   void _selectLevel(String level) {
@@ -198,6 +247,8 @@ class _ExamSubjectSetupScreenState extends State<ExamSubjectSetupScreen> {
           subjects: _ssceSelected.toList(),
         );
         if (!mounted) return;
+        await _offerPaymentAfterEdit();
+        if (!mounted) return;
         _goNext();
       } on ApiException catch (e) {
         if (!mounted) return;
@@ -229,6 +280,8 @@ class _ExamSubjectSetupScreenState extends State<ExamSubjectSetupScreen> {
           subjects: _ssceSelected.toList(),
         );
         if (!mounted) return;
+        await _offerPaymentAfterEdit();
+        if (!mounted) return;
         _goNext();
       } on ApiException catch (e) {
         if (!mounted) return;
@@ -253,9 +306,9 @@ class _ExamSubjectSetupScreenState extends State<ExamSubjectSetupScreen> {
       );
       return;
     }
-    if (_enableSsce && _ssceSelected.isEmpty) {
+    if (_enableSsce && _ssceSelected.length != 9) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pick at least one WAEC/NECO subject.')),
+        const SnackBar(content: Text('WAEC/NECO needs exactly 9 subjects.')),
       );
       return;
     }
@@ -270,6 +323,8 @@ class _ExamSubjectSetupScreenState extends State<ExamSubjectSetupScreen> {
         ssceExamType: _ssceBoard,
         ssceSubjects: _ssceSelected.toList(),
       );
+      if (!mounted) return;
+      await _offerPaymentAfterEdit();
       if (!mounted) return;
       _goNext();
     } on ApiException catch (e) {

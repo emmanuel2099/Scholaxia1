@@ -29,7 +29,8 @@ from app.core.deps import require_student_or_kind
 from app.core.live_class_plans import get_plan
 from app.models.content import Book, BookPurchase
 from app.models.payment import Payment, PaymentStatus, StudentEntitlement
-from app.models.user import User
+from app.models.user import StudentProfile, User
+from app.services.cbt_access import active_cbt_access, subject_snapshot
 from app.services import paystack_service
 from app.services.live_class_access import (
     activate_live_plan,
@@ -155,6 +156,7 @@ async def _grant_cbt_package(db: AsyncSession, payment: Payment) -> None:
         .where(
             StudentEntitlement.student_id == payment.student_id,
             StudentEntitlement.entitlement_type == ENTITLEMENT_CBT_PACKAGE,
+            StudentEntitlement.entitlement_key == (payment.product_id or ""),
             StudentEntitlement.expires_at > now,
         )
         .order_by(StudentEntitlement.expires_at.desc())
@@ -162,6 +164,11 @@ async def _grant_cbt_package(db: AsyncSession, payment: Payment) -> None:
     )
     active = active_res.scalar_one_or_none()
     start = active.expires_at if active else now
+    profile = (
+        await db.execute(
+            select(StudentProfile).where(StudentProfile.user_id == payment.student_id)
+        )
+    ).scalar_one_or_none()
     db.add(StudentEntitlement(
         student_id=payment.student_id,
         entitlement_type=ENTITLEMENT_CBT_PACKAGE,
@@ -169,6 +176,7 @@ async def _grant_cbt_package(db: AsyncSession, payment: Payment) -> None:
         payment_id=payment.id,
         granted_at=now,
         expires_at=start + timedelta(days=duration),
+        details=subject_snapshot(profile),
     ))
 
 
@@ -217,6 +225,15 @@ async def list_cbt_packages(current_user: dict = Depends(require_student_or_kind
         "currency": "NGN",
         "public_key": settings.PAYSTACK_PUBLIC_KEY,
     }
+
+
+@router.get("/cbt-access")
+async def get_cbt_access(
+    current_user: dict = Depends(require_student_or_kind),
+    db: AsyncSession = Depends(get_db),
+):
+    """Current annual package access, including paid-subject snapshot checks."""
+    return await active_cbt_access(db, current_user["sub"])
 
 
 @router.post("/initialize")
@@ -273,6 +290,9 @@ async def initialize_payment(
             email=user.email,
             amount_kobo=amount_kobo,
             reference=reference,
+            # The embedded Flutter WebView intercepts this URL and verifies the
+            # transaction server-side; no public callback page is required.
+            callback_url="https://scholaxia.app/paystack/callback",
             metadata={
                 "student_id": str(student_id),
                 "product_type": product_type,

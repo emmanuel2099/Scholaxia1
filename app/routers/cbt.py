@@ -17,10 +17,38 @@ from app.core.deps import (
 from app.models.cbt import CBTExam, CBTQuestion, CBTSession, ExamProctorLog
 from app.models.user import StudentProfile, User
 from app.core.subjects import subject_matches
+from app.services.cbt_access import has_board_access, normalize_board
 
 router = APIRouter(prefix="/cbt", tags=["CBT"])
 
 PRACTICE_BANK_BASE = "https://www.scholaxiacbtexam.blog/practice-exams"
+
+
+async def _require_paid_practice_access(
+    db: AsyncSession,
+    current_user: dict,
+    exam: CBTExam,
+) -> None:
+    """School exams stay free; practice exams require an active annual package."""
+    if exam.is_school_exam:
+        return
+    role = (current_user.get("role") or "").lower()
+    if role not in {"student", "kind"}:
+        return
+    board = normalize_board(exam.exam_type)
+    if await has_board_access(db, current_user["sub"], board):
+        return
+    raise HTTPException(
+        status_code=402,
+        detail={
+            "code": "cbt_package_required",
+            "board": board,
+            "message": (
+                "Your annual CBT package is inactive, expired, or your paid "
+                "subjects were changed. Choose a package to continue."
+            ),
+        },
+    )
 
 
 @router.get("/packages")
@@ -480,6 +508,7 @@ async def download_exam(
     # Internal (school) exams are downloadable for offline use. We never ship the
     # correct answers for them — grading happens server-side on submit — so
     # offline downloads stay tamper-safe.
+    await _require_paid_practice_access(db, current_user, exam)
 
     q_result = await db.execute(
         select(CBTQuestion).where(CBTQuestion.exam_id == exam.id)
@@ -533,6 +562,7 @@ async def start_session(
     exam = result.scalar_one_or_none()
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
+    await _require_paid_practice_access(db, current_user, exam)
 
     role = (current_user.get("role") or "").lower()
     exam_type = (exam.exam_type or "").upper()

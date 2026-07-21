@@ -89,6 +89,9 @@ async def _run_schema_migrations(conn) -> None:
         "ALTER TABLE payments ADD COLUMN IF NOT EXISTS live_plan_id VARCHAR(80) NULL"
     ))
     await conn.execute(text(
+        "ALTER TABLE student_entitlements ADD COLUMN IF NOT EXISTS details JSON NULL"
+    ))
+    await conn.execute(text(
         "ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS live_plan_id VARCHAR(80) NULL"
     ))
     await conn.execute(text(

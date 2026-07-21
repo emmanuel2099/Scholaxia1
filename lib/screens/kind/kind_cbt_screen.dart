@@ -19,6 +19,7 @@ class _KindCbtScreenState extends State<KindCbtScreen> {
   List<dynamic> _exams = [];
   String? _startingExamId;
   String? _error;
+  bool _hasPaidAccess = false;
 
   @override
   void initState() {
@@ -33,9 +34,17 @@ class _KindCbtScreenState extends State<KindCbtScreen> {
     });
     try {
       final data = await _api.cbtExams(examType: 'COMMON_ENTRANCE');
+      Map<String, dynamic> access = const {};
+      try {
+        access = await _api.cbtPackageAccess();
+      } catch (_) {}
+      final boards = ((access['boards'] as List?) ?? const [])
+          .map((e) => e.toString().toUpperCase())
+          .toSet();
       if (!mounted) return;
       setState(() {
         _exams = data;
+        _hasPaidAccess = boards.contains('COMMON_ENTRANCE');
         _loading = false;
       });
     } on ApiException catch (e) {
@@ -55,6 +64,10 @@ class _KindCbtScreenState extends State<KindCbtScreen> {
   }
 
   Future<void> _startExam(Map<String, dynamic> exam) async {
+    if (!_hasPaidAccess) {
+      await _openPackage();
+      return;
+    }
     final examId = exam['id']?.toString() ?? '';
     final title = exam['title']?.toString() ?? 'Common Entrance';
     if (examId.isEmpty || _startingExamId != null) return;
@@ -85,6 +98,16 @@ class _KindCbtScreenState extends State<KindCbtScreen> {
     } finally {
       if (mounted) setState(() => _startingExamId = null);
     }
+  }
+
+  Future<void> _openPackage() async {
+    final paid = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const CbtPackagesScreen(kidsOnly: true),
+      ),
+    );
+    if (paid == true && mounted) await _load();
   }
 
   @override
@@ -122,12 +145,7 @@ class _KindCbtScreenState extends State<KindCbtScreen> {
                   ),
                   IconButton(
                     tooltip: 'Annual package',
-                    onPressed: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const CbtPackagesScreen(kidsOnly: true),
-                      ),
-                    ),
+                    onPressed: _openPackage,
                     icon: Icon(
                       Icons.workspace_premium_rounded,
                       color: context.accentColor,
@@ -160,6 +178,39 @@ class _KindCbtScreenState extends State<KindCbtScreen> {
                       child: CircularProgressIndicator(
                         color: context.accentColor,
                       ),
+                    )
+                  : !_hasPaidAccess
+                  ? ListView(
+                      padding: const EdgeInsets.all(24),
+                      children: [
+                        const SizedBox(height: 50),
+                        Icon(
+                          Icons.workspace_premium_rounded,
+                          size: 52,
+                          color: context.accentColor,
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          'Annual Common Entrance package required',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: context.textColor,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Pay ₦2,000 securely in the app for one year of CBT practice.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: context.greyColor, height: 1.4),
+                        ),
+                        const SizedBox(height: 18),
+                        FilledButton(
+                          onPressed: _openPackage,
+                          child: const Text('Pay with Paystack'),
+                        ),
+                      ],
                     )
                   : RefreshIndicator(
                       color: context.accentColor,

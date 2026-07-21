@@ -22,8 +22,8 @@ SUBJECT_LIMITS = {
 
 SUBJECT_MINIMUMS = {
     ExamType.JAMB: 4,
-    ExamType.WAEC: 1,
-    ExamType.NECO: 1,
+    ExamType.WAEC: 9,
+    ExamType.NECO: 9,
     ExamType.JUNIOR_WAEC: 1,
     ExamType.POST_UTME: 4,
     ExamType.ALL: 1,
@@ -296,10 +296,8 @@ async def setup_exam(
             raise HTTPException(status_code=400, detail="SSCE board must be WAEC, NECO, or COMMON_ENTRANCE")
         if enable_jamb and len(jamb) != 4:
             raise HTTPException(status_code=400, detail="JAMB requires exactly 4 subjects")
-        if enable_ssce and len(ssce) < 1:
-            raise HTTPException(status_code=400, detail="Select at least one WAEC/NECO subject")
-        if enable_ssce and len(ssce) > 9:
-            raise HTTPException(status_code=400, detail="WAEC/NECO allows max 9 subjects")
+        if enable_ssce and len(ssce) != 9:
+            raise HTTPException(status_code=400, detail="WAEC/NECO requires exactly 9 subjects")
 
         if enable_jamb and enable_ssce:
             exam_type = ExamType.ALL
@@ -348,6 +346,8 @@ async def setup_exam(
         raise HTTPException(status_code=400, detail=f"{exam_type.value} requires {minimum} subject(s)")
     if exam_type == ExamType.JAMB and len(subjects) != 4:
         raise HTTPException(status_code=400, detail="JAMB requires exactly 4 subjects")
+    if exam_type in (ExamType.WAEC, ExamType.NECO) and len(subjects) != 9:
+        raise HTTPException(status_code=400, detail="WAEC/NECO requires exactly 9 subjects")
     if exam_type == ExamType.POST_UTME and len(subjects) != 4:
         raise HTTPException(status_code=400, detail="POST-UTME requires exactly 4 subjects")
 

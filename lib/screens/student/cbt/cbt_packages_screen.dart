@@ -108,6 +108,7 @@ class CbtPackagesScreen extends StatelessWidget {
           content: Text('Payment confirmed. Your annual CBT package is active.'),
         ),
       );
+      Navigator.pop(context, true);
     } on ApiException catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

@@ -31,6 +31,8 @@ class _CbtScreenState extends State<CbtScreen> {
   List<String> _jambSubjects = [];
   List<String> _ssceSubjects = [];
   Set<String> _downloaded = {};
+  Set<String> _paidBoards = {};
+  bool _subjectChangeRequiresPayment = false;
   bool _loadingExams = true;
   String? _busyExamId;
   String? _selectedSubject;
@@ -45,7 +47,10 @@ class _CbtScreenState extends State<CbtScreen> {
   }
 
   Future<void> _loadExams() async {
-    setState(() => _loadingExams = true);
+    setState(() {
+      _loadingExams = true;
+      _paidBoards = {};
+    });
     try {
       // Always load profile subjects for the WAEC/NECO slider.
       List<String> profileJamb = [];
@@ -59,6 +64,12 @@ class _CbtScreenState extends State<CbtScreen> {
       } catch (_) {}
 
       final data = await _api.cbtExamsForMe();
+      Map<String, dynamic> access = const {};
+      try {
+        access = await _api.cbtPackageAccess();
+      } catch (_) {
+        // Stay locked when access cannot be verified; pull-to-refresh retries.
+      }
       final practice = (data['practice_exams'] as List?) ?? [];
       final jamb = (data['jamb_exams'] as List?) ?? [];
       final ssce = (data['ssce_exams'] as List?) ?? [];
@@ -97,6 +108,11 @@ class _CbtScreenState extends State<CbtScreen> {
           _jambSubjects = apiJamb.isNotEmpty ? apiJamb : profileJamb;
           _ssceSubjects = apiSsce.isNotEmpty ? apiSsce : profileSsce;
           _downloaded = ids;
+          _paidBoards = ((access['boards'] as List?) ?? const [])
+              .map((e) => e.toString().toUpperCase())
+              .toSet();
+          _subjectChangeRequiresPayment =
+              access['subject_change_requires_payment'] == true;
           _loadingExams = false;
           _selectedSubject = null;
           _ensureDefaultSubject();
@@ -175,6 +191,78 @@ class _CbtScreenState extends State<CbtScreen> {
   }
 
   bool get _isJambTab => _activeTab == 'JAMB';
+
+  bool get _hasActiveTabAccess {
+    if (_activeTab == 'JAMB') return _paidBoards.contains('JAMB');
+    if (_activeTab == 'JUNIOR_WAEC') {
+      return _paidBoards.contains('JUNIOR_WAEC');
+    }
+    if (_activeTab == 'COMMON_ENTRANCE') {
+      return _paidBoards.contains('COMMON_ENTRANCE');
+    }
+    if (_activeTab == 'WAEC_NECO') {
+      return _paidBoards.contains('WAEC') || _paidBoards.contains('NECO');
+    }
+    return false;
+  }
+
+  Future<void> _openPackages() async {
+    final paid = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => const CbtPackagesScreen()),
+    );
+    if (paid == true && mounted) await _loadExams();
+  }
+
+  Widget _paymentRequiredCard(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: context.cardColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: context.borderColor),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            Icons.workspace_premium_rounded,
+            color: context.accentColor,
+            size: 42,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _subjectChangeRequiresPayment
+                ? 'Subjects changed — activate them'
+                : 'Annual CBT package required',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: context.textColor,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _subjectChangeRequiresPayment
+                ? 'Your paid package covered the subjects previously registered. Pay for a package to activate the new subject selection.'
+                : 'Choose a one-year package to download and take CBT practice exams.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: context.greyColor, height: 1.45),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _openPackages,
+              icon: const Icon(Icons.lock_open_rounded),
+              label: const Text('View packages & pay'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   /// One exam per profile subject that admin has uploaded (1–4).
   /// These are always taken together as a single JAMB session.
@@ -316,6 +404,10 @@ class _CbtScreenState extends State<CbtScreen> {
   Future<void> _downloadJambBundleMembers(
     List<Map<String, dynamic>> members,
   ) async {
+    if (!_hasActiveTabAccess) {
+      await _openPackages();
+      return;
+    }
     if (members.isEmpty) return;
     if (_busyExamId != null) return;
     setState(() => _busyExamId = _jambBundleBusyKey);
@@ -353,6 +445,10 @@ class _CbtScreenState extends State<CbtScreen> {
     BuildContext ctx,
     List<Map<String, dynamic>> members,
   ) async {
+    if (!_hasActiveTabAccess) {
+      await _openPackages();
+      return;
+    }
     if (members.isEmpty) return;
     for (final exam in members) {
       final id = exam['id']?.toString() ?? '';
@@ -444,6 +540,10 @@ class _CbtScreenState extends State<CbtScreen> {
   }
 
   Future<void> _downloadExam(String examId) async {
+    if (!_hasActiveTabAccess) {
+      await _openPackages();
+      return;
+    }
     if (_busyExamId != null) return;
     setState(() => _busyExamId = examId);
     try {
@@ -474,6 +574,10 @@ class _CbtScreenState extends State<CbtScreen> {
     int? totalQ,
     int? durMins,
   }) async {
+    if (!_hasActiveTabAccess) {
+      await _openPackages();
+      return;
+    }
     // Start never auto-downloads — user must tap Download first.
     if (!_downloaded.contains(examId)) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -623,6 +727,8 @@ class _CbtScreenState extends State<CbtScreen> {
                             ),
                           ),
                         )
+                      else if (!_hasActiveTabAccess)
+                        _paymentRequiredCard(context)
                       else if (_isJambTab) ...[
                         Builder(
                           builder: (ctx) {
@@ -880,10 +986,7 @@ class _CbtScreenState extends State<CbtScreen> {
             ),
           ),
           GestureDetector(
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const CbtPackagesScreen()),
-            ),
+            onTap: _openPackages,
             child: Container(
               margin: const EdgeInsets.only(right: 8),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),

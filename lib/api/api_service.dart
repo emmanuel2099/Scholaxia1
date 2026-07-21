@@ -205,6 +205,10 @@ class ApiService {
       final detail = body['detail'];
       if (detail is String) {
         message = detail;
+      } else if (detail is Map) {
+        message =
+            (detail['message'] ?? detail['msg'] ?? detail['detail'] ?? detail)
+                .toString();
       } else if (detail is List && detail.isNotEmpty) {
         final first = detail.first;
         message = first is Map
@@ -966,6 +970,23 @@ class ApiService {
       body: jsonEncode({'reference': reference}),
     );
     return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> cbtPackageAccess() async {
+    final res = await http.get(
+      _uri('/api/v1/payments/paystack/cbt-access'),
+      headers: await _authHeaders(),
+    );
+    return _parseMap(res);
+  }
+
+  Future<List<dynamic>> cbtPackageCatalog() async {
+    final res = await http.get(
+      _uri('/api/v1/payments/paystack/cbt-packages'),
+      headers: await _authHeaders(),
+    );
+    final data = _parseMap(res);
+    return (data['packages'] as List?) ?? const [];
   }
 
   // ── Marketplace ────────────────────────────────────────────────────────────
