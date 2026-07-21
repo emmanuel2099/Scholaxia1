@@ -1076,7 +1076,7 @@ async function importCbtFile() {
   ok.textContent = "";
 
   if (!input || !input.files || !input.files[0]) {
-    err.textContent = "Choose a .json or .csv file first.";
+    err.textContent = "Choose a .json, .csv, .pdf, or .docx file first.";
     return;
   }
 
@@ -1103,8 +1103,8 @@ async function importCbtFile() {
     fields.title = fields.exam_type + " " + fields.subject + " " + fields.year;
   }
 
-  var isPdf = /\.pdf$/i.test(file.name || "");
-  if (isPdf) {
+  var needsPreview = /\.(pdf|docx)$/i.test(file.name || "");
+  if (needsPreview) {
     btn.disabled = true;
     btn.textContent = "Extracting questions…";
     try {

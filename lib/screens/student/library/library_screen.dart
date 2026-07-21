@@ -13,6 +13,13 @@ class LibraryScreen extends StatefulWidget {
 }
 
 class _LibraryScreenState extends State<LibraryScreen> {
+  static const _fixedCategories = [
+    'All',
+    'Books',
+    'Study Materials',
+    'Scheme of Work',
+  ];
+
   final _api = ApiService();
   final _searchController = TextEditingController();
   bool _loading = true;
@@ -32,40 +39,58 @@ class _LibraryScreenState extends State<LibraryScreen> {
     super.dispose();
   }
 
-  List<Map<String, dynamic>> get _filteredBooks {
+  String _bookCategory(Map<String, dynamic> book) {
+    final raw = (book['category']?.toString() ?? 'Books').trim();
+    if (raw.toLowerCase().contains('scheme')) return 'Scheme of Work';
+    if (raw.toLowerCase().contains('study') ||
+        raw.toLowerCase().contains('note') ||
+        raw.toLowerCase().contains('material')) {
+      return 'Study Materials';
+    }
+    if (raw.toLowerCase().contains('past')) return 'Study Materials';
+    return 'Books';
+  }
+
+  List<Map<String, dynamic>> get _searchMatched {
     final q = _searchController.text.trim().toLowerCase();
+    if (q.isEmpty) return _books;
     return _books.where((book) {
-      final category = book['category']?.toString() ?? 'Books';
-      if (_category != 'All' && category != _category) return false;
-      if (q.isEmpty) return true;
       return [
         book['title'],
         book['author'],
         book['subject'],
         book['exam_type'],
         book['scheme_topic'],
-        category,
+        book['description'],
+        _bookCategory(book),
       ].whereType<Object>().any(
         (value) => value.toString().toLowerCase().contains(q),
       );
     }).toList();
   }
 
-  List<String> get _categories {
-    final values =
-        _books
-            .map((book) => book['category']?.toString() ?? 'Books')
-            .where((value) => value.isNotEmpty)
-            .toSet()
-            .toList()
-          ..sort();
-    return ['All', ...values];
+  List<Map<String, dynamic>> get _filteredBooks {
+    final matched = _searchMatched;
+    if (_category == 'All') return matched;
+    return matched
+        .where((book) => _bookCategory(book) == _category)
+        .toList();
+  }
+
+  int _countFor(String category) {
+    return _searchMatched
+        .where((book) => _bookCategory(book) == category)
+        .length;
   }
 
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final raw = await _api.libraryStudentBooks();
+      final raw = await _api.libraryStudentBooks(
+        searchQuery: _searchController.text.trim().isEmpty
+            ? null
+            : _searchController.text.trim(),
+      );
       if (!mounted) return;
       setState(() {
         _books = raw
@@ -95,8 +120,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         MaterialPageRoute(
           builder: (_) => BookReaderScreen(
             bookId: id,
-            title:
-                detail['title']?.toString() ??
+            title: detail['title']?.toString() ??
                 book['title']?.toString() ??
                 'Book',
             signedUrl: url,
@@ -205,6 +229,33 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
   }
 
+  IconData _iconFor(String category) {
+    switch (category) {
+      case 'Study Materials':
+        return Icons.description_rounded;
+      case 'Scheme of Work':
+        return Icons.calendar_view_week_rounded;
+      default:
+        return Icons.menu_book_rounded;
+    }
+  }
+
+  String _emptyMessage() {
+    if (_searchController.text.trim().isNotEmpty) {
+      return 'No results for “${_searchController.text.trim()}”.';
+    }
+    switch (_category) {
+      case 'Books':
+        return 'No books yet. Admin will upload paid PDF books here.';
+      case 'Study Materials':
+        return 'No study materials yet. Admin will upload notes and materials here.';
+      case 'Scheme of Work':
+        return 'No scheme of work yet. Admin will upload weekly schemes here.';
+      default:
+        return 'Admin will add books, study materials and schemes of work soon.';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final visibleBooks = _filteredBooks;
@@ -233,7 +284,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
               child: Text(
-                'Books, study materials and schemes of work selected by Scholaxia. Paid items unlock after purchase and stay inside the app.',
+                'Browse Books, Study Materials and Scheme of Work. Search stays live as you type.',
                 style: TextStyle(
                   color: context.greyColor,
                   fontSize: 13,
@@ -246,8 +297,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
               child: TextField(
                 controller: _searchController,
                 onChanged: (_) => setState(() {}),
+                textInputAction: TextInputAction.search,
                 decoration: InputDecoration(
-                  hintText: 'Search books and study materials',
+                  hintText: 'Search books, study materials, scheme of work',
                   prefixIcon: const Icon(Icons.search_rounded),
                   suffixIcon: _searchController.text.isEmpty
                       ? null
@@ -266,19 +318,31 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             SizedBox(
-              height: 40,
+              height: 42,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                itemCount: _categories.length,
+                itemCount: _fixedCategories.length,
                 separatorBuilder: (_, __) => const SizedBox(width: 8),
                 itemBuilder: (_, index) {
-                  final category = _categories[index];
+                  final category = _fixedCategories[index];
+                  final selected = category == _category;
+                  final count = category == 'All'
+                      ? _searchMatched.length
+                      : _countFor(category);
                   return ChoiceChip(
-                    label: Text(category),
-                    selected: category == _category,
+                    avatar: Icon(
+                      category == 'All'
+                          ? Icons.apps_rounded
+                          : _iconFor(category),
+                      size: 16,
+                    ),
+                    label: Text(
+                      count > 0 ? '$category ($count)' : category,
+                    ),
+                    selected: selected,
                     onSelected: (_) => setState(() => _category = category),
                   );
                 },
@@ -298,29 +362,31 @@ class _LibraryScreenState extends State<LibraryScreen> {
                       child: visibleBooks.isEmpty
                           ? ListView(
                               physics: const AlwaysScrollableScrollPhysics(),
+                              padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
                               children: [
-                                const SizedBox(height: 80),
+                                const SizedBox(height: 48),
                                 Icon(
-                                  Icons.menu_book_outlined,
+                                  _category == 'All'
+                                      ? Icons.menu_book_outlined
+                                      : _iconFor(_category),
                                   size: 48,
                                   color: context.greyColor,
                                 ),
                                 const SizedBox(height: 12),
                                 Text(
-                                  _books.isEmpty
+                                  _category == 'All'
                                       ? 'No materials yet'
-                                      : 'No matching materials',
+                                      : 'No $_category yet',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: context.textColor,
                                     fontWeight: FontWeight.w700,
+                                    fontSize: 16,
                                   ),
                                 ),
                                 const SizedBox(height: 6),
                                 Text(
-                                  _books.isEmpty
-                                      ? 'Admin will add books, study materials and schemes of work soon.'
-                                      : 'Try another title, subject, or category.',
+                                  _emptyMessage(),
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                     color: context.greyColor,
@@ -329,145 +395,173 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                 ),
                               ],
                             )
-                          : ListView.separated(
+                          : ListView(
+                              physics: const AlwaysScrollableScrollPhysics(),
                               padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
-                              itemCount: visibleBooks.length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(height: 12),
-                              itemBuilder: (_, i) {
-                                final b = visibleBooks[i];
-                                final title = b['title']?.toString() ?? 'Book';
-                                final author = b['author']?.toString() ?? '';
-                                final subject = b['subject']?.toString() ?? '';
-                                final cover = b['cover_image_url']?.toString();
-                                final free = b['is_free'] != false;
-                                final hasAccess = b['has_access'] == true;
-                                final price =
-                                    (b['price'] as num?)?.toDouble() ?? 0;
-                                final category =
-                                    b['category']?.toString() ?? 'Books';
-                                final opening =
-                                    _openingId == b['id']?.toString();
-                                return Material(
-                                  color: context.cardColor,
-                                  borderRadius: BorderRadius.circular(16),
-                                  child: InkWell(
-                                    borderRadius: BorderRadius.circular(16),
-                                    onTap: opening
-                                        ? null
-                                        : () => free || hasAccess
-                                              ? _openBook(b)
-                                              : _showPurchaseRequired(b),
-                                    child: Container(
-                                      padding: const EdgeInsets.all(14),
-                                      decoration: BoxDecoration(
-                                        borderRadius: BorderRadius.circular(16),
-                                        border: Border.all(
-                                          color: context.borderColor,
+                              children: [
+                                if (_category == 'All') ...[
+                                  for (final section in const [
+                                    'Books',
+                                    'Study Materials',
+                                    'Scheme of Work',
+                                  ]) ...[
+                                    if (_countFor(section) > 0) ...[
+                                      Padding(
+                                        padding: const EdgeInsets.only(
+                                          top: 8,
+                                          bottom: 10,
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              _iconFor(section),
+                                              color: context.accentColor,
+                                              size: 18,
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              section,
+                                              style: TextStyle(
+                                                color: context.textColor,
+                                                fontWeight: FontWeight.w800,
+                                                fontSize: 15,
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
-                                      child: Row(
-                                        children: [
-                                          ClipRRect(
-                                            borderRadius: BorderRadius.circular(
-                                              10,
-                                            ),
-                                            child: Container(
-                                              width: 56,
-                                              height: 72,
-                                              color: context.accentColor
-                                                  .withOpacity(0.12),
-                                              child:
-                                                  cover != null &&
-                                                      cover.isNotEmpty
-                                                  ? Image.network(
-                                                      cover,
-                                                      fit: BoxFit.cover,
-                                                      errorBuilder:
-                                                          (_, __, ___) => Icon(
-                                                            Icons
-                                                                .menu_book_rounded,
-                                                            color: context
-                                                                .accentColor,
-                                                          ),
-                                                    )
-                                                  : Icon(
-                                                      Icons.menu_book_rounded,
-                                                      color:
-                                                          context.accentColor,
-                                                    ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 14),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  title,
-                                                  style: TextStyle(
-                                                    color: context.textColor,
-                                                    fontWeight: FontWeight.w800,
-                                                    fontSize: 15,
-                                                  ),
-                                                ),
-                                                if (author.isNotEmpty)
-                                                  Text(
-                                                    author,
-                                                    style: TextStyle(
-                                                      color: context.greyColor,
-                                                      fontSize: 12,
-                                                    ),
-                                                  ),
-                                                const SizedBox(height: 4),
-                                                Text(
-                                                  [
-                                                    if (subject.isNotEmpty)
-                                                      subject,
-                                                    category,
-                                                    free
-                                                        ? 'Free'
-                                                        : hasAccess
-                                                        ? 'Purchased'
-                                                        : '₦${price.toStringAsFixed(0)}',
-                                                  ].join(' · '),
-                                                  style: TextStyle(
-                                                    color: context.accentColor,
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.w600,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                          if (opening)
-                                            const SizedBox(
-                                              width: 22,
-                                              height: 22,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                              ),
-                                            )
-                                          else
-                                            Icon(
-                                              free || hasAccess
-                                                  ? Icons.chevron_right_rounded
-                                                  : Icons.lock_rounded,
-                                              color: free || hasAccess
-                                                  ? context.greyColor
-                                                  : context.accentColor,
-                                            ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              },
+                                      ..._searchMatched
+                                          .where(
+                                            (book) =>
+                                                _bookCategory(book) == section,
+                                          )
+                                          .map(_materialTile),
+                                      const SizedBox(height: 8),
+                                    ],
+                                  ],
+                                ] else
+                                  ...visibleBooks.map(_materialTile),
+                              ],
                             ),
                     ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _materialTile(Map<String, dynamic> b) {
+    final title = b['title']?.toString() ?? 'Book';
+    final author = b['author']?.toString() ?? '';
+    final subject = b['subject']?.toString() ?? '';
+    final cover = b['cover_image_url']?.toString();
+    final free = b['is_free'] != false;
+    final hasAccess = b['has_access'] == true;
+    final price = (b['price'] as num?)?.toDouble() ?? 0;
+    final category = _bookCategory(b);
+    final opening = _openingId == b['id']?.toString();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Material(
+        color: context.cardColor,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: opening
+              ? null
+              : () => free || hasAccess
+                  ? _openBook(b)
+                  : _showPurchaseRequired(b),
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: context.borderColor),
+            ),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    width: 56,
+                    height: 72,
+                    color: context.accentColor.withValues(alpha: 0.12),
+                    child: cover != null && cover.isNotEmpty
+                        ? Image.network(
+                            cover,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Icon(
+                              _iconFor(category),
+                              color: context.accentColor,
+                            ),
+                          )
+                        : Icon(
+                            _iconFor(category),
+                            color: context.accentColor,
+                          ),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          color: context.textColor,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 15,
+                        ),
+                      ),
+                      if (author.isNotEmpty)
+                        Text(
+                          author,
+                          style: TextStyle(
+                            color: context.greyColor,
+                            fontSize: 12,
+                          ),
+                        ),
+                      const SizedBox(height: 4),
+                      Text(
+                        [
+                          if (subject.isNotEmpty) subject,
+                          category,
+                          free
+                              ? 'Free'
+                              : hasAccess
+                                  ? 'Purchased'
+                                  : '₦${price.toStringAsFixed(0)}',
+                        ].join(' · '),
+                        style: TextStyle(
+                          color: context.accentColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (opening)
+                  const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else
+                  Icon(
+                    free || hasAccess
+                        ? Icons.chevron_right_rounded
+                        : Icons.lock_rounded,
+                    color: free || hasAccess
+                        ? context.greyColor
+                        : context.accentColor,
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );

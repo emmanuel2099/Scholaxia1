@@ -18,13 +18,15 @@ from __future__ import annotations
 
 import io
 import re
+import zipfile
 from typing import Any
+from xml.etree import ElementTree
 
 # Questions at or below this confidence must be reviewed by the admin and are
 # never auto-published.
 LOW_CONFIDENCE_THRESHOLD = 0.7
 
-MAX_QUESTION_NUMBER = 400
+MAX_QUESTION_NUMBER = 5000
 
 
 class PDFParseError(ValueError):
@@ -57,8 +59,41 @@ def _extract_pdf_text(content: bytes) -> str:
     return "\n".join(pages)
 
 
+def _extract_docx_text(content: bytes) -> str:
+    """Read paragraph and table text from an Office Open XML Word file."""
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as archive:
+            document_xml = archive.read("word/document.xml")
+    except (zipfile.BadZipFile, KeyError) as exc:
+        raise PDFParseError(
+            "Could not read this Word file. Upload a valid .docx file; old .doc files "
+            "must first be saved as .docx in Microsoft Word."
+        ) from exc
+
+    try:
+        root = ElementTree.fromstring(document_xml)
+    except ElementTree.ParseError as exc:
+        raise PDFParseError("Could not read text from this Word document.") from exc
+
+    namespace = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    lines: list[str] = []
+    for paragraph in root.iter(f"{namespace}p"):
+        parts: list[str] = []
+        for node in paragraph.iter():
+            if node.tag == f"{namespace}t" and node.text:
+                parts.append(node.text)
+            elif node.tag == f"{namespace}tab":
+                parts.append("\t")
+            elif node.tag == f"{namespace}br":
+                parts.append("\n")
+        line = "".join(parts).strip()
+        if line:
+            lines.append(line)
+    return "\n".join(lines)
+
+
 # "1." or "1)" at the start of a line begins a question.
-_QUESTION_START = re.compile(r"^[ \t]*(\d{1,3})[.)][ \t]+", re.MULTILINE)
+_QUESTION_START = re.compile(r"^[ \t]*(\d{1,4})[.)][ \t]+", re.MULTILINE)
 
 # Inline answer inside a question block, e.g. "Answer: B", "Ans. C", "ANS = D"
 _INLINE_ANSWER = re.compile(
@@ -73,7 +108,7 @@ _ANSWER_KEY_HEADING = re.compile(
 )
 
 # "12. B" / "12) C" / "12 - D" / "12: A" pairs inside an answer key.
-_ANSWER_PAIR = re.compile(r"\b(\d{1,3})\s*[.):\-]?\s*([A-Da-d])\b")
+_ANSWER_PAIR = re.compile(r"\b(\d{1,4})\s*[.):\-]?\s*([A-Da-d])\b")
 
 
 def _find_option_positions(block: str) -> list[tuple[str, int, int]]:
@@ -151,25 +186,18 @@ def _parse_answer_key(key_text: str) -> dict[int, str]:
     return answers
 
 
-def parse_pdf_questions(content: bytes) -> dict[str, Any]:
-    """Extract questions + answer key from a PDF. Returns a preview payload.
-
-    Result shape::
-
-        {
-          "questions": [ {number, question_text, option_a..d, correct_option,
-                          confidence, issues}, ... ],
-          "answer_key_found": bool,
-          "warnings": [str, ...],
-        }
-    """
-    text = _extract_pdf_text(content)
-
+def _parse_questions_from_text(text: str, source_label: str) -> dict[str, Any]:
+    """Extract questions + answer key from document text."""
     if len(_clean_text(text)) < 40:
+        if source_label == "PDF":
+            raise PDFParseError(
+                "No readable text found in this PDF. It is probably a scanned/image "
+                "PDF — OCR is not supported. Re-export the paper as a text PDF, or "
+                "use the JSON/CSV template instead."
+            )
         raise PDFParseError(
-            "No readable text found in this PDF. It is probably a scanned/image "
-            "PDF — OCR is not supported. Re-export the paper as a text PDF, or "
-            "use the JSON/CSV template instead."
+            f"No readable text was found in this {source_label} file. "
+            "Check the document or use the JSON/CSV template instead."
         )
 
     warnings: list[str] = []
@@ -188,7 +216,7 @@ def parse_pdf_questions(content: bytes) -> dict[str, Any]:
     starts = list(_QUESTION_START.finditer(question_text_region))
     if not starts:
         raise PDFParseError(
-            "No numbered questions (like '1.' or '1)') were found in this PDF. "
+            f"No numbered questions (like '1.' or '1)') were found in this {source_label} file. "
             "Check the file, or use the JSON/CSV template instead."
         )
 
@@ -229,7 +257,8 @@ def parse_pdf_questions(content: bytes) -> dict[str, Any]:
 
     if not answer_key and not any(q["correct_option"] for q in questions):
         warnings.append(
-            "No answer key was found in the PDF. Set the correct option for every question before saving."
+            f"No answer key was found in the {source_label} file. "
+            "Set the correct option for every question before saving."
         )
 
     return {
@@ -237,3 +266,23 @@ def parse_pdf_questions(content: bytes) -> dict[str, Any]:
         "answer_key_found": bool(answer_key),
         "warnings": warnings,
     }
+
+
+def parse_pdf_questions(content: bytes) -> dict[str, Any]:
+    """Extract questions + answer key from a PDF. Returns a preview payload.
+
+    Result shape::
+
+        {
+          "questions": [ {number, question_text, option_a..d, correct_option,
+                          confidence, issues}, ... ],
+          "answer_key_found": bool,
+          "warnings": [str, ...],
+        }
+    """
+    return _parse_questions_from_text(_extract_pdf_text(content), "PDF")
+
+
+def parse_docx_questions(content: bytes) -> dict[str, Any]:
+    """Extract questions + answer key from a modern Word (.docx) document."""
+    return _parse_questions_from_text(_extract_docx_text(content), "Word")

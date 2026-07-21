@@ -5,6 +5,7 @@ import '../screens/student/profile/profile_screen.dart';
 import '../screens/kind/kind_profile_screen.dart';
 import '../services/support_contact_service.dart';
 import '../theme/app_theme.dart';
+import 'whatsapp_icon.dart';
 
 /// Notification bell + profile avatar for student/kid top bars.
 class AppHeaderActions extends StatefulWidget {
@@ -101,12 +102,12 @@ class _AppHeaderActionsState extends State<AppHeaderActions> {
             child: Container(
               width: 44,
               height: 44,
-              decoration: _btnDecoration(),
-              child: const Icon(
-                Icons.chat_rounded,
-                color: Color(0xFF25D366),
-                size: 23,
+              decoration: BoxDecoration(
+                color: const Color(0xFF25D366),
+                borderRadius: BorderRadius.circular(14),
               ),
+              alignment: Alignment.center,
+              child: const WhatsAppIcon(size: 22, color: Colors.white),
             ),
           ),
         ),

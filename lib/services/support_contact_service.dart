@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../widgets/whatsapp_icon.dart';
+
 class SupportContactService {
   SupportContactService._();
 
@@ -58,8 +60,10 @@ class ContactScholaxiaScreen extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           _ContactCard(
-            icon: Icons.chat_rounded,
-            color: const Color(0xFF25D366),
+            leading: const CircleAvatar(
+              backgroundColor: Color(0xFF25D366),
+              child: WhatsAppIcon(size: 20, color: Colors.white),
+            ),
             title: 'WhatsApp',
             subtitle: SupportContactService.primaryPhone,
             onTap: SupportContactService.openWhatsApp,
@@ -96,29 +100,33 @@ class ContactScholaxiaScreen extends StatelessWidget {
 
 class _ContactCard extends StatelessWidget {
   const _ContactCard({
-    required this.icon,
-    required this.color,
+    this.icon,
+    this.color,
+    this.leading,
     required this.title,
     required this.subtitle,
     required this.onTap,
   });
 
-  final IconData icon;
-  final Color color;
+  final IconData? icon;
+  final Color? color;
+  final Widget? leading;
   final String title;
   final String subtitle;
   final Future<void> Function() onTap;
 
   @override
   Widget build(BuildContext context) {
+    final accent = color ?? const Color(0xFF7C3AED);
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: CircleAvatar(
-          backgroundColor: color.withValues(alpha: 0.12),
-          child: Icon(icon, color: color),
-        ),
+        leading: leading ??
+            CircleAvatar(
+              backgroundColor: accent.withValues(alpha: 0.12),
+              child: Icon(icon, color: accent),
+            ),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
         subtitle: Text(subtitle),
         trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),

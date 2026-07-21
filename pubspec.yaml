@@ -55,7 +55,6 @@ dependencies:
   camera_windows: ^0.2.6+4
   firebase_analytics: ^11.6.0
   pdfrx: ^2.4.7
-
 dependency_overrides:
   record_platform_interface: 1.2.0
 

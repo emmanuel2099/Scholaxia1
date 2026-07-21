@@ -642,13 +642,14 @@ async def preview_cbt_import(
     current_user: dict = Depends(require_admin),
 ):
     """
-    Extract questions from an uploaded PDF (or JSON/CSV) WITHOUT saving anything.
+    Extract questions from an uploaded PDF, DOCX, JSON, or CSV WITHOUT saving anything.
     Returns editable questions with per-question confidence + issues so the admin
     can review and fix them, then save via POST /cbt/import/confirm.
     """
     from app.services.cbt_pdf_parser import (
         LOW_CONFIDENCE_THRESHOLD,
         PDFParseError,
+        parse_docx_questions,
         parse_pdf_questions,
     )
 
@@ -660,17 +661,18 @@ async def preview_cbt_import(
 
     name = (file.filename or "").lower()
     is_pdf = name.endswith(".pdf") or content[:5] == b"%PDF-"
+    is_docx = name.endswith(".docx")
 
-    if is_pdf:
+    if is_pdf or is_docx:
         try:
-            result = parse_pdf_questions(content)
+            result = parse_docx_questions(content) if is_docx else parse_pdf_questions(content)
         except PDFParseError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         low_conf = sum(
             1 for q in result["questions"] if q["confidence"] < LOW_CONFIDENCE_THRESHOLD
         )
         return {
-            "source": "pdf",
+            "source": "docx" if is_docx else "pdf",
             "questions": result["questions"],
             "total_questions": len(result["questions"]),
             "answer_key_found": result["answer_key_found"],
