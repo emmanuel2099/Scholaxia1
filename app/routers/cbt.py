@@ -1174,3 +1174,36 @@ async def teacher_internal_submissions(
             "submitted_at": session.submitted_at.isoformat() if session.submitted_at else None,
         })
     return {"submissions": out, "count": len(out)}
+
+
+# ── External school exam aliases (same as internal-exams; clearer product name) ──
+
+@router.get("/external-exams/for-me")
+async def external_exams_for_me(
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """External / offline school exams uploaded by admin (alias of internal-exams/for-me)."""
+    return await internal_exams_for_me(current_user=current_user, db=db)
+
+
+@router.post("/external-exams/{exam_id}/submit", response_model=ResultResponse)
+async def submit_external_exam(
+    exam_id: str,
+    payload: InternalSubmitRequest,
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """Submit an offline external school exam (alias of internal-exams submit)."""
+    return await submit_internal_exam(
+        exam_id=exam_id, payload=payload, current_user=current_user, db=db
+    )
+
+
+@router.get("/external-exams/submissions")
+async def external_exam_submissions(
+    current_user: dict = Depends(require_teacher),
+    db: AsyncSession = Depends(get_db),
+):
+    """Teacher grading inbox for external school exams."""
+    return await teacher_internal_submissions(current_user=current_user, db=db)

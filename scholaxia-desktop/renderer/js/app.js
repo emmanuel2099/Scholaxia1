@@ -15,9 +15,11 @@ const PAGE_TITLES = {
   library: "Library",
   "saved-lives": "Saved Lives",
   sia: "Tutor AI",
+  games: "Games",
   community: "Community",
   "community-create": "New Post",
   "group-chat": "Group Chat",
+  groups: "Groups",
   notifications: "Notifications",
   profile: "Profile",
 };
@@ -74,7 +76,9 @@ function cbtPrefetchKey(examId, year) {
 
 function hasOfflineCbtPack(examId, year) {
   const pack = loadOfflineCbtPack(examId, year);
-  return !!(pack && pack.exam && pack.exam.questions && pack.exam.questions.length);
+  if (!pack) return false;
+  if (pack.questions && pack.questions.length) return true;
+  return !!(pack.exam && pack.exam.questions && pack.exam.questions.length);
 }
 
 function updateCbtCardReadyState(card) {
@@ -238,6 +242,11 @@ function goToSubject(index) {
 }
 
 window.onload = async () => {
+  if (localStorage.getItem("sia_role") === "kind" && isStudentLoggedIn()) {
+    window.location.href = "kind.html";
+    return;
+  }
+
   const splashMinMs = 1400;
   const splashStarted = Date.now();
 
@@ -295,6 +304,14 @@ window.onload = async () => {
     if (typeof reconcilePendingPlanPayment === "function") {
       await reconcilePendingPlanPayment();
     }
+    if (typeof flushPendingInternalSubmits === "function") {
+      flushPendingInternalSubmits();
+    }
+    window.addEventListener("online", function () {
+      if (typeof flushPendingInternalSubmits === "function") {
+        flushPendingInternalSubmits();
+      }
+    });
   }
 
   var urlParams = new URLSearchParams(window.location.search);
@@ -307,6 +324,10 @@ window.onload = async () => {
   }
 
   var openPage = urlParams.get("open");
+  if (!openPage && localStorage.getItem("sia_app_resume_mode") === "league") {
+    openPage = "games";
+    try { localStorage.removeItem("sia_app_resume_mode"); } catch (e) { /* ignore */ }
+  }
   var openLive = urlParams.get("live") === "1";
   if (openLive || urlParams.get("paid") === "1") {
     try { sessionStorage.removeItem("sia_live_plans_cache"); } catch (e) { /* ignore */ }
@@ -896,11 +917,22 @@ function showPage(page) {
   refreshPage();
 }
 
+function openGroupsHub() {
+  showPage("community");
+  if (typeof window.discordSelectScholaxia === "function") {
+    window.discordSelectScholaxia();
+  }
+  if (typeof window.discordSelectChannel === "function") {
+    window.discordSelectChannel("groups");
+  }
+}
+
 if (typeof window !== "undefined") {
   window.showPage = showPage;
   window.handleAuthButton = handleAuthButton;
   window.handleTopbarUserClick = handleTopbarUserClick;
   window.quickDashAction = quickDashAction;
+  window.openGroupsHub = openGroupsHub;
 }
 
 function refreshPage() {
@@ -923,12 +955,21 @@ function refreshPage() {
     if (typeof loadAccessCodesPage === "function") loadAccessCodesPage();
     done();
   } else if (currentPage === "school") { loadSchoolExams(); done(); }
-  else if (currentPage === "school-portal") { /* static */ done(); }
+  else if (currentPage === "school-portal") {
+    if (typeof loadInternalExamsPage === "function") loadInternalExamsPage();
+    done();
+  }
   else if (currentPage === "study-materials") { loadStudyMaterials(); done(); }
-  else if (currentPage === "past-questions") { /* embedded past questions */ done(); }
+  else if (currentPage === "past-questions") {
+    if (typeof loadPastQuestionsPage === "function") loadPastQuestionsPage();
+    done();
+  }
   else if (currentPage === "about") { done(); }
   else if (currentPage === "contact") { initAppContactForm(); done(); }
-  else if (currentPage === "marketplace") { /* embedded store */ done(); }
+  else if (currentPage === "marketplace") {
+    if (typeof loadMarketplacePage === "function") loadMarketplacePage();
+    done();
+  }
   else if (currentPage === "subscription") {
     if (typeof loadLivePlans === "function") loadLivePlans(null, true);
     done();
@@ -941,6 +982,10 @@ function refreshPage() {
   else if (currentPage === "library") { loadLibrary(); done(); }
   else if (currentPage === "saved-lives") { loadSavedLivesPage(); done(); }
   else if (currentPage === "sia") { loadSia(); done(); }
+  else if (currentPage === "games") {
+    if (typeof loadGamesPage === "function") loadGamesPage();
+    done();
+  }
   else if (currentPage === "community") {
     if (typeof markCommunityRead === "function") markCommunityRead();
     var pending = communityPendingPost;
@@ -1276,6 +1321,10 @@ function stripSeedPracticeExams(list, examType) {
 
 async function loadCbtExams() {
   if (isCbtExamActive()) return;
+  if (typeof loadCbtHubPage === "function") {
+    await loadCbtHubPage();
+    return;
+  }
   showCbtListView();
   document.getElementById("cbt-grid").innerHTML = `<div class="loading">Loading…</div>`;
   if (typeof warmScholaxiaApi === "function") warmScholaxiaApi();
@@ -1657,10 +1706,60 @@ async function submitExam(force) {
     showResult(scorePortalExam(currentExam, answers));
     return;
   }
+
   const answerMap = {};
   currentExam.questions.forEach((q, i) => {
     if (answers[i]) answerMap[q.id] = answers[i];
   });
+
+  if (currentSession && currentSession.is_internal) {
+    try {
+      const result = await api("/api/v1/cbt/external-exams/" + currentSession.exam_id + "/submit", {
+        method: "POST",
+        body: JSON.stringify({
+          answers: answerMap,
+          is_auto_submit: secondsLeft <= 0,
+        }),
+      });
+      showResult(result);
+    } catch (e) {
+      const offline = typeof navigator !== "undefined" && !navigator.onLine;
+      if (offline && typeof queueInternalSubmit === "function") {
+        queueInternalSubmit(currentSession.exam_id, answerMap);
+        showResult({
+          percentage: 0,
+          correct: 0,
+          wrong: 0,
+          total: currentExam.questions.length,
+          pending_sync: true,
+        });
+        document.getElementById("result-detail").innerHTML =
+          "You are offline. Your answers are saved and will be submitted automatically when you reconnect.";
+      } else {
+        alert(e.message || "Submit failed.");
+        closeExam();
+      }
+    }
+    return;
+  }
+
+  if (!currentSession || !currentSession.session_id) {
+    let correct = 0;
+    let wrong = 0;
+    currentExam.questions.forEach((q, i) => {
+      const chosen = answers[i];
+      if (chosen && String(chosen).toUpperCase() === String(q.correct_option || "").toUpperCase()) correct++;
+      else wrong++;
+    });
+    const total = correct + wrong;
+    showResult({
+      percentage: total ? Math.round((correct / total) * 100) : 0,
+      correct,
+      wrong,
+      total,
+    });
+    return;
+  }
 
   try {
     const result = await api("/api/v1/cbt/sessions/submit", {
@@ -1687,7 +1786,9 @@ function showResult(result) {
   resultEl.classList.remove("hidden");
   const closeBtn = document.getElementById("exam-result-close-btn");
   if (closeBtn) {
-    closeBtn.textContent = currentSession && currentSession.is_school_exam
+    closeBtn.textContent = currentSession && currentSession.is_internal
+      ? "Back to External School Exam"
+      : currentSession && currentSession.is_school_exam
       ? "Back to Scholaxia Exam"
       : "Back to Exams";
   }
@@ -1717,11 +1818,24 @@ function closeExam() {
   hideCbtLoadingOverlay();
   setExamLockMode(false);
   window._schoolExamGuardBound = false;
-  const wasSchool = currentSession && currentSession.is_school_exam;
+  const wasInternal = currentSession && currentSession.is_internal;
+  const wasSchool = currentSession && currentSession.is_school_exam && !wasInternal;
   currentExam = null;
   currentSession = null;
   document.getElementById("exam-screen").classList.add("hidden");
   document.getElementById("result-screen").classList.add("hidden");
+  if (wasInternal) {
+    currentPage = "school-portal";
+    document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
+    document.querySelectorAll(".topnav-btn").forEach((n) => n.classList.remove("active"));
+    const pg = document.getElementById("page-school-portal");
+    if (pg) pg.classList.add("active");
+    const navEl = document.querySelector('.topnav-btn[data-page="school-portal"]');
+    if (navEl) navEl.classList.add("active");
+    document.getElementById("page-title").textContent = PAGE_TITLES["school-portal"];
+    if (typeof loadInternalExamsPage === "function") loadInternalExamsPage();
+    return;
+  }
   if (wasSchool) {
     currentPage = "school";
     document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
@@ -1861,6 +1975,12 @@ async function saveSetup() {
 }
 
 window.beginExam = beginExam;
+window.saveOfflineCbtPack = saveOfflineCbtPack;
+window.hasOfflineCbtPack = hasOfflineCbtPack;
+window.buildQNav = buildQNav;
+window.renderQuestion = renderQuestion;
+window.startTimer = startTimer;
+window.setExamLockMode = setExamLockMode;
 window.closeExam = closeExam;
 window.submitExam = submitExam;
 

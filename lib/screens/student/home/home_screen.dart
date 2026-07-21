@@ -230,46 +230,75 @@ class _HomeScreenState extends State<HomeScreen> {
                 _header(context, name),
                 _statsRow(context),
                 const SizedBox(height: 8),
-                StudentFeatureBanner(
-                  title: 'Ask Sia anything',
-                  subtitle: 'Your 24/7 AI tutor for JAMB, WAEC & NECO — get instant explanations.',
-                  buttonLabel: 'Start chatting',
-                  icon: Icons.auto_awesome_rounded,
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const SiaScreen()),
-                  ),
-                ),
-                StudentFeatureBanner(
-                  title: 'Join Scholaxia Intellect League',
-                  subtitle: 'Compete live, earn coins, climb national rankings — represent your school.',
-                  buttonLabel: 'Enter League',
-                  icon: Icons.emoji_events_rounded,
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const SilEntryScreen()),
-                  ),
-                ),
-                if (DateTime.now().weekday == DateTime.friday)
-                  StudentFeatureBanner(
-                    title: 'Friday National Challenge is Live',
-                    subtitle: 'Nationwide academic championship — play now and climb the ranks.',
-                    buttonLabel: 'Join Friday',
-                    icon: Icons.flag_rounded,
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const SilEntryScreen()),
+                StudentBannerSlider(
+                  slides: [
+                    StudentBannerSlide(
+                      title: 'Ask Sia anything',
+                      subtitle:
+                          'Your 24/7 AI tutor for JAMB, WAEC & NECO — get instant explanations.',
+                      buttonLabel: 'Start chatting',
+                      icon: Icons.auto_awesome_rounded,
+                      badge: '✨ AI POWERED',
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const SiaScreen()),
+                      ),
                     ),
-                  ),
-                StudentFeatureBanner(
-                  title: 'Buy Scholaxia Coins',
-                  subtitle: 'Fuel AI Challenges, Student bets, Class & School battles.',
-                  buttonLabel: 'Open Wallet',
-                  icon: Icons.monetization_on_rounded,
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const SilEntryScreen()),
-                  ),
+                    StudentBannerSlide(
+                      title: 'Join Scholaxia Intellect League',
+                      subtitle:
+                          'Compete live, earn coins, climb national rankings — represent your school.',
+                      buttonLabel: 'Enter League',
+                      icon: Icons.emoji_events_rounded,
+                      badge: '🏆 LEAGUE',
+                      colors: const [
+                        Color(0xFF4C1D95),
+                        Color(0xFF7C3AED),
+                        Color(0xFFC026D3),
+                      ],
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const SilEntryScreen()),
+                      ),
+                    ),
+                    StudentBannerSlide(
+                      title: 'Friday National Challenge is Live',
+                      subtitle:
+                          'Nationwide academic championship — play now and climb the ranks.',
+                      buttonLabel: 'Join Friday',
+                      icon: Icons.flag_rounded,
+                      badge: '🔴 LIVE',
+                      colors: const [
+                        Color(0xFF5B21B6),
+                        Color(0xFF7C3AED),
+                        Color(0xFF2563EB),
+                      ],
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const SilEntryScreen()),
+                      ),
+                    ),
+                    StudentBannerSlide(
+                      title: 'Buy Scholaxia Coins',
+                      subtitle:
+                          'Fuel AI Challenges, Student bets, Class & School battles.',
+                      buttonLabel: 'Open Wallet',
+                      icon: Icons.monetization_on_rounded,
+                      badge: '💰 COINS',
+                      colors: const [
+                        Color(0xFF6D28D9),
+                        Color(0xFF7C3AED),
+                        Color(0xFFF59E0B),
+                      ],
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const SilEntryScreen()),
+                      ),
+                    ),
+                  ],
                 ),
                 _recommended(context),
                 _quickAccess(context),

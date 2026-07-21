@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; script-src-attr 'unsafe-inline'; connect-src https://scholaxia1.onrender.com http://127.0.0.1:*; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self' blob: https:; frame-src 'self' http://127.0.0.1:*" />
+  <title>Scholaxia Kids</title>
+  <meta name="scholaxia-app-mode" content="kind" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/app.css" />
+  <link rel="stylesheet" href="css/scholaxia-purple.css" />
+  <link rel="stylesheet" href="css/kind.css" />
+</head>
+<body>
+
+<div class="app-shell app-shell-sidebar kind-desktop">
+
+  <div class="sidebar-wrap" id="kind-sidebar-wrap">
+    <aside class="app-sidebar kind-sidebar">
+      <a href="#" class="sidebar-brand" onclick="kindNav('home'); return false;">
+        <img src="assets/logo.png" alt="" class="brand-logo sidebar-brand-logo" />
+        <span class="sidebar-brand-text">kids</span>
+      </a>
+
+      <nav class="sidebar-nav" aria-label="Kids navigation">
+        <button type="button" class="nav-item kind-nav-btn active" data-kind-page="home" onclick="kindNav('home')">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-9.5z"/></svg></span>
+          <span class="nav-label">Home</span>
+        </button>
+        <button type="button" class="nav-item kind-nav-btn" data-kind-page="sia" onclick="kindNav('sia')">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"/></svg></span>
+          <span class="nav-label">Sia AI</span>
+        </button>
+        <button type="button" class="nav-item kind-nav-btn" data-kind-page="live" onclick="kindNav('live')">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 10l5-3v10l-5-3v-4z"/><rect x="3" y="6" width="12" height="12" rx="2"/></svg></span>
+          <span class="nav-label">Live Class</span>
+        </button>
+        <button type="button" class="nav-item kind-nav-btn" data-kind-page="saved" onclick="kindNav('saved')">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M10 9l5 3-5 3V9z"/></svg></span>
+          <span class="nav-label">Saved</span>
+        </button>
+        <button type="button" class="nav-item kind-nav-btn" data-kind-page="games" onclick="kindNav('games')">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h4M14 10v4M16 12h2"/></svg></span>
+          <span class="nav-label">Games</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-promo-wrap">
+        <div class="sidebar-promo-badge" aria-hidden="true">&#128118;</div>
+        <div class="sidebar-promo kind-sidebar-promo">
+          <p class="sidebar-promo-title">Kid Safe Zone</p>
+          <p class="sidebar-promo-text">Age-appropriate AI tutoring, fun games, and live lessons — all in a safe space.</p>
+        </div>
+      </div>
+    </aside>
+
+    <button type="button" class="sidebar-edge-toggle" id="kind-sidebar-toggle" aria-label="Hide menu" title="Hide menu">&#8249;</button>
+  </div>
+
+  <div class="app-main-wrap">
+    <header class="app-topbar">
+      <div class="app-topbar-left">
+        <h1 id="kind-page-title">Home</h1>
+        <span class="topbar-exam-pill kind-pill">Kids</span>
+      </div>
+      <div class="app-topbar-right">
+        <div class="topbar-toolbar">
+          <button type="button" class="btn-refresh topbar-tool" onclick="kindRefresh()">&#8635; Refresh</button>
+          <button type="button" class="topbar-user topbar-tool" title="Account">
+            <div class="user-avatar kind-avatar" id="kind-avatar">K</div>
+            <div class="topbar-user-meta">
+              <strong id="kind-user-name">Friend</strong>
+              <span id="kind-user-age">Ages 6–8</span>
+            </div>
+          </button>
+          <button type="button" class="btn-logout topbar-logout topbar-tool" onclick="kindLogout()">Sign out</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="main-content main-content-sidebar">
+
+      <!-- Home -->
+      <section id="kind-page-home" class="kind-page page active">
+        <div class="kind-hero-row">
+          <div class="kind-hero-card">
+            <span class="kind-hero-badge">KID SAFE</span>
+            <h2 id="kind-greeting">Hi, Friend!</h2>
+            <p id="kind-hero-sub">Learn, play, and grow with kid-safe AI tutoring and fun games.</p>
+            <button type="button" class="kind-hero-btn" onclick="kindNav('sia')">Talk to Sia &rarr;</button>
+          </div>
+          <div class="kind-side-stats">
+            <div class="kind-stat-box">
+              <span class="kind-stat-icon">&#127909;</span>
+              <div>
+                <strong id="kind-stat-live">0</strong>
+                <span>Live classes</span>
+              </div>
+            </div>
+            <div class="kind-stat-box">
+              <span class="kind-stat-icon">&#127918;</span>
+              <div>
+                <strong id="kind-stat-games">30+</strong>
+                <span>Fun games</span>
+              </div>
+            </div>
+            <div class="kind-stat-box">
+              <span class="kind-stat-icon">&#10024;</span>
+              <div>
+                <strong>AI</strong>
+                <span>Kid-safe tutor</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <h3 class="kind-section-title">Quick access</h3>
+        <div class="kind-quick-grid">
+          <button type="button" class="kind-quick-tile tile-sia" onclick="kindNav('sia')">
+            <div class="tile-icon">&#10024;</div>
+            <strong>Sia AI</strong>
+            <span>Ask questions — kid-safe tutor</span>
+          </button>
+          <button type="button" class="kind-quick-tile tile-live" onclick="kindNav('live')">
+            <div class="tile-icon">&#127909;</div>
+            <strong>Live Class</strong>
+            <span>Join a teacher's lesson</span>
+          </button>
+          <button type="button" class="kind-quick-tile tile-games" onclick="kindNav('games')">
+            <div class="tile-icon">&#127918;</div>
+            <strong>Games</strong>
+            <span>Educational fun &amp; leaf levels</span>
+          </button>
+          <button type="button" class="kind-quick-tile tile-saved" onclick="kindNav('saved')">
+            <div class="tile-icon">&#128250;</div>
+            <strong>Saved</strong>
+            <span>Replay saved lessons</span>
+          </button>
+        </div>
+
+        <div id="kind-home-stats" class="kind-home-banner"></div>
+      </section>
+
+      <!-- Sia -->
+      <section id="kind-page-sia" class="kind-page page">
+        <div class="kind-page-header kind-page-header-row">
+          <div>
+            <h2>&#10024; Sia — Kid Tutor</h2>
+            <p>Ask me anything! I explain things in a fun, easy way just for kids.</p>
+          </div>
+          <button type="button" class="btn-secondary btn-sm kind-voice-toggle" onclick="kindToggleVoice()" aria-pressed="true">🔊 Sound on</button>
+        </div>
+        <div class="kind-sia-wrap">
+          <div id="kind-sia-messages" class="kind-sia-messages"></div>
+          <div class="kind-sia-compose">
+            <input type="text" id="kind-sia-input" placeholder="Ask Sia a question…" onkeydown="if(event.key==='Enter')kindSendSia()" />
+            <button type="button" class="btn-action" onclick="kindSendSia()">Send</button>
+          </div>
+        </div>
+        <p id="kind-sia-error" class="error-msg"></p>
+      </section>
+
+      <!-- Live -->
+      <section id="kind-page-live" class="kind-page page">
+        <div class="kind-page-header">
+          <h2>&#127909; Live Classes</h2>
+          <p>Join a teacher's live lesson right now!</p>
+        </div>
+        <div id="kind-live-list" class="kind-card-list"><div class="loading">Loading…</div></div>
+      </section>
+
+      <!-- Saved -->
+      <section id="kind-page-saved" class="kind-page page">
+        <div class="kind-page-header">
+          <h2>&#128250; Saved Lessons</h2>
+          <p>Replay lessons you saved from live classes.</p>
+        </div>
+        <div id="kind-saved-list" class="kind-card-list"><div class="loading">Loading…</div></div>
+      </section>
+
+      <!-- Games -->
+      <section id="kind-page-games" class="kind-page page">
+        <div class="kind-page-header kind-page-header-row">
+          <div>
+            <h2>&#127918; Educational Games</h2>
+            <p>Play to unlock Leaf 2… Leaf 30. Questions are read aloud — tap <strong>Hear question</strong> anytime.</p>
+          </div>
+          <button type="button" class="btn-secondary btn-sm kind-voice-toggle" onclick="kindToggleVoice()" aria-pressed="true">🔊 Sound on</button>
+        </div>
+        <div id="kind-games-grid" class="kind-games-grid"><div class="loading">Loading games…</div></div>
+        <div id="kind-game-play" class="hidden" style="margin-top:20px"></div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/kind-voice.js"></script>
+<script src="js/kind.js"></script>
+</body>
+</html>

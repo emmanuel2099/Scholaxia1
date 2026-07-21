@@ -16,6 +16,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
 
   <link rel="stylesheet" href="css/app.css" />
+  <link rel="stylesheet" href="css/scholaxia-purple.css" />
   <link rel="stylesheet" href="css/discord-community.css" />
   <link rel="stylesheet" href="css/responsive.css" />
   <script src="js/theme.js"></script>
@@ -98,10 +99,18 @@
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"/><path d="M5 19l1 2 1-2 2-1-2-1-1-2-1 2-2 1 2 1z"/></svg></span>
           <span class="nav-label">Tutor AI</span>
         </button>
+        <button type="button" class="nav-item topnav-btn" data-page="games" onclick="showPage('games')">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h4M14 10v4M16 12h2"/></svg></span>
+          <span class="nav-label">Games</span>
+        </button>
         <button type="button" class="nav-item topnav-btn" data-page="community" onclick="showPage('community')">
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-1.9 5.4 8.5 8.5 0 0 1-13 0 8.38 8.38 0 0 1-1.9-5.4 8.5 8.5 0 0 1 13 0z"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/></svg></span>
           <span class="nav-label">Community</span>
           <span id="community-badge" class="nav-badge hidden">0</span>
+        </button>
+        <button type="button" class="nav-item topnav-btn" data-page="groups" onclick="openGroupsHub()">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+          <span class="nav-label">Groups</span>
         </button>
         <button type="button" class="nav-item topnav-btn" data-page="saved-lives" onclick="showPage('saved-lives')">
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M10 9l5 3-5 3V9z"/></svg></span>
@@ -301,6 +310,31 @@
           <strong>Tutor AI</strong>
           <span>AI study assistant</span>
         </button>
+        <button type="button" class="dash-action-card" data-dash-page="games" onclick="quickDashAction('games')">
+          <span class="dash-action-icon">&#127918;</span>
+          <strong>Games</strong>
+          <span>Spelling, Math &amp; Word — 30 levels each</span>
+        </button>
+        <button type="button" class="dash-action-card" data-dash-page="groups" onclick="openGroupsHub()">
+          <span class="dash-action-icon">&#128101;</span>
+          <strong>Groups</strong>
+          <span>Create or join study groups</span>
+        </button>
+        <button type="button" class="dash-action-card" data-dash-page="past-questions" onclick="quickDashAction('past-questions')">
+          <span class="dash-action-icon">&#128218;</span>
+          <strong>Past Questions</strong>
+          <span>JAMB, WAEC &amp; NECO papers</span>
+        </button>
+        <button type="button" class="dash-action-card" data-dash-page="marketplace" onclick="quickDashAction('marketplace')">
+          <span class="dash-action-icon">&#128722;</span>
+          <strong>Marketplace</strong>
+          <span>Books, phones &amp; gadgets</span>
+        </button>
+        <button type="button" class="dash-action-card" data-dash-page="school-portal" onclick="quickDashAction('school-portal')">
+          <span class="dash-action-icon">&#127979;</span>
+          <strong>External School Exam</strong>
+          <span>Download offline &amp; submit later</span>
+        </button>
       </div>
 
       <div class="dash-skills-section">
@@ -395,26 +429,18 @@
 
 
 
-    <!-- Scholaxia CBT portal (embedded) -->
+    <!-- External School Exam — admin upload, offline download & submit -->
 
     <section id="page-school-portal" class="page">
-
-      <div class="portal-embed-wrap">
-      <div class="portal-embed-head portal-embed-head-slim">
-          <span class="portal-pill">Official exams</span>
-          <p>Sign in with your <strong>registration number</strong> and <strong>access code</strong>.</p>
+      <div class="sx-page-hero sx-page-hero-row">
+        <div>
+          <h2>&#127979; External School Exam</h2>
+          <p>Admin uploads exams here. <strong>Download while online</strong>, take the test offline, then submit — even without internet. Answers sync when you reconnect.</p>
         </div>
-        <iframe
-          id="scholaxia-portal-frame"
-          class="portal-embed-frame"
-          title="Scholaxia CBT Portal"
-          src="https://www.scholaxiacbtexam.blog/exam-login"
-          loading="lazy"
-          referrerpolicy="no-referrer-when-downgrade"
-          allow="camera; microphone; fullscreen"
-        ></iframe>
+        <button type="button" class="btn-secondary sx-hero-btn" onclick="loadInternalExamsPage()">Refresh &amp; sync</button>
       </div>
-
+      <div id="internal-pending-banner" class="info-banner success hidden"></div>
+      <div id="internal-exams-list" class="card-grid"><div class="loading">Loading school exams…</div></div>
     </section>
 
 
@@ -422,23 +448,12 @@
     <!-- Scholaxia Marketplace -->
 
     <section id="page-marketplace" class="page">
-
-      <div class="portal-embed-wrap">
-        <div class="portal-embed-head portal-embed-head-slim">
-          <span class="portal-pill">Scholaxia Marketplace</span>
-          <p>Books, materials and more on <strong>store.scholaxia.com</strong> — browse here without leaving the app.</p>
-        </div>
-        <iframe
-          id="marketplace-frame"
-          class="portal-embed-frame"
-          title="Scholaxia Marketplace"
-          src="https://store.scholaxia.com/"
-          loading="lazy"
-          referrerpolicy="no-referrer-when-downgrade"
-          allow="fullscreen; payment"
-        ></iframe>
+      <div class="sx-page-hero">
+        <h2>&#128722; Scholaxia Marketplace</h2>
+        <p>Shop gadgets, laptops, phones, books and more. Book an item and Scholaxia will chat with you.</p>
       </div>
-
+      <div id="marketplace-tabs" class="mp-tabs"></div>
+      <div id="marketplace-grid" class="mp-grid"><div class="loading">Loading…</div></div>
     </section>
 
 
@@ -479,33 +494,19 @@
 
 
 
-    <!-- CBT Practice — Scholaxia question bank (ALOC) -->
+    <!-- CBT Practice — admin + Scholaxia question bank -->
 
     <section id="page-cbt" class="page">
-
-      <div class="section-header">
-        <h2>CBT Practice</h2>
-        <p class="section-sub">Timed practice exams from the Scholaxia question bank — based on your profile subjects.</p>
-      </div>
-
-      <div id="cbt-embed-wrap" class="portal-embed-wrap hidden">
-        <div class="portal-embed-head portal-embed-head-slim">
-          <span class="portal-pill">External bank</span>
-          <p>Legacy past-questions site — use Scholaxia CBT cards below instead.</p>
+      <div class="sx-page-hero sx-page-hero-row">
+        <div>
+          <h2>&#128221; CBT Practice</h2>
+          <p>Admin-uploaded JAMB, WAEC &amp; NECO papers — <strong>download first</strong>, then start offline (same as the mobile app).</p>
         </div>
-        <iframe
-          id="cbt-portal-frame"
-          class="portal-embed-frame"
-          title="Scholaxia CBT"
-          src="about:blank"
-          loading="lazy"
-          referrerpolicy="no-referrer-when-downgrade"
-          allow="fullscreen"
-        ></iframe>
+        <button type="button" class="btn-secondary sx-hero-btn" onclick="loadCbtHubPage()">Refresh</button>
       </div>
-
+      <div id="cbt-hub-tabs" class="mp-tabs hidden"></div>
+      <div id="cbt-hub-subjects" class="mp-tabs hidden"></div>
       <div id="cbt-grid" class="card-grid card-grid-premium"></div>
-
     </section>
 
 
@@ -538,6 +539,20 @@
 
       </div>
 
+    </section>
+
+
+
+    <!-- Games — Brain Breakers -->
+
+    <section id="page-games" class="page">
+      <div class="games-hero">
+        <h2>&#127918; Brain Breakers</h2>
+        <p>Three very hard games — <strong>30 levels each</strong>, no repeated questions. Same as the Scholaxia student app.</p>
+      </div>
+      <h3 class="dash-section-title" style="margin-bottom:14px">Pick a challenge</h3>
+      <div id="games-list" class="games-grid games-tile-list"></div>
+      <div id="games-play-area" class="hidden"></div>
     </section>
 
 
@@ -621,20 +636,10 @@
     </section>
 
     <section id="page-past-questions" class="page">
-      <div class="portal-embed-wrap">
-        <div class="portal-embed-head portal-embed-head-slim">
-          <span class="portal-pill">Past Questions</span>
-          <p>JAMB, WAEC &amp; NECO past questions — select subjects, pay, and download PDFs.</p>
-        </div>
-        <iframe
-          id="past-questions-frame"
-          class="portal-embed-frame"
-          title="Scholaxia Past Questions"
-          src="https://www.scholaxiacbtexam.blog/past-questions"
-          loading="lazy"
-          referrerpolicy="no-referrer-when-downgrade"
-          allow="fullscreen; payment"
-        ></iframe>
+      <div class="sx-page-hero">
+        <h2>&#128218; Past Questions</h2>
+        <p>Past papers are in <strong>CBT Practice</strong> — same board tabs and download flow as the mobile app.</p>
+        <button type="button" class="btn-secondary sx-hero-btn" style="margin-top:12px" onclick="showPage('cbt')">Open CBT Practice</button>
       </div>
     </section>
 
@@ -644,7 +649,7 @@
       <div class="about-blocks">
         <div class="about-block">
           <h3>Everything you need in one app</h3>
-          <p>Library materials, saved live recordings, Tutor AI, Scholaxia Marketplace for books, and external school exams through our CBT portal.</p>
+          <p>Library materials, saved live recordings, Tutor AI, Scholaxia Marketplace for books, and offline external school exams uploaded by admin.</p>
         </div>
         <div class="about-block">
           <h3>Built for real students, real results</h3>
@@ -865,7 +870,29 @@
 
 
 
-<!-- Camera modal for external school exams -->
+<div id="marketplace-book-modal" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-box">
+    <h3 id="mp-book-title">Book item</h3>
+    <p id="mp-book-price" class="mp-book-price"></p>
+    <form id="mp-book-form" onsubmit="submitMarketplaceBook(event)">
+      <input type="hidden" id="mp-book-product-id" />
+      <label>Full name<input type="text" id="mp-book-name" required /></label>
+      <label>Email<input type="email" id="mp-book-email" required /></label>
+      <label>Phone<input type="tel" id="mp-book-phone" placeholder="08012345678" required /></label>
+      <label>WhatsApp<input type="tel" id="mp-book-whatsapp" placeholder="08012345678" required /></label>
+      <label>Note<textarea id="mp-book-note" rows="2" placeholder="Size, color, questions…"></textarea></label>
+      <p id="mp-book-error" class="error-msg"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn-secondary" onclick="closeMarketplaceBook()">Cancel</button>
+        <button type="submit" class="btn-action" id="mp-book-submit">Send booking</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+
+
+<!-- Camera modal for proctored teacher exams -->
 
 <div id="camera-modal" class="modal hidden">
 
@@ -948,6 +975,11 @@
 <script src="js/group-chat.js"></script>
 <script src="js/library.js"></script>
 <script src="js/saved-live.js"></script>
+<script src="js/past-questions.js"></script>
+<script src="js/cbt-hub.js"></script>
+<script src="js/marketplace.js"></script>
+<script src="js/internal-exams.js"></script>
+<script src="js/games.js"></script>
 <script src="js/app.js"></script>
 <script src="js/responsive.js"></script>
 

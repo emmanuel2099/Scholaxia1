@@ -34,18 +34,20 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _login() async {
     final email = _emailCtrl.text.trim();
-    final pass  = _passCtrl.text;
+    final pass = _passCtrl.text;
     if (email.isEmpty || pass.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please enter your email and password.')));
+          const SnackBar(content: Text('Please enter your phone number and password.')));
       return;
     }
     setState(() => _loading = true);
     try {
-      final auth = await _api.login(email: email, password: pass);
+      final auth = await _api.login(phone: email, password: pass);
       if (!mounted) return;
 
-      if (!_roleMatches(auth.role)) {
+      final role = auth.role.toLowerCase().trim();
+
+      if (!_roleMatches(role)) {
         await _api.clearTokens();
         if (!mounted) return;
         final expected = _expectedRoleLabel();
@@ -59,26 +61,36 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      if (auth.role == 'teacher') {
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (_) => const TeacherShell()),
-          (_) => false,
-        );
+      // Always clear stack and land on the correct home.
+      Widget home;
+      if (role == 'teacher') {
+        home = const TeacherShell();
+      } else if (role == 'kind') {
+        home = const KindShell();
+      } else if (widget.accountRole == AccountRole.gameChallenge) {
+        // Game Challenge login → Intellect League
+        await _api.setAppResumeMode('league');
+        home = const StudentShell(openSilOnStart: true);
       } else {
-        final openSil = widget.accountRole == AccountRole.gameChallenge;
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(
-            builder: (_) => auth.role == 'kind'
-                ? const KindShell()
-                : StudentShell(openSilOnStart: openSil),
-          ),
-          (_) => false,
-        );
-        if (auth.role != 'kind') _api.ensureStudentProfile();
+        // Student study login → student dashboard only
+        await _api.setAppResumeMode('student');
+        home = const StudentShell(openSilOnStart: false);
       }
-      FirebasePushService.instance.registerAfterLogin();
+
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => home),
+        (_) => false,
+      );
+
+      if (role == 'student') {
+        // ignore: unawaited_futures
+        _api.ensureStudentProfile();
+      }
+      try {
+        // ignore: unawaited_futures
+        FirebasePushService.instance.registerAfterLogin();
+      } catch (_) {}
     } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -86,7 +98,8 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       if (!mounted) return;
       final err = e.toString().toLowerCase();
-      final message = err.contains('failed to fetch') || err.contains('clientexception')
+      final message = err.contains('failed to fetch') ||
+              err.contains('clientexception')
           ? 'Could not reach scholaxia1.onrender.com. The server may be waking up — wait 30 seconds and try again.'
           : 'Something went wrong. Please try again.';
       ScaffoldMessenger.of(context).showSnackBar(
@@ -207,14 +220,14 @@ class _LoginScreenState extends State<LoginScreen> {
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
               const SizedBox(height: 28),
-              _label(context, 'EMAIL ADDRESS'),
+              _label(context, 'PHONE NUMBER'),
               const SizedBox(height: 6),
               _field(
                 context,
                 controller: _emailCtrl,
-                hint: 'name@example.com',
-                icon: Icons.mail_outline,
-                type: TextInputType.emailAddress,
+                hint: '08012345678',
+                icon: Icons.phone_outlined,
+                type: TextInputType.phone,
               ),
               const SizedBox(height: 20),
               Row(

@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../../theme/app_theme.dart';
+import '../../../api/api_service.dart';
 import 'sil_explore_tab.dart';
 import 'sil_face_verify_screen.dart';
 import 'sil_home_tab.dart';
 import 'sil_leaderboard_tab.dart';
+import 'sil_league_tab.dart';
 import 'sil_models.dart';
 import 'sil_profile_tab.dart';
-import 'sil_quiz_screen.dart';
 import 'sil_widgets.dart';
 
 class SilShell extends StatefulWidget {
@@ -31,6 +31,8 @@ class _SilShellState extends State<SilShell> with WidgetsBindingObserver {
     super.initState();
     _profile = widget.profile;
     WidgetsBinding.instance.addObserver(this);
+    // Remember League so app restart returns here (not Student home).
+    ApiService().setAppResumeMode('league');
   }
 
   @override
@@ -59,6 +61,7 @@ class _SilShellState extends State<SilShell> with WidgetsBindingObserver {
     );
     if (!mounted) return;
     if (selfie == null) {
+      await ApiService().setAppResumeMode('student');
       Navigator.pop(context);
       return;
     }
@@ -68,21 +71,6 @@ class _SilShellState extends State<SilShell> with WidgetsBindingObserver {
   }
 
   void _refreshProfile(SilProfile p) => setState(() => _profile = p);
-
-  Future<void> _quickPlay() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => SilQuizScreen(
-          mode: 'practice',
-          subject: 'General Knowledge',
-          profile: _profile,
-          offline: widget.offline,
-          onProfileUpdate: _refreshProfile,
-        ),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -97,7 +85,11 @@ class _SilShellState extends State<SilShell> with WidgetsBindingObserver {
         offline: widget.offline,
         onProfileUpdate: _refreshProfile,
       ),
-      const SizedBox.shrink(),
+      SilLeagueTab(
+        profile: _profile,
+        offline: widget.offline,
+        onProfileUpdate: _refreshProfile,
+      ),
       SilLeaderboardTab(profile: _profile, offline: widget.offline),
       SilProfileTab(
         profile: _profile,
@@ -106,70 +98,107 @@ class _SilShellState extends State<SilShell> with WidgetsBindingObserver {
       ),
     ];
 
-    return Scaffold(
-      backgroundColor: context.bgColor,
-      body: IndexedStack(
-        index: _index == 2 ? 0 : _index,
-        children: [
-          pages[0],
-          pages[1],
-          pages[0],
-          pages[3],
-          pages[4],
-        ],
+    // Force light Aczone look inside League (ignore student dark theme)
+    return Theme(
+      data: ThemeData(
+        brightness: Brightness.light,
+        scaffoldBackgroundColor: Colors.white,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: SilColors.purple,
+          brightness: Brightness.light,
+        ),
+        useMaterial3: true,
       ),
-      bottomNavigationBar: SafeArea(
-        child: Container(
-          margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-          decoration: BoxDecoration(
-            color: context.isDark ? const Color(0xFF1A1228) : Colors.white,
-            borderRadius: BorderRadius.circular(28),
-            boxShadow: [
-              BoxShadow(
-                color: SilColors.purple.withOpacity(0.15),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
-              ),
-            ],
+      child: PopScope(
+        canPop: true,
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop) {
+            ApiService().setAppResumeMode('student');
+          }
+        },
+        child: Scaffold(
+          backgroundColor: Colors.white,
+          extendBody: true,
+          body: IndexedStack(
+            index: _index,
+            children: pages,
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _nav(0, Icons.home_outlined, Icons.home_rounded, 'Home'),
-              _nav(1, Icons.explore_outlined, Icons.explore_rounded, 'Explore'),
-              _centerPlay(),
-              _nav(3, Icons.emoji_events_outlined, Icons.emoji_events_rounded,
-                  'Ranks'),
-              _nav(4, Icons.person_outline_rounded, Icons.person_rounded,
-                  'Profile'),
-            ],
+          bottomNavigationBar: _AczoneBottomNav(
+            index: _index,
+            onTap: (i) => setState(() => _index = i),
           ),
         ),
       ),
     );
   }
+}
 
-  Widget _nav(int i, IconData icon, IconData active, String label) {
-    final selected = _index == i;
-    return InkWell(
-      onTap: () => setState(() => _index = i),
-      borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+/// White Aczone bottom bar + floating purple bolt.
+class _AczoneBottomNav extends StatelessWidget {
+  final int index;
+  final ValueChanged<int> onTap;
+
+  const _AczoneBottomNav({required this.index, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: SizedBox(
+        height: 72,
+        child: Stack(
+          alignment: Alignment.bottomCenter,
+          clipBehavior: Clip.none,
           children: [
-            Icon(selected ? active : icon,
-                color: selected ? SilColors.purple : context.greyColor,
-                size: 24),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                color: selected ? SilColors.purple : context.greyColor,
+            Container(
+              height: 64,
+              margin: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 18,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Expanded(child: _item(0, Icons.home_outlined, Icons.home_rounded, 'Home')),
+                  Expanded(child: _item(1, Icons.people_outline_rounded, Icons.people_rounded, 'Community')),
+                  const SizedBox(width: 64),
+                  Expanded(
+                      child: _item(3, Icons.leaderboard_outlined,
+                          Icons.leaderboard_rounded, 'Rankings')),
+                  Expanded(
+                      child: _item(4, Icons.person_outline_rounded,
+                          Icons.person_rounded, 'Profile')),
+                ],
+              ),
+            ),
+            Positioned(
+              top: 0,
+              child: GestureDetector(
+                onTap: () => onTap(2),
+                child: Container(
+                  width: 58,
+                  height: 58,
+                  decoration: BoxDecoration(
+                    color: SilColors.purple,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: SilColors.purple.withOpacity(0.45),
+                        blurRadius: 14,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(Icons.emoji_events_rounded,
+                      color: Colors.white, size: 28),
+                ),
               ),
             ),
           ],
@@ -178,24 +207,27 @@ class _SilShellState extends State<SilShell> with WidgetsBindingObserver {
     );
   }
 
-  Widget _centerPlay() {
-    return GestureDetector(
-      onTap: _quickPlay,
-      child: Container(
-        width: 56,
-        height: 56,
-        decoration: BoxDecoration(
-          color: SilColors.purple,
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: SilColors.purple.withOpacity(0.4),
-              blurRadius: 12,
-              offset: const Offset(0, 4),
+  Widget _item(int i, IconData icon, IconData active, String label) {
+    final selected = index == i;
+    return InkWell(
+      onTap: () => onTap(i),
+      borderRadius: BorderRadius.circular(16),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(selected ? active : icon,
+              color: selected ? SilColors.purple : const Color(0xFF9CA3AF),
+              size: 24),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              color: selected ? SilColors.purple : const Color(0xFF9CA3AF),
             ),
-          ],
-        ),
-        child: const Icon(Icons.bolt_rounded, color: Colors.white, size: 30),
+          ),
+        ],
       ),
     );
   }

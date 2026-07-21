@@ -19,9 +19,12 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
   final _parentEmailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
+  final _otpCtrl = TextEditingController();
   bool _obscurePass = true;
   bool _obscureConfirm = true;
   bool _loading = false;
+  bool _otpStep = false;
+  String _pendingPhone = '';
   String _ageGroup = '6-8';
   final _api = ApiService();
 
@@ -34,19 +37,47 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
     _parentEmailCtrl.dispose();
     _passCtrl.dispose();
     _confirmCtrl.dispose();
+    _otpCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _create() async {
     final name = _nameCtrl.text.trim();
-    final email = _emailCtrl.text.trim();
+    final phone = _emailCtrl.text.trim();
     final pass = _passCtrl.text;
     final conf = _confirmCtrl.text;
-    final parentEmail = _parentEmailCtrl.text.trim();
 
-    if (name.isEmpty || email.isEmpty || pass.isEmpty) {
+    if (_otpStep) {
+      final otp = _otpCtrl.text.trim();
+      if (otp.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Enter the SMS code.')),
+        );
+        return;
+      }
+      setState(() => _loading = true);
+      try {
+        await _api.signupVerify(phone: _pendingPhone, otp: otp);
+        if (!mounted) return;
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const KindShell()),
+          (_) => false,
+        );
+      } on ApiException catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+        );
+      } finally {
+        if (mounted) setState(() => _loading = false);
+      }
+      return;
+    }
+
+    if (name.isEmpty || phone.isEmpty || pass.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill in all required fields.')),
+        const SnackBar(content: Text('Please fill in name, phone and password.')),
       );
       return;
     }
@@ -65,18 +96,20 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
 
     setState(() => _loading = true);
     try {
-      await _api.kindSignup(
-        email: email,
+      final res = await _api.signupStart(
+        phone: phone,
         password: pass,
         fullName: name,
+        role: 'kind',
         ageGroup: _ageGroup,
-        parentEmail: parentEmail.isEmpty ? null : parentEmail,
       );
       if (!mounted) return;
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => const KindShell()),
-        (_) => false,
+      setState(() {
+        _otpStep = true;
+        _pendingPhone = res['phone']?.toString() ?? phone;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('SMS code sent. Check your phone.')),
       );
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -166,25 +199,27 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            _label(context, 'Email Address'),
+            _label(context, 'Phone Number'),
             const SizedBox(height: 6),
             _field(
               context,
               ctrl: _emailCtrl,
-              hint: 'parent@example.com',
-              icon: Icons.mail_outline,
-              type: TextInputType.emailAddress,
+              hint: '08012345678',
+              icon: Icons.phone_outlined,
+              type: TextInputType.phone,
             ),
-            const SizedBox(height: 16),
-            _label(context, 'Parent Email (optional)'),
-            const SizedBox(height: 6),
-            _field(
-              context,
-              ctrl: _parentEmailCtrl,
-              hint: 'parent@example.com',
-              icon: Icons.family_restroom_outlined,
-              type: TextInputType.emailAddress,
-            ),
+            if (_otpStep) ...[
+              const SizedBox(height: 16),
+              _label(context, 'SMS OTP Code'),
+              const SizedBox(height: 6),
+              _field(
+                context,
+                ctrl: _otpCtrl,
+                hint: '6-digit code',
+                icon: Icons.sms_outlined,
+                type: TextInputType.number,
+              ),
+            ],
             const SizedBox(height: 16),
             _label(context, 'Password'),
             const SizedBox(height: 6),
@@ -245,8 +280,8 @@ class _KidRegisterScreenState extends State<KidRegisterScreen> {
                         height: 22,
                         child: CircularProgressIndicator(
                             strokeWidth: 2, color: Colors.white))
-                    : const Text('Create Account',
-                        style: TextStyle(
+                    : Text(_otpStep ? 'Verify SMS Code' : 'Send SMS Code',
+                        style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
                             color: Colors.white)),

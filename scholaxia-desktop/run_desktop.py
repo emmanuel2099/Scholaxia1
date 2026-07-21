@@ -28,6 +28,7 @@ except ImportError:
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 RENDERER = os.path.join(ROOT, "renderer")
+ASSET_FALLBACK = os.environ.get("SCHOLAXIA_ASSET_FALLBACK", r"D:\tmp")
 PORT = 17890
 DISCORD_PORT = 3001
 DISCORD_DIR = os.path.normpath(os.path.join(ROOT, "..", "discord-community"))
@@ -97,6 +98,14 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def log_message(self, format, *args):
         pass
+
+    def translate_path(self, path):
+        local = super().translate_path(path)
+        if not os.path.isfile(local) and path.startswith("/assets/"):
+            fallback = os.path.join(ASSET_FALLBACK, os.path.basename(path))
+            if os.path.isfile(fallback):
+                return fallback
+        return local
 
     def end_headers(self):
         path = self.path.split("?", 1)[0]
@@ -516,7 +525,7 @@ def main():
     elif is_admin:
         page, title, bg = "admin.html", "Scholaxia Admin Console", "#0a1410"
     else:
-        page, title, bg = "app.html", "Scholaxia Student", "#0d1f14"
+        page, title, bg = "index.html", "Scholaxia", "#1a1428"
 
     url = f"http://127.0.0.1:{PORT}/{page}"
     width, height, min_size = get_window_size()

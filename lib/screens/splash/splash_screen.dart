@@ -60,9 +60,12 @@ class _SplashScreenState extends State<SplashScreen>
         } else if (role == 'kind') {
           dest = const KindShell();
         } else {
-          dest = const StudentShell();
+          // Stay in League after restart if that was the last screen.
+          final resume = await api.getAppResumeMode();
+          dest = StudentShell(openSilOnStart: resume == 'league');
         }
 
+        if (!mounted) return;
         Navigator.of(context).pushReplacement(PageRouteBuilder(
           pageBuilder: (_, __, ___) => dest,
           transitionsBuilder: (_, a, __, c) => FadeTransition(opacity: a, child: c),

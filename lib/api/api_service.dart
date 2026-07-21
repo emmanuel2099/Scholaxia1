@@ -39,6 +39,8 @@ class ApiService {
   static const _kSetupComplete = 'setup_complete';
   static const _kOnboardingSeen = 'onboarding_seen';
   static const _kProfilePicture = 'profile_picture_url';
+  /// Where to land after app restart: `league` or `student`.
+  static const _kAppResumeMode = 'app_resume_mode';
   static const _studentMe = '/api/v1/students/me';
 
   // ── Token storage ─────────────────────────────────────────────────────────
@@ -58,6 +60,20 @@ class ApiService {
     return prefs.getString(_kUserId);
   }
 
+  /// Persist last area so restart reopens League or Student home.
+  Future<void> setAppResumeMode(String mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    final m = mode.toLowerCase().trim();
+    if (m == 'league' || m == 'student') {
+      await prefs.setString(_kAppResumeMode, m);
+    }
+  }
+
+  Future<String> getAppResumeMode() async {
+    final prefs = await SharedPreferences.getInstance();
+    return (prefs.getString(_kAppResumeMode) ?? 'student').toLowerCase();
+  }
+
   Future<void> clearTokens() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kAccessToken);
@@ -66,6 +82,7 @@ class ApiService {
     await prefs.remove(_kUserId);
     await prefs.remove(_kSetupComplete);
     await prefs.remove(_kProfilePicture);
+    await prefs.remove(_kAppResumeMode);
   }
 
   Future<void> cacheProfilePicture(String? url) async {
@@ -217,18 +234,84 @@ class ApiService {
   // ── Auth ───────────────────────────────────────────────────────────────────
 
   Future<AuthResponse> login({
-    required String email,
+    String? email,
+    String? phone,
     required String password,
   }) async {
+    final body = <String, dynamic>{'password': password};
+    if (phone != null && phone.trim().isNotEmpty) {
+      body['phone'] = phone.trim();
+    } else if (email != null && email.trim().isNotEmpty) {
+      // Phone-first: if value has no @, send as phone
+      final id = email.trim();
+      if (id.contains('@')) {
+        body['email'] = id;
+      } else {
+        body['phone'] = id;
+      }
+    }
     final res = await http.post(
       _uri(ApiEndpoints.login),
       headers: _jsonHeaders(),
-      body: jsonEncode({'email': email, 'password': password}),
+      body: jsonEncode(body),
     );
     final auth =
         AuthResponse.fromJson(Map<String, dynamic>.from(_parse(res) as Map));
     await _saveAuth(auth);
     return auth;
+  }
+
+  Future<Map<String, dynamic>> signupStart({
+    required String phone,
+    required String password,
+    required String fullName,
+    String role = 'student',
+    String ageGroup = '6-8',
+    String? gradeLevel,
+    String? parentEmail,
+  }) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.signupStart),
+      headers: _jsonHeaders(),
+      body: jsonEncode({
+        'phone': phone,
+        'password': password,
+        'full_name': fullName,
+        'role': role,
+        'age_group': ageGroup,
+        if (gradeLevel != null && gradeLevel.isNotEmpty) 'grade_level': gradeLevel,
+        if (parentEmail != null && parentEmail.isNotEmpty)
+          'parent_email': parentEmail,
+      }),
+    );
+    return _parseMap(res);
+  }
+
+  Future<AuthResponse> signupVerify({
+    required String phone,
+    required String otp,
+  }) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.signupVerify),
+      headers: _jsonHeaders(),
+      body: jsonEncode({'phone': phone, 'otp': otp}),
+    );
+    final auth =
+        AuthResponse.fromJson(Map<String, dynamic>.from(_parse(res) as Map));
+    await _saveAuth(auth);
+    return auth;
+  }
+
+  Future<Map<String, dynamic>> sendSmsOtp({
+    required String phone,
+    String purpose = 'signup',
+  }) async {
+    final res = await http.post(
+      _uri(ApiEndpoints.otpSend),
+      headers: _jsonHeaders(),
+      body: jsonEncode({'phone': phone, 'purpose': purpose}),
+    );
+    return _parseMap(res);
   }
 
   Future<AuthResponse> studentSignup({
@@ -2084,9 +2167,11 @@ class AuthResponse {
     return AuthResponse(
       accessToken: json['access_token'] as String? ?? '',
       refreshToken: json['refresh_token'] as String? ?? '',
-      role: json['role']?.toString() ??
-          (user is Map ? user['role']?.toString() : null) ??
-          'student',
+      role: (json['role']?.toString() ??
+              (user is Map ? user['role']?.toString() : null) ??
+              'student')
+          .toLowerCase()
+          .trim(),
       userId: user is Map ? user['id']?.toString() : null,
     );
   }

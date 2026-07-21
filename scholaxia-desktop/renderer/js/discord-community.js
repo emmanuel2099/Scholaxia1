@@ -16,7 +16,41 @@
     channels: {},
     groups: [],
     messages: [],
+    groupsSearch: "",
+    schoolGroups: [],
+    groupsMine: [],
+    groupsListed: [],
   };
+
+  function groupsMatchesQuery(g) {
+    var q = (state.groupsSearch || "").trim().toLowerCase();
+    if (!q) return true;
+    var name = (g.name || "").toLowerCase();
+    var desc = (g.description || "").toLowerCase();
+    var creator = (g.creator_name || "").toLowerCase();
+    var school = (g.school_name || "").toLowerCase();
+    return name.indexOf(q) >= 0 || desc.indexOf(q) >= 0 || creator.indexOf(q) >= 0 || school.indexOf(q) >= 0;
+  }
+
+  function groupsPanelShellHtml() {
+    return (
+      '<div class="discord-groups-panel">' +
+      '<div class="discord-groups-search">' +
+      '<input type="search" id="discord-groups-search-input" placeholder="Search groups by name, description or creator…" autocomplete="off" value="' + escHtml(state.groupsSearch) + '" oninput="discordGroupsSearch(this.value)" />' +
+      "</div>" +
+      '<div class="discord-groups-create">' +
+      '<input type="text" id="discord-new-group-name" placeholder="New group name" maxlength="80" />' +
+      '<input type="text" id="discord-new-group-desc" placeholder="Description (optional)" maxlength="200" />' +
+      '<label class="discord-groups-create-check"><input type="checkbox" id="discord-new-group-list" checked /> List for others to join after admin approval</label>' +
+      '<p class="discord-groups-hint" style="padding:0;margin:0;flex:1 1 100%">New groups need admin approval before they become active.</p>' +
+      '<button type="button" class="discord-group-btn discord-group-btn-primary" onclick="discordCreateGroupFromHub()">Create group</button>' +
+      "</div>" +
+      '<div class="discord-groups-section"><h3>Your groups</h3><div id="discord-groups-mine" class="discord-groups-list"></div></div>' +
+      '<div class="discord-groups-section"><h3>Discover groups</h3><div id="discord-groups-discover" class="discord-groups-list"></div></div>' +
+      '<div class="discord-groups-section"><h3>School groups</h3><div id="discord-groups-school" class="discord-groups-list"></div></div>' +
+      "</div>"
+    );
+  }
 
   function apiFn() {
     return typeof apiRetry === "function" ? apiRetry : api;
@@ -410,21 +444,42 @@
     }
   }
 
-  function renderGroupsPanelContent(mine, listed) {
+  function renderGroupsPanelContent(mine, listed, school) {
     var mineEl = document.getElementById("discord-groups-mine");
     var discoverEl = document.getElementById("discord-groups-discover");
+    var schoolEl = document.getElementById("discord-groups-school");
+    school = school || state.schoolGroups || [];
+    var filteredMine = mine.filter(groupsMatchesQuery);
+    var discover = listed.filter(function (g) { return !g.is_member; }).filter(groupsMatchesQuery);
+    var filteredSchool = school.filter(groupsMatchesQuery);
     if (mineEl) {
-      mineEl.innerHTML = mine.length
-        ? mine.map(function (g) { return renderGroupRow(g, { allowJoin: false }); }).join("")
-        : '<p class="discord-groups-hint">You have not joined a group yet. Create one above or join below.</p>';
+      mineEl.innerHTML = filteredMine.length
+        ? filteredMine.map(function (g) { return renderGroupRow(g, { allowJoin: false }); }).join("")
+        : '<p class="discord-groups-hint">' + (state.groupsSearch ? "No matching groups in yours." : "You have not joined a group yet. Create one above or join below.") + "</p>";
     }
     if (discoverEl) {
-      var discover = listed.filter(function (g) { return !g.is_member; });
       discoverEl.innerHTML = discover.length
         ? discover.map(function (g) { return renderGroupRow(g, { allowJoin: true, showCreator: true }); }).join("")
-        : '<p class="discord-groups-hint">No open groups right now. Create one and list it for others.</p>';
+        : '<p class="discord-groups-hint">' + (state.groupsSearch ? "No matching groups to discover." : "No open groups right now. Create one and list it for others.") + "</p>";
+    }
+    if (schoolEl) {
+      schoolEl.innerHTML = filteredSchool.length
+        ? filteredSchool.map(function (g) {
+            return (
+              '<div class="discord-group-row discord-group-row-school">' +
+              '<div class="discord-group-row-icon">&#127979;</div>' +
+              '<div><strong>' + escHtml(g.school_name) + " — " + escHtml(g.name) + "</strong>" +
+              '<p class="discord-groups-hint">Teacher: ' + escHtml(g.teacher_name || "—") + " · " + (g.member_count || 0) + " students</p></div></div>"
+            );
+          }).join("")
+        : '<p class="discord-groups-hint">' + (state.groupsSearch ? "No matching school groups." : "Your school adds you to groups — you cannot join these yourself.") + "</p>";
     }
   }
+
+  window.discordGroupsSearch = function (q) {
+    state.groupsSearch = q || "";
+    renderGroupsPanelContent(state.groupsMine, state.groupsListed, state.schoolGroups);
+  };
 
   async function loadGroupsPanel(silent) {
     var el = document.getElementById("discord-messages");
@@ -432,32 +487,10 @@
 
     var cachedMine = loadGroupsFromCache();
     if (cachedMine.length) {
-      el.innerHTML =
-        '<div class="discord-groups-panel">' +
-        '<div class="discord-groups-create">' +
-        '<input type="text" id="discord-new-group-name" placeholder="New group name" maxlength="80" />' +
-        '<input type="text" id="discord-new-group-desc" placeholder="Description (optional)" maxlength="200" />' +
-        '<label class="discord-groups-create-check"><input type="checkbox" id="discord-new-group-list" checked /> List for others to join after admin approval</label>' +
-        '<p class="discord-groups-hint" style="padding:0;margin:0;flex:1 1 100%">New groups need admin approval before they become active.</p>' +
-        '<button type="button" class="discord-group-btn discord-group-btn-primary" onclick="discordCreateGroupFromHub()">Create group</button>' +
-        "</div>" +
-        '<div class="discord-groups-section"><h3>Your groups</h3><div id="discord-groups-mine" class="discord-groups-list"></div></div>' +
-        '<div class="discord-groups-section"><h3>Discover groups</h3><div id="discord-groups-discover" class="discord-groups-list"></div></div>' +
-        "</div>";
-      renderGroupsPanelContent(cachedMine, cachedMine);
+      el.innerHTML = groupsPanelShellHtml();
+      renderGroupsPanelContent(cachedMine, cachedMine, state.schoolGroups);
     } else if (!silent) {
-      el.innerHTML =
-        '<div class="discord-groups-panel">' +
-        '<div class="discord-groups-create">' +
-        '<input type="text" id="discord-new-group-name" placeholder="New group name" maxlength="80" />' +
-        '<input type="text" id="discord-new-group-desc" placeholder="Description (optional)" maxlength="200" />' +
-        '<label class="discord-groups-create-check"><input type="checkbox" id="discord-new-group-list" checked /> List for others to join after admin approval</label>' +
-        '<p class="discord-groups-hint" style="padding:0;margin:0;flex:1 1 100%">New groups need admin approval before they become active.</p>' +
-        '<button type="button" class="discord-group-btn discord-group-btn-primary" onclick="discordCreateGroupFromHub()">Create group</button>' +
-        "</div>" +
-        '<div class="discord-groups-section"><h3>Your groups</h3><div id="discord-groups-mine" class="discord-groups-list"></div></div>' +
-        '<div class="discord-groups-section"><h3>Discover groups</h3><div id="discord-groups-discover" class="discord-groups-list"></div></div>' +
-        "</div>";
+      el.innerHTML = groupsPanelShellHtml();
     }
     stopPoll();
 
@@ -466,29 +499,23 @@
       var results = await Promise.all([
         apiFn()("/api/v1/student-groups/mine", { attempts: silent ? 1 : 2, skipWarm: true }),
         apiFn()("/api/v1/student-groups/community-listed", { attempts: silent ? 1 : 2, skipWarm: true }),
+        apiFn()("/api/v1/school-groups/student/mine", { attempts: silent ? 1 : 2, skipWarm: true }).catch(function () { return []; }),
       ]);
       var mine = results[0] || [];
       var listed = results[1] || [];
+      var school = results[2] || [];
+      state.schoolGroups = school;
+      state.groupsMine = mine;
+      state.groupsListed = listed;
       saveGroupsCache(mine);
       state.groups = mine.filter(function (g) { return g.is_approved; });
       state.allGroups = mine;
       renderRail();
 
       if (!document.getElementById("discord-groups-mine")) {
-        el.innerHTML =
-          '<div class="discord-groups-panel">' +
-          '<div class="discord-groups-create">' +
-          '<input type="text" id="discord-new-group-name" placeholder="New group name" maxlength="80" />' +
-          '<input type="text" id="discord-new-group-desc" placeholder="Description (optional)" maxlength="200" />' +
-          '<label class="discord-groups-create-check"><input type="checkbox" id="discord-new-group-list" checked /> List for others to join after admin approval</label>' +
-          '<p class="discord-groups-hint" style="padding:0;margin:0;flex:1 1 100%">New groups need admin approval before they become active.</p>' +
-          '<button type="button" class="discord-group-btn discord-group-btn-primary" onclick="discordCreateGroupFromHub()">Create group</button>' +
-          "</div>" +
-          '<div class="discord-groups-section"><h3>Your groups</h3><div id="discord-groups-mine" class="discord-groups-list"></div></div>' +
-          '<div class="discord-groups-section"><h3>Discover groups</h3><div id="discord-groups-discover" class="discord-groups-list"></div></div>' +
-          "</div>";
+        el.innerHTML = groupsPanelShellHtml();
       }
-      renderGroupsPanelContent(mine, listed);
+      renderGroupsPanelContent(mine, listed, school);
     } catch (e) {
       if (cachedMine.length) return;
       if (el) {

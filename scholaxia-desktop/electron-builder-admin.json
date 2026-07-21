@@ -1,0 +1,58 @@
+{
+  "appId": "com.scholaxia.admin",
+  "productName": "Scholaxia Admin",
+  "directories": {
+    "output": "dist-admin",
+    "buildResources": "build"
+  },
+  "extraMetadata": {
+    "main": "main-admin.js",
+    "name": "scholaxia-admin",
+    "description": "Scholaxia Admin Console — Windows Desktop App"
+  },
+  "win": {
+    "executableName": "ScholaxiaAdmin",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      },
+      {
+        "target": "portable",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "build/icon.ico"
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "allowElevation": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "Scholaxia Admin",
+    "runAfterFinish": false,
+    "artifactName": "Scholaxia-Admin-Setup-${version}.${ext}",
+    "installerIcon": "build/icon.ico",
+    "uninstallerIcon": "build/icon.ico",
+    "installerHeaderIcon": "build/icon.ico"
+  },
+  "portable": {
+    "artifactName": "Scholaxia-Admin-Portable-${version}.${ext}"
+  },
+  "files": [
+    "main-admin.js",
+    "desktop-server.js",
+    "preload.js",
+    "renderer/admin.html",
+    "renderer/css/admin.css",
+    "renderer/css/responsive.css",
+    "renderer/js/admin.js",
+    "renderer/js/admin-api.js",
+    "renderer/js/responsive.js",
+    "renderer/assets/**/*",
+    "assets/**/*",
+    "node_modules/**/*"
+  ]
+}

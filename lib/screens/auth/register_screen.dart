@@ -16,33 +16,42 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  final _nameCtrl    = TextEditingController();
-  final _emailCtrl   = TextEditingController();
-  final _passCtrl    = TextEditingController();
+  final _nameCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
+  final _passCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
-  bool _obscurePass    = true;
+  final _otpCtrl = TextEditingController();
+  bool _obscurePass = true;
   bool _obscureConfirm = true;
   bool _loading = false;
+  bool _otpStep = false;
+  String _pendingPhone = '';
   final _api = ApiService();
 
   @override
   void dispose() {
     _nameCtrl.dispose();
-    _emailCtrl.dispose();
+    _phoneCtrl.dispose();
     _passCtrl.dispose();
     _confirmCtrl.dispose();
+    _otpCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _create() async {
-    final name  = _nameCtrl.text.trim();
-    final email = _emailCtrl.text.trim();
-    final pass  = _passCtrl.text;
-    final conf  = _confirmCtrl.text;
+  Future<void> _sendOtp() async {
+    final name = _nameCtrl.text.trim();
+    final phone = _phoneCtrl.text.trim();
+    final pass = _passCtrl.text;
+    final conf = _confirmCtrl.text;
 
-    if (name.isEmpty || email.isEmpty || pass.isEmpty) {
+    if (name.isEmpty || phone.isEmpty || pass.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please fill in all required fields.')));
+          const SnackBar(content: Text('Please fill in name, phone and password.')));
+      return;
+    }
+    if (pass.length < 8) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Password must be at least 8 characters.')));
       return;
     }
     if (pass != conf) {
@@ -52,8 +61,44 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
     setState(() => _loading = true);
     try {
-      final auth = await _api.studentSignup(
-          email: email, password: pass, fullName: name);
+      final res = await _api.signupStart(
+        phone: phone,
+        password: pass,
+        fullName: name,
+        role: 'student',
+      );
+      if (!mounted) return;
+      setState(() {
+        _otpStep = true;
+        _pendingPhone = res['phone']?.toString() ?? phone;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('SMS code sent. Check your phone.')),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message), backgroundColor: Colors.red));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Could not send SMS. Check your connection.'),
+          backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _verifyOtp() async {
+    final otp = _otpCtrl.text.trim();
+    if (otp.isEmpty || _pendingPhone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Enter the SMS code.')));
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      final auth = await _api.signupVerify(phone: _pendingPhone, otp: otp);
       if (!mounted) return;
       if (auth.role == 'teacher') {
         Navigator.pushAndRemoveUntil(
@@ -62,12 +107,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
           (_) => false,
         );
       } else {
-        final openSil = widget.accountRole == AccountRole.gameChallenge;
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(
-            builder: (_) => StudentShell(openSilOnStart: openSil),
-          ),
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const StudentShell()),
           (_) => false,
         );
       }
@@ -75,14 +116,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(e.message), backgroundColor: Colors.red));
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
-      final err = e.toString().toLowerCase();
-      final message = err.contains('failed to fetch') || err.contains('clientexception')
-          ? 'Could not reach scholaxia1.onrender.com. The server may be waking up — wait 30 seconds and try again.'
-          : 'Something went wrong. Please try again.';
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message), backgroundColor: Colors.red));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Verification failed. Try again.'),
+          backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -99,9 +137,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
         elevation: 0,
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: context.textColor),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+            if (_otpStep) {
+              setState(() => _otpStep = false);
+            } else {
+              Navigator.pop(context);
+            }
+          },
         ),
-        title: Text('Create Account',
+        title: Text(_otpStep ? 'Verify SMS' : 'Create Account',
             style: TextStyle(
                 color: context.textColor,
                 fontSize: 17,
@@ -113,81 +157,87 @@ class _RegisterScreenState extends State<RegisterScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const SizedBox(height: 8),
-            RichText(
-              text: TextSpan(
-                style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: context.textColor),
-                children: [
-                  const TextSpan(text: 'Welcome to '),
-                  TextSpan(
-                      text: 'Scholaxia',
-                      style: TextStyle(color: context.accentColor)),
-                ],
-              ),
+            Text(
+              _otpStep ? 'Enter SMS code' : 'Welcome to Scholaxia',
+              style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: context.textColor),
             ),
             const SizedBox(height: 8),
             Text(
-              'Create an account to start your personalized\nlearning journey with Sia AI.',
+              _otpStep
+                  ? 'We sent a code to $_pendingPhone'
+                  : 'Sign up with your phone number. You will get an SMS OTP.',
               style: TextStyle(
                   fontSize: 13, color: context.greyColor, height: 1.5),
             ),
             const SizedBox(height: 28),
-            _label(context, 'Full Name'),
-            const SizedBox(height: 6),
-            _field(context, ctrl: _nameCtrl, hint: 'John Doe', icon: Icons.person_outline),
-            const SizedBox(height: 16),
-            _label(context, 'Email Address'),
-            const SizedBox(height: 6),
-            _field(
+            if (!_otpStep) ...[
+              _label(context, 'Full Name'),
+              const SizedBox(height: 6),
+              _field(context, ctrl: _nameCtrl, hint: 'John Doe', icon: Icons.person_outline),
+              const SizedBox(height: 16),
+              _label(context, 'Phone Number'),
+              const SizedBox(height: 6),
+              _field(
+                  context,
+                  ctrl: _phoneCtrl,
+                  hint: '08012345678',
+                  icon: Icons.phone_outlined,
+                  type: TextInputType.phone),
+              const SizedBox(height: 16),
+              _label(context, 'Password'),
+              const SizedBox(height: 6),
+              _field(
                 context,
-                ctrl: _emailCtrl,
-                hint: 'john@example.com',
-                icon: Icons.mail_outline,
-                type: TextInputType.emailAddress),
-            const SizedBox(height: 16),
-            _label(context, 'Password'),
-            const SizedBox(height: 6),
-            _field(
-              context,
-              ctrl: _passCtrl,
-              hint: '••••••••',
-              icon: Icons.security_outlined,
-              obscure: _obscurePass,
-              suffix: GestureDetector(
-                onTap: () => setState(() => _obscurePass = !_obscurePass),
-                child: Icon(
-                  _obscurePass ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-                  color: context.greyLColor,
-                  size: 20,
+                ctrl: _passCtrl,
+                hint: '••••••••',
+                icon: Icons.security_outlined,
+                obscure: _obscurePass,
+                suffix: GestureDetector(
+                  onTap: () => setState(() => _obscurePass = !_obscurePass),
+                  child: Icon(
+                    _obscurePass ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                    color: context.greyLColor,
+                    size: 20,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-            _label(context, 'Confirm Password'),
-            const SizedBox(height: 6),
-            _field(
-              context,
-              ctrl: _confirmCtrl,
-              hint: '••••••••',
-              icon: Icons.lock_outline,
-              obscure: _obscureConfirm,
-              suffix: GestureDetector(
-                onTap: () => setState(() => _obscureConfirm = !_obscureConfirm),
-                child: Icon(
-                  _obscureConfirm ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-                  color: context.greyLColor,
-                  size: 20,
+              const SizedBox(height: 16),
+              _label(context, 'Confirm Password'),
+              const SizedBox(height: 6),
+              _field(
+                context,
+                ctrl: _confirmCtrl,
+                hint: '••••••••',
+                icon: Icons.lock_outline,
+                obscure: _obscureConfirm,
+                suffix: GestureDetector(
+                  onTap: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                  child: Icon(
+                    _obscureConfirm ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                    color: context.greyLColor,
+                    size: 20,
+                  ),
                 ),
               ),
-            ),
+            ] else ...[
+              _label(context, 'SMS OTP'),
+              const SizedBox(height: 6),
+              _field(
+                  context,
+                  ctrl: _otpCtrl,
+                  hint: '6-digit code',
+                  icon: Icons.sms_outlined,
+                  type: TextInputType.number),
+            ],
             const SizedBox(height: 28),
             SizedBox(
               width: double.infinity,
               height: 54,
               child: ElevatedButton(
-                onPressed: _loading ? null : _create,
+                onPressed: _loading ? null : (_otpStep ? _verifyOtp : _sendOtp),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: context.accentColor,
                   foregroundColor: btnFg,
@@ -201,18 +251,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         width: 22,
                         height: 22,
                         child: CircularProgressIndicator(strokeWidth: 2, color: btnFg))
-                    : Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text('Create Account',
-                              style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: btnFg)),
-                          const SizedBox(width: 8),
-                          Icon(Icons.arrow_forward_rounded, size: 18, color: btnFg),
-                        ],
-                      ),
+                    : Text(
+                        _otpStep ? 'Verify & Create Account' : 'Send SMS Code',
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: btnFg)),
               ),
             ),
             const SizedBox(height: 16),
@@ -239,14 +283,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             fontWeight: FontWeight.bold)),
                   ),
                 ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            Center(
-              child: Text(
-                "By creating an account, you agree to Scholaxia's Terms of Service and Privacy Policy.",
-                textAlign: TextAlign.center,
-                style: TextStyle(color: context.greyLColor, fontSize: 11, height: 1.5),
               ),
             ),
             const SizedBox(height: 32),

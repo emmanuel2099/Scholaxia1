@@ -20,6 +20,15 @@ def database_ready() -> bool:
 async def _run_schema_migrations(conn) -> None:
     await conn.run_sync(Base.metadata.create_all)
     await conn.execute(text(
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(40) NULL"
+    ))
+    try:
+        await conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_users_phone ON users (phone)"
+        ))
+    except Exception:
+        pass
+    await conn.execute(text(
         "ALTER TABLE cbt_exams ALTER COLUMN created_by DROP NOT NULL"
     ))
     await conn.execute(text(

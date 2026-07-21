@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
@@ -135,6 +137,262 @@ class StudentStatCard extends StatelessWidget {
   }
 }
 
+/// One slide for the home promo carousel.
+class StudentBannerSlide {
+  final String title;
+  final String subtitle;
+  final String buttonLabel;
+  final IconData icon;
+  final VoidCallback onTap;
+  final String? badge;
+  final List<Color>? colors;
+
+  const StudentBannerSlide({
+    required this.title,
+    required this.subtitle,
+    required this.buttonLabel,
+    required this.icon,
+    required this.onTap,
+    this.badge,
+    this.colors,
+  });
+}
+
+/// Horizontal swipe banner slider (one card at a time + dots).
+class StudentBannerSlider extends StatefulWidget {
+  final List<StudentBannerSlide> slides;
+  final double height;
+
+  const StudentBannerSlider({
+    super.key,
+    required this.slides,
+    this.height = 140,
+  });
+
+  @override
+  State<StudentBannerSlider> createState() => _StudentBannerSliderState();
+}
+
+class _StudentBannerSliderState extends State<StudentBannerSlider> {
+  late final PageController _controller;
+  int _index = 0;
+  Timer? _auto;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = PageController();
+    if (widget.slides.length > 1) {
+      _auto = Timer.periodic(const Duration(seconds: 5), (_) {
+        if (!mounted || !_controller.hasClients) return;
+        final next = (_index + 1) % widget.slides.length;
+        _controller.animateToPage(
+          next,
+          duration: const Duration(milliseconds: 420),
+          curve: Curves.easeOutCubic,
+        );
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _auto?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.slides.isEmpty) return const SizedBox.shrink();
+    return Column(
+      children: [
+        SizedBox(
+          height: widget.height,
+          child: PageView.builder(
+            controller: _controller,
+            itemCount: widget.slides.length,
+            onPageChanged: (i) => setState(() => _index = i),
+            itemBuilder: (_, i) {
+              final s = widget.slides[i];
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: _BannerCard(slide: s),
+              );
+            },
+          ),
+        ),
+        if (widget.slides.length > 1) ...[
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(widget.slides.length, (i) {
+              final on = i == _index;
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                margin: const EdgeInsets.symmetric(horizontal: 3),
+                width: on ? 18 : 7,
+                height: 7,
+                decoration: BoxDecoration(
+                  color: on
+                      ? const Color(0xFF7C3AED)
+                      : const Color(0xFF7C3AED).withOpacity(0.28),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              );
+            }),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _BannerCard extends StatelessWidget {
+  final StudentBannerSlide slide;
+  const _BannerCard({required this.slide});
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = slide.colors ??
+        const [Color(0xFF5B21B6), Color(0xFF7C3AED), Color(0xFFA855F7)];
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: slide.onTap,
+        borderRadius: BorderRadius.circular(22),
+        child: Ink(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: colors,
+            ),
+            borderRadius: BorderRadius.circular(22),
+            boxShadow: [
+              BoxShadow(
+                color: colors[1].withOpacity(0.4),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Stack(
+            children: [
+              Positioned(
+                right: -20,
+                top: -20,
+                child: Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withOpacity(0.08),
+                  ),
+                ),
+              ),
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (slide.badge != null) ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                slide.badge!,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.6,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                          ],
+                          Text(
+                            slide.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              height: 1.15,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            slide.subtitle,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.88),
+                              fontSize: 11,
+                              height: 1.3,
+                            ),
+                          ),
+                          const Spacer(),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 7),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  slide.buttonLabel,
+                                  style: const TextStyle(
+                                    color: Color(0xFF7C3AED),
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                const Icon(Icons.arrow_forward_rounded,
+                                    color: Color(0xFF7C3AED), size: 14),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(14),
+                        border:
+                            Border.all(color: Colors.white.withOpacity(0.25)),
+                      ),
+                      child: Icon(slide.icon, color: Colors.white, size: 24),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Large featured CTA banner.
 class StudentFeatureBanner extends StatelessWidget {
   final String title;
@@ -154,147 +412,17 @@ class StudentFeatureBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
+    return StudentBannerSlider(
+      slides: [
+        StudentBannerSlide(
+          title: title,
+          subtitle: subtitle,
+          buttonLabel: buttonLabel,
+          icon: icon,
           onTap: onTap,
-          borderRadius: BorderRadius.circular(22),
-          child: Ink(
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF5B21B6), Color(0xFF7C3AED), Color(0xFFA855F7)],
-              ),
-              borderRadius: BorderRadius.circular(22),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF7C3AED).withOpacity(0.4),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                ),
-              ],
-            ),
-            child: Stack(
-              children: [
-                Positioned(
-                  right: -20,
-                  top: -20,
-                  child: Container(
-                    width: 120,
-                    height: 120,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withOpacity(0.08),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  right: 30,
-                  bottom: -30,
-                  child: Container(
-                    width: 80,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withOpacity(0.06),
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(22),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: const Text(
-                                '✨ AI POWERED',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.8,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              title,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 20,
-                                fontWeight: FontWeight.w800,
-                                height: 1.2,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              subtitle,
-                              style: TextStyle(
-                                color: Colors.white.withOpacity(0.88),
-                                fontSize: 13,
-                                height: 1.35,
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 10),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    buttonLabel,
-                                    style: const TextStyle(
-                                      color: Color(0xFF7C3AED),
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  const Icon(Icons.arrow_forward_rounded,
-                                      color: Color(0xFF7C3AED), size: 16),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        width: 64,
-                        height: 64,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                              color: Colors.white.withOpacity(0.25)),
-                        ),
-                        child: Icon(icon, color: Colors.white, size: 32),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
+          badge: '✨ AI POWERED',
         ),
-      ),
+      ],
     );
   }
 }

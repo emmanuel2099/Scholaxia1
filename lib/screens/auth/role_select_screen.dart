@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../kind/kind_shared.dart';
+import 'league_auth_screen.dart';
 import 'login_screen.dart';
 
 enum AccountRole { student, teacher, kind, gameChallenge }
@@ -9,6 +10,13 @@ class RoleSelectScreen extends StatelessWidget {
   const RoleSelectScreen({super.key});
 
   void _openLogin(BuildContext context, AccountRole role) {
+    if (role == AccountRole.gameChallenge) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const LeagueAuthScreen()),
+      );
+      return;
+    }
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (_) => LoginScreen(accountRole: role)),
@@ -73,7 +81,7 @@ class RoleSelectScreen extends StatelessWidget {
                       icon: Icons.emoji_events_outlined,
                       title: 'Game Challenge',
                       subtitle:
-                          'Scholaxia Intellect League — compete, earn coins, climb ranks.',
+                          'Intellect League login — compete, earn coins, climb ranks.',
                       color: const Color(0xFF7C3AED),
                       onTap: () =>
                           _openLogin(context, AccountRole.gameChallenge),

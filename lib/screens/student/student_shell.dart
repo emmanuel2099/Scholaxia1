@@ -15,6 +15,7 @@ import 'games/games_screen.dart';
 import 'sil/sil_entry.dart';
 
 class StudentShell extends StatefulWidget {
+  /// When true (Game Challenge / League login), open Intellect League after shell loads.
   final bool openSilOnStart;
 
   const StudentShell({super.key, this.openSilOnStart = false});
@@ -55,6 +56,7 @@ class _StudentShellState extends State<StudentShell>
       LocalNotificationService.instance.seedKnownNotifications(_api);
     });
     if (widget.openSilOnStart) {
+      ApiService().setAppResumeMode('league');
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         Navigator.push(
@@ -62,6 +64,8 @@ class _StudentShellState extends State<StudentShell>
           MaterialPageRoute(builder: (_) => const SilEntryScreen()),
         );
       });
+    } else {
+      ApiService().setAppResumeMode('student');
     }
   }
 

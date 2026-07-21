@@ -1,0 +1,521 @@
+/* Scholaxia Kids — desktop portal (sidebar layout, not mobile app) */
+
+.kind-desktop {
+  background: var(--sx-bg, #f8f6ff);
+}
+
+.kind-desktop .kind-sidebar .sidebar-brand-text {
+  color: var(--sx-primary, #7c3aed);
+}
+
+.kind-pill {
+  background: var(--sx-bg-soft, #f3eeff) !important;
+  color: var(--sx-primary, #7c3aed) !important;
+  border-color: var(--sx-border, #e9e5f5) !important;
+}
+
+.kind-avatar {
+  background: linear-gradient(135deg, #7c3aed, #a78bfa) !important;
+}
+
+.kind-sidebar-promo {
+  background: linear-gradient(165deg, #7c3aed 0%, #9333ea 45%, #a78bfa 100%) !important;
+}
+
+/* Pages */
+.kind-page.page { display: none; }
+.kind-page.page.active { display: block; }
+
+/* Hero row — desktop two-column */
+.kind-hero-row {
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  gap: 20px;
+  margin-bottom: 28px;
+}
+
+.kind-hero-card {
+  padding: 32px 36px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #5b21b6 0%, #7c3aed 50%, #8b5cf6 100%);
+  color: #fff;
+  box-shadow: 0 12px 40px rgba(124, 58, 237, 0.28);
+  position: relative;
+  overflow: hidden;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.kind-hero-card::after {
+  content: "";
+  position: absolute;
+  right: -40px;
+  top: -40px;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  pointer-events: none;
+}
+
+.kind-hero-badge {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  margin-bottom: 12px;
+  width: fit-content;
+}
+
+.kind-hero-card h2 {
+  font-size: 1.75rem;
+  font-weight: 800;
+  margin-bottom: 10px;
+  line-height: 1.2;
+  position: relative;
+  z-index: 1;
+}
+
+.kind-hero-card p {
+  font-size: 0.92rem;
+  opacity: 0.92;
+  line-height: 1.5;
+  margin-bottom: 20px;
+  max-width: 420px;
+  position: relative;
+  z-index: 1;
+}
+
+.kind-hero-btn {
+  padding: 12px 22px;
+  border: none;
+  border-radius: 12px;
+  background: #fff;
+  color: #7c3aed;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  width: fit-content;
+  transition: transform 0.15s, box-shadow 0.15s;
+  position: relative;
+  z-index: 1;
+}
+
+.kind-hero-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+
+/* Side stats column */
+.kind-side-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.kind-stat-box {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
+  background: #fff;
+  border: 1px solid var(--sx-border, #e9e5f5);
+  border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(124, 58, 237, 0.06);
+  flex: 1;
+}
+
+.kind-stat-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: var(--sx-bg-soft, #f3eeff);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  flex-shrink: 0;
+}
+
+.kind-stat-box strong {
+  display: block;
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: var(--sx-primary, #7c3aed);
+  line-height: 1.2;
+}
+
+.kind-stat-box span {
+  font-size: 0.75rem;
+  color: var(--sx-grey, #6b6280);
+}
+
+/* Section titles */
+.kind-section-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  margin: 0 0 16px;
+  color: var(--sx-text, #1e1b2e);
+}
+
+.kind-page-header {
+  margin-bottom: 20px;
+}
+
+.kind-page-header h2 {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: var(--sx-text, #1e1b2e);
+  margin-bottom: 6px;
+}
+
+.kind-page-header p {
+  font-size: 0.9rem;
+  color: var(--sx-grey, #6b6280);
+  line-height: 1.45;
+}
+
+/* Quick access tiles — desktop grid */
+.kind-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.kind-quick-tile {
+  padding: 22px 20px;
+  border-radius: 16px;
+  border: 1px solid var(--sx-border, #e9e5f5);
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+}
+
+.kind-quick-tile:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(124, 58, 237, 0.12);
+  border-color: var(--sx-accent, #a78bfa);
+}
+
+.kind-quick-tile .tile-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  margin-bottom: 14px;
+}
+
+.tile-sia .tile-icon { background: #f3eeff; }
+.tile-live .tile-icon { background: #fef2f2; }
+.tile-games .tile-icon { background: #fff7ed; }
+.tile-saved .tile-icon { background: #ecfdf5; }
+
+.kind-quick-tile strong {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+  color: var(--sx-text, #1e1b2e);
+}
+
+.kind-quick-tile span {
+  font-size: 0.78rem;
+  color: var(--sx-grey, #6b6280);
+  line-height: 1.35;
+}
+
+/* Home banner */
+.kind-home-banner {
+  margin-top: 8px;
+}
+
+.kind-home-banner .kind-banner-card {
+  padding: 18px 22px;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid var(--sx-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* Sia chat — full desktop height */
+.kind-sia-wrap {
+  background: #fff;
+  border: 1px solid var(--sx-border, #e9e5f5);
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 480px;
+  box-shadow: 0 2px 12px rgba(124, 58, 237, 0.06);
+}
+
+.kind-sia-messages {
+  flex: 1;
+  padding: 20px 24px;
+  overflow-y: auto;
+  min-height: 380px;
+  max-height: 520px;
+}
+
+.kind-sia-msg {
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  max-width: 72%;
+}
+
+.kind-sia-msg.ai {
+  background: var(--sx-bg-soft, #f3eeff);
+  border-bottom-left-radius: 4px;
+  color: var(--sx-text, #1e1b2e);
+}
+
+.kind-sia-msg.user {
+  background: linear-gradient(135deg, #7c3aed, #9333ea);
+  color: #fff;
+  margin-left: auto;
+  border-bottom-right-radius: 4px;
+}
+
+.kind-sia-compose {
+  display: flex;
+  gap: 10px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--sx-border, #e9e5f5);
+  background: #faf9ff;
+}
+
+.kind-sia-compose input {
+  flex: 1;
+  padding: 14px 16px;
+  border: 1.5px solid var(--sx-border, #e9e5f5);
+  border-radius: 12px;
+  outline: none;
+  font-size: 0.92rem;
+  background: #fff;
+}
+
+.kind-sia-compose input:focus {
+  border-color: var(--sx-primary, #7c3aed);
+}
+
+/* Card lists */
+.kind-card-list {
+  display: grid;
+  gap: 12px;
+}
+
+.kind-live-card {
+  padding: 18px 22px;
+  border-radius: 14px;
+  border: 1px solid var(--sx-border, #e9e5f5);
+  background: #fff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
+  transition: border-color 0.15s;
+}
+
+.kind-live-card:hover {
+  border-color: var(--sx-accent, #a78bfa);
+}
+
+.kind-live-card.live-now {
+  border-color: #fca5a5;
+  background: linear-gradient(90deg, #fff, #fef2f2);
+}
+
+.kind-live-card strong {
+  font-size: 0.95rem;
+  color: var(--sx-text, #1e1b2e);
+}
+
+/* Games grid */
+.kind-games-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.kind-game-card {
+  padding: 20px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--sx-border, #e9e5f5);
+  background: #fff;
+  cursor: pointer;
+  text-align: center;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.kind-game-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(124, 58, 237, 0.12);
+  border-color: var(--sx-accent, #a78bfa);
+}
+
+.kind-game-card strong {
+  display: block;
+  font-size: 0.88rem;
+  color: var(--sx-text, #1e1b2e);
+  margin-top: 4px;
+}
+
+.kind-game-card .leaf {
+  font-size: 0.72rem;
+  color: #10b981;
+  font-weight: 700;
+  margin-top: 8px;
+}
+
+.kind-page-header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.kind-game-play-area {
+  background: #fff;
+  border: 1px solid var(--sx-border, #e9e5f5);
+  border-radius: 20px;
+  padding: 24px;
+  max-width: 640px;
+}
+
+.kind-game-play-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  font-size: 0.85rem;
+  color: var(--sx-grey, #6b6280);
+}
+
+.kind-game-progress {
+  height: 8px;
+  background: #f3eeff;
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
+.kind-game-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #7c3aed, #a78bfa);
+  border-radius: 999px;
+  transition: width 0.25s ease;
+}
+
+.kind-game-prompt-card {
+  background: linear-gradient(135deg, #7c3aed, #a855f7);
+  color: #fff;
+  border-radius: 20px;
+  padding: 24px;
+  margin-bottom: 20px;
+  text-align: center;
+  box-shadow: 0 8px 28px rgba(124, 58, 237, 0.25);
+}
+
+.kind-game-prompt {
+  font-size: 1.25rem !important;
+  font-weight: 800;
+  color: #fff !important;
+  line-height: 1.35;
+  margin-bottom: 14px !important;
+}
+
+.kind-hear-btn {
+  border: none;
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.85rem;
+  padding: 8px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.kind-hear-btn:hover {
+  background: rgba(255, 255, 255, 0.32);
+}
+
+.kind-game-options {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.kind-game-opt {
+  width: 100%;
+  text-align: left;
+  padding: 14px 16px !important;
+  border-radius: 14px !important;
+}
+
+.kind-opt-correct {
+  background: rgba(34, 197, 94, 0.15) !important;
+  border-color: #22c55e !important;
+  color: #16a34a !important;
+}
+
+.kind-opt-wrong {
+  background: rgba(239, 68, 68, 0.12) !important;
+  border-color: #ef4444 !important;
+  color: #dc2626 !important;
+}
+
+.kind-game-feedback {
+  text-align: center;
+  font-weight: 700;
+  font-size: 1rem;
+  margin: 16px 0;
+  color: var(--sx-grey, #6b6280);
+}
+
+.kind-game-feedback.ok {
+  color: #16a34a;
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+  .kind-hero-row {
+    grid-template-columns: 1fr;
+  }
+  .kind-side-stats {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .kind-stat-box { flex: 1; min-width: 140px; }
+  .kind-quick-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 560px) {
+  .kind-quick-grid {
+    grid-template-columns: 1fr;
+  }
+}

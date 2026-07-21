@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/auth.css" />
+  <link rel="stylesheet" href="css/scholaxia-purple.css" />
   <link rel="stylesheet" href="css/responsive.css" />
 </head>
 <body>
@@ -55,6 +56,25 @@
           <h1 id="portal-title">STUDENT PORTAL</h1>
           <p class="card-sub" id="portal-sub">Sign in to access live classes, exams &amp; CBT</p>
 
+          <p class="role-select-label">Who is signing in?</p>
+          <div class="role-select-grid role-select-grid-three" id="role-select-grid" role="radiogroup" aria-label="Account type">
+            <button type="button" class="role-select-btn active" data-role="student">
+              <span class="role-icon">&#127979;</span>
+              <strong>Student</strong>
+              <span>JAMB, WAEC, live classes &amp; CBT</span>
+            </button>
+            <button type="button" class="role-select-btn" data-role="teacher">
+              <span class="role-icon">&#128104;&#8205;&#127979;</span>
+              <strong>Teacher</strong>
+              <span>Host classes &amp; grade work</span>
+            </button>
+            <button type="button" class="role-select-btn" data-role="kind">
+              <span class="role-icon">&#128118;</span>
+              <strong>Kid</strong>
+              <span>Ages 3–12 — kid-safe learning</span>
+            </button>
+          </div>
+
           <div class="auth-tabs">
             <button type="button" id="tab-login" class="auth-tab active">Log in</button>
             <button type="button" id="tab-signup" class="auth-tab">Register</button>
@@ -62,8 +82,8 @@
 
           <form id="form-login" class="auth-form">
             <label class="field">
-              <span class="field-label">Email</span>
-              <input type="email" id="login-email" placeholder="Email address" autocomplete="email" required />
+              <span class="field-label">Phone number</span>
+              <input type="tel" id="login-phone" placeholder="08012345678" autocomplete="tel" required />
             </label>
             <label class="field">
               <span class="field-label">Password</span>
@@ -81,23 +101,45 @@
           </form>
 
           <form id="form-signup" class="auth-form hidden">
-            <label class="field">
-              <span class="field-label">Full name</span>
-              <input type="text" id="signup-name" placeholder="Full name" autocomplete="name" required />
-            </label>
-            <label class="field">
-              <span class="field-label">Email</span>
-              <input type="email" id="signup-email" placeholder="Email address" autocomplete="email" required />
-            </label>
-            <label class="field">
-              <span class="field-label">Password</span>
-              <span class="field-input-wrap">
-                <input type="password" id="signup-password" placeholder="Password (min 8 characters)" autocomplete="new-password" required minlength="8" />
-                <button type="button" class="toggle-pw" data-target="signup-password">&#128065;</button>
-              </span>
-            </label>
-            <p id="signup-error" class="error-msg"></p>
-            <button type="submit" class="btn-primary" id="btn-signup">CREATE ACCOUNT</button>
+            <div id="signup-step-details">
+              <label class="field">
+                <span class="field-label">Full name</span>
+                <input type="text" id="signup-name" placeholder="Full name" autocomplete="name" required />
+              </label>
+              <label class="field">
+                <span class="field-label">Phone number</span>
+                <input type="tel" id="signup-phone" placeholder="08012345678" autocomplete="tel" required />
+              </label>
+              <label class="field">
+                <span class="field-label">Password</span>
+                <span class="field-input-wrap">
+                  <input type="password" id="signup-password" placeholder="Password (min 8 characters)" autocomplete="new-password" required minlength="8" />
+                  <button type="button" class="toggle-pw" data-target="signup-password">&#128065;</button>
+                </span>
+              </label>
+              <div id="signup-kind-fields" class="signup-kind-fields hidden">
+                <label class="field">
+                  <span class="field-label">Age group</span>
+                  <select id="signup-age-group" class="field-select">
+                    <option value="3-5">Ages 3–5</option>
+                    <option value="6-8" selected>Ages 6–8</option>
+                    <option value="9-12">Ages 9–12</option>
+                  </select>
+                </label>
+              </div>
+              <p id="signup-error" class="error-msg"></p>
+              <button type="submit" class="btn-primary" id="btn-signup">SEND SMS CODE</button>
+            </div>
+            <div id="signup-step-otp" class="hidden">
+              <p class="otp-hint">We sent an SMS code to <strong id="signup-otp-phone-label"></strong></p>
+              <label class="field">
+                <span class="field-label">SMS OTP code</span>
+                <input type="text" id="signup-otp" placeholder="6-digit code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" required />
+              </label>
+              <p id="signup-otp-error" class="error-msg"></p>
+              <button type="button" class="btn-primary" id="btn-verify-otp" onclick="verifySignupOtp()">VERIFY &amp; CREATE ACCOUNT</button>
+              <p class="switch-text"><button type="button" class="link-btn" onclick="resendSignupOtp()">Resend code</button> · <button type="button" class="link-btn" onclick="backToSignupDetails()">Change number</button></p>
+            </div>
             <p class="switch-text">Already have an account? <button type="button" class="link-btn" id="go-login">Log in</button></p>
           </form>
         </div>
@@ -212,6 +254,7 @@
 </div>
 
 <script src="js/api.js"></script>
+<script src="js/teacher-api.js"></script>
 <script src="js/join-flow.js"></script>
 <script src="js/auth.js"></script>
 </body>

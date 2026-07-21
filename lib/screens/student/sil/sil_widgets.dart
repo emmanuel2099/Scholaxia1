@@ -1,12 +1,80 @@
 import 'package:flutter/material.dart';
 import '../../../theme/app_theme.dart';
 
-/// Shared SIL (Aczone-inspired) tokens — brand purple.
+/// Shared SIL (Aczone-exact) tokens — brand purple.
 class SilColors {
-  static const purple = Color(0xFF7C3AED);
+  static const purple = Color(0xFF6A5AE0);
   static const purpleDeep = Color(0xFF5B21B6);
   static const purpleSoft = Color(0xFFF3E8FF);
   static const gold = Color(0xFFFBBF24);
+  static const pageBg = Color(0xFFF7F7FB);
+  static const text = Color(0xFF111827);
+  static const muted = Color(0xFF6B7280);
+}
+
+/// Top bar matching Aczone: menu / logo / trailing.
+class SilAczoneAppBar extends StatelessWidget {
+  final VoidCallback? onBack;
+  final Widget? trailing;
+  final bool light;
+
+  const SilAczoneAppBar({
+    super.key,
+    this.onBack,
+    this.trailing,
+    this.light = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = light ? Colors.white : SilColors.text;
+    return Row(
+      children: [
+        IconButton(
+          onPressed: onBack ?? () => Navigator.maybePop(context),
+          icon: Icon(Icons.menu_rounded, color: fg, size: 26),
+        ),
+        Expanded(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: light ? Colors.white : SilColors.purple,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  'SL',
+                  style: TextStyle(
+                    color: light ? SilColors.purple : Colors.white,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 11,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Scholaxia',
+                style: TextStyle(
+                  color: fg,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 17,
+                ),
+              ),
+            ],
+          ),
+        ),
+        trailing ??
+            IconButton(
+              onPressed: () {},
+              icon: Icon(Icons.notifications_none_rounded, color: fg, size: 26),
+            ),
+      ],
+    );
+  }
 }
 
 class SilPrimaryButton extends StatelessWidget {
@@ -99,14 +167,14 @@ class SilSectionTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
+      padding: const EdgeInsets.fromLTRB(0, 18, 0, 10),
       child: Row(
         children: [
           Expanded(
             child: Text(
               title,
-              style: TextStyle(
-                color: context.textColor,
+              style: const TextStyle(
+                color: SilColors.text,
                 fontSize: 18,
                 fontWeight: FontWeight.w800,
               ),
@@ -115,9 +183,14 @@ class SilSectionTitle extends StatelessWidget {
           if (action != null)
             TextButton(
               onPressed: onAction,
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
               child: Text(action!,
                   style: const TextStyle(
-                      color: SilColors.purple, fontWeight: FontWeight.w600)),
+                      color: SilColors.purple, fontWeight: FontWeight.w700)),
             ),
         ],
       ),

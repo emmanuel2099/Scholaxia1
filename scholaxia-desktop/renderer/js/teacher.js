@@ -1,6 +1,15 @@
 var currentTeacherPage = "live";
 var teacherVoiceRecorder = null;
 
+var TEACHER_PAGE_TITLES = {
+  live: "Live Classes",
+  materials: "Study Materials",
+  exams: "Scholaxia Exam",
+  students: "My Students",
+  community: "Community",
+  ai: "Teacher AI",
+};
+
 window.onload = function () {
   bindTeacherUI();
   setDefaultScheduleDate();
@@ -13,14 +22,49 @@ window.onload = function () {
   document.getElementById("auth-screen").classList.add("hidden");
   document.getElementById("app-screen").classList.remove("hidden");
   initTeacherUI();
+  initTeacherSidebar();
   showTeacherPage("live");
   if (typeof startTeacherNotifications === "function") startTeacherNotifications();
 };
+
+function updateTeacherTopbar(page) {
+  var title = document.getElementById("teacher-page-title");
+  if (title) title.textContent = TEACHER_PAGE_TITLES[page] || page;
+}
+
+function initTeacherSidebar() {
+  var shell = document.getElementById("app-screen");
+  var btn = document.getElementById("sidebar-toggle");
+  if (!shell || !btn) return;
+
+  if (localStorage.getItem("sia_teacher_sidebar_collapsed") === "1") {
+    shell.classList.add("sidebar-collapsed");
+  }
+  updateTeacherSidebarToggle(btn, shell.classList.contains("sidebar-collapsed"));
+
+  btn.addEventListener("click", function () {
+    shell.classList.toggle("sidebar-collapsed");
+    var collapsed = shell.classList.contains("sidebar-collapsed");
+    localStorage.setItem("sia_teacher_sidebar_collapsed", collapsed ? "1" : "0");
+    updateTeacherSidebarToggle(btn, collapsed);
+  });
+}
+
+function updateTeacherSidebarToggle(btn, collapsed) {
+  btn.textContent = collapsed ? "\u203A" : "\u2039";
+  btn.setAttribute("aria-label", collapsed ? "Show menu" : "Hide menu");
+  btn.title = collapsed ? "Show menu" : "Hide menu";
+}
 
 function initTeacherUI() {
   var user = getTeacherUser();
   document.getElementById("teacher-name-label").textContent = user.name;
   document.getElementById("teacher-email-label").textContent = user.email;
+  var avatar = document.getElementById("teacher-user-avatar");
+  if (avatar) {
+    var initial = (user.name || user.email || "T").trim().charAt(0).toUpperCase();
+    avatar.textContent = initial || "T";
+  }
 }
 
 function teacherNetworkMessage(err) {
@@ -86,7 +130,7 @@ async function teacherLogin(ev) {
   } finally {
     if (btn) {
       btn.disabled = false;
-      btn.textContent = "LOG IN";
+      btn.textContent = "Sign in";
     }
   }
 }
@@ -98,11 +142,12 @@ function teacherLogout() {
 
 function showTeacherPage(page) {
   currentTeacherPage = page;
+  updateTeacherTopbar(page);
   document.querySelectorAll(".teacher-page").forEach(function (p) { p.classList.remove("active"); });
-  document.querySelectorAll(".topnav-btn").forEach(function (b) { b.classList.remove("active"); });
+  document.querySelectorAll("#teacher-topnav .topnav-btn").forEach(function (b) { b.classList.remove("active"); });
   var pg = document.getElementById("page-" + page);
   if (pg) pg.classList.add("active");
-  var btn = document.querySelector('.topnav-btn[data-page="' + page + '"]');
+  var btn = document.querySelector('#teacher-topnav .topnav-btn[data-page="' + page + '"]');
   if (btn) btn.classList.add("active");
   if (page === "live") {
     loadTeacherLive();
@@ -112,7 +157,6 @@ function showTeacherPage(page) {
   }
   else if (page === "students") loadTeacherStudents();
   else if (page === "materials") loadTeacherMaterials();
-  else if (page === "curriculum") loadTeacherCurriculum();
   else if (page === "exams") loadTeacherExams();
   else if (page === "community") loadTeacherCommunity();
   else if (page === "ai") initTeacherAI();
@@ -146,8 +190,11 @@ function getSchedulePayload(goLiveNow) {
   };
 
   if (visibility === "private") {
-    var sel = document.getElementById("host-invited-students");
-    var invited = sel ? Array.from(sel.selectedOptions).map(function (o) { return o.value; }) : [];
+    var invited = getSelectedStudentIds("host-invited-picker");
+    if (!invited.length) {
+      var sel = document.getElementById("host-invited-students");
+      invited = sel ? Array.from(sel.selectedOptions).map(function (o) { return o.value; }) : [];
+    }
     if (!invited.length) throw new Error("Select at least one student for a private class.");
     body.invited_student_ids = invited;
   }
@@ -395,26 +442,75 @@ function onHostVisibilityChange() {
 
 async function loadHostStudentPickers() {
   var privSel = document.getElementById("host-invited-students");
-  var sgSel = document.getElementById("sg-students");
-  if (!privSel && !sgSel) return;
+  if (!privSel && !document.getElementById("sg-students-picker")) return;
   try {
     var rows = await teacherApi("/api/v1/live-classes/requests?status=approved");
     if (!rows || !rows.length) rows = await teacherApi("/api/v1/live-classes/requests");
     var students = (rows || []).filter(function (r) { return r.student_id; });
     var seen = {};
-    var options = students.filter(function (r) {
+    var unique = students.filter(function (r) {
       if (seen[r.student_id]) return false;
       seen[r.student_id] = true;
       return true;
-    }).map(function (r) {
-      return '<option value="' + escHtml(r.student_id) + '">' + escHtml(r.student_name || r.topic || "Student") + "</option>";
-    }).join("");
-    if (privSel) privSel.innerHTML = options || '<option disabled>No assigned students yet</option>';
-    if (sgSel) sgSel.innerHTML = options || '<option disabled>No assigned students yet</option>';
+    });
+    if (privSel) {
+      privSel.innerHTML = unique.map(function (r) {
+        return '<option value="' + escHtml(r.student_id) + '">' + escHtml(r.student_name || r.topic || "Student") + "</option>";
+      }).join("") || '<option disabled>No assigned students yet</option>';
+    }
+    renderStudentChipPicker("sg-students-picker", unique, "sg-selected-count");
+    renderStudentChipPicker("host-invited-picker", unique, "host-selected-count");
   } catch (e) {
     if (privSel) privSel.innerHTML = '<option disabled>Could not load students</option>';
+    renderStudentChipPicker("sg-students-picker", [], "sg-selected-count");
+    renderStudentChipPicker("host-invited-picker", [], "host-selected-count");
   }
   onHostVisibilityChange();
+}
+
+function getSelectedStudentIds(pickerId) {
+  var el = document.getElementById(pickerId);
+  if (!el) return [];
+  return Array.from(el.querySelectorAll(".student-chip.selected")).map(function (c) { return c.dataset.id; });
+}
+
+function updateChipPickerCount(pickerId, countId) {
+  var count = getSelectedStudentIds(pickerId).length;
+  var label = document.getElementById(countId);
+  if (label) label.textContent = count === 0 ? "Tap to select" : count + " selected";
+}
+
+function renderStudentChipPicker(containerId, students, countId) {
+  var el = document.getElementById(containerId);
+  if (!el) return;
+  if (!students.length) {
+    el.innerHTML =
+      '<div class="student-chip-empty">' +
+      '<div class="student-chip-empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-3.5 3.6-6 8-6s8 2.5 8 6"/></svg></div>' +
+      "<p>No assigned students yet</p>" +
+      "<small>Students appear here once admin assigns them to you.</small></div>";
+    if (countId) updateChipPickerCount(containerId, countId);
+    return;
+  }
+  el.innerHTML = students.map(function (r) {
+    var name = r.student_name || r.topic || "Student";
+    var initial = name.trim().charAt(0).toUpperCase() || "S";
+    return (
+      '<button type="button" class="student-chip" data-id="' + escHtml(r.student_id) + '" aria-pressed="false">' +
+      '<span class="student-chip-avatar">' + escHtml(initial) + "</span>" +
+      '<span class="student-chip-name">' + escHtml(name) + "</span>" +
+      '<span class="student-chip-check" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg></span>' +
+      "</button>"
+    );
+  }).join("");
+  el.querySelectorAll(".student-chip").forEach(function (chip) {
+    chip.addEventListener("click", function () {
+      chip.classList.toggle("selected");
+      chip.setAttribute("aria-pressed", chip.classList.contains("selected") ? "true" : "false");
+      if (countId) updateChipPickerCount(containerId, countId);
+    });
+  });
+  if (countId) updateChipPickerCount(containerId, countId);
 }
 
 async function loadSchoolGroupsForHost() {
@@ -436,12 +532,23 @@ async function renderSchoolGroupsList() {
   try {
     var groups = await teacherApi("/api/v1/school-groups/mine") || [];
     if (!groups.length) {
-      el.innerHTML = '<p class="host-hint">No school groups yet. Create one above.</p>';
+      el.innerHTML =
+        '<div class="sg-empty-groups">' +
+        '<div class="sg-empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/><path d="M9 9v.01M9 12v.01M9 15v.01"/></svg></div>' +
+        "<p>No school groups yet</p>" +
+        "<span>Create your first group above to organize class live sessions.</span></div>";
       return;
     }
     el.innerHTML = groups.map(function (g) {
-      return '<div class="school-group-item"><strong>' + escHtml(g.school_name) + " — " + escHtml(g.name) + '</strong><span>' +
-        g.member_count + " student(s)</span></div>";
+      var initial = (g.name || "G").trim().charAt(0).toUpperCase();
+      return (
+        '<div class="sg-group-card">' +
+        '<div class="sg-group-icon">' + escHtml(initial) + "</div>" +
+        '<div class="sg-group-info"><strong>' + escHtml(g.name) + "</strong>" +
+        '<span class="sg-group-school">' + escHtml(g.school_name) + "</span></div>" +
+        '<div class="sg-group-meta"><span class="sg-member-badge">' + g.member_count + " student" + (g.member_count === 1 ? "" : "s") + "</span></div>" +
+        "</div>"
+      );
     }).join("");
   } catch (e) {
     el.innerHTML = "";
@@ -451,11 +558,17 @@ async function renderSchoolGroupsList() {
 async function createSchoolGroup() {
   var school = document.getElementById("sg-school").value.trim();
   var name = document.getElementById("sg-name").value.trim();
-  var sel = document.getElementById("sg-students");
-  var ids = sel ? Array.from(sel.selectedOptions).map(function (o) { return o.value; }) : [];
+  var ids = getSelectedStudentIds("sg-students-picker");
+  var errEl = document.getElementById("sg-create-error");
+  if (errEl) errEl.textContent = "";
   if (!school || !name) {
-    alert("Enter school name and group name.");
+    if (errEl) errEl.textContent = "Enter school name and group name.";
     return;
+  }
+  var btn = document.getElementById("sg-create-btn");
+  if (btn) {
+    btn.disabled = true;
+    btn.classList.add("busy");
   }
   try {
     await teacherApi("/api/v1/school-groups/", {
@@ -464,11 +577,20 @@ async function createSchoolGroup() {
     });
     document.getElementById("sg-school").value = "";
     document.getElementById("sg-name").value = "";
+    document.querySelectorAll("#sg-students-picker .student-chip.selected").forEach(function (c) {
+      c.classList.remove("selected");
+      c.setAttribute("aria-pressed", "false");
+    });
+    updateChipPickerCount("sg-students-picker", "sg-selected-count");
     await loadSchoolGroupsForHost();
     await renderSchoolGroupsList();
-    alert("School group created.");
   } catch (e) {
-    alert(e.message || "Could not create group.");
+    if (errEl) errEl.textContent = e.message || "Could not create group.";
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.classList.remove("busy");
+    }
   }
 }
 
@@ -812,72 +934,6 @@ async function loadTeacherMaterials() {
       "</div></article>"
     );
   }).join("");
-}
-
-function getCurriculumWeeks() {
-  try {
-    var saved = JSON.parse(localStorage.getItem("sia_teacher_curriculum_v1") || "null");
-    if (Array.isArray(saved) && saved.length) return saved;
-  } catch (e) { /* ignore */ }
-  return [
-    { weeks: "Week 1–4", topic: "Introduction & fundamentals", tasks: "Diagnostic test, core concepts" },
-    { weeks: "Week 5–8", topic: "Core topics & assessments", tasks: "Class tests, homework" },
-    { weeks: "Week 9–12", topic: "Revision & exam prep", tasks: "Past questions, mock exam" },
-  ];
-}
-
-function saveCurriculumWeeks(weeks) {
-  localStorage.setItem("sia_teacher_curriculum_v1", JSON.stringify(weeks));
-}
-
-function loadTeacherCurriculum() {
-  var el = document.getElementById("curriculum-list");
-  if (!el) return;
-  var weeks = getCurriculumWeeks();
-  el.innerHTML =
-    '<div class="curriculum-grid">' +
-    weeks.map(function (w, i) {
-      return (
-        '<div class="curriculum-card">' +
-        '<label><span>Period</span><input type="text" data-cur="weeks" data-i="' + i + '" value="' + escHtml(w.weeks) + '" /></label>' +
-        '<label><span>Topics</span><input type="text" data-cur="topic" data-i="' + i + '" value="' + escHtml(w.topic) + '" /></label>' +
-        '<label><span>Activities</span><input type="text" data-cur="tasks" data-i="' + i + '" value="' + escHtml(w.tasks) + '" /></label>' +
-        '<button type="button" class="btn-sm danger" data-action="remove-week" data-i="' + i + '">Remove</button>' +
-        "</div>"
-      );
-    }).join("") +
-    '</div><button type="button" class="btn-action curriculum-save-btn" style="margin-top:16px">Save work scheme</button>';
-  document.querySelectorAll("[data-action='remove-week']").forEach(function (btn) {
-    btn.addEventListener("click", function () { removeCurriculumWeek(parseInt(btn.dataset.i, 10)); });
-  });
-  var saveBtn = document.querySelector(".curriculum-save-btn");
-  if (saveBtn) saveBtn.addEventListener("click", persistCurriculumFromDom);
-}
-
-function persistCurriculumFromDom() {
-  var weeks = getCurriculumWeeks();
-  document.querySelectorAll("[data-cur]").forEach(function (inp) {
-    var i = parseInt(inp.dataset.i, 10);
-    var key = inp.dataset.cur;
-    if (!weeks[i]) weeks[i] = {};
-    weeks[i][key] = inp.value;
-  });
-  saveCurriculumWeeks(weeks);
-  alert("Work scheme saved.");
-}
-
-function addCurriculumWeek() {
-  var weeks = getCurriculumWeeks();
-  weeks.push({ weeks: "New period", topic: "", tasks: "" });
-  saveCurriculumWeeks(weeks);
-  loadTeacherCurriculum();
-}
-
-function removeCurriculumWeek(index) {
-  var weeks = getCurriculumWeeks();
-  weeks.splice(index, 1);
-  saveCurriculumWeeks(weeks);
-  loadTeacherCurriculum();
 }
 
 function initTeacherExamForm() {
@@ -1401,8 +1457,6 @@ function bindTeacherUI() {
   var matType = document.getElementById("mat-type");
   if (matType) matType.addEventListener("change", toggleMaterialInputs);
 
-  var addWeekBtn = document.getElementById("add-curriculum-week-btn");
-  if (addWeekBtn) addWeekBtn.addEventListener("click", addCurriculumWeek);
   var texamFile = document.getElementById("texam-file");
   if (texamFile) {
     texamFile.addEventListener("change", function () {
@@ -1441,9 +1495,6 @@ window.saveTeacherMaterial = saveTeacherMaterial;
 window.deleteTeacherMaterial = deleteTeacherMaterial;
 window.openMaterialUrl = openMaterialUrl;
 window.openLibraryBook = openLibraryBook;
-window.addCurriculumWeek = addCurriculumWeek;
-window.removeCurriculumWeek = removeCurriculumWeek;
-window.persistCurriculumFromDom = persistCurriculumFromDom;
 window.loadTeacherExams = loadTeacherExams;
 window.publishTeacherExam = publishTeacherExam;
 window.teacherHostClass = teacherHostClass;

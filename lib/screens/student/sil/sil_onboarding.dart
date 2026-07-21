@@ -201,7 +201,7 @@ class _SilOnboardingScreenState extends State<SilOnboardingScreen> {
             }
           },
         ),
-        title: Text('League Registration',
+        title: Text('League profile setup',
             style: TextStyle(
                 color: context.textColor, fontWeight: FontWeight.w700)),
       ),
@@ -210,6 +210,11 @@ class _SilOnboardingScreenState extends State<SilOnboardingScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Text(
+              'You are already signed in. Set up your League profile once — this is not a new account.',
+              style: TextStyle(color: context.greyColor, height: 1.35),
+            ),
+            const SizedBox(height: 12),
             LinearProgressIndicator(
               value: (_step + 1) / 6,
               color: SilColors.purple,

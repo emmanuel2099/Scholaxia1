@@ -740,6 +740,25 @@ async def admin_list_internal_exams(
     return out
 
 
+@router.post("/external-exams", status_code=201)
+async def admin_create_external_exam(
+    payload: InternalExamCreate,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create external/offline school exam (alias of POST /admin/internal-exams)."""
+    return await admin_create_internal_exam(payload=payload, current_user=current_user, db=db)
+
+
+@router.get("/external-exams")
+async def admin_list_external_exams(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """List external school exams (alias of GET /admin/internal-exams)."""
+    return await admin_list_internal_exams(current_user=current_user, db=db)
+
+
 @router.post("/internal-exams/upload-notes")
 async def admin_upload_internal_notes(
     file: UploadFile = File(...),

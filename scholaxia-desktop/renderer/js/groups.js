@@ -63,6 +63,15 @@
     var mineEl = document.getElementById("groups-mine-list");
     var schoolEl = document.getElementById("groups-school-list");
     var communityEl = document.getElementById("groups-community-list");
+    var searchEl = document.getElementById("groups-search-input");
+    var query = searchEl ? searchEl.value.trim().toLowerCase() : "";
+    function matches(g) {
+      if (!query) return true;
+      var name = (g.name || "").toLowerCase();
+      var desc = (g.description || "").toLowerCase();
+      var creator = (g.creator_name || "").toLowerCase();
+      return name.indexOf(query) >= 0 || desc.indexOf(query) >= 0 || creator.indexOf(query) >= 0;
+    }
     var skel = typeof showGroupsSkeleton === "function" ? showGroupsSkeleton : null;
     if (mineEl) (skel ? skel(mineEl) : (mineEl.innerHTML = '<div class="loading">Loading…</div>'));
     if (schoolEl) (skel ? skel(schoolEl) : (schoolEl.innerHTML = '<div class="loading">Loading…</div>'));
@@ -81,7 +90,7 @@
       var listed = results[2] || [];
 
       if (communityEl) {
-        var discover = listed.filter(function (g) { return !g.is_member; });
+        var discover = listed.filter(function (g) { return !g.is_member; }).filter(matches);
         if (!discover.length) {
           communityEl.innerHTML = '<p class="groups-empty-hint">No open groups right now. Create one and list it in the feed!</p>';
         } else {
@@ -92,20 +101,25 @@
       }
 
       if (mineEl) {
-        if (!mine.length) {
-          mineEl.innerHTML = '<p class="groups-empty-hint">You have not created or joined a group yet. Use the form above to start one.</p>';
+        var filteredMine = mine.filter(matches);
+        if (!filteredMine.length) {
+          mineEl.innerHTML = '<p class="groups-empty-hint">' + (query ? "No matching groups." : "You have not created or joined a group yet. Use the form above to start one.") + "</p>";
         } else {
-          mineEl.innerHTML = mine.map(function (g) {
+          mineEl.innerHTML = filteredMine.map(function (g) {
             return renderGroupCard(g, { allowJoin: false, showCreator: false });
           }).join("");
         }
       }
 
       if (schoolEl) {
-        if (!school.length) {
-          schoolEl.innerHTML = '<p class="groups-empty-hint">Your school adds you to groups — you cannot join school groups yourself.</p>';
+        var filteredSchool = school.filter(function (g) {
+          if (!query) return true;
+          return ((g.name || "") + " " + (g.school_name || "")).toLowerCase().indexOf(query) >= 0;
+        });
+        if (!filteredSchool.length) {
+          schoolEl.innerHTML = '<p class="groups-empty-hint">' + (query ? "No matching school groups." : "Your school adds you to groups — you cannot join school groups yourself.") + "</p>";
         } else {
-          schoolEl.innerHTML = school.map(function (g) {
+          schoolEl.innerHTML = filteredSchool.map(function (g) {
             return (
               '<article class="group-card-v2 group-card-school">' +
               '<div class="group-card-icon school">&#127979;</div>' +
