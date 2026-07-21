@@ -9,7 +9,7 @@ import 'cbt_exam_screen.dart';
 import 'cbt_packages_screen.dart';
 import 'cbt_sessions_screen.dart';
 
-/// CBT hub: JAMB = all 4 subjects together; others = one subject at a time.
+/// CBT hub: JAMB = available profile subjects combined into one exam.
 class CbtScreen extends StatefulWidget {
   const CbtScreen({super.key});
 
@@ -176,19 +176,10 @@ class _CbtScreenState extends State<CbtScreen> {
 
   bool get _isJambTab => _activeTab == 'JAMB';
 
-  List<String> get _jambYears {
-    final set = <String>{};
-    for (final raw in _jambExams) {
-      if (raw is! Map) continue;
-      final y = _examYear(raw);
-      if (y != null && y.isNotEmpty) set.add(y);
-    }
-    final list = set.toList()..sort((a, b) => b.compareTo(a));
-    return list;
-  }
-
-  List<Map<String, dynamic>> _jambBundleMembersForYear(String year) {
-    if (_jambSubjects.length != 4) return [];
+  /// One exam per profile subject that admin has uploaded (1–4).
+  /// These are always taken together as a single JAMB session.
+  List<Map<String, dynamic>> _jambAvailableMembers() {
+    if (_jambSubjects.isEmpty) return [];
     final exams = _jambExams
         .whereType<Map>()
         .map((e) => Map<String, dynamic>.from(e))
@@ -196,23 +187,37 @@ class _CbtScreenState extends State<CbtScreen> {
 
     final picks = <Map<String, dynamic>>[];
     for (final subj in _jambSubjects) {
-      Map<String, dynamic>? found;
+      Map<String, dynamic>? best;
+      String? bestYear;
       for (final e in exams) {
+        if (!subjectMatches(_examSubject(e), [subj])) continue;
         final y = _examYear(e);
-        if (y != year) continue;
-        if (subjectMatches(_examSubject(e), [subj])) {
-          found = e;
-          break;
+        if (best == null) {
+          best = e;
+          bestYear = y;
+          continue;
+        }
+        if (y != null && (bestYear == null || y.compareTo(bestYear) > 0)) {
+          best = e;
+          bestYear = y;
         }
       }
-      if (found == null) return [];
-      picks.add(found);
+      if (best != null) picks.add(best);
     }
     return picks;
   }
 
+  String _stripYearLabel(String text) {
+    return text
+        .replaceAll(_yearRe, '')
+        .replaceAll(RegExp(r'\s{2,}'), ' ')
+        .replaceAll(RegExp(r'\s+·\s+$'), '')
+        .replaceAll(RegExp(r'^[\s\-·]+|[\s\-·]+$'), '')
+        .trim();
+  }
+
   bool _jambBundleDownloadedForMembers(List<Map<String, dynamic>> members) {
-    if (members.length != 4) return false;
+    if (members.isEmpty) return false;
     return members.every(
       (e) => _downloaded.contains(e['id']?.toString() ?? ''),
     );
@@ -250,14 +255,6 @@ class _CbtScreenState extends State<CbtScreen> {
     }
   }
 
-  List<String> get _completeJambYears {
-    final years = <String>[];
-    for (final y in _jambYears) {
-      if (_jambBundleMembersForYear(y).length == 4) years.add(y);
-    }
-    return years;
-  }
-
   Widget _examCardsForList(
     BuildContext context,
     List<Map<String, dynamic>> exams,
@@ -266,7 +263,7 @@ class _CbtScreenState extends State<CbtScreen> {
     return Column(
       children: exams.map((exam) {
         final id = exam['id']?.toString() ?? '';
-        final title = exam['title']?.toString() ?? 'Exam';
+        final title = _stripYearLabel(exam['title']?.toString() ?? 'Exam');
         final desc = exam['description']?.toString() ?? '';
         final type = exam['exam_type']?.toString() ?? _tabLabel;
         final dur = (exam['duration_minutes'] as num?)?.toInt();
@@ -314,24 +311,14 @@ class _CbtScreenState extends State<CbtScreen> {
     return list;
   }
 
-  String _jambBundleBusyKey(String year) => 'jamb_bundle_$year';
+  static const _jambBundleBusyKey = 'jamb_bundle_available';
 
   Future<void> _downloadJambBundleMembers(
-    String year,
     List<Map<String, dynamic>> members,
   ) async {
-    if (members.length != 4) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'All 4 JAMB subject packs must be available from admin.',
-          ),
-        ),
-      );
-      return;
-    }
+    if (members.isEmpty) return;
     if (_busyExamId != null) return;
-    setState(() => _busyExamId = _jambBundleBusyKey(year));
+    setState(() => _busyExamId = _jambBundleBusyKey);
     try {
       for (final exam in members) {
         final id = exam['id']?.toString() ?? '';
@@ -342,10 +329,13 @@ class _CbtScreenState extends State<CbtScreen> {
       final ids = await _store.downloadedIds();
       if (!mounted) return;
       setState(() => _downloaded = ids);
+      final n = members.length;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text(
-            'JAMB full exam downloaded — 4 subjects ready offline.',
+            n == 1
+                ? 'Downloaded — ready offline.'
+                : 'Downloaded $n subjects — take them together offline.',
           ),
         ),
       );
@@ -361,18 +351,9 @@ class _CbtScreenState extends State<CbtScreen> {
 
   Future<void> _startJambBundleMembers(
     BuildContext ctx,
-    String year,
     List<Map<String, dynamic>> members,
   ) async {
-    if (members.length != 4) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Need all 4 JAMB subject exams uploaded by admin.'),
-        ),
-      );
-      return;
-    }
-    // Start never auto-downloads — user must tap Download first.
+    if (members.isEmpty) return;
     for (final exam in members) {
       final id = exam['id']?.toString() ?? '';
       if (id.isEmpty || !_downloaded.contains(id)) {
@@ -385,19 +366,21 @@ class _CbtScreenState extends State<CbtScreen> {
       }
     }
     if (_busyExamId != null) return;
-    setState(() => _busyExamId = _jambBundleBusyKey(year));
+    setState(() => _busyExamId = _jambBundleBusyKey);
     try {
       final allQuestions = <CbtQuestion>[];
       final sectionStarts = <String, int>{};
       var totalDuration = 0;
+      final subjectNames = <String>[];
       for (final exam in members) {
         final id = exam['id']?.toString() ?? '';
         final rawSubject = _examSubject(exam);
         final rawTitle = exam['title']?.toString().trim() ?? '';
-        var subjectLabel = rawSubject.isNotEmpty
-            ? rawSubject
-            : (rawTitle.isNotEmpty ? rawTitle : 'Subject');
-        // Ensure each section label is unique so the dropdown shows all sections.
+        var subjectLabel = _stripYearLabel(
+          rawSubject.isNotEmpty
+              ? rawSubject
+              : (rawTitle.isNotEmpty ? rawTitle : 'Subject'),
+        );
         if (sectionStarts.containsKey(subjectLabel)) {
           var suffix = 2;
           while (sectionStarts.containsKey('$subjectLabel $suffix')) {
@@ -405,6 +388,7 @@ class _CbtScreenState extends State<CbtScreen> {
           }
           subjectLabel = '$subjectLabel $suffix';
         }
+        subjectNames.add(subjectLabel);
         sectionStarts[subjectLabel] = allQuestions.length + 1;
         final pack = await _store.loadPack(id);
         if (pack == null) {
@@ -434,7 +418,9 @@ class _CbtScreenState extends State<CbtScreen> {
         }
       }
       if (!ctx.mounted) return;
-      final title = 'JAMB Full Exam (${_jambSubjects.join(' · ')}) · $year';
+      final title = members.length >= 4
+          ? 'JAMB Full Exam · ${subjectNames.join(' · ')}'
+          : 'JAMB Exam · ${subjectNames.join(' · ')}';
       Navigator.push(
         ctx,
         MaterialPageRoute(
@@ -640,105 +626,8 @@ class _CbtScreenState extends State<CbtScreen> {
                       else if (_isJambTab) ...[
                         Builder(
                           builder: (ctx) {
-                            final validYears = _completeJambYears;
-                            // All 4 profile subjects uploaded for a year → normal combined UTME.
-                            if (validYears.isNotEmpty) {
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'JAMB — full UTME exam',
-                                    style: TextStyle(
-                                      color: context.textColor,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    'All 4 of your subjects are ready. Download once and take them together as one exam.',
-                                    style: TextStyle(
-                                      color: context.greyColor,
-                                      fontSize: 12,
-                                      height: 1.4,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 14),
-                                  ...validYears.map((y) {
-                                    final members =
-                                        _jambBundleMembersForYear(y);
-                                    final isDownloaded =
-                                        _jambBundleDownloadedForMembers(
-                                          members,
-                                        );
-                                    final totalQ = members.fold<int>(
-                                      0,
-                                      (sum, e) =>
-                                          sum +
-                                          ((e['total_questions'] as num?)
-                                                  ?.toInt() ??
-                                              0),
-                                    );
-                                    final durationMins = members.fold<int>(
-                                      0,
-                                      (maxDur, e) =>
-                                          maxDur >
-                                              ((e['duration_minutes'] as num?)
-                                                      ?.toInt() ??
-                                                  0)
-                                          ? maxDur
-                                          : ((e['duration_minutes'] as num?)
-                                                    ?.toInt() ??
-                                                0),
-                                    );
-                                    return Padding(
-                                      padding: const EdgeInsets.only(
-                                        bottom: 14,
-                                      ),
-                                      child: _ExamCard(
-                                        title: 'JAMB Full Exam',
-                                        description:
-                                            'Subjects: ${_jambSubjects.join(' · ')}',
-                                        examType: '4 subjects · combined',
-                                        durationMins: durationMins > 0
-                                            ? durationMins
-                                            : 120,
-                                        totalQuestions: totalQ,
-                                        isBusy:
-                                            _busyExamId ==
-                                            _jambBundleBusyKey(y),
-                                        isDownloaded: isDownloaded,
-                                        onDownload: () =>
-                                            _downloadJambBundleMembers(
-                                              y,
-                                              members,
-                                            ),
-                                        onStart: () => _startJambBundleMembers(
-                                          ctx,
-                                          y,
-                                          members,
-                                        ),
-                                      ),
-                                    );
-                                  }),
-                                ],
-                              );
-                            }
-
-                            // Incomplete upload: show only subjects admin has uploaded
-                            // that are also in the student profile — no subject chips.
-                            final available = _jambExams
-                                .whereType<Map>()
-                                .map((e) => Map<String, dynamic>.from(e))
-                                .where((e) {
-                                  if (_jambSubjects.isEmpty) return true;
-                                  return subjectMatches(
-                                    _examSubject(e),
-                                    _jambSubjects,
-                                  );
-                                })
-                                .toList();
-                            if (available.isEmpty) {
+                            final members = _jambAvailableMembers();
+                            if (members.isEmpty) {
                               return _emptyBox(
                                 context,
                                 message: _jambSubjects.isEmpty
@@ -747,19 +636,35 @@ class _CbtScreenState extends State<CbtScreen> {
                               );
                             }
 
-                            final subjectNames = <String>{};
-                            for (final e in available) {
-                              final s = _examSubject(e);
-                              if (s.isNotEmpty) subjectNames.add(s);
-                            }
+                            final subjectNames = members
+                                .map((e) => _stripYearLabel(_examSubject(e)))
+                                .where((s) => s.isNotEmpty)
+                                .toList();
+                            final n = members.length;
+                            final isDownloaded =
+                                _jambBundleDownloadedForMembers(members);
+                            final totalQ = members.fold<int>(
+                              0,
+                              (sum, e) =>
+                                  sum +
+                                  ((e['total_questions'] as num?)?.toInt() ??
+                                      0),
+                            );
+                            final durationMins = members.fold<int>(
+                              0,
+                              (maxDur, e) => max(
+                                maxDur,
+                                (e['duration_minutes'] as num?)?.toInt() ?? 0,
+                              ),
+                            );
 
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  subjectNames.length == 1
-                                      ? 'JAMB — ${subjectNames.first}'
-                                      : 'JAMB — available subjects',
+                                  n >= 4
+                                      ? 'JAMB — full UTME exam'
+                                      : 'JAMB — take together',
                                   style: TextStyle(
                                     color: context.textColor,
                                     fontSize: 14,
@@ -768,9 +673,9 @@ class _CbtScreenState extends State<CbtScreen> {
                                 ),
                                 const SizedBox(height: 6),
                                 Text(
-                                  subjectNames.length == 1
-                                      ? 'Download and start this subject. When all 4 of your subjects are uploaded, they combine into one full UTME exam.'
-                                      : 'These subjects are ready now. When all 4 of your profile subjects are uploaded, they combine into one full UTME exam.',
+                                  n == 1
+                                      ? 'Download and start this subject as one exam.'
+                                      : 'Download once and take these $n subjects together as one exam.',
                                   style: TextStyle(
                                     color: context.greyColor,
                                     fontSize: 12,
@@ -778,7 +683,27 @@ class _CbtScreenState extends State<CbtScreen> {
                                   ),
                                 ),
                                 const SizedBox(height: 14),
-                                _examCardsForList(context, available),
+                                _ExamCard(
+                                  title: n >= 4
+                                      ? 'JAMB Full Exam'
+                                      : 'JAMB Exam',
+                                  description:
+                                      'Subjects: ${subjectNames.join(' · ')}',
+                                  examType: n == 1
+                                      ? '1 subject'
+                                      : '$n subjects · combined',
+                                  durationMins:
+                                      durationMins > 0 ? durationMins : 120,
+                                  totalQuestions: totalQ,
+                                  isBusy: _busyExamId == _jambBundleBusyKey,
+                                  isDownloaded: isDownloaded,
+                                  onDownload: () =>
+                                      _downloadJambBundleMembers(members),
+                                  onStart: () => _startJambBundleMembers(
+                                    ctx,
+                                    members,
+                                  ),
+                                ),
                               ],
                             );
                           },
