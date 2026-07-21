@@ -217,6 +217,7 @@
         <h2>CBT Exams</h2>
         <div class="form-row">
           <button class="btn-sm" onclick="seedCbt()">Seed sample exams</button>
+          <button class="btn-sm danger" onclick="deleteAllCbt()">Delete all exams</button>
           <button class="btn-sm" onclick="loadCbt()">Refresh list</button>
         </div>
       </div>
@@ -233,9 +234,9 @@
       <div class="panel" style="margin-bottom:16px">
         <h3>Upload CBT file</h3>
         <p class="cbt-hint small">
-          Upload a <strong>.json</strong>, <strong>.csv</strong>, <strong>.pdf</strong>, or <strong>.docx</strong> file. Pick the <strong>subject</strong> and <strong>year</strong>
-          first — that is how students find this pack on the platform.
-          PDF and Word papers are extracted into questions you review and confirm before they are saved
+          Upload a <strong>.json</strong>, <strong>.csv</strong>, <strong>.pdf</strong>, or <strong>.docx</strong> file and pick the
+          <strong>subject</strong>. The current year is assigned automatically.
+          PDF and Word papers are extracted and saved in one step
           (scanned/photo PDFs are not supported — the PDF must contain selectable text).
         </p>
         <div class="form-grid">
@@ -265,9 +266,6 @@
               <option>Basic Technology</option>
               <option>Social Studies</option>
             </select>
-          </label>
-          <label><span>Year *</span>
-            <select id="cbt-import-year"></select>
           </label>
           <label><span>Exam board</span>
             <select id="cbt-import-type"><option>JAMB</option><option>WAEC</option><option>NECO</option><option>JUNIOR_WAEC</option><option>COMMON_ENTRANCE</option></select>

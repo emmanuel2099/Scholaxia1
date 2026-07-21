@@ -786,7 +786,7 @@ function emptyQuestion() {
 function fillCbtYearSelects() {
   var years = [];
   for (var y = 2026; y >= 1995; y--) years.push(String(y));
-  ["cbt-year", "cbt-import-year"].forEach(function (id) {
+  ["cbt-year"].forEach(function (id) {
     var el = document.getElementById(id);
     if (!el || el.options.length > 1) return;
     el.innerHTML = '<option value="">Select year</option>' +
@@ -924,14 +924,13 @@ async function loadCbt() {
     var rows = await adminApi("/api/v1/admin/cbt/exams");
     if (!rows) return;
     if (!rows.length) { el.innerHTML = '<div class="empty-state">No CBT exams. Create one or click Seed Exams.</div>'; return; }
-    el.innerHTML = '<table class="data-table"><thead><tr><th>Title</th><th>Subject</th><th>Year</th><th>Type</th><th>Questions</th><th>Status</th><th></th></tr></thead><tbody>' +
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Title</th><th>Subject</th><th>Type</th><th>Questions</th><th>Status</th><th></th></tr></thead><tbody>' +
       rows.map(function (e) {
         var typeBadge = e.is_school_exam
           ? '<span class="badge school">School</span>'
           : '<span class="badge ok">' + escHtml(e.exam_type) + '</span>';
         var pub = e.is_published ? '<span class="badge ok">Published</span>' : '<span class="badge muted">Draft</span>';
         return '<tr><td>' + escHtml(e.title) + '</td><td>' + escHtml(e.subject) + '</td>' +
-          '<td>' + (e.year || "—") + '</td>' +
           '<td>' + typeBadge + '</td><td>' + e.total_questions + '</td><td>' + pub + '</td>' +
           '<td class="actions">' +
           '<button class="btn-sm" onclick="toggleCbtPublish(\'' + e.id + '\')">Toggle publish</button>' +
@@ -1058,6 +1057,16 @@ async function deleteCbt(id) {
   } catch (e) { alert(e.message); }
 }
 
+async function deleteAllCbt() {
+  if (!confirm("Delete ALL CBT exams permanently? This cannot be undone.")) return;
+  if (!confirm("Are you sure? Every practice and school exam will be removed.")) return;
+  try {
+    var r = await adminApi("/api/v1/admin/cbt/exams", { method: "DELETE", timeout: 180000 });
+    alert("Deleted " + ((r && r.deleted_count) || 0) + " exam(s).");
+    loadCbt();
+  } catch (e) { alert(e.message); }
+}
+
 async function seedCbt() {
   if (!confirm("Seed WAEC, NECO & JAMB practice exams?")) return;
   try {
@@ -1084,7 +1093,7 @@ async function importCbtFile() {
   var fields = {
     title: document.getElementById("cbt-import-title").value.trim(),
     subject: document.getElementById("cbt-import-subject").value.trim(),
-    year: document.getElementById("cbt-import-year").value.trim(),
+    year: String(new Date().getFullYear()),
     exam_type: document.getElementById("cbt-import-type").value,
     duration_minutes: parseInt(document.getElementById("cbt-import-duration").value, 10) || 60,
     is_published: document.getElementById("cbt-import-publish").checked,
@@ -1093,10 +1102,6 @@ async function importCbtFile() {
 
   if (!fields.subject) {
     err.textContent = "Pick a subject so students can find this exam.";
-    return;
-  }
-  if (!fields.year) {
-    err.textContent = "Pick the exam year so it shows under the right year filter.";
     return;
   }
   if (!fields.title) {
@@ -1110,8 +1115,36 @@ async function importCbtFile() {
     try {
       var preview = await previewCbtFile(file);
       if (!preview) return;
-      renderCbtPreview(preview);
-      ok.textContent = "Extracted " + preview.total_questions + " question(s). Review them below, then confirm.";
+      btn.textContent = "Saving exam…";
+      var questions = (preview.questions || []).filter(function (q) {
+        return q.question_text && q.option_a && q.option_b && q.option_c && q.option_d;
+      }).map(function (q) {
+        return {
+          question_text: q.question_text,
+          option_a: q.option_a,
+          option_b: q.option_b,
+          option_c: q.option_c,
+          option_d: q.option_d,
+          correct_option: q.correct_option || "",
+          confidence: q.confidence,
+        };
+      });
+      if (!questions.length) throw new Error("No complete questions were extracted from this file.");
+      var r = await confirmCbtImport({
+        title: fields.title,
+        subject: fields.subject,
+        year: parseInt(fields.year, 10),
+        exam_type: fields.exam_type,
+        duration_minutes: fields.duration_minutes,
+        is_published: fields.is_published,
+        skip_duplicates: fields.skip_duplicates,
+        questions: questions,
+      });
+      if (!r) return;
+      ok.textContent = "Created \"" + r.title + "\" with " + r.total_questions + " question(s)." +
+        (r.is_published ? "" : " Saved unpublished.") + (r.note ? " " + r.note : "");
+      input.value = "";
+      loadCbt();
     } catch (e) {
       err.textContent = e.message;
     } finally {
@@ -1223,12 +1256,11 @@ async function confirmCbtPreviewUi() {
   err.textContent = "";
 
   var subject = document.getElementById("cbt-import-subject").value.trim();
-  var year = document.getElementById("cbt-import-year").value.trim();
+  var year = String(new Date().getFullYear());
   var examType = document.getElementById("cbt-import-type").value;
   var title = document.getElementById("cbt-import-title").value.trim() ||
     (examType + " " + subject + " " + year);
   if (!subject) { err.textContent = "Pick a subject in the upload form above."; return; }
-  if (!year) { err.textContent = "Pick the exam year in the upload form above."; return; }
 
   var threshold = cbtPreviewData.low_confidence_threshold || 0;
   var questions = [];

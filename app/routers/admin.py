@@ -13,7 +13,7 @@ from app.core.deps import require_admin
 from app.core.security import hash_password, create_access_token, create_refresh_token
 from app.models.user import User, UserRole, TeacherProfile, StudentProfile, KindProfile
 from app.models.content import Book, LibraryTarget
-from app.models.cbt import CBTExam, CBTQuestion, CBTSession
+from app.models.cbt import CBTExam, CBTQuestion, CBTSession, ExamProctorLog
 from app.models.community import CommunityPost, CommunityChannel
 from app.models.student_group import StudentGroup, StudentGroupMember
 from app.services.group_community import ensure_group_feed_post
@@ -508,21 +508,65 @@ async def toggle_publish(
     return {"id": str(exam.id), "is_published": exam.is_published}
 
 
+async def _delete_cbt_exam_cascade(db: AsyncSession, exam: CBTExam) -> None:
+    """Remove an exam plus sessions, proctor logs, questions, and post links."""
+    sessions = (
+        await db.execute(select(CBTSession).where(CBTSession.exam_id == exam.id))
+    ).scalars().all()
+    for session in sessions:
+        logs = (
+            await db.execute(
+                select(ExamProctorLog).where(ExamProctorLog.session_id == session.id)
+            )
+        ).scalars().all()
+        for log in logs:
+            await db.delete(log)
+        await db.delete(session)
+
+    posts = (
+        await db.execute(
+            select(CommunityPost).where(CommunityPost.cbt_exam_id == exam.id)
+        )
+    ).scalars().all()
+    for post in posts:
+        post.cbt_exam_id = None
+
+    questions = (
+        await db.execute(select(CBTQuestion).where(CBTQuestion.exam_id == exam.id))
+    ).scalars().all()
+    for question in questions:
+        await db.delete(question)
+
+    await db.delete(exam)
+
+
 @router.delete("/cbt/exams/{exam_id}", status_code=204)
 async def delete_cbt_exam(
     exam_id: str,
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Admin deletes an exam and all its questions."""
+    """Admin deletes an exam and all related sessions/questions."""
     result = await db.execute(select(CBTExam).where(CBTExam.id == exam_id))
     exam = result.scalar_one_or_none()
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
-    q_res = await db.execute(select(CBTQuestion).where(CBTQuestion.exam_id == exam_id))
-    for q in q_res.scalars().all():
-        await db.delete(q)
-    await db.delete(exam)
+    await _delete_cbt_exam_cascade(db, exam)
+
+
+@router.delete("/cbt/exams", status_code=200)
+async def delete_all_cbt_exams(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin deletes every CBT exam (practice + school), including related data."""
+    result = await db.execute(select(CBTExam))
+    exams = result.scalars().all()
+    deleted = 0
+    for exam in exams:
+        await _delete_cbt_exam_cascade(db, exam)
+        deleted += 1
+    return {"deleted_count": deleted}
 
 
 @router.get("/cbt/import-template")
@@ -841,10 +885,7 @@ async def purge_sample_cbt_exams(
         if (sessions.scalar() or 0) > 0:
             kept.append(exam.title)
             continue
-        q_res = await db.execute(select(CBTQuestion).where(CBTQuestion.exam_id == exam.id))
-        for q in q_res.scalars().all():
-            await db.delete(q)
-        await db.delete(exam)
+        await _delete_cbt_exam_cascade(db, exam)
         deleted.append(exam.title)
 
     return {
