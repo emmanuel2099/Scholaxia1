@@ -1508,6 +1508,20 @@ async function deleteCommunityPost(id) {
   } catch (e) { alert(e.message); }
 }
 
+async function clearAllConversations() {
+  if (!confirm("Clear ALL conversations? This removes every community message, post, and group chat history.")) return;
+  if (!confirm("Are you sure? This cannot be undone.")) return;
+  try {
+    var r = await adminApi("/api/v1/admin/community/conversations", { method: "DELETE", timeout: 180000 });
+    alert(
+      "Cleared " + ((r && r.community_posts_deleted) || 0) + " post(s), " +
+      ((r && r.community_messages_deleted) || 0) + " message(s), and " +
+      ((r && r.group_messages_deleted) || 0) + " group chat message(s)."
+    );
+    loadCommunityPosts();
+  } catch (e) { alert(e.message); }
+}
+
 /* ── Marketplace ── */
 async function loadMarketplace() {
   await Promise.all([loadMarketplaceProducts(), loadMarketplaceBookings()]);

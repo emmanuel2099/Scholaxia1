@@ -22,6 +22,14 @@ PERSONAL_INFO_PATTERNS = [
 ]
 
 
+def contains_link_or_phone(content: str) -> bool:
+    """True when text carries a phone number, email, or external link."""
+    for pattern in PERSONAL_INFO_PATTERNS:
+        if re.search(pattern, content or "", re.IGNORECASE):
+            return True
+    return False
+
+
 async def check_message_content(content: str) -> Tuple[bool, str]:
     """
     Returns (is_flagged, reason).

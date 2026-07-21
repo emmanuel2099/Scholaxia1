@@ -1578,6 +1578,47 @@ async def admin_list_community_posts(
     ]
 
 
+@router.delete("/community/conversations", status_code=200)
+async def admin_clear_all_conversations(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Wipe every conversation: community chat messages, feed posts and comments,
+    and the chat history of every student group. Group listings stay.
+    """
+    from sqlalchemy import delete as sa_delete, update as sa_update, func as sa_func
+    from app.models.community import CommunityMessage
+    from app.models.student_group import StudentGroupMessage
+
+    group_msg_count = (
+        await db.execute(select(sa_func.count()).select_from(StudentGroupMessage))
+    ).scalar() or 0
+    await db.execute(sa_delete(StudentGroupMessage))
+
+    msg_res = await db.execute(
+        sa_update(CommunityMessage)
+        .where(CommunityMessage.is_deleted == False)  # noqa: E712
+        .values(is_deleted=True)
+    )
+
+    post_res = await db.execute(
+        sa_update(CommunityPost)
+        .where(
+            CommunityPost.is_deleted == False,  # noqa: E712
+            ~CommunityPost.content.like("@group:%"),
+        )
+        .values(is_deleted=True)
+    )
+
+    await db.flush()
+    return {
+        "group_messages_deleted": int(group_msg_count),
+        "community_messages_deleted": int(msg_res.rowcount or 0),
+        "community_posts_deleted": int(post_res.rowcount or 0),
+    }
+
+
 @router.delete("/community/posts/{post_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def admin_delete_community_post(
     post_id: str,

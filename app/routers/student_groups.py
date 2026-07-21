@@ -10,7 +10,7 @@ from app.core.database import get_db
 from app.core.deps import require_student_or_kind
 from app.services.live_class_access import parse_uuid
 from app.services.group_community import ensure_group_feed_post
-from app.services.moderation_service import check_message_content
+from app.services.moderation_service import check_message_content, contains_link_or_phone
 from app.services.notification_service import send_users_notification
 from app.models.student_group import (
     StudentGroup,
@@ -120,6 +120,14 @@ async def create_group(
     if not name:
         raise HTTPException(status_code=400, detail="Group name is required.")
     creator = parse_uuid(current_user["sub"])
+    existing_res = await db.execute(
+        select(StudentGroup).where(StudentGroup.creator_id == creator).limit(1)
+    )
+    if existing_res.scalar_one_or_none():
+        raise HTTPException(
+            status_code=400,
+            detail="You can only create one group. Delete your existing group to create a new one.",
+        )
     group = StudentGroup(
         creator_id=creator,
         name=name,
@@ -602,6 +610,17 @@ async def list_group_posts(
     posts = [p for p in posts if not POST_COMMENT_RE.match(p.content or "")]
     posts = list(reversed(posts))
 
+    # Auto-delete group posts that carry a link or phone number.
+    flagged_posts = [
+        p for p in posts
+        if not (p.content or "").startswith("@group:") and contains_link_or_phone(p.content)
+    ]
+    if flagged_posts:
+        for p in flagged_posts:
+            p.is_deleted = True
+        await db.flush()
+        posts = [p for p in posts if not p.is_deleted]
+
     author_ids = list({str(p.author_id) for p in posts})
     users_map = {}
     if author_ids:
@@ -731,6 +750,16 @@ async def list_group_messages(
         .order_by(StudentGroupMessage.created_at.asc())
         .limit(min(limit, 200))
     )
+    rows = result.all()
+    # Auto-delete any message that carries a link or phone number.
+    clean_rows = []
+    for msg, user in rows:
+        if contains_link_or_phone(msg.content):
+            await db.delete(msg)
+        else:
+            clean_rows.append((msg, user))
+    if len(clean_rows) != len(rows):
+        await db.flush()
     return [
         {
             "id": str(msg.id),
@@ -742,7 +771,7 @@ async def list_group_messages(
             "created_at": msg.created_at.isoformat() if msg.created_at else None,
             "is_mine": str(msg.user_id) == str(uid),
         }
-        for msg, user in result.all()
+        for msg, user in clean_rows
     ]
 
 

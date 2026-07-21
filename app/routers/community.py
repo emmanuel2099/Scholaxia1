@@ -13,7 +13,7 @@ from app.models.community import (
     PostVisibility, CommunityPost,
 )
 from app.models.user import StudentProfile, UserRole, User
-from app.services.moderation_service import check_message_content
+from app.services.moderation_service import check_message_content, contains_link_or_phone
 from app.services.live_class_access import parse_uuid
 from app.services.notification_service import (
     send_user_notification,
@@ -557,6 +557,16 @@ async def get_messages(
     msgs = list(reversed(msgs))  # return oldest-first for display
     msgs = [m for m in msgs if not POST_COMMENT_RE.match(m.content or "")]
 
+    # Auto-delete any message that carries a link or phone number.
+    flagged_msgs = [m for m in msgs if contains_link_or_phone(m.content)]
+    if flagged_msgs:
+        for m in flagged_msgs:
+            m.is_deleted = True
+            m.is_flagged = True
+            m.flagged_reason = "Auto-removed: link or phone number"
+        await db.flush()
+        msgs = [m for m in msgs if not m.is_deleted]
+
     # Fetch sender names in one query
     sender_ids = list({str(m.sender_id) for m in msgs})
     users_map = {}
@@ -755,6 +765,29 @@ def _serialize_post(
     }
 
 
+async def _sweep_flagged_posts(db: AsyncSession, posts: list) -> list:
+    """Auto-delete posts that carry a link or phone number; return the clean list."""
+    clean = []
+    dirty = False
+    for p in posts:
+        content = p.content or ""
+        if content.startswith("@group:"):
+            # Structural group-listing posts contain UUIDs, not user text.
+            clean.append(p)
+            continue
+        if content.startswith("@post:"):
+            # Strip the "@post:<uuid>" comment prefix before checking.
+            content = content.split(" ", 1)[1] if " " in content else ""
+        if contains_link_or_phone(content):
+            p.is_deleted = True
+            dirty = True
+        else:
+            clean.append(p)
+    if dirty:
+        await db.flush()
+    return clean
+
+
 async def _fetch_channel_posts(
     channel_id: str,
     limit: int,
@@ -792,6 +825,7 @@ async def _fetch_channel_posts(
     result = await db.execute(query)
     posts = result.scalars().all()
     posts = [p for p in posts if not POST_COMMENT_RE.match(p.content or "")]
+    posts = await _sweep_flagged_posts(db, posts)
 
     author_ids = list({str(p.author_id) for p in posts})
     users_map: dict = {}
@@ -934,6 +968,7 @@ async def list_post_comments(
         .offset(offset)
     )
     posts = result.scalars().all()
+    posts = await _sweep_flagged_posts(db, posts)
 
     author_ids = list({str(p.author_id) for p in posts})
     users_map: dict = {}
