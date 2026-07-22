@@ -404,6 +404,7 @@ function backToSignupDetails() {
 
 async function signup(e) {
   e.preventDefault();
+  e.stopPropagation();
   var cfg = ROLE_CONFIG[selectedAccountRole] || ROLE_CONFIG.student;
   if (!cfg.allowSignup) {
     document.getElementById("signup-error").textContent = "Signup is not available for this account type.";
@@ -444,11 +445,22 @@ async function signup(e) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-      signal: fetchTimeout(45000),
+      signal: fetchTimeout(90000),
     });
-    var data = await res.json();
+    var data = {};
+    try {
+      data = await res.json();
+    } catch (parseErr) {
+      data = {};
+    }
     if (!res.ok) {
-      err.textContent = typeof data.detail === "string" ? data.detail : "Could not send OTP.";
+      var detail = data.detail;
+      err.textContent =
+        typeof detail === "string"
+          ? detail
+          : Array.isArray(detail)
+            ? detail.map(function (d) { return d.msg || d; }).join("; ")
+            : "Could not send OTP. Try again.";
       return;
     }
     showSignupOtpStep(data.email || email);
@@ -456,14 +468,19 @@ async function signup(e) {
       document.getElementById("signup-otp").value = data.debug_otp;
       document.getElementById("signup-otp-error").textContent =
         "Email delayed by Gmail — use this code: " + data.debug_otp;
+    } else {
+      document.getElementById("signup-otp-error").textContent =
+        "Check your inbox (and spam) for the code.";
     }
   } catch (ex) {
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       err.textContent = "There is no internet on your data.";
-    } else if (ex.name === "TimeoutError" || ex.name === "AbortError" || /failed to fetch/i.test(ex.message || "")) {
+    } else if (ex.name === "TimeoutError" || ex.name === "AbortError") {
+      err.textContent = "Request timed out. The server may be waking up — try again.";
+    } else if (/failed to fetch/i.test(ex.message || "")) {
       err.textContent = "There is no internet on your data.";
     } else {
-      err.textContent = "Network error. Check your connection.";
+      err.textContent = "Network error. Check your connection and try again.";
     }
   } finally {
     btn.disabled = false;
