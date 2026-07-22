@@ -120,6 +120,17 @@ async function payForLivePlan(planId, classId, btn) {
   _livePayBusy = true;
   setJoinButtonBusy(btn, true, "Opening payment…");
   try {
+    // Prefer Paystack (same as mobile Class Packages / Subscription).
+    if (typeof paystackPurchase === "function") {
+      var paid = await paystackPurchase({
+        productType: "class_package",
+        productId: String(planId),
+      });
+      if (!paid) throw new Error("Payment was not completed.");
+      if (classId) await completeJoinClass(classId, null);
+      return { paid: true };
+    }
+
     await loadFlutterwaveScript();
 
     var init = await api("/api/v1/payments/flutterwave/live-plan/init", {
@@ -303,7 +314,7 @@ function bindLivePageClickHandlers() {
 
   document.addEventListener("click", function (e) {
     var planBtn = e.target.closest(".live-plan-pay");
-    if (planBtn && planBtn.closest("#page-live")) {
+    if (planBtn && planBtn.closest("#page-live, #page-subscription, #live-plans-grid, #live-plans-section")) {
       e.preventDefault();
       e.stopPropagation();
       var planId = planBtn.getAttribute("data-plan-id");
@@ -364,6 +375,16 @@ async function payForMaterial(materialId) {
 window.payForMaterial = payForMaterial;
 
 async function payForBook(bookId) {
+  // Prefer Paystack (same as mobile library purchase).
+  if (typeof paystackPurchase === "function") {
+    var paid = await paystackPurchase({
+      productType: "library_book",
+      productId: String(bookId),
+    });
+    if (!paid) throw new Error("Payment was not completed.");
+    return { paid: true, has_access: true };
+  }
+
   await loadFlutterwaveScript();
 
   var init = await api("/api/v1/payments/flutterwave/book/" + encodeURIComponent(bookId) + "/init", {
@@ -400,18 +421,25 @@ async function payForSkillEnrollment(skillId, form, btn) {
   });
 
   if (!init) throw new Error("Could not start payment.");
+  if (init.already_paid) {
+    alert("You are already enrolled in this program.");
+    return true;
+  }
 
   if (!init.public_key || !init.tx_ref) {
     throw new Error("Payment could not be started. Try again later.");
   }
 
+  var modeLabel = init.mode_label || (init.payment_mode === "once" ? "full payment" : "installment " + (init.installment || 1));
   return startFlutterwaveRedirect(init, {
     type: "skill",
     skill_id: skillId,
     tx_ref: init.tx_ref,
+    payment_mode: init.payment_mode || "half",
+    installment: init.installment || 1,
     custom_title: "Scholaxia Skills Training",
-    custom_description: (init.program_title || "Training program") + " — 1st installment " + formatNaira(init.amount),
-    meta: { skill_id: skillId },
+    custom_description: (init.program_title || "Training program") + " — " + modeLabel + " " + formatNaira(init.amount),
+    meta: { skill_id: skillId, payment_mode: init.payment_mode || "half", installment: String(init.installment || 1) },
   });
 }
 

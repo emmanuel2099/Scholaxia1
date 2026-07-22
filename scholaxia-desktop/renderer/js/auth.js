@@ -155,7 +155,8 @@ function updatePortalCopy() {
 
   document.getElementById("portal-title").textContent = cfg.portalTitle[mode];
   document.getElementById("portal-sub").textContent = cfg.portalSub[mode];
-  document.getElementById("btn-signup").textContent = cfg.signupBtn;
+  document.getElementById("btn-signup").textContent =
+    selectedAccountRole === "kind" ? "SEND EMAIL CODE" : cfg.signupBtn === "CREATE ACCOUNT" ? "SEND EMAIL CODE" : cfg.signupBtn;
 
   var kindFields = document.getElementById("signup-kind-fields");
   if (kindFields) {

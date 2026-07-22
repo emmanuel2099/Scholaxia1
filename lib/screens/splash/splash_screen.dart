@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/firebase_push_service.dart';
+import '../../services/offline_status_service.dart';
 import '../../api/api_service.dart';
 import '../../theme/app_theme.dart';
 import '../auth/role_select_screen.dart';
@@ -21,64 +22,98 @@ class _SplashScreenState extends State<SplashScreen>
   late Animation<double> _fade;
   late Animation<double> _scale;
   late Animation<double> _slide;
+  bool _navigated = false;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400));
-    _fade  = CurvedAnimation(parent: _ctrl, curve: const Interval(0.0, 0.7, curve: Curves.easeIn));
+    OfflineStatusService.instance.setShowBanner(false);
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    );
+    _fade = CurvedAnimation(
+      parent: _ctrl,
+      curve: const Interval(0.0, 0.7, curve: Curves.easeIn),
+    );
     _scale = Tween(begin: 0.7, end: 1.0).animate(
-        CurvedAnimation(parent: _ctrl, curve: const Interval(0.0, 0.8, curve: Curves.elasticOut)));
+      CurvedAnimation(
+        parent: _ctrl,
+        curve: const Interval(0.0, 0.8, curve: Curves.elasticOut),
+      ),
+    );
     _slide = Tween(begin: 30.0, end: 0.0).animate(
-        CurvedAnimation(parent: _ctrl, curve: const Interval(0.2, 0.9, curve: Curves.easeOut)));
+      CurvedAnimation(
+        parent: _ctrl,
+        curve: const Interval(0.2, 0.9, curve: Curves.easeOut),
+      ),
+    );
 
-    _ctrl.forward().then((_) async {
-      await Future.delayed(const Duration(milliseconds: 400));
-      if (!mounted) return;
-      final api = ApiService();
+    // Animate for polish, but never block navigation on the ticker or network.
+    _ctrl.forward();
+    _leaveSplash();
+  }
 
-      if (await api.hasValidSession()) {
-        final role = await api.resolveSessionRole();
-        if (!mounted) return;
+  Future<void> _leaveSplash() async {
+    // Short brand moment; never wait on animation tickers or network.
+    await Future.delayed(const Duration(milliseconds: 900));
+    if (!mounted || _navigated) return;
 
-        // Keep the session when role cannot be revalidated offline.
-        final effectiveRole = role ?? 'student';
+    try {
+      await _navigateNext().timeout(const Duration(seconds: 4));
+    } catch (_) {
+      if (!mounted || _navigated) return;
+      _go(const RoleSelectScreen());
+    }
+  }
 
-        Widget dest;
-        if (effectiveRole == 'teacher') {
-          dest = const TeacherShell();
-        } else if (effectiveRole == 'kind') {
-          dest = const KindShell();
-        } else {
-          // Stay in League after restart if that was the last screen.
-          final resume = await api.getAppResumeMode();
-          dest = StudentShell(openSilOnStart: resume == 'league');
-        }
+  Future<void> _navigateNext() async {
+    final api = ApiService();
 
-        if (!mounted) return;
-        Navigator.of(context).pushReplacement(PageRouteBuilder(
-          pageBuilder: (_, __, ___) => dest,
-          transitionsBuilder: (_, a, __, c) => FadeTransition(opacity: a, child: c),
-          transitionDuration: const Duration(milliseconds: 500),
-        ));
+    final hasSession = await api.hasValidSession();
+    if (!mounted || _navigated) return;
 
-        if (effectiveRole == 'student') {
-          api.ensureStudentProfile();
-        }
-        try {
-          await FirebasePushService.instance.registerAfterLogin();
-        } catch (_) {}
-      } else {
-        final seenOnboarding = await api.hasSeenOnboarding();
-        if (!mounted) return;
-        Navigator.of(context).pushReplacement(PageRouteBuilder(
-          pageBuilder: (_, __, ___) =>
-              seenOnboarding ? const RoleSelectScreen() : const OnboardingScreen(),
-          transitionsBuilder: (_, a, __, c) => FadeTransition(opacity: a, child: c),
-          transitionDuration: const Duration(milliseconds: 500),
-        ));
-      }
-    });
+    if (!hasSession) {
+      final seenOnboarding = await api.hasSeenOnboarding();
+      if (!mounted || _navigated) return;
+      _go(seenOnboarding ? const RoleSelectScreen() : const OnboardingScreen());
+      return;
+    }
+
+    // Local role only — never wait on /me while offline (that left users stuck).
+    final role = ((await api.getRole()) ?? 'student').toLowerCase().trim();
+    if (!mounted || _navigated) return;
+
+    Widget dest;
+    if (role == 'teacher') {
+      dest = const TeacherShell();
+    } else if (role == 'kind') {
+      dest = const KindShell();
+    } else {
+      // Do not auto-open League on cold start (blocks offline / face-check).
+      dest = const StudentShell(openSilOnStart: false);
+    }
+
+    _go(dest);
+
+    if (role == 'student' || role.isEmpty) {
+      // ignore: unawaited_futures
+      api.ensureStudentProfile();
+    }
+    // ignore: unawaited_futures
+    FirebasePushService.instance.registerAfterLogin().catchError((_) {});
+  }
+
+  void _go(Widget dest) {
+    if (!mounted || _navigated) return;
+    _navigated = true;
+    Navigator.of(context).pushReplacement(
+      PageRouteBuilder(
+        pageBuilder: (_, __, ___) => dest,
+        transitionsBuilder: (_, a, __, c) => FadeTransition(opacity: a, child: c),
+        transitionDuration: const Duration(milliseconds: 500),
+      ),
+    );
   }
 
   @override
@@ -119,22 +154,31 @@ class _SplashScreenState extends State<SplashScreen>
                               ),
                             ],
                           ),
-                          child: const Icon(Icons.school_rounded,
-                              color: Color(0xFF7C3AED), size: 44),
+                          child: const Icon(
+                            Icons.school_rounded,
+                            color: Color(0xFF7C3AED),
+                            size: 44,
+                          ),
                         ),
                         const SizedBox(height: 24),
-                        const Text('Scholaxia',
-                            style: TextStyle(
-                                fontSize: 34,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white,
-                                letterSpacing: 0.5)),
+                        const Text(
+                          'Scholaxia',
+                          style: TextStyle(
+                            fontSize: 34,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
                         const SizedBox(height: 8),
-                        Text('Learn smarter with Sia',
-                            style: TextStyle(
-                                fontSize: 15,
-                                color: Colors.white.withOpacity(0.9),
-                                fontWeight: FontWeight.w500)),
+                        Text(
+                          'Learn smarter with Sia',
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: Colors.white.withOpacity(0.9),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
                       ],
                     ),
                   ),

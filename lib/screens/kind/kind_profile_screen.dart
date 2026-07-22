@@ -325,18 +325,6 @@ class _KindProfileScreenState extends State<KindProfileScreen> {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 14),
-                        Center(
-                          child: TextButton.icon(
-                            onPressed: () => SupportContactService.call(
-                              SupportContactService.primaryPhone,
-                            ),
-                            icon: const Icon(Icons.phone_rounded, size: 18),
-                            label: const Text(
-                              SupportContactService.primaryPhone,
-                            ),
-                          ),
-                        ),
                       ],
                     ),
                   ),

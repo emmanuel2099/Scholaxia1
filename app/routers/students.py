@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from typing import List, Optional
 from app.core.database import get_db
 from app.core.deps import require_student
-from app.core.security import create_access_token, create_refresh_token
+from app.core.security import create_access_token, create_refresh_token, issue_auth_tokens
 from app.core.subjects import AVAILABLE_SUBJECTS
 from app.models.user import StudentProfile, ExamType, User, UserRole, KindProfile
 
@@ -255,8 +255,7 @@ async def setup_exam(
                 )
             )
         await db.flush()
-        access = create_access_token(str(user.id), UserRole.kind.value)
-        refresh = create_refresh_token(str(user.id))
+        access, refresh = await issue_auth_tokens(db, user)
         return {
             "message": "Primary 6 uses the Kids app — Common Entrance CBT is there.",
             "redirect": "kind",

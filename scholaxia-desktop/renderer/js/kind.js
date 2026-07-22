@@ -10,6 +10,9 @@ var KIND_PAGE_TITLES = {
   live: "Live Class",
   saved: "Saved",
   games: "Games",
+  cbt: "Entrance CBT",
+  profile: "Profile",
+  packages: "Class packages",
 };
 
 function kindEsc(s) {
@@ -58,7 +61,8 @@ function initKindApp() {
 
   document.getElementById("kind-user-name").textContent = first;
   document.getElementById("kind-greeting").textContent = "Hi, " + first + "!";
-  document.getElementById("kind-avatar").textContent = first.charAt(0).toUpperCase();
+  var storedPhoto = localStorage.getItem("sia_profile_picture") || "";
+  applyKindTopAvatar(first, storedPhoto);
 
   var ageEl = document.getElementById("kind-user-age");
   if (ageEl) ageEl.textContent = age ? "Ages " + age : "Scholaxia Kids";
@@ -87,6 +91,11 @@ function kindNav(page) {
   else if (page === "saved") loadKindSaved();
   else if (page === "games") loadKindGames();
   else if (page === "home") loadKindHome();
+  else if (page === "profile") loadKindProfile();
+  else if (page === "cbt" && typeof loadKindCbtPage === "function") loadKindCbtPage();
+  else if (page === "packages") {
+    if (typeof loadKindClassPackagesPage === "function") loadKindClassPackagesPage();
+  }
 }
 
 function kindRefresh() {
@@ -94,7 +103,146 @@ function kindRefresh() {
   else if (kindCurrentPage === "live") loadKindLive();
   else if (kindCurrentPage === "saved") loadKindSaved();
   else if (kindCurrentPage === "games") loadKindGames();
+  else if (kindCurrentPage === "profile") loadKindProfile();
+  else if (kindCurrentPage === "packages" && typeof loadKindClassPackagesPage === "function") {
+    loadKindClassPackagesPage();
+  }
 }
+
+async function loadKindProfile() {
+  var root = document.getElementById("kind-profile-root");
+  if (!root) return;
+  root.innerHTML = '<div class="loading">Loading profile…</div>';
+  try {
+    var me = await api("/api/v1/kind/me");
+    var name = (me && me.full_name) || localStorage.getItem("sia_name") || "Friend";
+    var email = (me && me.email) || localStorage.getItem("sia_email") || "";
+    var age = (me && me.age_group) || localStorage.getItem("sia_age_group") || "6-8";
+    var photo = (me && (me.profile_picture || me.avatar_url)) || localStorage.getItem("sia_profile_picture") || "";
+    if (photo && !/^https?:\/\//i.test(photo)) {
+      photo = (typeof API_BASE !== "undefined" ? API_BASE : "") + (photo.startsWith("/") ? photo : "/" + photo);
+    }
+    if (photo) {
+      localStorage.setItem("sia_profile_picture", photo);
+    }
+    applyKindTopAvatar(name, photo);
+    root.innerHTML =
+      '<div class="sx-card" style="padding:22px;max-width:560px">' +
+      '<div style="display:flex;gap:16px;align-items:center;margin-bottom:18px">' +
+      '<div class="kind-profile-photo-wrap">' +
+      (photo
+        ? '<img src="' + kindEsc(photo) + '" alt="">'
+        : '<div class="user-avatar kind-avatar" style="width:72px;height:72px;font-size:1.5rem;border-radius:18px">' +
+          kindEsc(name.charAt(0).toUpperCase()) +
+          "</div>") +
+      '<button type="button" class="profile-photo-btn" onclick="document.getElementById(\'kind-photo-input\').click()" title="Change photo">&#128247;</button>' +
+      '<input type="file" id="kind-photo-input" accept="image/*" hidden onchange="uploadKindProfilePhoto()">' +
+      "</div>" +
+      "<div><h3 style=\"margin:0\">" + kindEsc(name) + "</h3><p style=\"margin:4px 0;color:var(--sx-grey)\">" +
+      kindEsc(email) +
+      "</p><span class=\"kind-pill\">Ages " + kindEsc(age) + "</span>" +
+      '<p id="kind-photo-msg" class="profile-photo-msg">Tap the camera to add a photo</p></div></div>' +
+      '<button type="button" class="btn-secondary" style="width:100%;margin-bottom:8px" onclick="kindNav(\'packages\')">Class packages (Paystack)</button>' +
+      '<button type="button" class="btn-logout" style="width:100%" onclick="kindLogout()">Log out</button>' +
+      "</div>";
+  } catch (e) {
+    root.innerHTML = '<div class="empty-state">' + kindEsc(e.message) + "</div>";
+  }
+}
+
+function applyKindTopAvatar(name, photo) {
+  var topAv = document.getElementById("kind-avatar");
+  if (!topAv) return;
+  var letter = ((name || "K").charAt(0) || "K").toUpperCase();
+  if (photo) {
+    topAv.classList.add("has-photo");
+    topAv.style.backgroundImage = 'url("' + String(photo).replace(/"/g, "") + '")';
+    topAv.textContent = "";
+  } else {
+    topAv.classList.remove("has-photo");
+    topAv.style.backgroundImage = "";
+    topAv.textContent = letter;
+  }
+}
+
+async function uploadKindProfilePhoto() {
+  var input = document.getElementById("kind-photo-input");
+  var msg = document.getElementById("kind-photo-msg");
+  var file = input && input.files && input.files[0];
+  if (!file) {
+    if (msg) msg.textContent = "Choose a photo first.";
+    return;
+  }
+  if (msg) msg.textContent = "Uploading…";
+  try {
+    var form = new FormData();
+    form.append("file", file);
+    var token = getToken();
+    var up = await fetch(API_BASE + "/api/v1/community/upload", {
+      method: "POST",
+      headers: token ? { Authorization: "Bearer " + token } : {},
+      body: form,
+    });
+    var uploaded = await up.json();
+    if (!up.ok) throw new Error(uploaded.detail || "Upload failed");
+    var url = uploaded.file_url || uploaded.secure_url || uploaded.url;
+    var saved = await api("/api/v1/profiles/me/picture", {
+      method: "PATCH",
+      body: JSON.stringify({ profile_picture: url }),
+    });
+    var finalUrl = (saved && saved.profile_picture) || url;
+    if (finalUrl && !/^https?:\/\//i.test(finalUrl)) {
+      finalUrl = API_BASE + (finalUrl.startsWith("/") ? finalUrl : "/" + finalUrl);
+    }
+    localStorage.setItem("sia_profile_picture", finalUrl);
+    if (msg) msg.textContent = "Photo updated!";
+    loadKindProfile();
+  } catch (e) {
+    if (msg) msg.textContent = e.message || "Upload failed.";
+  } finally {
+    if (input) input.value = "";
+  }
+}
+
+async function submitKindBooking() {
+  var err = document.getElementById("kind-book-error");
+  var subject = ((document.getElementById("kind-book-subject") || {}).value || "").trim();
+  var topic = ((document.getElementById("kind-book-topic") || {}).value || "").trim();
+  var packageId = ((document.getElementById("kind-book-package") || {}).value || "nursery_standard").trim();
+  if (!subject) {
+    if (err) err.textContent = "Enter a subject.";
+    return;
+  }
+  if (err) err.textContent = "";
+  try {
+    if (typeof paystackPurchase === "function") {
+      var paid = await paystackPurchase({
+        productType: "class_package",
+        productId: packageId,
+      });
+      if (!paid) {
+        if (err) err.textContent = "Payment was not completed.";
+        return;
+      }
+    }
+    await api("/api/v1/live-classes/requests", {
+      method: "POST",
+      body: JSON.stringify({
+        subject: subject,
+        topic: topic || undefined,
+        message: "Kids desktop booking",
+      }),
+    });
+    alert("Booked! Scholaxia will assign a teacher.");
+    kindNav("live");
+  } catch (e) {
+    if (err) err.textContent = e.message || "Booking failed.";
+  }
+}
+
+window.uploadKindProfilePhoto = uploadKindProfilePhoto;
+window.submitKindBooking = submitKindBooking;
+window.loadKindProfile = loadKindProfile;
 
 async function loadKindHome() {
   var stats = document.getElementById("kind-home-stats");
@@ -105,7 +253,12 @@ async function loadKindHome() {
       var first = me.full_name.split(" ")[0];
       document.getElementById("kind-greeting").textContent = "Hi, " + first + "!";
       document.getElementById("kind-user-name").textContent = first;
-      document.getElementById("kind-avatar").textContent = first.charAt(0).toUpperCase();
+      var photo = me.profile_picture || me.avatar_url || localStorage.getItem("sia_profile_picture") || "";
+      if (photo && !/^https?:\/\//i.test(photo)) {
+        photo = (typeof API_BASE !== "undefined" ? API_BASE : "") + (photo.startsWith("/") ? photo : "/" + photo);
+      }
+      if (photo) localStorage.setItem("sia_profile_picture", photo);
+      applyKindTopAvatar(first, photo);
       if (me.age_group) {
         document.getElementById("kind-hero-sub").textContent =
           "Age group " + me.age_group + " — learn, play, and grow with Scholaxia Kids!";

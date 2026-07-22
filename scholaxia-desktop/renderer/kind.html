@@ -43,6 +43,14 @@
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h4M14 10v4M16 12h2"/></svg></span>
           <span class="nav-label">Games</span>
         </button>
+        <button type="button" class="nav-item kind-nav-btn" data-kind-page="cbt" onclick="kindNav('cbt')">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6"/></svg></span>
+          <span class="nav-label">CBT</span>
+        </button>
+        <button type="button" class="nav-item kind-nav-btn" data-kind-page="profile" onclick="kindNav('profile')">
+          <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+          <span class="nav-label">Profile</span>
+        </button>
       </nav>
 
       <div class="sidebar-promo-wrap">
@@ -136,6 +144,21 @@
             <strong>Saved</strong>
             <span>Replay saved lessons</span>
           </button>
+          <button type="button" class="kind-quick-tile" onclick="kindNav('cbt')">
+            <div class="tile-icon">&#128221;</div>
+            <strong>Entrance CBT</strong>
+            <span>Common Entrance — Paystack ₦2,000</span>
+          </button>
+          <button type="button" class="kind-quick-tile" onclick="kindNav('packages')">
+            <div class="tile-icon">&#128179;</div>
+            <strong>Class packages</strong>
+            <span>Nursery &amp; Primary — Paystack</span>
+          </button>
+          <button type="button" class="kind-quick-tile" onclick="kindNav('profile')">
+            <div class="tile-icon">&#128100;</div>
+            <strong>Profile</strong>
+            <span>Photo, account &amp; logout</span>
+          </button>
         </div>
 
         <div id="kind-home-stats" class="kind-home-banner"></div>
@@ -164,9 +187,50 @@
       <section id="kind-page-live" class="kind-page page">
         <div class="kind-page-header">
           <h2>&#127909; Live Classes</h2>
-          <p>Join a teacher's live lesson right now!</p>
+          <p>Join a teacher's live lesson, or book &amp; pay for one-on-one.</p>
+        </div>
+        <div class="sx-card" style="padding:16px;margin-bottom:16px;max-width:560px">
+          <h3 style="margin-top:0">Book &amp; pay — Pay-Per-Class</h3>
+          <label class="field"><span class="field-label">Package</span>
+            <select id="kind-book-package" class="field-select">
+              <option value="nursery_standard">Nursery — ₦50,000</option>
+              <option value="primary_standard">Primary — ₦55,000</option>
+              <option value="holiday_primary">Primary Holiday — ₦15,000</option>
+            </select>
+          </label>
+          <label class="field"><span class="field-label">Subject</span>
+            <input type="text" id="kind-book-subject" placeholder="e.g. Mathematics" />
+          </label>
+          <label class="field"><span class="field-label">Topic (optional)</span>
+            <input type="text" id="kind-book-topic" placeholder="What to cover" />
+          </label>
+          <p id="kind-book-error" class="error-msg"></p>
+          <button type="button" class="btn-action" onclick="submitKindBooking()">Pay &amp; book</button>
         </div>
         <div id="kind-live-list" class="kind-card-list"><div class="loading">Loading…</div></div>
+      </section>
+
+      <!-- Packages -->
+      <section id="kind-page-cbt" class="kind-page page">
+        <div class="kind-page-header">
+          <h2>&#128221; Common Entrance CBT</h2>
+          <p>Same as the mobile Kids app — pay ₦2,000/year with Paystack, then practise exams from admin.</p>
+        </div>
+        <div id="kind-cbt-root"><div class="loading">Loading…</div></div>
+        <div id="kind-cbt-play" class="hidden"></div>
+      </section>
+
+      <section id="kind-page-packages" class="kind-page page">
+        <div id="kind-packages-root"><div class="loading">Loading…</div></div>
+      </section>
+
+      <!-- Profile -->
+      <section id="kind-page-profile" class="kind-page page">
+        <div class="kind-page-header">
+          <h2>Profile</h2>
+          <p>Your kid account settings</p>
+        </div>
+        <div id="kind-profile-root"></div>
       </section>
 
       <!-- Saved -->
@@ -196,7 +260,10 @@
 </div>
 
 <script src="js/api.js"></script>
+<script src="js/paystack-checkout.js"></script>
+<script src="js/class-packages.js"></script>
 <script src="js/kind-voice.js"></script>
+<script src="js/kind-cbt.js"></script>
 <script src="js/kind.js"></script>
 </body>
 </html>

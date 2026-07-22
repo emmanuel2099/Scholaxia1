@@ -115,6 +115,8 @@ async function submitMarketplaceBook(e) {
   var err = document.getElementById("mp-book-error");
   var btn = document.getElementById("mp-book-submit");
   var productId = document.getElementById("mp-book-product-id").value;
+  var product = mpProducts.find(function (x) { return String(x.id) === String(productId); });
+  var price = Number(product && product.price ? product.price : 0);
   var body = {
     full_name: document.getElementById("mp-book-name").value.trim(),
     email: document.getElementById("mp-book-email").value.trim(),
@@ -129,16 +131,32 @@ async function submitMarketplaceBook(e) {
   btn.disabled = true;
   if (err) err.textContent = "";
   try {
-    await api("/api/v1/marketplace/products/" + productId + "/book", {
+    var booking = await api("/api/v1/marketplace/products/" + productId + "/book", {
       method: "POST",
       body: JSON.stringify(body),
     });
-    closeMarketplaceBook();
-    alert("Booking sent! Scholaxia will contact you on WhatsApp or email.");
+    var bookingId = booking && (booking.id || booking.booking_id);
+    if (price > 0 && bookingId && typeof paystackPurchase === "function") {
+      btn.textContent = "Opening Paystack…";
+      var paid = await paystackPurchase({
+        productType: "marketplace_booking",
+        productId: String(bookingId),
+      });
+      closeMarketplaceBook();
+      if (paid) {
+        alert("Payment successful! Booking confirmed — Scholaxia will contact you.");
+      } else {
+        alert("Booking saved. Complete Paystack payment to confirm, or try again from support.");
+      }
+    } else {
+      closeMarketplaceBook();
+      alert("Booking sent! Scholaxia will contact you on WhatsApp or email.");
+    }
   } catch (ex) {
     if (err) err.textContent = ex.message || "Booking failed.";
   } finally {
     btn.disabled = false;
+    btn.textContent = "Submit booking";
   }
 }
 

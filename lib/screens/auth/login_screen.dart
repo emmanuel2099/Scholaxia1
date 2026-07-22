@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../api/api_service.dart';
 import '../../services/firebase_analytics_service.dart';
 import '../../services/firebase_push_service.dart';
+import '../../services/offline_status_service.dart';
 import '../../theme/app_theme.dart';
 import '../kind/kind_shell.dart';
 import '../student/student_shell.dart';
@@ -25,6 +26,13 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscure = true;
   bool _loading = false;
   final _api = ApiService();
+
+  @override
+  void initState() {
+    super.initState();
+    OfflineStatusService.instance.clear();
+    OfflineStatusService.instance.setShowBanner(false);
+  }
 
   @override
   void dispose() {
@@ -75,10 +83,6 @@ class _LoginScreenState extends State<LoginScreen> {
         home = const TeacherShell();
       } else if (role == 'kind') {
         home = const KindShell();
-      } else if (widget.accountRole == AccountRole.gameChallenge) {
-        // Game Challenge login → Intellect League
-        await _api.setAppResumeMode('league');
-        home = const StudentShell(openSilOnStart: true);
       } else {
         // Student study login → student dashboard only
         await _api.setAppResumeMode('student');
@@ -104,10 +108,19 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       if (!mounted) return;
       final err = e.toString().toLowerCase();
-      final message =
-          err.contains('failed to fetch') || err.contains('clientexception')
-          ? 'Could not reach scholaxia1.onrender.com. The server may be waking up — wait 30 seconds and try again.'
-          : 'Something went wrong. Please try again.';
+      String message;
+      if (err.contains('failed to fetch') ||
+          err.contains('clientexception') ||
+          err.contains('socketexception') ||
+          err.contains('timeout')) {
+        message =
+            'Could not reach the server. Check your internet — if it still fails, wait 30 seconds and try again.';
+      } else if (err.contains('formatexception')) {
+        message =
+            'App storage was damaged and has been repaired. Close the app fully and open it again, then log in.';
+      } else {
+        message = 'Login failed: ${e.toString().split('\n').first}';
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(message), backgroundColor: Colors.red),
       );
@@ -125,7 +138,6 @@ class _LoginScreenState extends State<LoginScreen> {
       case AccountRole.kind:
         return role == 'kind';
       case AccountRole.student:
-      case AccountRole.gameChallenge:
         return role == 'student';
     }
   }
@@ -136,8 +148,6 @@ class _LoginScreenState extends State<LoginScreen> {
         return 'Teacher';
       case AccountRole.kind:
         return 'Kid';
-      case AccountRole.gameChallenge:
-        return 'Game Challenge (Student)';
       case AccountRole.student:
       case null:
         return 'Student';
@@ -150,8 +160,6 @@ class _LoginScreenState extends State<LoginScreen> {
         return 'Teacher Login';
       case AccountRole.kind:
         return 'Kid Login';
-      case AccountRole.gameChallenge:
-        return 'League Login';
       case AccountRole.student:
       case null:
         return 'Welcome Back';
@@ -164,8 +172,6 @@ class _LoginScreenState extends State<LoginScreen> {
         return 'Sign in with the email and password from your school admin.';
       case AccountRole.kind:
         return 'Sign in to your kid learner account.';
-      case AccountRole.gameChallenge:
-        return 'Sign in with your student account to enter\nScholaxia Intellect League.';
       case AccountRole.student:
       case null:
         return 'Enter your credentials to access your\npersonalized learning dashboard.';
@@ -389,7 +395,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     if (widget.accountRole == null ||
                         widget.accountRole == AccountRole.student ||
-                        widget.accountRole == AccountRole.gameChallenge ||
                         widget.accountRole == AccountRole.kind) ...[
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,

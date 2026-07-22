@@ -775,6 +775,13 @@ class _HomeScreenState extends State<HomeScreen> {
         const LibraryScreen(),
       ),
       (
+        Icons.quiz_rounded,
+        'Past Questions',
+        'Paid past papers — unlock with Paystack.',
+        const [Color(0xFF7C3AED), Color(0xFFA78BFA)],
+        const LibraryScreen(initialCategory: 'Past Questions'),
+      ),
+      (
         Icons.sports_esports_rounded,
         'Games',
         'Brain breaks and learning games.',

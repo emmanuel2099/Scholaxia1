@@ -443,16 +443,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ]),
               const SizedBox(height: 24),
               _logoutButton(context),
-              const SizedBox(height: 18),
-              Center(
-                child: TextButton.icon(
-                  onPressed: () => SupportContactService.call(
-                    SupportContactService.primaryPhone,
-                  ),
-                  icon: const Icon(Icons.phone_rounded, size: 18),
-                  label: const Text(SupportContactService.primaryPhone),
-                ),
-              ),
               const SizedBox(height: 100),
             ]),
           ),

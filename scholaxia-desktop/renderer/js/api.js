@@ -123,16 +123,21 @@ function isClassroomPage() {
   }
 }
 
-function handleApiUnauthorized() {
+function handleApiUnauthorized(detail) {
   var hadSession = !!localStorage.getItem("sia_token");
   clearSession();
   if (!hadSession) return;
+  var msg = (detail && String(detail)) || "Your session expired. Please sign in again.";
+  if (/another device|logged in elsewhere|session/i.test(msg)) {
+    msg = "You signed in on another device. This session was signed out.";
+  }
   if (isClassroomPage()) {
     clearLiveSession();
-    alert("Your session expired. Please sign in again.");
+    alert(msg);
     window.location.href = "index.html";
     return;
   }
+  alert(msg);
   if (typeof goToLogin === "function") {
     goToLogin(sessionStorage.getItem("sia_current_page"));
   } else {
@@ -179,6 +184,7 @@ async function api(path, options) {
       signal: options.signal || fetchTimeout(options.timeoutMs || 45000),
     });
   } catch (ex) {
+    setOfflineBanner(true);
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       throw new Error("There is no internet on your data.");
     }
@@ -191,14 +197,33 @@ async function api(path, options) {
     }
     throw new Error(netMsg + ". Check your connection.");
   }
+  setOfflineBanner(false);
   var data = await res.json().catch(function () { return {}; });
   if (res.status === 401) {
-    handleApiUnauthorized();
+    handleApiUnauthorized(formatApiError(data.detail) || data.detail);
     return null;
   }
   if (!res.ok) throw new Error(formatApiError(data.detail) || "Request failed (" + res.status + ")");
   return data;
 }
+
+function setOfflineBanner(offline) {
+  var el = document.getElementById("sx-offline-banner");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "sx-offline-banner";
+    el.style.cssText =
+      "display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:#F59E0B;color:#000;text-align:center;padding:6px 12px;font-size:12px;font-weight:700";
+    el.textContent = "Offline — showing saved information";
+    document.body.appendChild(el);
+  }
+  // Only show inside student/kid shells when logged in
+  var role = localStorage.getItem("sia_role") || "";
+  var show = !!offline && !!getToken() && (role === "student" || role === "kind");
+  el.style.display = show ? "block" : "none";
+}
+
+window.setOfflineBanner = setOfflineBanner;
 
 function networkErrorMessage(err) {
   if (typeof navigator !== "undefined" && !navigator.onLine) {
@@ -258,7 +283,7 @@ async function apiUpload(path, file) {
   }
   var data = await res.json().catch(function () { return {}; });
   if (res.status === 401) {
-    handleApiUnauthorized();
+    handleApiUnauthorized(formatApiError(data.detail) || data.detail);
     return null;
   }
   if (!res.ok) throw new Error(formatApiError(data.detail) || "Upload failed (" + res.status + ")");

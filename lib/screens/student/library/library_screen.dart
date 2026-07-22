@@ -7,7 +7,9 @@ import '../../../widgets/student_ui.dart';
 import 'book_reader_screen.dart';
 
 class LibraryScreen extends StatefulWidget {
-  const LibraryScreen({super.key});
+  const LibraryScreen({super.key, this.initialCategory = 'All'});
+
+  final String initialCategory;
 
   @override
   State<LibraryScreen> createState() => _LibraryScreenState();
@@ -19,6 +21,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
     'Books',
     'Study Materials',
     'Scheme of Work',
+    'Past Questions',
+    'Notes',
   ];
 
   final _api = ApiService();
@@ -26,11 +30,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
   bool _loading = true;
   List<Map<String, dynamic>> _books = [];
   String? _openingId;
-  String _category = 'All';
+  late String _category;
 
   @override
   void initState() {
     super.initState();
+    _category = widget.initialCategory;
     _load();
   }
 
@@ -256,6 +261,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
         return Icons.description_rounded;
       case 'Scheme of Work':
         return Icons.calendar_view_week_rounded;
+      case 'Past Questions':
+        return Icons.quiz_rounded;
+      case 'Notes':
+        return Icons.sticky_note_2_rounded;
       default:
         return Icons.menu_book_rounded;
     }
@@ -272,8 +281,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
         return 'No study materials yet. Admin will upload notes and materials here.';
       case 'Scheme of Work':
         return 'No scheme of work yet. Admin will upload weekly schemes here.';
+      case 'Past Questions':
+        return 'No past questions yet. Admin uploads are paid — unlock with Paystack.';
+      case 'Notes':
+        return 'No notes yet.';
       default:
-        return 'Admin will add books, study materials and schemes of work soon.';
+        return 'Admin will add books, past questions and materials soon.';
     }
   }
 

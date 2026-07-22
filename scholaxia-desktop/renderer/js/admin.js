@@ -2072,6 +2072,15 @@ async function loadLibraryAdmin() {
   }
 }
 
+function onLibraryCategoryChange() {
+  var cat = (document.getElementById("lib-category") || {}).value || "";
+  if (/past/i.test(cat)) {
+    var access = document.getElementById("lib-access");
+    if (access) access.value = "paid";
+    if (typeof toggleLibraryPrice === "function") toggleLibraryPrice();
+  }
+}
+
 function toggleLibraryPrice() {
   var paid = document.getElementById("lib-access").value === "paid";
   document.getElementById("lib-price-wrap").style.display = paid ? "" : "none";
@@ -2103,6 +2112,13 @@ async function uploadLibraryBook() {
   if (!fileInput.files || !fileInput.files[0]) {
     err.textContent = "Choose a PDF file.";
     return;
+  }
+  if (category === "Past Questions") {
+    isFree = false;
+    if (price <= 0) {
+      err.textContent = "Past Questions must be paid. Enter a price greater than zero.";
+      return;
+    }
   }
   if (!isFree && price <= 0) {
     err.textContent = "Enter a price greater than zero.";

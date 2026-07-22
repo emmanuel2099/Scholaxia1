@@ -5,6 +5,7 @@ import '../../services/access_code_service.dart';
 import '../../services/community_badge.dart';
 import '../../services/live_class_ring_service.dart';
 import '../../services/local_notification_service.dart';
+import '../../services/offline_status_service.dart';
 import '../../theme/app_theme.dart';
 import '../kind/kind_shell.dart';
 import 'home/home_screen.dart';
@@ -70,6 +71,7 @@ class _StudentShellState extends State<StudentShell>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    OfflineStatusService.instance.setShowBanner(true);
     _ensureStudentRole();
     _startPolling();
     LocalNotificationService.instance.init().then((_) {

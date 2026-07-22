@@ -31,7 +31,24 @@ class _AppHeaderActionsState extends State<AppHeaderActions> {
   @override
   void initState() {
     super.initState();
+    profilePictureNotifier.addListener(_onProfilePictureChanged);
     _load();
+  }
+
+  @override
+  void dispose() {
+    profilePictureNotifier.removeListener(_onProfilePictureChanged);
+    super.dispose();
+  }
+
+  void _onProfilePictureChanged() {
+    if (!mounted) return;
+    final photo = profilePictureNotifier.value;
+    setState(() {
+      _photoUrl = photo != null && photo.isNotEmpty
+          ? _api.resolveMediaUrl(photo)
+          : null;
+    });
   }
 
   Future<void> _load() async {
@@ -52,13 +69,18 @@ class _AppHeaderActionsState extends State<AppHeaderActions> {
         photo = p.profilePicture;
       }
       if (mounted) {
+        final resolvedPhoto = (photo != null && photo.isNotEmpty)
+            ? _api.resolveMediaUrl(photo)
+            : null;
         setState(() {
           _unread = count;
           _initial = initial;
-          _photoUrl = (photo != null && photo.isNotEmpty)
-              ? _api.resolveMediaUrl(photo)
-              : null;
+          _photoUrl = resolvedPhoto;
         });
+        if (resolvedPhoto != null &&
+            profilePictureNotifier.value != resolvedPhoto) {
+          profilePictureNotifier.value = resolvedPhoto;
+        }
       }
     } catch (_) {}
   }
@@ -103,11 +125,11 @@ class _AppHeaderActionsState extends State<AppHeaderActions> {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: const Color(0xFF25D366),
+                color: Colors.transparent,
                 borderRadius: BorderRadius.circular(14),
               ),
               alignment: Alignment.center,
-              child: const WhatsAppIcon(size: 22, color: Colors.white),
+              child: const WhatsAppIcon(size: 28),
             ),
           ),
         ),

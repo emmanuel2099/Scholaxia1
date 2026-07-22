@@ -127,7 +127,123 @@ function formatNaira(amount) {
 
 function installmentBreakdown(fee) {
   var half = Math.round(fee / 2);
-  return formatNaira(half) + " at enrollment + " + formatNaira(fee - half) + " at midpoint";
+  return formatNaira(half) + " at enrollment + " + formatNaira(fee - half) + " at midpoint (or pay full once)";
+}
+
+function selectedSkillPayMode() {
+  var el = document.querySelector('input[name="skill-pay-mode"]:checked');
+  return (el && el.value) || "half";
+}
+
+function updateSkillEnrollFeeCopy(skill) {
+  if (!skill) return;
+  var half = Math.round(skill.fee / 2);
+  var mode = selectedSkillPayMode();
+  var feeEl = document.getElementById("skill-enroll-fee");
+  var subEl = document.getElementById("skill-enroll-sub");
+  if (mode === "once") {
+    if (subEl) subEl.textContent = "Complete this form, then pay the full program fee (" + formatNaira(skill.fee) + ").";
+    if (feeEl) feeEl.textContent = "Paying once: " + formatNaira(skill.fee) + " · unlocks enrollment + live classes for the full program.";
+  } else {
+    if (subEl) subEl.textContent = "Complete this form, then pay half now (" + formatNaira(half) + "). Balance is due at midpoint or access shuts down.";
+    if (feeEl) {
+      feeEl.textContent =
+        "Total " + formatNaira(skill.fee) + " · half now " + formatNaira(half) +
+        " + balance " + formatNaira(skill.fee - half) + " by midpoint.";
+    }
+  }
+}
+
+function openSkillEnrollment(id, opts) {
+  var skill = SKILLS_PROGRAMS.find(function (s) { return s.id === id; });
+  if (!skill) return;
+  opts = opts || {};
+  var modal = document.getElementById("skill-enroll-modal");
+  document.getElementById("skill-enroll-id").value = skill.id;
+  document.getElementById("skill-enroll-title").textContent =
+    opts.installment === 2 ? ("Pay balance — " + skill.title) : ("Enroll — " + skill.title);
+  document.getElementById("skill-enroll-error").textContent = "";
+  var user = typeof getUser === "function" ? getUser() : {};
+  document.getElementById("skill-enroll-name").value = user.name || localStorage.getItem("sia_name") || "";
+  document.getElementById("skill-enroll-email").value = localStorage.getItem("sia_email") || "";
+  document.getElementById("skill-enroll-phone").value = "";
+  document.getElementById("skill-enroll-start").value = "";
+  document.getElementById("skill-enroll-notes").value = "";
+
+  var onceRadio = document.querySelector('input[name="skill-pay-mode"][value="once"]');
+  var halfRadio = document.querySelector('input[name="skill-pay-mode"][value="half"]');
+  var fieldset = document.querySelector(".skill-pay-mode");
+  if (opts.installment === 2) {
+    if (fieldset) fieldset.style.display = "none";
+    if (halfRadio) halfRadio.checked = true;
+    document.getElementById("skill-enroll-sub").textContent =
+      "Pay the remaining balance (" + formatNaira(skill.fee - Math.round(skill.fee / 2)) + ") to keep your enrollment.";
+    document.getElementById("skill-enroll-fee").textContent = "Balance installment due now.";
+  } else {
+    if (fieldset) fieldset.style.display = "";
+    if (halfRadio) halfRadio.checked = true;
+    updateSkillEnrollFeeCopy(skill);
+  }
+  modal.dataset.installment = opts.installment === 2 ? "2" : "1";
+  if (modal) modal.classList.remove("hidden");
+}
+
+document.addEventListener("change", function (ev) {
+  if (ev.target && ev.target.name === "skill-pay-mode") {
+    var id = (document.getElementById("skill-enroll-id") || {}).value;
+    var skill = SKILLS_PROGRAMS.find(function (s) { return s.id === id; });
+    updateSkillEnrollFeeCopy(skill);
+  }
+});
+
+function closeSkillEnrollment() {
+  var modal = document.getElementById("skill-enroll-modal");
+  if (modal) modal.classList.add("hidden");
+}
+
+async function submitSkillEnrollment(ev) {
+  if (ev) ev.preventDefault();
+  var skillId = document.getElementById("skill-enroll-id").value;
+  var errEl = document.getElementById("skill-enroll-error");
+  var btn = document.getElementById("skill-enroll-submit");
+  var modal = document.getElementById("skill-enroll-modal");
+  var installment = Number((modal && modal.dataset.installment) || 1);
+  var paymentMode = installment === 2 ? "half" : selectedSkillPayMode();
+  var form = {
+    full_name: document.getElementById("skill-enroll-name").value.trim(),
+    phone: document.getElementById("skill-enroll-phone").value.trim(),
+    email: document.getElementById("skill-enroll-email").value.trim(),
+    preferred_start: document.getElementById("skill-enroll-start").value.trim(),
+    notes: document.getElementById("skill-enroll-notes").value.trim(),
+    payment_mode: paymentMode,
+    installment: installment,
+  };
+  if (!form.full_name || !form.phone || !form.email) {
+    if (errEl) errEl.textContent = "Name, phone, and email are required.";
+    return;
+  }
+  if (!getToken || !getToken()) {
+    if (errEl) errEl.textContent = "Please sign in first.";
+    return;
+  }
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Opening payment…";
+  }
+  try {
+    if (typeof payForSkillEnrollment !== "function") {
+      throw new Error("Payment is not available. Refresh and try again.");
+    }
+    await payForSkillEnrollment(skillId, form, btn);
+    closeSkillEnrollment();
+  } catch (e) {
+    if (errEl) errEl.textContent = e.message || "Could not start enrollment payment.";
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Continue to payment";
+    }
+  }
 }
 
 function sessionMatchesSkill(session, keywords) {
@@ -207,8 +323,24 @@ function renderSkillCard(skill, sessions, expanded) {
     (isOpen ? '<div class="skill-card-body">' +
       '<p class="skill-description">' + escHtml(skill.description) + '</p>' +
       '<div class="skill-installment">' +
-      '<strong>2-installment plan:</strong> ' + escHtml(installmentBreakdown(skill.fee)) +
+      '<strong>Payment options:</strong> pay once (full) or ' + escHtml(installmentBreakdown(skill.fee)) +
       '</div>' +
+      (function () {
+        var enroll = (window.skillsEnrollmentMap || {})[skill.id];
+        if (!enroll) return "";
+        if (enroll.status === "suspended") {
+          return '<div class="skill-enroll-status is-suspended">Shut down — balance was not paid by the due date. Contact support.</div>';
+        }
+        if (enroll.status === "completed" || enroll.payment_mode === "once") {
+          return '<div class="skill-enroll-status is-active">Enrolled · live classes unlocked</div>';
+        }
+        if (enroll.status === "active" && Number(enroll.installments_paid || 0) === 1) {
+          return '<div class="skill-enroll-status is-pending">Half paid · balance due' +
+            (enroll.balance_due_at ? " by " + escHtml(String(enroll.balance_due_at).slice(0, 10)) : "") +
+            " or access shuts down</div>";
+        }
+        return "";
+      })() +
       '<h4>Program structure</h4>' +
       '<div class="skill-phases">' + phasesHtml + '</div>' +
       '<h4>What you will achieve</h4>' +
@@ -216,82 +348,38 @@ function renderSkillCard(skill, sessions, expanded) {
       '<h4>Live classes for this skill</h4>' +
       renderSkillLiveClasses(skill, sessions) +
       '<div class="skill-enroll-row">' +
-      '<button type="button" class="btn-enroll" onclick="openSkillEnrollment(\'' + skill.id + '\')">Enroll now</button>' +
+      (function () {
+        var enroll = (window.skillsEnrollmentMap || {})[skill.id];
+        if (enroll && (enroll.status === "completed" || enroll.payment_mode === "once" || enroll.status === "suspended")) {
+          return "";
+        }
+        if (enroll && enroll.status === "active" && Number(enroll.installments_paid || 0) === 1) {
+          return '<button type="button" class="btn-enroll" onclick="openSkillEnrollment(\'' + skill.id + '\', { installment: 2 })">Pay balance</button>';
+        }
+        return '<button type="button" class="btn-enroll" onclick="openSkillEnrollment(\'' + skill.id + '\')">Enroll now</button>';
+      })() +
       '<button type="button" class="btn-secondary" onclick="showPage(\'live\')">View live classes</button>' +
       '</div>' +
       '</div>' : '') +
     '</article>';
 }
 
+async function loadSkillEnrollmentBadges() {
+  window.skillsEnrollmentMap = {};
+  if (!getToken || !getToken()) return;
+  try {
+    var data = await api("/api/v1/payments/flutterwave/skills/enrollments");
+    var list = (data && data.enrollments) || [];
+    list.forEach(function (e) {
+      if (e && e.skill_id) window.skillsEnrollmentMap[e.skill_id] = e;
+    });
+    renderSkillsPrograms(skillsLiveCache || []);
+  } catch (e) { /* ignore */ }
+}
+
 function toggleSkillCard(id) {
   skillsExpandedId = skillsExpandedId === id ? null : id;
   renderSkillsPrograms(skillsLiveCache || []);
-}
-
-function openSkillEnrollment(id) {
-  var skill = SKILLS_PROGRAMS.find(function (s) { return s.id === id; });
-  if (!skill) return;
-  var modal = document.getElementById("skill-enroll-modal");
-  var half = Math.round(skill.fee / 2);
-  document.getElementById("skill-enroll-id").value = skill.id;
-  document.getElementById("skill-enroll-title").textContent = "Enroll — " + skill.title;
-  document.getElementById("skill-enroll-sub").textContent =
-    "Complete this form, then pay the first installment (" + formatNaira(half) + ") to secure your place.";
-  document.getElementById("skill-enroll-fee").textContent =
-    "Total program fee: " + formatNaira(skill.fee) + " · 2 installments (" + formatNaira(half) + " now + " + formatNaira(skill.fee - half) + " at midpoint)";
-  document.getElementById("skill-enroll-error").textContent = "";
-  var user = typeof getUser === "function" ? getUser() : {};
-  document.getElementById("skill-enroll-name").value = user.name || localStorage.getItem("sia_name") || "";
-  document.getElementById("skill-enroll-email").value = localStorage.getItem("sia_email") || "";
-  document.getElementById("skill-enroll-phone").value = "";
-  document.getElementById("skill-enroll-start").value = "";
-  document.getElementById("skill-enroll-notes").value = "";
-  if (modal) modal.classList.remove("hidden");
-}
-
-function closeSkillEnrollment() {
-  var modal = document.getElementById("skill-enroll-modal");
-  if (modal) modal.classList.add("hidden");
-}
-
-async function submitSkillEnrollment(ev) {
-  if (ev) ev.preventDefault();
-  var skillId = document.getElementById("skill-enroll-id").value;
-  var errEl = document.getElementById("skill-enroll-error");
-  var btn = document.getElementById("skill-enroll-submit");
-  var form = {
-    full_name: document.getElementById("skill-enroll-name").value.trim(),
-    phone: document.getElementById("skill-enroll-phone").value.trim(),
-    email: document.getElementById("skill-enroll-email").value.trim(),
-    preferred_start: document.getElementById("skill-enroll-start").value.trim(),
-    notes: document.getElementById("skill-enroll-notes").value.trim(),
-  };
-  if (!form.full_name || !form.phone || !form.email) {
-    if (errEl) errEl.textContent = "Name, phone, and email are required.";
-    return;
-  }
-  if (!getToken || !getToken()) {
-    if (errEl) errEl.textContent = "Please sign in first.";
-    return;
-  }
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = "Opening payment…";
-  }
-  try {
-    if (typeof payForSkillEnrollment !== "function") {
-      throw new Error("Payment is not available. Refresh and try again.");
-    }
-    await payForSkillEnrollment(skillId, form, btn);
-    closeSkillEnrollment();
-  } catch (e) {
-    if (errEl) errEl.textContent = e.message || "Could not start enrollment payment.";
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = "Continue to payment";
-    }
-  }
 }
 
 function showSkillEnrollInfo(id) {
@@ -313,6 +401,7 @@ async function loadSkillsTraining() {
   var sessions = await fetchSkillLiveSessions();
   skillsLiveCache = sessions;
   renderSkillsPrograms(sessions);
+  if (typeof loadSkillEnrollmentBadges === "function") loadSkillEnrollmentBadges();
 }
 
 window.toggleSkillCard = toggleSkillCard;

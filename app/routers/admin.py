@@ -10,7 +10,7 @@ import uuid
 from app.core.database import get_db
 from app.core.datetime_utils import naive_utc_now
 from app.core.deps import require_admin
-from app.core.security import hash_password, create_access_token, create_refresh_token
+from app.core.security import hash_password, create_access_token, create_refresh_token, issue_auth_tokens
 from app.models.user import User, UserRole, TeacherProfile, StudentProfile, KindProfile
 from app.models.content import Book, LibraryTarget
 from app.models.cbt import CBTExam, CBTQuestion, CBTSession, ExamProctorLog
@@ -64,9 +64,10 @@ async def admin_register(payload: AdminRegisterRequest, db: AsyncSession = Depen
     )
     db.add(user)
     await db.flush()
+    access_token, refresh_token = await issue_auth_tokens(db, user)
     return TokenResponse(
-        access_token=create_access_token(str(user.id), user.role),
-        refresh_token=create_refresh_token(str(user.id)),
+        access_token=access_token,
+        refresh_token=refresh_token,
         role=user.role,
     )
 
@@ -222,7 +223,18 @@ async def add_book(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    if not payload.is_free and payload.price <= 0:
+    category = (payload.category or "Books").strip()
+    is_free = bool(payload.is_free)
+    price = float(payload.price or 0)
+    # Past Questions are always paid — students unlock via Paystack.
+    if "past" in category.lower():
+        is_free = False
+        if price <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Past Questions must be paid. Enter a price greater than zero.",
+            )
+    if not is_free and price <= 0:
         raise HTTPException(
             status_code=400,
             detail="Set a price greater than zero for a paid material.",
@@ -232,14 +244,14 @@ async def add_book(
         exam_type=payload.exam_type, file_key=payload.file_key,
         cover_image_url=payload.cover_image_url, description=payload.description,
         total_pages=payload.total_pages,
-        category=(payload.category or "Books").strip(),
+        category=category,
         education_level=payload.education_level,
         term=payload.term,
         scheme_week=payload.scheme_week,
         scheme_topic=payload.scheme_topic,
         library_target=payload.library_target,
-        is_free=payload.is_free,
-        price=0.0 if payload.is_free else max(payload.price, 0),
+        is_free=is_free,
+        price=0.0 if is_free else max(price, 0),
         uploaded_by=current_user["sub"],
         is_downloadable=False, allow_copy=False, allow_screenshot=False, allow_print=False,
     )

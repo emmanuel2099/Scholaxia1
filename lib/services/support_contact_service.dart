@@ -60,10 +60,7 @@ class ContactScholaxiaScreen extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           _ContactCard(
-            leading: const CircleAvatar(
-              backgroundColor: Color(0xFF25D366),
-              child: WhatsAppIcon(size: 20, color: Colors.white),
-            ),
+            leading: const WhatsAppIcon(size: 40),
             title: 'WhatsApp',
             subtitle: SupportContactService.primaryPhone,
             onTap: SupportContactService.openWhatsApp,

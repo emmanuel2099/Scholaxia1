@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import '../services/app_prefs.dart';
 
 // ── Brand purple palette ──────────────────────────────────────────────────────
 class AppColors {
@@ -197,26 +197,32 @@ class ThemeNotifier extends ChangeNotifier {
   ThemeMode get mode => _mode;
 
   Future<void> load() async {
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getString(_prefKey);
-    if (saved == 'light') {
-      _mode = ThemeMode.light;
-    } else if (saved == 'dark') {
-      _mode = ThemeMode.dark;
-    } else {
+    try {
+      final prefs = await AppPrefs.instance();
+      final saved = prefs.getString(_prefKey);
+      if (saved == 'light') {
+        _mode = ThemeMode.light;
+      } else if (saved == 'dark') {
+        _mode = ThemeMode.dark;
+      } else {
+        _mode = ThemeMode.system;
+      }
+    } catch (_) {
       _mode = ThemeMode.system;
     }
     notifyListeners();
   }
 
   Future<void> _persist() async {
-    final prefs = await SharedPreferences.getInstance();
-    final value = switch (_mode) {
-      ThemeMode.light => 'light',
-      ThemeMode.dark => 'dark',
-      ThemeMode.system => 'system',
-    };
-    await prefs.setString(_prefKey, value);
+    try {
+      final prefs = await AppPrefs.instance();
+      final value = switch (_mode) {
+        ThemeMode.light => 'light',
+        ThemeMode.dark => 'dark',
+        ThemeMode.system => 'system',
+      };
+      await prefs.setString(_prefKey, value);
+    } catch (_) {}
   }
 
   void setLight() {

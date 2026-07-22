@@ -182,6 +182,17 @@ async def get_live_access_info(
 
     can_join = bool(active and active["sessions_left"] > 0)
 
+    skill_access = False
+    if not can_join:
+        try:
+            from app.services.skills_enrollment import student_has_active_skill_access
+
+            skill_access = await student_has_active_skill_access(db, student_id)
+            if skill_access:
+                can_join = True
+        except Exception:
+            skill_access = False
+
     return {
         "can_join": can_join,
         "paid": can_join,
@@ -189,7 +200,8 @@ async def get_live_access_info(
         "need_plan": not can_join,
         "active_plan": active,
         "valid_until": active["expires_at"] if active else None,
-        "sessions_left": active["sessions_left"] if active else 0,
+        "sessions_left": active["sessions_left"] if active else (99 if skill_access else 0),
+        "skill_enrollment_access": skill_access,
     }
 
 

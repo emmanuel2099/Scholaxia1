@@ -38,6 +38,8 @@ class User(Base):
     oauth_provider: Mapped[str] = mapped_column(String(50), nullable=True)  # google, apple
     oauth_id: Mapped[str] = mapped_column(String(255), nullable=True)
     profile_picture: Mapped[str] = mapped_column(String(1000), nullable=True)
+    # Bumped on each login so older JWTs on other devices stop working.
+    token_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

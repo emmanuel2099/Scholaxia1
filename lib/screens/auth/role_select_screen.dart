@@ -1,22 +1,28 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../kind/kind_shared.dart';
-import 'league_auth_screen.dart';
+import '../../services/offline_status_service.dart';
 import 'login_screen.dart';
 
-enum AccountRole { student, teacher, kind, gameChallenge }
+enum AccountRole { student, teacher, kind }
 
-class RoleSelectScreen extends StatelessWidget {
+class RoleSelectScreen extends StatefulWidget {
   const RoleSelectScreen({super.key});
 
-  void _openLogin(BuildContext context, AccountRole role) {
-    if (role == AccountRole.gameChallenge) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const LeagueAuthScreen()),
-      );
-      return;
-    }
+  @override
+  State<RoleSelectScreen> createState() => _RoleSelectScreenState();
+}
+
+class _RoleSelectScreenState extends State<RoleSelectScreen> {
+  @override
+  void initState() {
+    super.initState();
+    // Auth screens should never show the offline strip.
+    OfflineStatusService.instance.clear();
+    OfflineStatusService.instance.setShowBanner(false);
+  }
+
+  void _openLogin(AccountRole role) {
     Navigator.pushReplacement(
       context,
       MaterialPageRoute(builder: (_) => LoginScreen(accountRole: role)),
@@ -74,17 +80,7 @@ class RoleSelectScreen extends StatelessWidget {
                       subtitle:
                           'JAMB, WAEC, NECO prep, live classes, and CBT practice.',
                       color: context.accentColor,
-                      onTap: () => _openLogin(context, AccountRole.student),
-                    ),
-                    const SizedBox(height: 12),
-                    _RoleCard(
-                      icon: Icons.emoji_events_outlined,
-                      title: 'Game Challenge',
-                      subtitle:
-                          'Intellect League login — compete, earn coins, climb ranks.',
-                      color: const Color(0xFF7C3AED),
-                      onTap: () =>
-                          _openLogin(context, AccountRole.gameChallenge),
+                      onTap: () => _openLogin(AccountRole.student),
                     ),
                     const SizedBox(height: 12),
                     _RoleCard(
@@ -93,7 +89,7 @@ class RoleSelectScreen extends StatelessWidget {
                       subtitle:
                           'Host live classes, grade work, and use Teacher AI.',
                       color: const Color(0xFF9333EA),
-                      onTap: () => _openLogin(context, AccountRole.teacher),
+                      onTap: () => _openLogin(AccountRole.teacher),
                     ),
                     const SizedBox(height: 12),
                     _RoleCard(
@@ -102,7 +98,7 @@ class RoleSelectScreen extends StatelessWidget {
                       subtitle:
                           'Young learners (ages 3–12) with kid-safe AI tutoring.',
                       color: KidColors.accent,
-                      onTap: () => _openLogin(context, AccountRole.kind),
+                      onTap: () => _openLogin(AccountRole.kind),
                     ),
                     const SizedBox(height: 28),
                     Text(

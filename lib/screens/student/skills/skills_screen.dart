@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../api/api_service.dart';
+import '../../../services/flutterwave_checkout_service.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/student_ui.dart';
 
@@ -481,7 +482,7 @@ class _SkillsScreenState extends State<SkillsScreen> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
-              '2-installment plan: ${_formatNaira(half)} at enrollment + ${_formatNaira(skill.fee - half)} at midpoint',
+              'Pay once (full) or half now (${_formatNaira(half)}) + balance (${_formatNaira(skill.fee - half)}) by midpoint — unpaid balance shuts down access. Skill students can join live classes after paying.',
               style: TextStyle(
                 color: context.textColor,
                 fontSize: 12.5,
@@ -642,6 +643,7 @@ class _EnrollSheetState extends State<_EnrollSheet> {
   final _notes = TextEditingController();
   bool _submitting = false;
   String? _error;
+  String _paymentMode = 'half'; // once | half
 
   @override
   void dispose() {
@@ -667,21 +669,31 @@ class _EnrollSheetState extends State<_EnrollSheet> {
       _error = null;
     });
     try {
-      await _api.initSkillEnrollment(
-        widget.skill.id,
-        fullName: name,
-        phone: phone,
-        email: _email.text.trim(),
-        location: location,
-        preferredStart: _start.text.trim(),
-        notes: _notes.text.trim(),
+      final paid = await FlutterwaveCheckoutService.paySkillEnrollment(
+        context: context,
+        api: _api,
+        skillId: widget.skill.id,
+        initPayload: {
+          'full_name': name,
+          'phone': phone,
+          'email': _email.text.trim(),
+          'location': location,
+          'preferred_start': _start.text.trim(),
+          'notes': _notes.text.trim(),
+          'payment_mode': _paymentMode,
+          'installment': 1,
+        },
       );
       if (!mounted) return;
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Enrollment received for ${widget.skill.title}. Our team will contact you to complete payment.',
+            paid
+                ? (_paymentMode == 'once'
+                    ? 'Full payment received for ${widget.skill.title}. Live classes unlocked.'
+                    : 'Half paid for ${widget.skill.title}. Pay the balance by midpoint or access shuts down. Live classes unlocked meanwhile.')
+                : 'Payment was not completed.',
           ),
         ),
       );
@@ -697,6 +709,7 @@ class _EnrollSheetState extends State<_EnrollSheet> {
   Widget build(BuildContext context) {
     final half = (widget.skill.fee / 2).round();
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final payNow = _paymentMode == 'once' ? widget.skill.fee : half;
     return Padding(
       padding: EdgeInsets.only(bottom: bottomInset),
       child: Container(
@@ -731,10 +744,43 @@ class _EnrollSheetState extends State<_EnrollSheet> {
               ),
               const SizedBox(height: 4),
               Text(
-                'Total ${_formatNaira(widget.skill.fee)} · pay ${_formatNaira(half)} now, ${_formatNaira(widget.skill.fee - half)} at midpoint.',
+                'Total ${_formatNaira(widget.skill.fee)}. Choose pay once or half now.',
                 style: TextStyle(color: context.greyColor, fontSize: 12.5),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
+              RadioListTile<String>(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                value: 'once',
+                groupValue: _paymentMode,
+                onChanged: _submitting
+                    ? null
+                    : (v) => setState(() => _paymentMode = v ?? 'once'),
+                title: Text(
+                  'Pay once (full) — ${_formatNaira(widget.skill.fee)}',
+                  style: TextStyle(
+                      color: context.textColor, fontWeight: FontWeight.w700),
+                ),
+              ),
+              RadioListTile<String>(
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                value: 'half',
+                groupValue: _paymentMode,
+                onChanged: _submitting
+                    ? null
+                    : (v) => setState(() => _paymentMode = v ?? 'half'),
+                title: Text(
+                  'Pay half now — ${_formatNaira(half)} (balance by midpoint)',
+                  style: TextStyle(
+                      color: context.textColor, fontWeight: FontWeight.w700),
+                ),
+                subtitle: Text(
+                  'If balance is not paid by midpoint, enrollment shuts down.',
+                  style: TextStyle(color: context.greyColor, fontSize: 11.5),
+                ),
+              ),
+              const SizedBox(height: 8),
               _field(_name, 'Full name *'),
               _field(_phone, 'Phone number *',
                   keyboard: TextInputType.phone),
@@ -770,9 +816,9 @@ class _EnrollSheetState extends State<_EnrollSheet> {
                           child: CircularProgressIndicator(
                               strokeWidth: 2, color: Colors.black),
                         )
-                      : const Text(
-                          'Submit enrollment',
-                          style: TextStyle(
+                      : Text(
+                          'Continue to pay ${_formatNaira(payNow)}',
+                          style: const TextStyle(
                               fontWeight: FontWeight.w800, fontSize: 15),
                         ),
                 ),

@@ -1,6 +1,11 @@
 """Scholaxia Skills Training programs — fees and metadata for enrollment payments."""
 
+from __future__ import annotations
+
+from datetime import datetime, timedelta
 from typing import Optional
+
+from app.core.datetime_utils import naive_utc_now
 
 SKILLS_PROGRAMS: dict[str, dict] = {
     "web-design": {"title": "Web Design", "fee": 250000, "duration": "6 months"},
@@ -12,6 +17,8 @@ SKILLS_PROGRAMS: dict[str, dict] = {
     "digital-marketing": {"title": "Digital Marketing", "fee": 80000, "duration": "2 months"},
     "scratch-robotics": {"title": "Scratch Coding & Robotics", "fee": 65000, "duration": "3 months"},
 }
+
+SKILL_ENTITLEMENT_TYPE = "skill_program"
 
 
 def get_skill_program(skill_id: str) -> Optional[dict]:
@@ -30,8 +37,50 @@ def is_skill_plan_key(plan_key: str) -> bool:
 
 
 def skill_id_from_plan_key(plan_key: str) -> str:
-    return str(plan_key or "").split(":", 1)[-1] if is_skill_plan_key(plan_key) else ""
+    raw = str(plan_key or "")
+    if not is_skill_plan_key(raw):
+        return ""
+    # skill:web-design or skill:web-design:half2
+    parts = raw.split(":")
+    return parts[1] if len(parts) >= 2 else ""
 
 
 def first_installment_amount(fee: float) -> float:
     return float(max(1, round(fee / 2)))
+
+
+def remaining_installment_amount(fee: float) -> float:
+    fee = float(fee)
+    return float(max(1, round(fee - first_installment_amount(fee))))
+
+
+def payment_amount_for_mode(fee: float, payment_mode: str, installment: int = 1) -> float:
+    mode = (payment_mode or "half").strip().lower()
+    fee = float(fee)
+    if mode == "once":
+        return fee
+    if int(installment or 1) >= 2:
+        return remaining_installment_amount(fee)
+    return first_installment_amount(fee)
+
+
+def parse_duration_months(duration: str) -> int:
+    text = (duration or "").lower()
+    digits = "".join(ch for ch in text if ch.isdigit())
+    try:
+        months = int(digits) if digits else 3
+    except ValueError:
+        months = 3
+    return max(1, months)
+
+
+def skill_program_end(start: datetime | None, duration: str) -> datetime:
+    base = start or naive_utc_now()
+    return base + timedelta(days=30 * parse_duration_months(duration))
+
+
+def skill_midpoint_due(start: datetime | None, duration: str) -> datetime:
+    """When half-payment balance is due (program midpoint)."""
+    base = start or naive_utc_now()
+    months = parse_duration_months(duration)
+    return base + timedelta(days=max(14, 15 * months))

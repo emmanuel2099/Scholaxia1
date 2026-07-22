@@ -2,7 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'api/api_service.dart';
+import 'screens/auth/role_select_screen.dart';
 import 'screens/splash/splash_screen.dart';
+import 'services/app_prefs.dart';
 import 'services/app_update_service.dart';
 import 'services/firebase_analytics_service.dart';
 import 'services/firebase_push_service.dart';
@@ -27,6 +30,11 @@ Future<void> main() async {
 }
 
 Future<void> _bootstrap() async {
+  try {
+    await ensurePrefsHealthy();
+  } catch (e, st) {
+    debugPrint('Prefs recovery failed: $e\n$st');
+  }
   try {
     await themeNotifier.load();
   } catch (e, st) {
@@ -61,6 +69,7 @@ class _ScholaxiaAppState extends State<ScholaxiaApp> {
   void initState() {
     super.initState();
     themeNotifier.addListener(_onThemeChanged);
+    sessionExpiredNotifier.addListener(_onSessionExpired);
     // Give the first screen a moment to mount, then check for a newer build.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future.delayed(const Duration(seconds: 2), () {
@@ -72,11 +81,32 @@ class _ScholaxiaAppState extends State<ScholaxiaApp> {
   @override
   void dispose() {
     themeNotifier.removeListener(_onThemeChanged);
+    sessionExpiredNotifier.removeListener(_onSessionExpired);
     super.dispose();
   }
 
   void _onThemeChanged() {
     if (mounted) setState(() {});
+  }
+
+  void _onSessionExpired() {
+    final msg = sessionExpiredNotifier.value;
+    if (msg == null) return;
+    sessionExpiredNotifier.value = null;
+    final nav = appNavigatorKey.currentState;
+    if (nav == null) return;
+    final friendly = msg.toLowerCase().contains('another device')
+        ? 'You signed in on another device. Please sign in again.'
+        : 'Your session ended. Please sign in again.';
+    nav.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const RoleSelectScreen()),
+      (_) => false,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = appNavigatorKey.currentContext;
+      if (ctx == null) return;
+      ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(friendly)));
+    });
   }
 
   @override

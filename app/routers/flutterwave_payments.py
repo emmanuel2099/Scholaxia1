@@ -19,6 +19,7 @@ from app.core.skills_programs import (
     is_skill_plan_key,
     skill_id_from_plan_key,
     first_installment_amount,
+    payment_amount_for_mode,
 )
 from app.models.payment import Payment, PaymentStatus
 from app.models.live_class import LiveClass
@@ -48,58 +49,34 @@ class FlutterwaveVerifyRequest(BaseModel):
 
 
 class SkillEnrollInitRequest(BaseModel):
-    full_name: str
-    phone: str
+    full_name: str = ""
+    phone: str = ""
     email: Optional[str] = None
     location: Optional[str] = None
     preferred_start: Optional[str] = None
     notes: Optional[str] = None
+    # once = full fee now; half = pay half now, balance by midpoint
+    payment_mode: Optional[str] = "half"
+    installment: Optional[int] = 1
 
 
-class LivePlanInitRequest(BaseModel):
-    plan_id: str
-    class_id: Optional[str] = None
-
-
-class ReconcilePlanRequest(BaseModel):
-    tx_ref: Optional[str] = None
-
-
-async def _student_has_live_access(db: AsyncSession, student_id: str, class_id: str = "") -> bool:
-    access = await get_live_access_info(db, student_id, class_id or None)
-    return access["can_join"]
-
-
-async def _student_has_material_access(db: AsyncSession, student_id: str, material_id: str) -> bool:
-    mat_res = await db.execute(select(TeacherMaterial).where(TeacherMaterial.id == material_id))
-    material = mat_res.scalar_one_or_none()
-    if not material or not material.is_active:
-        return False
-    if material.is_free:
-        return True
-    result = await db.execute(
-        select(MaterialPurchase).where(
-            MaterialPurchase.student_id == student_id,
-            MaterialPurchase.material_id == material_id,
-        )
+@router.get("/flutterwave/skills/enrollments")
+async def list_my_skill_enrollments(
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services.skills_enrollment import (
+        list_skill_entitlements,
+        refresh_skill_entitlement_status,
+        serialize_skill_enrollment,
     )
-    return result.scalar_one_or_none() is not None
 
-
-async def _student_has_book_access(db: AsyncSession, student_id: str, book_id: str) -> bool:
-    book_res = await db.execute(select(Book).where(Book.id == book_id))
-    book = book_res.scalar_one_or_none()
-    if not book or not book.is_active:
-        return False
-    if book.is_free:
-        return True
-    result = await db.execute(
-        select(BookPurchase).where(
-            BookPurchase.student_id == student_id,
-            BookPurchase.book_id == book_id,
-        )
-    )
-    return result.scalar_one_or_none() is not None
+    ents = await list_skill_entitlements(db, current_user["sub"])
+    out = []
+    for ent in ents:
+        await refresh_skill_entitlement_status(db, ent)
+        out.append(serialize_skill_enrollment(ent))
+    return {"enrollments": out}
 
 
 @router.post("/flutterwave/skills/{skill_id}/init")
@@ -116,18 +93,67 @@ async def init_skill_enrollment_payment(
     if not program:
         raise HTTPException(status_code=404, detail="Training program not found")
 
+    payment_mode = (payload.payment_mode or "half").strip().lower()
+    if payment_mode not in ("once", "half"):
+        raise HTTPException(status_code=400, detail="payment_mode must be once or half")
+    installment = int(payload.installment or 1)
+    if installment not in (1, 2):
+        raise HTTPException(status_code=400, detail="installment must be 1 or 2")
+    if payment_mode == "once" and installment != 1:
+        raise HTTPException(status_code=400, detail="Full payment uses installment 1 only")
+
+    from app.services.skills_enrollment import (
+        get_skill_entitlement,
+        refresh_skill_entitlement_status,
+        serialize_skill_enrollment,
+    )
+
+    existing_ent = await get_skill_entitlement(db, current_user["sub"], skill_id)
+    if existing_ent:
+        await refresh_skill_entitlement_status(db, existing_ent)
+        details = dict(existing_ent.details or {})
+        status = (details.get("status") or "").lower()
+        paid_n = int(details.get("installments_paid") or 0)
+        if status == "completed" or (details.get("payment_mode") == "once" and paid_n >= 1):
+            return {
+                "already_paid": True,
+                "enrollment": serialize_skill_enrollment(existing_ent),
+                "program_title": program["title"],
+            }
+        if installment == 2:
+            if status == "suspended":
+                raise HTTPException(
+                    status_code=403,
+                    detail="Enrollment was shut down because the balance was not paid on time. Contact support.",
+                )
+            if paid_n < 1:
+                raise HTTPException(status_code=400, detail="Pay the first installment before the balance.")
+            if paid_n >= 2:
+                return {
+                    "already_paid": True,
+                    "enrollment": serialize_skill_enrollment(existing_ent),
+                    "program_title": program["title"],
+                }
+            payment_mode = "half"
+        elif installment == 1 and paid_n >= 1 and status == "active":
+            raise HTTPException(
+                status_code=400,
+                detail="First installment already paid. Pay the balance installment when due.",
+            )
+
     full_name = (payload.full_name or "").strip()
     phone = (payload.phone or "").strip()
     location = (payload.location or "").strip()
-    if not full_name or not phone:
+    if installment == 1 and (not full_name or not phone):
         raise HTTPException(status_code=400, detail="Full name and phone are required")
 
     user_res = await db.execute(select(User).where(User.id == current_user["sub"]))
     user = user_res.scalar_one_or_none()
     email = (payload.email or "").strip() or (user.email if user else "") or f"{current_user['sub']}@scholaxia.local"
-    amount = first_installment_amount(program["fee"])
+    amount = payment_amount_for_mode(program["fee"], payment_mode, installment)
 
     tx_ref = f"scholaxia-skill-{skill_id[:12]}-{uuid.uuid4().hex[:16]}"
+    mode_label = "full payment" if payment_mode == "once" else f"installment {installment}"
 
     payment = Payment(
         student_id=parse_uuid(current_user["sub"]),
@@ -136,8 +162,11 @@ async def init_skill_enrollment_payment(
         status=PaymentStatus.pending,
         flutterwave_tx_ref=tx_ref,
         live_plan_id=skill_plan_key(skill_id),
+        product_type="skill_enrollment",
+        product_id=skill_id,
         description=(
-            f"Skills enroll: {program['title']} | {full_name} | {phone}"
+            f"Skills enroll: {program['title']} | mode={payment_mode} | installment={installment}"
+            f" | {full_name or 'student'} | {phone or '-'}"
             + (f" | {location}" if location else "")
         )[:255],
     )
@@ -153,9 +182,11 @@ async def init_skill_enrollment_payment(
         "public_key": settings.FLUTTERWAVE_PUBLIC_KEY,
         "program_title": program["title"],
         "program_duration": program["duration"],
-        "installment": 1,
+        "payment_mode": payment_mode,
+        "installment": installment,
         "total_fee": program["fee"],
-        "customer": {"email": email, "name": full_name},
+        "mode_label": mode_label,
+        "customer": {"email": email, "name": full_name or (user.full_name if user else "Student")},
     }
 
 
@@ -650,8 +681,17 @@ async def verify_flutterwave_payment(
             raise HTTPException(status_code=400, detail="Unknown skills program")
 
         expected_amount = first_installment_amount(program["fee"])
+        payment_mode = "half"
+        installment = 1
         if payment and payment.amount:
             expected_amount = float(payment.amount)
+        if payment and payment.description:
+            desc = payment.description
+            if "mode=once" in desc:
+                payment_mode = "once"
+            if "installment=2" in desc:
+                installment = 2
+                payment_mode = "half"
         if amount_paid + 1 < expected_amount:
             raise HTTPException(status_code=400, detail="Incorrect payment amount")
 
@@ -661,24 +701,56 @@ async def verify_flutterwave_payment(
                 amount=amount_paid,
                 currency=data.get("currency") or "NGN",
                 live_plan_id=skill_plan_key(resolved_skill),
-                description=f"Skills enroll: {program['title']}",
+                product_type="skill_enrollment",
+                product_id=resolved_skill,
+                description=f"Skills enroll: {program['title']} | mode={payment_mode} | installment={installment}",
             )
             db.add(payment)
 
         payment.status = PaymentStatus.success
         payment.live_plan_id = skill_plan_key(resolved_skill)
+        payment.product_type = "skill_enrollment"
+        payment.product_id = resolved_skill
         payment.flutterwave_transaction_id = str(data.get("id") or payload.transaction_id)
         if tx_ref:
             payment.flutterwave_tx_ref = tx_ref
         await db.flush()
+
+        from app.services.skills_enrollment import (
+            grant_or_update_skill_enrollment,
+            serialize_skill_enrollment,
+        )
+
+        contact = {}
+        if payment.description:
+            # description: Skills enroll: TITLE | mode=... | installment=... | name | phone
+            parts = [p.strip() for p in payment.description.split("|")]
+            if len(parts) >= 4:
+                contact["full_name"] = parts[3]
+            if len(parts) >= 5:
+                contact["phone"] = parts[4]
+
+        ent = await grant_or_update_skill_enrollment(
+            db,
+            student_id=current_user["sub"],
+            skill_id=resolved_skill,
+            payment_mode=payment_mode,
+            installment=installment,
+            amount_paid=amount_paid,
+            payment_id=payment.id,
+            contact=contact,
+        )
 
         return {
             "paid": True,
             "skill_id": resolved_skill,
             "program_title": program["title"],
             "enrollment": True,
-            "installment": 1,
+            "payment_mode": payment_mode,
+            "installment": installment,
             "payment_id": str(payment.id),
+            "skill_enrollment": serialize_skill_enrollment(ent),
+            "live_class_access": True,
         }
 
     if plan_id and not is_skill_plan_key(plan_id):

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../services/offline_status_service.dart';
 import '../../theme/app_theme.dart';
 import '../student/saved/saved_classes_screen.dart';
 import 'kind_home_screen.dart';
@@ -17,6 +18,12 @@ class KindShell extends StatefulWidget {
 class _KindShellState extends State<KindShell> {
   int _index = 0;
   final _savedKey = GlobalKey<SavedClassesScreenState>();
+
+  @override
+  void initState() {
+    super.initState();
+    OfflineStatusService.instance.setShowBanner(true);
+  }
 
   void _goToTab(int i) => setState(() => _index = i);
 

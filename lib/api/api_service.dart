@@ -5,12 +5,20 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api_endpoints.dart';
 import '../models/sia_board_item.dart';
-import '../services/profile_avatar_cache.dart';
+import '../services/app_prefs.dart';
 import '../services/offline_status_service.dart';
+import '../services/profile_avatar_cache.dart';
+
+/// Notifies persistent headers when the signed-in user changes their photo.
+final ValueNotifier<String?> profilePictureNotifier =
+    ValueNotifier<String?>(null);
+
+/// Fired when the API returns 401 (e.g. signed in on another device).
+final ValueNotifier<String?> sessionExpiredNotifier =
+    ValueNotifier<String?>(null);
 
 // ── Errors ────────────────────────────────────────────────────────────────────
 
@@ -49,23 +57,23 @@ class ApiService {
   // ── Token storage ─────────────────────────────────────────────────────────
 
   Future<String?> getToken() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await AppPrefs.instance();
     return prefs.getString(_kAccessToken);
   }
 
   Future<String?> getRole() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await AppPrefs.instance();
     return prefs.getString(_kUserRole);
   }
 
   Future<String?> getUserId() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await AppPrefs.instance();
     return prefs.getString(_kUserId);
   }
 
   /// Persist last area so restart reopens League or Student home.
   Future<void> setAppResumeMode(String mode) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await AppPrefs.instance();
     final m = mode.toLowerCase().trim();
     if (m == 'league' || m == 'student') {
       await prefs.setString(_kAppResumeMode, m);
@@ -73,12 +81,12 @@ class ApiService {
   }
 
   Future<String> getAppResumeMode() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await AppPrefs.instance();
     return (prefs.getString(_kAppResumeMode) ?? 'student').toLowerCase();
   }
 
   Future<void> clearTokens() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await AppPrefs.instance();
     await prefs.remove(_kAccessToken);
     await prefs.remove(_kRefreshToken);
     await prefs.remove(_kUserRole);
@@ -86,10 +94,11 @@ class ApiService {
     await prefs.remove(_kSetupComplete);
     await prefs.remove(_kProfilePicture);
     await prefs.remove(_kAppResumeMode);
+    profilePictureNotifier.value = null;
   }
 
   Future<void> cacheProfilePicture(String? url) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await AppPrefs.instance();
     final resolved = resolveMediaUrl(url);
     if (resolved.isEmpty) {
       await prefs.remove(_kProfilePicture);
@@ -99,29 +108,29 @@ class ApiService {
   }
 
   Future<String?> cachedProfilePicture() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await AppPrefs.instance();
     final raw = prefs.getString(_kProfilePicture);
     if (raw == null || raw.isEmpty) return null;
     return resolveMediaUrl(raw);
   }
 
   Future<bool> hasSeenOnboarding() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await AppPrefs.instance();
     return prefs.getBool(_kOnboardingSeen) ?? false;
   }
 
   Future<void> markOnboardingSeen() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await AppPrefs.instance();
     await prefs.setBool(_kOnboardingSeen, true);
   }
 
   Future<void> _saveRole(String role) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await AppPrefs.instance();
     await prefs.setString(_kUserRole, role.toLowerCase().trim());
   }
 
   Future<void> _saveAuth(AuthResponse auth) async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await AppPrefs.instance();
     await prefs.setString(_kAccessToken, auth.accessToken);
     await prefs.setString(_kRefreshToken, auth.refreshToken);
     await prefs.setString(_kUserRole, auth.role.toLowerCase().trim());
@@ -197,7 +206,7 @@ class ApiService {
 
   Future<http.Response?> _cachedResponse(Uri uri) async {
     if (!_isOfflineCacheable(uri)) return null;
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await AppPrefs.instance();
     final body = prefs.getString(await _offlineCacheKey(uri));
     if (body == null) return null;
     return http.Response(
@@ -221,18 +230,20 @@ class ApiService {
   Future<http.Response> _cachedGet(
     Uri uri, {
     Map<String, String>? headers,
+    bool trackConnectivity = true,
   }) async {
     try {
       final response = await http
           .get(uri, headers: headers)
           .timeout(const Duration(seconds: 15));
       if (response.statusCode >= 200 && response.statusCode < 300) {
-        OfflineStatusService.instance.markOnline();
+        if (trackConnectivity) OfflineStatusService.instance.markOnline();
         final trimmed = response.body.trimLeft();
         if (_isOfflineCacheable(uri) &&
-            response.bodyBytes.length <= 1024 * 1024 &&
-            (trimmed.startsWith('{') || trimmed.startsWith('['))) {
-          final prefs = await SharedPreferences.getInstance();
+            response.bodyBytes.length <= 48 * 1024 &&
+            (trimmed.startsWith('{') || trimmed.startsWith('[')) &&
+            !response.body.contains('\u0000')) {
+          final prefs = await AppPrefs.instance();
           await prefs.setString(await _offlineCacheKey(uri), response.body);
         }
         return response;
@@ -240,13 +251,13 @@ class ApiService {
       if (response.statusCode >= 500) {
         final cached = await _cachedResponse(uri);
         if (cached != null) {
-          OfflineStatusService.instance.markOffline();
+          if (trackConnectivity) OfflineStatusService.instance.markOffline();
           return cached;
         }
       }
       return response;
     } catch (_) {
-      OfflineStatusService.instance.markOffline();
+      if (trackConnectivity) OfflineStatusService.instance.markOffline();
       final cached = await _cachedResponse(uri);
       if (cached != null) return cached;
       throw const ApiException.message(
@@ -344,6 +355,11 @@ class ApiService {
       }
     } else if (body is String && body.isNotEmpty) {
       message = body;
+    }
+
+    if (status == 401) {
+      unawaited(clearTokens());
+      sessionExpiredNotifier.value = message;
     }
 
     throw ApiException(status, message);
@@ -675,7 +691,7 @@ class ApiService {
       body: jsonEncode(body),
     );
     final data = _parseMap(res);
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await AppPrefs.instance();
     await prefs.setBool(_kSetupComplete, true);
     // Primary 6 → kids: server returns new tokens + role.
     final access = data['access_token']?.toString();
@@ -712,7 +728,7 @@ class ApiService {
   }
 
   Future<bool> isSetupComplete() async {
-    final prefs = await SharedPreferences.getInstance();
+    final prefs = await AppPrefs.instance();
     final cached = prefs.getBool(_kSetupComplete);
 
     try {
@@ -776,6 +792,7 @@ class ApiService {
     final data = _parseMap(res);
     final saved = resolveMediaUrl(data['profile_picture']?.toString() ?? url);
     await cacheProfilePicture(saved);
+    profilePictureNotifier.value = saved;
     // Keep a local copy so the avatar still shows if the CDN is slow/offline.
     try {
       await ProfileAvatarCache.instance.saveBytes(bytes);
@@ -1390,9 +1407,11 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> getAppVersion() async {
+    // Quiet probe — must not flip the global offline banner on login screens.
     final res = await _cachedGet(
       _uri('/api/v1/app/version'),
       headers: _jsonHeaders(),
+      trackConnectivity: false,
     );
     return _parseMap(res);
   }
@@ -1405,6 +1424,8 @@ class ApiService {
     String? location,
     String? preferredStart,
     String? notes,
+    String paymentMode = 'half',
+    int installment = 1,
   }) async {
     final res = await _onlinePost(
       _uri('/api/v1/payments/flutterwave/skills/$skillId/init'),
@@ -1417,9 +1438,38 @@ class ApiService {
         if (preferredStart != null && preferredStart.isNotEmpty)
           'preferred_start': preferredStart,
         if (notes != null && notes.isNotEmpty) 'notes': notes,
+        'payment_mode': paymentMode,
+        'installment': installment,
       }),
     );
     return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> verifyFlutterwaveSkill({
+    required String transactionId,
+    required String skillId,
+    String? txRef,
+  }) async {
+    final res = await _onlinePost(
+      _uri('/api/v1/payments/flutterwave/verify'),
+      headers: await _authHeaders(),
+      body: jsonEncode({
+        'transaction_id': transactionId,
+        'skill_id': skillId,
+        if (txRef != null && txRef.isNotEmpty) 'tx_ref': txRef,
+      }),
+    );
+    return _parseMap(res);
+  }
+
+  Future<List<dynamic>> skillEnrollments() async {
+    final res = await _cachedGet(
+      _uri('/api/v1/payments/flutterwave/skills/enrollments'),
+      headers: await _authHeaders(),
+    );
+    final data = _parseMap(res);
+    final list = data['enrollments'];
+    return list is List ? list : const [];
   }
 
   Future<List<dynamic>> cbtMySessions() async {

@@ -237,6 +237,12 @@ async def _run_schema_migrations(conn) -> None:
         pass
     try:
         await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0"
+        ))
+    except Exception:
+        pass
+    try:
+        await conn.execute(text(
             "ALTER TABLE sil_anticheat_events ADD COLUMN IF NOT EXISTS severity INTEGER NOT NULL DEFAULT 1"
         ))
     except Exception:

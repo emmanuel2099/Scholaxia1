@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../services/offline_status_service.dart';
 import '../../theme/app_theme.dart';
 import 'ai/teacher_ai_screen.dart';
 import 'classes/teacher_classes_screen.dart';
@@ -18,6 +19,12 @@ class TeacherShell extends StatefulWidget {
 class _TeacherShellState extends State<TeacherShell> {
   int _currentIndex = 0;
   int _hostClassNonce = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    OfflineStatusService.instance.setShowBanner(true);
+  }
 
   void _goToTab(int i) => setState(() => _currentIndex = i);
 

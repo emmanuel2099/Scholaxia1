@@ -4,7 +4,7 @@ from sqlalchemy import select
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 from app.core.database import get_db
-from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token
+from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token, issue_auth_tokens
 from app.core.config import settings
 from app.models.user import User, UserRole, StudentProfile, TeacherProfile, KindProfile
 from app.services.otp_service import (
@@ -187,9 +187,10 @@ async def firebase_phone_auth(payload: FirebaseAuthRequest, db: AsyncSession = D
         user.is_verified = True
         await db.flush()
         user_info = await _build_user_info(user, db)
+        access_token, refresh_token = await issue_auth_tokens(db, user)
         return TokenResponse(
-            access_token=create_access_token(str(user.id), user.role),
-            refresh_token=create_refresh_token(str(user.id)),
+            access_token=access_token,
+            refresh_token=refresh_token,
             role=user.role,
             user=user_info,
         )
@@ -239,9 +240,10 @@ async def firebase_phone_auth(payload: FirebaseAuthRequest, db: AsyncSession = D
     await db.flush()
 
     user_info = await _build_user_info(user, db)
+    access_token, refresh_token = await issue_auth_tokens(db, user)
     return TokenResponse(
-        access_token=create_access_token(str(user.id), user.role),
-        refresh_token=create_refresh_token(str(user.id)),
+        access_token=access_token,
+        refresh_token=refresh_token,
         role=user.role,
         user=user_info,
     )
@@ -374,9 +376,10 @@ async def signup_verify(payload: SignupVerifyRequest, db: AsyncSession = Depends
     await clear_pending_signup(email)
 
     user_info = await _build_user_info(user, db)
+    access_token, refresh_token = await issue_auth_tokens(db, user)
     return TokenResponse(
-        access_token=create_access_token(str(user.id), user.role),
-        refresh_token=create_refresh_token(str(user.id)),
+        access_token=access_token,
+        refresh_token=refresh_token,
         role=user.role,
         user=user_info,
     )
@@ -402,9 +405,10 @@ async def student_signup(payload: StudentSignupRequest, db: AsyncSession = Depen
     await db.flush()
 
     user_info = await _build_user_info(user, db)
+    access_token, refresh_token = await issue_auth_tokens(db, user)
     return TokenResponse(
-        access_token=create_access_token(str(user.id), user.role),
-        refresh_token=create_refresh_token(str(user.id)),
+        access_token=access_token,
+        refresh_token=refresh_token,
         role=user.role,
         user=user_info,
     )
@@ -442,9 +446,10 @@ async def kind_signup(payload: KindSignupRequest, db: AsyncSession = Depends(get
     await db.flush()
 
     user_info = await _build_user_info(user, db)
+    access_token, refresh_token = await issue_auth_tokens(db, user)
     return TokenResponse(
-        access_token=create_access_token(str(user.id), user.role),
-        refresh_token=create_refresh_token(str(user.id)),
+        access_token=access_token,
+        refresh_token=refresh_token,
         role=user.role,
         user=user_info,
     )
@@ -474,9 +479,10 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=403, detail="Account disabled")
 
     user_info = await _build_user_info(user, db)
+    access_token, refresh_token = await issue_auth_tokens(db, user)
     return TokenResponse(
-        access_token=create_access_token(str(user.id), user.role),
-        refresh_token=create_refresh_token(str(user.id)),
+        access_token=access_token,
+        refresh_token=refresh_token,
         role=user.role,
         user=user_info,
     )

@@ -112,10 +112,19 @@
       }
 
       if (payType === "skill") {
+        var mode = (verified && verified.payment_mode) || (pending && pending.payment_mode) || "half";
+        var inst = (verified && verified.installment) || (pending && pending.installment) || 1;
+        var msg;
+        if (mode === "once") {
+          msg = "Full payment received. You are enrolled and can join live classes for this program.";
+        } else if (Number(inst) >= 2) {
+          msg = "Balance paid. Your skill enrollment is complete and live class access continues.";
+        } else {
+          msg = "First half received. Pay the balance by the midpoint date or access will shut down. You can join live classes meanwhile.";
+        }
         document.getElementById("status-title").textContent = "Enrollment successful!";
         document.getElementById("status-msg").textContent =
-          (verified && verified.program_title ? verified.program_title + " — " : "") +
-          "Your first installment was received. We will contact you with your class schedule.";
+          (verified && verified.program_title ? verified.program_title + " — " : "") + msg;
         setTimeout(function () {
           window.location.href = "app.html?skills=1&enrolled=1";
         }, 1200);

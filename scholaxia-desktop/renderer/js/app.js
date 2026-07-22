@@ -5,6 +5,10 @@ const PAGE_TITLES = {
   school: "Scholaxia Exam",
   "school-portal": "External School Exam",
   marketplace: "Scholaxia Marketplace",
+  assignments: "Assignments",
+  "cbt-packages": "CBT Packages",
+  "class-packages": "Class packages",
+  "holiday-packages": "Holiday Promo",
   skills: "Skills Training",
   subscription: "Subscription",
   cbt: "CBT Practice",
@@ -633,6 +637,71 @@ function setTopbarAuthButton(loggedIn) {
   }
 }
 
+function setAvatarPhoto(el, photoUrl, fallbackLetter) {
+  if (!el) return;
+  var letter = (fallbackLetter || "?").toString().charAt(0).toUpperCase();
+  if (photoUrl) {
+    el.classList.add("has-photo");
+    el.style.backgroundImage = 'url("' + String(photoUrl).replace(/"/g, "") + '")';
+    el.textContent = "";
+  } else {
+    el.classList.remove("has-photo");
+    el.style.backgroundImage = "";
+    el.textContent = letter;
+  }
+}
+
+function resolveProfileMediaUrl(url) {
+  if (!url) return "";
+  if (/^https?:\/\//i.test(url)) return url;
+  return (typeof API_BASE !== "undefined" ? API_BASE : "") + (url.startsWith("/") ? url : "/" + url);
+}
+
+function applyStoredAvatar(initial) {
+  var photo = localStorage.getItem("sia_profile_picture") || "";
+  setAvatarPhoto(document.getElementById("user-avatar"), photo, initial);
+  setAvatarPhoto(document.getElementById("profile-avatar"), photo, initial);
+}
+
+async function uploadStudentProfilePhoto(input) {
+  var file = input && input.files && input.files[0];
+  var msg = document.getElementById("profile-photo-msg");
+  if (!file) return;
+  if (msg) msg.textContent = "Uploading photo…";
+  try {
+    var form = new FormData();
+    form.append("file", file);
+    var token = getToken();
+    var up = await fetch(API_BASE + "/api/v1/community/upload", {
+      method: "POST",
+      headers: token ? { Authorization: "Bearer " + token } : {},
+      body: form,
+    });
+    var uploaded = await up.json().catch(function () { return {}; });
+    if (!up.ok) throw new Error(uploaded.detail || uploaded.message || "Upload failed");
+    var url = uploaded.file_url || uploaded.secure_url || uploaded.url;
+    if (!url) throw new Error("No image URL returned.");
+    var saved = await api("/api/v1/profiles/me/picture", {
+      method: "PATCH",
+      body: JSON.stringify({ profile_picture: url }),
+    });
+    var finalUrl = resolveProfileMediaUrl(
+      (saved && saved.profile_picture) || url
+    );
+    localStorage.setItem("sia_profile_picture", finalUrl);
+    var initial = (document.getElementById("profile-name") || {}).textContent || "S";
+    applyStoredAvatar(initial.trim().charAt(0) || "S");
+    if (msg) msg.textContent = "Photo updated.";
+  } catch (e) {
+    if (msg) msg.textContent = e.message || "Could not update photo.";
+  } finally {
+    if (input) input.value = "";
+  }
+}
+
+window.uploadStudentProfilePhoto = uploadStudentProfilePhoto;
+window.applyStoredAvatar = applyStoredAvatar;
+
 function initUserUI() {
   const loggedIn = isStudentLoggedIn();
   if (!loggedIn) {
@@ -642,10 +711,8 @@ function initUserUI() {
     if (handleEl) handleEl.textContent = "Tap to sign in";
     const examEl = document.getElementById("sidebar-exam");
     if (examEl) examEl.textContent = "Browse";
-    const av = document.getElementById("user-avatar");
-    if (av) av.textContent = "G";
-    const pav = document.getElementById("profile-avatar");
-    if (pav) pav.textContent = "G";
+    setAvatarPhoto(document.getElementById("user-avatar"), "", "G");
+    setAvatarPhoto(document.getElementById("profile-avatar"), "", "G");
     const pn = document.getElementById("profile-name");
     if (pn) pn.textContent = "Guest";
     const pe = document.getElementById("profile-email");
@@ -663,8 +730,7 @@ function initUserUI() {
   if (nameEl) nameEl.textContent = first;
   if (handleEl) handleEl.textContent = handle;
   document.getElementById("sidebar-exam").textContent = formatExamType(user.examType) || "Student";
-  document.getElementById("user-avatar").textContent = initial;
-  document.getElementById("profile-avatar").textContent = initial;
+  applyStoredAvatar(initial);
   document.getElementById("profile-name").textContent = user.name;
   document.getElementById("profile-email").textContent = user.email;
   setTopbarAuthButton(true);
@@ -968,6 +1034,22 @@ function refreshPage() {
   else if (currentPage === "contact") { initAppContactForm(); done(); }
   else if (currentPage === "marketplace") {
     if (typeof loadMarketplacePage === "function") loadMarketplacePage();
+    done();
+  }
+  else if (currentPage === "assignments") {
+    if (typeof loadAssignmentsPage === "function") loadAssignmentsPage();
+    done();
+  }
+  else if (currentPage === "cbt-packages") {
+    if (typeof loadCbtPackagesPage === "function") loadCbtPackagesPage();
+    done();
+  }
+  else if (currentPage === "class-packages") {
+    if (typeof loadClassPackagesPage === "function") loadClassPackagesPage();
+    done();
+  }
+  else if (currentPage === "holiday-packages") {
+    if (typeof loadHolidayPackagesPage === "function") loadHolidayPackagesPage();
     done();
   }
   else if (currentPage === "subscription") {
@@ -1866,6 +1948,11 @@ async function loadProfile() {
     localStorage.setItem("sia_subjects", JSON.stringify(p.selected_subjects || []));
     if (p.education_level) localStorage.setItem("sia_education_level", p.education_level);
     document.getElementById("sidebar-exam").textContent = formatExamType(p.exam_type);
+
+    var photo = resolveProfileMediaUrl(p.profile_picture || p.avatar_url || "");
+    if (photo) localStorage.setItem("sia_profile_picture", photo);
+    else localStorage.removeItem("sia_profile_picture");
+    applyStoredAvatar((p.full_name || "S").charAt(0).toUpperCase());
 
     const setupCard = document.getElementById("setup-card");
     const setupTitle = document.getElementById("setup-card-title");

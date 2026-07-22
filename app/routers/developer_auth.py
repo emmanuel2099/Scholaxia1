@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, EmailStr
 from app.core.database import get_db
-from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token
+from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token, issue_auth_tokens
 from app.models.user import User, UserRole
 
 router = APIRouter(prefix="/developer/auth", tags=["Developer Portal"])
@@ -50,9 +50,10 @@ async def developer_signup(payload: DevSignupRequest, db: AsyncSession = Depends
     db.add(user)
     await db.flush()
 
+    access_token, refresh_token = await issue_auth_tokens(db, user)
     return TokenResponse(
-        access_token=create_access_token(str(user.id), user.role),
-        refresh_token=create_refresh_token(str(user.id)),
+        access_token=access_token,
+        refresh_token=refresh_token,
         role=user.role,
     )
 
@@ -68,8 +69,9 @@ async def developer_login(payload: LoginRequest, db: AsyncSession = Depends(get_
     if user.role != UserRole.developer:
         raise HTTPException(status_code=403, detail="Not a developer account")
 
+    access_token, refresh_token = await issue_auth_tokens(db, user)
     return TokenResponse(
-        access_token=create_access_token(str(user.id), user.role),
-        refresh_token=create_refresh_token(str(user.id)),
+        access_token=access_token,
+        refresh_token=refresh_token,
         role=user.role,
     )
