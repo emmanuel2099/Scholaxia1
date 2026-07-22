@@ -60,6 +60,15 @@ class SkillEnrollInitRequest(BaseModel):
     installment: Optional[int] = 1
 
 
+class LivePlanInitRequest(BaseModel):
+    plan_id: str
+    class_id: Optional[str] = None
+
+
+class ReconcilePlanRequest(BaseModel):
+    tx_ref: Optional[str] = None
+
+
 @router.get("/flutterwave/skills/enrollments")
 async def list_my_skill_enrollments(
     current_user: dict = Depends(require_student),
