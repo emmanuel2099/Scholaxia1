@@ -185,29 +185,49 @@
 
       <!-- Live -->
       <section id="kind-page-live" class="kind-page page">
-        <div class="kind-page-header">
-          <h2>&#127909; Live Classes</h2>
-          <p>Join a teacher's live lesson, or book &amp; pay for one-on-one.</p>
+        <div class="kind-live-layout">
+          <div class="kind-live-main">
+            <div class="kind-live-hero">
+              <p class="kind-live-kicker">Live Class</p>
+              <h2>Join a lesson or book your tutor</h2>
+              <p>When a teacher goes live, join here. Or book one-on-one and pay with Paystack.</p>
+            </div>
+            <div class="kind-live-section-head">
+              <h3>Happening now</h3>
+            </div>
+            <div id="kind-live-list" class="kind-card-list"><div class="loading">Loading…</div></div>
+          </div>
+
+          <aside class="kind-book-panel" aria-label="Book a class">
+            <div class="kind-book-panel-inner">
+              <h3>Book one-on-one</h3>
+              <p class="kind-book-lead">Pick a package, tell us the subject, then pay securely.</p>
+
+              <label class="kind-book-field" for="kind-book-package">
+                <span>Package</span>
+                <select id="kind-book-package">
+                  <option value="nursery_standard">Nursery — ₦50,000</option>
+                  <option value="primary_standard">Primary — ₦55,000</option>
+                  <option value="holiday_primary">Primary Holiday — ₦15,000</option>
+                </select>
+              </label>
+
+              <label class="kind-book-field" for="kind-book-subject">
+                <span>Subject</span>
+                <input type="text" id="kind-book-subject" placeholder="e.g. Mathematics" autocomplete="off" />
+              </label>
+
+              <label class="kind-book-field" for="kind-book-topic">
+                <span>Topic <em>(optional)</em></span>
+                <input type="text" id="kind-book-topic" placeholder="What to cover" autocomplete="off" />
+              </label>
+
+              <p id="kind-book-error" class="error-msg"></p>
+              <button type="button" class="kind-book-submit" onclick="submitKindBooking()">Pay &amp; book with Paystack</button>
+              <button type="button" class="kind-book-link" onclick="kindNav('packages')">See all class packages</button>
+            </div>
+          </aside>
         </div>
-        <div class="sx-card" style="padding:16px;margin-bottom:16px;max-width:560px">
-          <h3 style="margin-top:0">Book &amp; pay — Pay-Per-Class</h3>
-          <label class="field"><span class="field-label">Package</span>
-            <select id="kind-book-package" class="field-select">
-              <option value="nursery_standard">Nursery — ₦50,000</option>
-              <option value="primary_standard">Primary — ₦55,000</option>
-              <option value="holiday_primary">Primary Holiday — ₦15,000</option>
-            </select>
-          </label>
-          <label class="field"><span class="field-label">Subject</span>
-            <input type="text" id="kind-book-subject" placeholder="e.g. Mathematics" />
-          </label>
-          <label class="field"><span class="field-label">Topic (optional)</span>
-            <input type="text" id="kind-book-topic" placeholder="What to cover" />
-          </label>
-          <p id="kind-book-error" class="error-msg"></p>
-          <button type="button" class="btn-action" onclick="submitKindBooking()">Pay &amp; book</button>
-        </div>
-        <div id="kind-live-list" class="kind-card-list"><div class="loading">Loading…</div></div>
       </section>
 
       <!-- Packages -->

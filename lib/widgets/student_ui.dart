@@ -143,7 +143,7 @@ class StudentBannerSlide {
   final String subtitle;
   final String buttonLabel;
   final IconData icon;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final String? badge;
   final List<Color>? colors;
 
@@ -152,7 +152,7 @@ class StudentBannerSlide {
     required this.subtitle,
     required this.buttonLabel,
     required this.icon,
-    required this.onTap,
+    this.onTap,
     this.badge,
     this.colors,
   });
@@ -355,15 +355,20 @@ class _BannerCard extends StatelessWidget {
                               children: [
                                 Text(
                                   slide.buttonLabel,
-                                  style: const TextStyle(
-                                    color: Color(0xFF7C3AED),
+                                  style: TextStyle(
+                                    color: slide.onTap == null
+                                        ? const Color(0xFF7C3AED)
+                                            .withOpacity(0.7)
+                                        : const Color(0xFF7C3AED),
                                     fontWeight: FontWeight.w800,
                                     fontSize: 11,
                                   ),
                                 ),
-                                const SizedBox(width: 4),
-                                const Icon(Icons.arrow_forward_rounded,
-                                    color: Color(0xFF7C3AED), size: 14),
+                                if (slide.onTap != null) ...[
+                                  const SizedBox(width: 4),
+                                  const Icon(Icons.arrow_forward_rounded,
+                                      color: Color(0xFF7C3AED), size: 14),
+                                ],
                               ],
                             ),
                           ),

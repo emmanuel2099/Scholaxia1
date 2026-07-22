@@ -324,21 +324,38 @@ async function loadKindLive() {
   try {
     var rows = await api("/api/v1/live-classes?status=live");
     if (!Array.isArray(rows) || !rows.length) {
-      el.innerHTML = '<div class="empty-state">No live classes right now. Check back soon!</div>';
+      el.innerHTML =
+        '<div class="kind-live-empty">' +
+        '<div class="kind-live-empty-art" aria-hidden="true"></div>' +
+        "<h4>No live class right now</h4>" +
+        "<p>Check back soon, or book a one-on-one tutor on the right.</p>" +
+        '<button type="button" class="btn-secondary btn-sm" onclick="kindNav(\'sia\')">Talk to Sia meanwhile</button>' +
+        "</div>";
       return;
     }
     el.innerHTML = rows.map(function (c) {
       var live = c.is_live;
       return (
-        '<div class="kind-live-card' + (live ? " live-now" : "") + '">' +
-        "<div><strong>" + kindEsc(c.title || c.subject || "Live class") + "</strong>" +
-        '<br><span style="font-size:0.82rem;color:#6b6280">' + kindEsc(c.teacher_name || "Teacher") + "</span></div>" +
-        (live ? '<button type="button" class="btn-action btn-sm" onclick="kindJoinLive(\'' + kindEsc(String(c.id)) + '\')">Join class</button>' : "") +
-        "</div>"
+        '<article class="kind-live-card' + (live ? " live-now" : "") + '">' +
+        '<div class="kind-live-card-body">' +
+        (live ? '<span class="kind-live-badge">Live now</span>' : "") +
+        "<strong>" + kindEsc(c.title || c.subject || "Live class") + "</strong>" +
+        "<span>" + kindEsc(c.teacher_name || "Teacher") +
+        (c.subject ? " · " + kindEsc(c.subject) : "") +
+        "</span></div>" +
+        (live
+          ? '<button type="button" class="btn-action btn-sm" onclick="kindJoinLive(\'' +
+            kindEsc(String(c.id)) +
+            '\')">Join class</button>'
+          : "") +
+        "</article>"
       );
     }).join("");
   } catch (e) {
-    el.innerHTML = '<div class="empty-state">' + kindEsc(e.message) + "</div>";
+    el.innerHTML =
+      '<div class="kind-live-empty"><h4>Could not load classes</h4><p>' +
+      kindEsc(e.message) +
+      "</p></div>";
   }
 }
 

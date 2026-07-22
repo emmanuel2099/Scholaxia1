@@ -294,7 +294,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       title: 'Friday National Challenge is Live',
                       subtitle:
                           'Nationwide academic championship — play now and climb the ranks.',
-                      buttonLabel: 'Join Friday',
+                      buttonLabel: 'Coming soon',
                       icon: Icons.flag_rounded,
                       badge: '🔴 LIVE',
                       colors: const [
@@ -302,12 +302,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         Color(0xFF7C3AED),
                         Color(0xFF2563EB),
                       ],
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const SilEntryScreen(),
-                        ),
-                      ),
+                      // Temporarily disabled — re-enable when Friday Challenge opens.
+                      onTap: null,
                     ),
                     StudentBannerSlide(
                       title: 'Buy Scholaxia Coins',
