@@ -285,9 +285,9 @@ def _livekit_configured() -> bool:
 def _generate_livekit_token(
     room_name: str,
     identity: str,
-    
     display_name: str,
     can_publish: bool,
+    role: str = "student",
 ) -> str:
     """Generate a LiveKit room JWT. Falls back to a placeholder if not configured."""
     if not _livekit_configured():
@@ -299,6 +299,11 @@ def _generate_livekit_token(
         token.with_identity(identity)
         if display_name:
             token.with_name(display_name)
+        # Clients use metadata.role to pin the teacher on the main stage.
+        try:
+            token.with_metadata(json.dumps({"role": role or "student"}))
+        except Exception:
+            pass
         token.with_ttl(timedelta(hours=6))
         token.with_grants(
             VideoGrants(
@@ -319,9 +324,12 @@ def _livekit_token_payload(
     user_id: str,
     display_name: str,
     can_publish: bool,
+    role: str = "student",
 ) -> dict:
     identity = str(user_id)
-    token = _generate_livekit_token(room_id, identity, display_name, can_publish)
+    token = _generate_livekit_token(
+        room_id, identity, display_name, can_publish, role=role
+    )
     expires_at = (datetime.now(timezone.utc) + timedelta(hours=6)).isoformat()
     return {
         "room_id": room_id,
@@ -331,6 +339,7 @@ def _livekit_token_payload(
         "token": token,
         "identity": identity,
         "can_publish": can_publish,
+        "role": role,
         "expires_at": expires_at,
     }
 
@@ -834,6 +843,7 @@ async def join_class(
             sid,
             current_user.get("email") or "student",
             can_publish=can_pub,
+            role="student",
         )
         return {
             **payload,
@@ -868,6 +878,7 @@ async def join_class(
         current_user["sub"],
         current_user.get("email") or "student",
         can_publish=True,
+        role="student",
     )
     sid = current_user["sub"]
 
@@ -910,6 +921,7 @@ async def get_livekit_token(
         uid,
         display,
         can_publish=can_publish,
+        role="teacher" if is_teacher else "student",
     )
     mic_ok = is_teacher or _mic_allowed_for(live_class.room_id, uid, att)
     cam_ok = is_teacher or _camera_allowed_for(live_class.room_id, uid)

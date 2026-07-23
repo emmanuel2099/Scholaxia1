@@ -19,6 +19,7 @@
   <link rel="stylesheet" href="css/scholaxia-purple.css" />
   <link rel="stylesheet" href="css/discord-community.css" />
   <link rel="stylesheet" href="css/responsive.css" />
+  <link rel="stylesheet" href="css/dark-mode.css" />
   <script src="js/theme.js"></script>
 
 </head>
@@ -150,6 +151,7 @@
   <div class="app-main-wrap">
     <header class="app-topbar">
       <div class="app-topbar-left">
+        <button type="button" class="page-back-btn is-hidden" id="page-back-btn" onclick="goAppBack()" title="Go back" aria-label="Go back">&#8592;</button>
         <h1 id="page-title">Home</h1>
         <span id="sidebar-exam" class="topbar-exam-pill">Student</span>
       </div>
@@ -798,7 +800,11 @@
     <section id="page-library" class="page">
       <div class="page-intro">
         <h2>Library</h2>
-        <p class="page-desc">Books added by Scholaxia admin. Free books open instantly; paid books unlock after payment.</p>
+        <p class="page-desc">Books and materials from Scholaxia admin. Search and filter like the mobile app — free items open instantly; paid items unlock after Paystack.</p>
+      </div>
+      <div class="library-toolbar">
+        <input type="search" id="library-search" class="library-search" placeholder="Search title, author, subject…" autocomplete="off" />
+        <div id="library-tabs" class="library-tabs" role="tablist"></div>
       </div>
       <div id="library-stats" class="materials-stats"></div>
       <div id="library-list" class="materials-grid"><div class="loading">Loading library…</div></div>

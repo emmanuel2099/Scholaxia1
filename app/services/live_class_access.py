@@ -140,14 +140,18 @@ async def _ensure_profile_plan_from_payment(
             Payment.live_plan_id.isnot(None),
         )
         .order_by(Payment.created_at.desc())
-        .limit(1)
+        .limit(10)
     )
-    payment = result.scalar_one_or_none()
-    if not payment or not payment.live_plan_id:
-        return
-
-    plan = get_plan(payment.live_plan_id)
-    if not plan:
+    payments = result.scalars().all()
+    payment = None
+    plan = None
+    for row in payments:
+        candidate = get_plan(row.live_plan_id)
+        if candidate:
+            payment = row
+            plan = candidate
+            break
+    if not payment or not plan:
         return
 
     expires = payment.created_at + timedelta(days=settings.LIVE_CLASS_MONTHLY_DAYS)

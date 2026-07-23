@@ -100,7 +100,10 @@
       });
 
       clearPending();
-      try { sessionStorage.removeItem("sia_live_plans_cache"); } catch (e) { /* ignore */ }
+      try {
+        sessionStorage.removeItem("sia_live_plans_cache");
+        sessionStorage.setItem("sia_live_plan_just_paid", String(Date.now()));
+      } catch (e) { /* ignore */ }
 
       if (payType === "material" || payType === "book") {
         document.getElementById("status-title").textContent = "Payment successful";

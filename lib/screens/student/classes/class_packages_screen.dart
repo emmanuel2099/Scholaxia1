@@ -4,6 +4,7 @@ import '../../../api/api_service.dart';
 import '../../../services/paystack_checkout_service.dart';
 import '../../../services/support_contact_service.dart';
 import '../../../theme/app_theme.dart';
+import '../../../widgets/student_ui.dart';
 
 class ClassPackagesScreen extends StatelessWidget {
   const ClassPackagesScreen({
@@ -18,13 +19,30 @@ class ClassPackagesScreen extends StatelessWidget {
   /// Exact Scholaxia packages from product pricing.
   static const _kidSections = [
     _PackageSection(
+      title: 'Holiday Classes',
+      plans: [
+        _ClassPackage(
+          id: 'holiday_primary',
+          name: 'Primary Holiday Classes',
+          price: 15000,
+          billing: '₦15,000 · 5 live sessions weekly',
+          features: [
+            'Mathematics',
+            'English language',
+            'Phonics',
+            'Moral values',
+          ],
+        ),
+      ],
+    ),
+    _PackageSection(
       title: 'One-on-One Classes',
       plans: [
         _ClassPackage(
           id: 'nursery_standard',
           name: 'Nursery One-on-One Classes',
           price: 50000,
-          billing: '₦50,000 / Month',
+          billing: '₦50,000 / Month · 4 sessions weekly',
           features: [
             'Reading',
             'Phonics',
@@ -51,26 +69,66 @@ class ClassPackagesScreen extends StatelessWidget {
         ),
       ],
     ),
+  ];
+
+  static const _studentSections = [
     _PackageSection(
-      title: 'Holiday Classes',
+      title: 'Scholaxia Holiday Promo Classes',
       plans: [
         _ClassPackage(
-          id: 'holiday_primary',
-          name: 'Primary Holiday Classes',
-          price: 15000,
-          billing: '₦15,000',
+          id: 'holiday_ss_science',
+          name: 'Senior Secondary SS 1–3 · Science',
+          price: 11000,
+          billing: '₦11,000 · 5 live sessions weekly',
           features: [
             'Mathematics',
-            'English language',
+            'English',
+            'Physics',
+            'Chemistry',
+            'Biology',
+          ],
+        ),
+        _ClassPackage(
+          id: 'holiday_ss_art',
+          name: 'Senior Secondary SS 1–3 · Art',
+          price: 11000,
+          billing: '₦11,000 · 5 live sessions weekly',
+          features: [
+            'Mathematics',
+            'English',
+            'Lit. In English',
+            'CRS/IRS',
+            'Government',
+          ],
+        ),
+        _ClassPackage(
+          id: 'holiday_ss_commercial',
+          name: 'Senior Secondary SS 1–3 · Commercial',
+          price: 11000,
+          billing: '₦11,000 · 5 live sessions weekly',
+          features: [
+            'Mathematics',
+            'English',
+            'F. Accounting',
+            'Commerce',
+            'Economics',
+          ],
+        ),
+        _ClassPackage(
+          id: 'holiday_jss',
+          name: 'Junior Secondary / JSS 1–3',
+          price: 10500,
+          billing: '₦10,500 · 5 live sessions weekly',
+          features: [
+            'Mathematics',
+            'English Language',
             'Phonics',
-            'Moral values',
+            'French',
+            'Computer',
           ],
         ),
       ],
     ),
-  ];
-
-  static const _studentSections = [
     _PackageSection(
       title: 'One-on-One Classes',
       plans: [
@@ -85,63 +143,6 @@ class ClassPackagesScreen extends StatelessWidget {
             'Topic-based assessments',
             'Performance analytics',
             'Unlimited Sia AI Tutor',
-          ],
-        ),
-      ],
-    ),
-    _PackageSection(
-      title: 'Scholaxia Holiday Promo Classes',
-      plans: [
-        _ClassPackage(
-          id: 'holiday_ss_science',
-          name: 'Senior Secondary SS 1–3 · Science',
-          price: 11000,
-          billing: '₦11,000 · 5 classes weekly',
-          features: [
-            'Mathematics',
-            'English',
-            'Physics',
-            'Chemistry',
-            'Biology',
-          ],
-        ),
-        _ClassPackage(
-          id: 'holiday_ss_art',
-          name: 'Senior Secondary SS 1–3 · Art',
-          price: 11000,
-          billing: '₦11,000 · 5 classes weekly',
-          features: [
-            'Mathematics',
-            'English',
-            'Lit. In English',
-            'CRS/IRS',
-            'Government',
-          ],
-        ),
-        _ClassPackage(
-          id: 'holiday_ss_commercial',
-          name: 'Senior Secondary SS 1–3 · Commercial',
-          price: 11000,
-          billing: '₦11,000 · 5 classes weekly',
-          features: [
-            'Mathematics',
-            'English',
-            'F. Accounting',
-            'Commerce',
-            'Economics',
-          ],
-        ),
-        _ClassPackage(
-          id: 'holiday_jss',
-          name: 'Junior Secondary / JSS 1–3',
-          price: 10500,
-          billing: '₦10,500 · 5 classes weekly',
-          features: [
-            'Mathematics',
-            'English Language',
-            'Phonics',
-            'French',
-            'Computer',
           ],
         ),
       ],
@@ -162,6 +163,7 @@ class ClassPackagesScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: context.bgColor,
       appBar: AppBar(
+        leading: const StudentBackButton(),
         title: Text(
           kidsOnly
               ? 'Kids class packages'
@@ -178,7 +180,7 @@ class ClassPackagesScreen extends StatelessWidget {
                 ? 'Nursery & Primary packages'
                 : holidayOnly
                     ? 'Scholaxia Holiday Promo Classes'
-                    : 'Secondary & Holiday packages',
+                    : 'Holiday packages first, then High School options',
             style: TextStyle(
               color: context.textColor,
               fontSize: 23,
@@ -190,8 +192,8 @@ class ClassPackagesScreen extends StatelessWidget {
             kidsOnly
                 ? '$total packages for Nursery and Primary learners.'
                 : holidayOnly
-                    ? 'SS 1–3 and JSS 1–3 · Five classes weekly.'
-                    : '$total packages — scroll to see every High School and Holiday option.',
+                    ? 'SS 1–3 and JSS 1–3 · 5 live sessions weekly.'
+                    : '$total packages — Holiday Classes are listed first.',
             style: TextStyle(color: context.greyColor),
           ),
           const SizedBox(height: 18),
@@ -287,7 +289,9 @@ class _PackageCard extends StatelessWidget {
       if (!context.mounted || !paid) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Payment confirmed. Your class package is active.'),
+          content: Text(
+            'Payment confirmed. Your subscription is active — Live Class will recognize that you have paid.',
+          ),
         ),
       );
     } on ApiException catch (e) {

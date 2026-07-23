@@ -958,10 +958,17 @@ function bindExamLockListeners() {
   }, true);
 }
 
-function showPage(page) {
+var appPageHistory = [];
+
+function showPage(page, opts) {
+  opts = opts || {};
   if (isCbtExamActive() && !examLockBypass) {
     alert("You are in an exam. Submit the exam to leave — other tabs (Sia, Community, etc.) are locked until then.");
     return;
+  }
+  if (!opts.replace && currentPage && currentPage !== page) {
+    appPageHistory.push(currentPage);
+    if (appPageHistory.length > 40) appPageHistory.shift();
   }
   sessionStorage.setItem("sia_current_page", page);
   if (!isPagePublic(page) && !isStudentLoggedIn()) {
@@ -978,10 +985,21 @@ function showPage(page) {
   document.getElementById("page-title").textContent = PAGE_TITLES[page] || page;
   const fab = document.getElementById("community-fab");
   if (fab) fab.style.display = page === "community" && isStudentLoggedIn() ? "flex" : "none";
+  var backBtn = document.getElementById("page-back-btn");
+  if (backBtn) {
+    backBtn.classList.toggle("is-hidden", page === "dashboard" && !appPageHistory.length);
+  }
   applyGuestNavLocks();
   syncDashActionCards(page === "dashboard" ? "" : page);
   refreshPage();
 }
+
+function goAppBack() {
+  var prev = appPageHistory.pop();
+  if (!prev) prev = "dashboard";
+  showPage(prev, { replace: true });
+}
+window.goAppBack = goAppBack;
 
 function openGroupsHub() {
   showPage("community");
@@ -1053,7 +1071,16 @@ function refreshPage() {
     done();
   }
   else if (currentPage === "subscription") {
-    if (typeof loadLivePlans === "function") loadLivePlans(null, true);
+    if (typeof loadLivePlans === "function") {
+      var justPaid = false;
+      try {
+        var paidAt = Number(sessionStorage.getItem("sia_live_plan_just_paid") || 0);
+        justPaid = paidAt > 0 && (Date.now() - paidAt) < 30 * 60 * 1000;
+        if (justPaid) sessionStorage.removeItem("sia_live_plan_just_paid");
+      } catch (e) { /* ignore */ }
+      // After Paystack on this screen, always refresh so active_plan is visible.
+      loadLivePlans(null, !justPaid);
+    }
     done();
   }
   else if (currentPage === "skills") {
@@ -1808,15 +1835,26 @@ async function submitExam(force) {
       const offline = typeof navigator !== "undefined" && !navigator.onLine;
       if (offline && typeof queueInternalSubmit === "function") {
         queueInternalSubmit(currentSession.exam_id, answerMap);
+        // Local preview score so students see how they did; admin still gets the real score on sync.
+        let localCorrect = 0;
+        let localWrong = 0;
+        currentExam.questions.forEach((q, i) => {
+          const chosen = answers[i];
+          if (chosen && String(chosen).toUpperCase() === String(q.correct_option || "").toUpperCase()) localCorrect++;
+          else localWrong++;
+        });
+        const localTotal = localCorrect + localWrong;
+        const localPct = localTotal ? Math.round((localCorrect / localTotal) * 100) : 0;
         showResult({
-          percentage: 0,
-          correct: 0,
-          wrong: 0,
-          total: currentExam.questions.length,
+          percentage: localPct,
+          correct: localCorrect,
+          wrong: localWrong,
+          total: localTotal,
           pending_sync: true,
         });
         document.getElementById("result-detail").innerHTML =
-          "You are offline. Your answers are saved and will be submitted automatically when you reconnect.";
+          localCorrect + " correct · " + localWrong + " wrong · " + localTotal + " total<br>" +
+          "<strong>Offline:</strong> Your answers are saved. When you reconnect they sync to admin — your official score will appear on External School Exam.";
       } else {
         alert(e.message || "Submit failed.");
         closeExam();

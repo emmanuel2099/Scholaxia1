@@ -725,6 +725,73 @@ async function revokeStudentCamera(userId) {
   }
 }
 
+function buildParticipantCardHtml(s) {
+  var raised = raisedHands[s.student_id];
+  var initial = (s.name || "S").charAt(0).toUpperCase();
+  var micOn = s.mic_allowed;
+  var camOn = s.camera_allowed;
+  var micLabel = micOn ? "🎤 On" : "🎤 Off";
+  var camLabel = camOn ? "📷 On" : "📷 Off";
+  var handLabel = raised ? '<span>✋ Raised</span>' : "";
+  var joined = s.joined_at ? '<span>Joined ' + formatParticipantTime(s.joined_at) + "</span>" : "";
+  var hostActions = "";
+  if (isTeacherRole()) {
+    hostActions = '<div class="participant-actions">' +
+      (micOn
+        ? '<button type="button" data-action="mute-student" data-student-id="' + escHtml(String(s.student_id || "")) + '">Mute</button>'
+        : '<button type="button" class="btn-give-access btn-allow-speak" data-action="allow-speak" data-student-id="' +
+          escHtml(String(s.student_id || "")) + '" data-student-name="' + escHtml(s.name || "Student") + '">Allow to speak</button>') +
+      (camOn
+        ? '<button type="button" data-action="revoke-cam" data-student-id="' + escHtml(String(s.student_id || "")) + '">Revoke cam</button>'
+        : '<button type="button" data-action="allow-cam" data-student-id="' + escHtml(String(s.student_id || "")) + '">Allow cam</button>') +
+      '<button type="button" data-action="remove-student" data-student-id="' + escHtml(String(s.student_id || "")) + '">Remove</button>' +
+      "</div>";
+  }
+  return '<article class="participant-card' + (raised ? " raised" : "") + '" data-student-id="' + escHtml(String(s.student_id || "")) + '">' +
+    '<div id="participant-video-' + escHtml(String(s.student_id || "")) + '" class="participant-video hidden"></div>' +
+    '<div class="participant-details">' +
+    '<div class="participant-details-row">' +
+    '<div class="participant-avatar" aria-hidden="true">' + escHtml(initial) + "</div>" +
+    '<div class="participant-body"><strong>' + escHtml(s.name || "Student") + "</strong>" +
+    '<div class="participant-status"><span>' + micLabel + "</span><span>" + camLabel + "</span>" + handLabel + joined + "</div>" +
+    hostActions + "</div></div></div></article>";
+}
+
+function updateParticipantCardContent(card, s) {
+  if (!card || !s) return;
+  card.classList.toggle("raised", !!raisedHands[s.student_id]);
+  var strong = card.querySelector(".participant-body > strong");
+  if (strong) strong.textContent = s.name || "Student";
+  var status = card.querySelector(".participant-status");
+  if (status) {
+    var micLabel = s.mic_allowed ? "🎤 On" : "🎤 Off";
+    var camLabel = s.camera_allowed ? "📷 On" : "📷 Off";
+    var handLabel = raisedHands[s.student_id] ? '<span>✋ Raised</span>' : "";
+    var joined = s.joined_at ? '<span>Joined ' + formatParticipantTime(s.joined_at) + "</span>" : "";
+    status.innerHTML = "<span>" + micLabel + "</span><span>" + camLabel + "</span>" + handLabel + joined;
+  }
+  var actions = card.querySelector(".participant-actions");
+  if (isTeacherRole()) {
+    var html = (s.mic_allowed
+      ? '<button type="button" data-action="mute-student" data-student-id="' + escHtml(String(s.student_id || "")) + '">Mute</button>'
+      : '<button type="button" class="btn-give-access btn-allow-speak" data-action="allow-speak" data-student-id="' +
+        escHtml(String(s.student_id || "")) + '" data-student-name="' + escHtml(s.name || "Student") + '">Allow to speak</button>') +
+      (s.camera_allowed
+        ? '<button type="button" data-action="revoke-cam" data-student-id="' + escHtml(String(s.student_id || "")) + '">Revoke cam</button>'
+        : '<button type="button" data-action="allow-cam" data-student-id="' + escHtml(String(s.student_id || "")) + '">Allow cam</button>') +
+      '<button type="button" data-action="remove-student" data-student-id="' + escHtml(String(s.student_id || "")) + '">Remove</button>';
+    if (!actions) {
+      var body = card.querySelector(".participant-body");
+      if (body) {
+        actions = document.createElement("div");
+        actions.className = "participant-actions";
+        body.appendChild(actions);
+      }
+    }
+    if (actions) actions.innerHTML = html;
+  }
+}
+
 function renderClassroomStudents(students) {
   var list = document.getElementById("participants-list");
   var legacyList = document.getElementById("class-students-list");
@@ -737,43 +804,46 @@ function renderClassroomStudents(students) {
     if (!legacyList) return;
     list = legacyList;
   }
+  var scrollTop = list.scrollTop;
   if (!students || !students.length) {
-    list.innerHTML = '<p class="participants-empty">No students in class yet.</p>';
+    if (!list.querySelector(".participant-card[data-student-id]")) {
+      list.innerHTML = '<p class="participants-empty">No students in class yet.</p>';
+    }
     updateParticipantsHeader(0, liveSession && liveSession.teacher_name);
     return;
   }
-  list.innerHTML = students.map(function (s) {
-    var safeId = String(s.student_id || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-    var raised = raisedHands[s.student_id];
-    var initial = (s.name || "S").charAt(0).toUpperCase();
-    var micOn = s.mic_allowed;
-    var camOn = s.camera_allowed;
-    var micLabel = micOn ? "🎤 On" : "🎤 Off";
-    var camLabel = camOn ? "📷 On" : "📷 Off";
-    var handLabel = raised ? '<span>✋ Raised</span>' : "";
-    var joined = s.joined_at ? '<span>Joined ' + formatParticipantTime(s.joined_at) + "</span>" : "";
-    var hostActions = "";
-    if (isTeacherRole()) {
-      hostActions = '<div class="participant-actions">' +
-        (micOn
-          ? '<button type="button" data-action="mute-student" data-student-id="' + escHtml(String(s.student_id || "")) + '">Mute</button>'
-          : '<button type="button" class="btn-give-access btn-allow-speak" data-action="allow-speak" data-student-id="' +
-            escHtml(String(s.student_id || "")) + '" data-student-name="' + escHtml(s.name || "Student") + '">Allow to speak</button>') +
-        (camOn
-          ? '<button type="button" data-action="revoke-cam" data-student-id="' + escHtml(String(s.student_id || "")) + '">Revoke cam</button>'
-          : '<button type="button" data-action="allow-cam" data-student-id="' + escHtml(String(s.student_id || "")) + '">Allow cam</button>') +
-        '<button type="button" data-action="remove-student" data-student-id="' + escHtml(String(s.student_id || "")) + '">Remove</button>' +
-        "</div>";
+
+  var empty = list.querySelector(".participants-empty");
+  if (empty) empty.remove();
+
+  var existing = {};
+  list.querySelectorAll(".participant-card[data-student-id]").forEach(function (card) {
+    existing[card.getAttribute("data-student-id")] = card;
+  });
+  var seen = {};
+  students.forEach(function (s) {
+    var sid = String(s.student_id || "");
+    if (!sid) return;
+    seen[sid] = true;
+    var card = existing[sid];
+    if (!card) {
+      var wrap = document.createElement("div");
+      wrap.innerHTML = buildParticipantCardHtml(s);
+      card = wrap.firstChild;
+      list.appendChild(card);
+    } else {
+      updateParticipantCardContent(card, s);
     }
-    return '<article class="participant-card' + (raised ? " raised" : "") + '" data-student-id="' + escHtml(String(s.student_id || "")) + '">' +
-      '<div id="participant-video-' + escHtml(String(s.student_id || "")) + '" class="participant-video hidden"></div>' +
-      '<div class="participant-details">' +
-      '<div class="participant-details-row">' +
-      '<div class="participant-avatar" aria-hidden="true">' + escHtml(initial) + "</div>" +
-      '<div class="participant-body"><strong>' + escHtml(s.name || "Student") + "</strong>" +
-      '<div class="participant-status"><span>' + micLabel + "</span><span>" + camLabel + "</span>" + handLabel + joined + "</div>" +
-      hostActions + "</div></div></div></article>";
-  }).join("");
+  });
+  Object.keys(existing).forEach(function (sid) {
+    if (!seen[sid]) {
+      if (typeof detachParticipantCameraVideo === "function") {
+        detachParticipantCameraVideo(sid);
+      }
+      existing[sid].remove();
+    }
+  });
+  list.scrollTop = scrollTop;
   updateParticipantsHeader(students.length, liveSession && liveSession.teacher_name);
   if (typeof window.reattachParticipantVideos === "function") {
     window.reattachParticipantVideos();
@@ -811,6 +881,22 @@ function attachParticipantCameraVideo(studentId, track) {
   if (!studentId || !track) return;
   var slot = findParticipantVideoSlot(studentId);
   if (!slot) return;
+  // Reuse existing attached video element when possible (avoids flicker at scale).
+  var existing = slot.querySelector("video.participant-video-el");
+  if (existing && existing.srcObject) {
+    try {
+      var same = false;
+      if (track.mediaStreamTrack && existing.srcObject.getVideoTracks) {
+        var tracks = existing.srcObject.getVideoTracks();
+        same = tracks.length && tracks[0].id === track.mediaStreamTrack.id;
+      }
+      if (same) {
+        slot.classList.remove("hidden");
+        setParticipantCameraOn(studentId, true);
+        return;
+      }
+    } catch (e) { /* remount below */ }
+  }
   slot.innerHTML = "";
   var el = track.attach();
   el.className = "participant-video-el";
@@ -857,22 +943,61 @@ window.isParticipantVideoLive = isParticipantVideoLive;
 function renderParticipantsForStudent(students) {
   var list = document.getElementById("participants-list");
   if (!list) return;
+  var scrollTop = list.scrollTop;
   var teacherLine = document.getElementById("participants-teacher-line");
   if (teacherLine && liveSession) {
     teacherLine.textContent = "Teacher: " + (liveSession.teacher_name || liveSession.teacher || "—");
   }
-  var items = [];
-  items.push('<article class="participant-card"><div class="participant-avatar">👨‍🏫</div><div class="participant-body"><strong>' +
-    escHtml(liveSession.teacher_name || liveSession.teacher || "Teacher") + '</strong><div class="participant-status"><span>Host</span></div></div></article>');
+  var remotes = [];
+  if (window.LiveClassMedia && typeof window.LiveClassMedia.listRemoteRoster === "function") {
+    remotes = window.LiveClassMedia.listRemoteRoster() || [];
+  }
+  var byId = {};
   (students || []).forEach(function (s) {
+    if (s && s.student_id) byId[String(s.student_id)] = s;
+  });
+  remotes.forEach(function (r) {
+    if (r && r.student_id && !byId[r.student_id]) byId[r.student_id] = r;
+  });
+  var merged = Object.keys(byId).map(function (k) { return byId[k]; });
+  var teacherName = (liveSession && (liveSession.teacher_name || liveSession.teacher)) || "Teacher";
+  var items = [];
+  items.push(
+    '<article class="participant-card"><div class="participant-details"><div class="participant-details-row">' +
+    '<div class="participant-avatar">T</div><div class="participant-body"><strong>' +
+    escHtml(teacherName) +
+    '</strong><div class="participant-status"><span>Host</span></div></div></div></div></article>'
+  );
+  merged.forEach(function (s) {
+    if (s.is_teacher) return;
     var initial = (s.name || "S").charAt(0).toUpperCase();
-    items.push('<article class="participant-card"><div class="participant-avatar">' + escHtml(initial) + '</div><div class="participant-body"><strong>' +
+    items.push(
+      '<article class="participant-card" data-student-id="' + escHtml(String(s.student_id || "")) + '">' +
+      '<div class="participant-details"><div class="participant-details-row">' +
+      '<div class="participant-avatar">' + escHtml(initial) + '</div><div class="participant-body"><strong>' +
       escHtml(s.name || "Student") + '</strong><div class="participant-status"><span>' +
-      (s.mic_allowed ? "🎤 On" : "🎤 Off") + "</span></div></div></article>");
+      (s.mic_allowed ? "🎤 On" : "🎤 Off") +
+      "</span></div></div></div></div></article>"
+    );
   });
   list.innerHTML = items.join("");
-  updateParticipantsHeader((students || []).length, liveSession && (liveSession.teacher_name || liveSession.teacher));
+  list.scrollTop = scrollTop;
+  updateParticipantsHeader(merged.length, liveSession && (liveSession.teacher_name || liveSession.teacher));
 }
+
+function refreshLiveKitRoster() {
+  if (!liveSession) return;
+  if (isTeacherRole()) {
+    // Teacher roster comes from API polls; still re-apply video budget on join/leave.
+    if (typeof window.reattachParticipantVideos === "function") {
+      window.reattachParticipantVideos();
+    }
+    return;
+  }
+  renderParticipantsForStudent([]);
+}
+
+window.refreshLiveKitRoster = refreshLiveKitRoster;
 
 function formatParticipantTime(iso) {
   try {

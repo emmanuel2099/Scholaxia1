@@ -75,6 +75,7 @@ class _LiveClassScreenState extends State<LiveClassScreen>
   String? _roomId;
   String? _livekitToken;
   String? _livekitUrl;
+  String? _teacherId;
   Map<String, dynamic>? _classDetails;
   List<_ChatMsg> _messages = [];
   List<Map<String, dynamic>> _students = [];
@@ -147,6 +148,8 @@ class _LiveClassScreenState extends State<LiveClassScreen>
           tokenData['livekit_token']?.toString() ??
           tokenData['token']?.toString();
       _livekitUrl = widget.livekitUrl ?? tokenData['livekit_url']?.toString();
+      _teacherId = tokenData['teacher_id']?.toString() ??
+          _classDetails?['teacher_id']?.toString();
       _micAllowed = widget.isTeacher || tokenData['mic_allowed'] == true;
       _cameraAllowed = widget.isTeacher || tokenData['camera_allowed'] == true;
       if (widget.isTeacher) {
@@ -159,6 +162,15 @@ class _LiveClassScreenState extends State<LiveClassScreen>
 
       _classDetails = await _api.getLiveClassDetail(widget.classId);
       _participantCount = _classDetails?['active_attendees'] as int? ?? 0;
+      _teacherId ??= _classDetails?['teacher_id']?.toString();
+      final teacherField = _classDetails?['teacher'];
+      if (_teacherId == null || _teacherId!.isEmpty) {
+        if (teacherField is Map) {
+          _teacherId = teacherField['id']?.toString();
+        } else if (teacherField != null) {
+          _teacherId = teacherField.toString();
+        }
+      }
 
       String? wsWarning;
       try {
@@ -530,9 +542,12 @@ class _LiveClassScreenState extends State<LiveClassScreen>
       _toast('Enable microphone so students can hear you.');
     }
 
-    _liveKit = LiveKitClassService(onChanged: () {
-      if (mounted) setState(() {});
-    });
+    _liveKit = LiveKitClassService(
+      preferredTeacherIdentity: widget.isTeacher ? null : _teacherId,
+      onChanged: () {
+        if (mounted) setState(() {});
+      },
+    );
 
     // Teacher always publishes mic on join; students publish when mic is on.
     final shouldPubMic = widget.isTeacher
@@ -1372,6 +1387,24 @@ class _LiveClassScreenState extends State<LiveClassScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (sid.isNotEmpty &&
+                  _liveKit?.studentCameras[sid] != null) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: SizedBox(
+                    height: 120,
+                    width: double.infinity,
+                    child: VideoTrackRenderer(
+                      _liveKit!.studentCameras[sid]!,
+                      key: ValueKey(
+                        'student-cam-$sid-${_liveKit!.studentCameras[sid]!.hashCode}',
+                      ),
+                      fit: VideoViewFit.cover,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
               Row(
                 children: [
                   CircleAvatar(

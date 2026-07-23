@@ -18,6 +18,7 @@ class PaystackCheckoutService {
     required ApiService api,
     required String productType,
     required String productId,
+    Map<String, dynamic>? extra,
   }) async {
     if (OfflineStatusService.instance.isOffline.value) {
       throw const ApiException.message(
@@ -27,8 +28,12 @@ class PaystackCheckoutService {
     final initialized = await api.initializePaystack(
       productType: productType,
       productId: productId,
+      extra: extra,
     );
-    if (initialized['already_owned'] == true) return true;
+    if (initialized['already_owned'] == true ||
+        initialized['already_paid'] == true) {
+      return true;
+    }
 
     final url = initialized['authorization_url']?.toString() ?? '';
     final reference = initialized['reference']?.toString() ?? '';

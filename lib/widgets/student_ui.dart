@@ -441,6 +441,7 @@ class StudentBackButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!Navigator.canPop(context)) return const SizedBox.shrink();
+    final accent = context.accentColor;
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: Material(
@@ -449,20 +450,30 @@ class StudentBackButton extends StatelessWidget {
           onTap: () => Navigator.pop(context),
           borderRadius: BorderRadius.circular(12),
           child: Container(
-            width: 40,
-            height: 40,
+            width: 42,
+            height: 42,
             decoration: BoxDecoration(
               color: lightOnGradient
-                  ? Colors.white.withOpacity(0.2)
-                  : context.accentColor.withOpacity(0.12),
+                  ? Colors.white.withOpacity(0.28)
+                  : accent,
               borderRadius: BorderRadius.circular(12),
-              border: lightOnGradient
-                  ? Border.all(color: Colors.white.withOpacity(0.3))
-                  : null,
+              border: Border.all(
+                color: lightOnGradient
+                    ? Colors.white.withOpacity(0.55)
+                    : accent,
+                width: 1.5,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.18),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
             child: Icon(
               Icons.arrow_back_rounded,
-              color: lightOnGradient ? Colors.white : context.accentColor,
+              color: lightOnGradient ? Colors.white : Colors.white,
               size: 22,
             ),
           ),

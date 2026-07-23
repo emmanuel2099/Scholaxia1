@@ -1078,6 +1078,18 @@ async def internal_exams_for_me(
             continue
 
         teacher = teachers.get(str(e.created_by)) if e.created_by else None
+        score_pct = None
+        if str(e.id) in taken:
+            sess_res = await db.execute(
+                select(CBTSession).where(
+                    CBTSession.exam_id == e.id,
+                    CBTSession.student_id == current_user["sub"],
+                    CBTSession.submitted_at != None,  # noqa: E711
+                ).order_by(CBTSession.submitted_at.desc()).limit(1)
+            )
+            sess = sess_res.scalar_one_or_none()
+            if sess is not None and sess.percentage is not None:
+                score_pct = float(sess.percentage)
         out.append({
             "id": str(e.id),
             "title": e.title,
@@ -1089,6 +1101,7 @@ async def internal_exams_for_me(
             "notes_url": e.notes_url,
             "notes_title": e.notes_title,
             "already_taken": str(e.id) in taken,
+            "my_score_percent": score_pct,
         })
     return {"exams": out}
 

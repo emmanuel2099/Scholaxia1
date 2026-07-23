@@ -735,3 +735,45 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Dark theme — kids portal uses same data-app-theme as student app */
+html[data-app-theme="dark"] .kind-page-header h2,
+html[data-app-theme="dark"] .kind-section-title,
+html[data-app-theme="dark"] .kind-hero-card h2,
+html[data-app-theme="dark"] .kind-quick-tile strong,
+html[data-app-theme="dark"] .kind-sia-msg.ai,
+html[data-app-theme="dark"] .kind-live-hero h2,
+html[data-app-theme="dark"] .kind-live-section-head h3 {
+  color: #f2f3f5 !important;
+}
+html[data-app-theme="dark"] .kind-page-header p,
+html[data-app-theme="dark"] .kind-hero-card p,
+html[data-app-theme="dark"] .kind-quick-tile span,
+html[data-app-theme="dark"] .kind-live-hero p,
+html[data-app-theme="dark"] .kind-game-play-head {
+  color: #c4c9ce !important;
+}
+html[data-app-theme="dark"] .kind-sia-wrap,
+html[data-app-theme="dark"] .kind-sia-messages,
+html[data-app-theme="dark"] .kind-hero-card,
+html[data-app-theme="dark"] .kind-stat-box,
+html[data-app-theme="dark"] .kind-quick-tile,
+html[data-app-theme="dark"] .kind-game-play-area {
+  background: #2b2d31 !important;
+  border-color: #3f4147 !important;
+  color: #f2f3f5 !important;
+}
+html[data-app-theme="dark"] .kind-sia-msg.ai {
+  background: #3f4147 !important;
+  color: #f2f3f5 !important;
+}
+html[data-app-theme="dark"] .kind-sia-compose input {
+  background: #1e1f22 !important;
+  color: #f2f3f5 !important;
+  border-color: #3f4147 !important;
+}
+html[data-app-theme="dark"] .page-back-btn {
+  background: #a78bfa !important;
+  border-color: #c4b5fd !important;
+  color: #1e1b2e !important;
+}

@@ -3,6 +3,39 @@
 var CLASS_PACKAGE_SECTIONS = {
   student: [
     {
+      title: "Scholaxia Holiday Promo Classes",
+      plans: [
+        {
+          id: "holiday_ss_science",
+          name: "Senior Secondary SS 1–3 · Science",
+          price: 11000,
+          billing: "₦11,000 · 5 live sessions weekly",
+          features: ["Maths", "English", "Physics", "Chemistry", "Biology"],
+        },
+        {
+          id: "holiday_ss_art",
+          name: "Senior Secondary SS 1–3 · Art",
+          price: 11000,
+          billing: "₦11,000 · 5 live sessions weekly",
+          features: ["Maths", "English", "Literature", "Government", "CRS/IRS"],
+        },
+        {
+          id: "holiday_ss_commercial",
+          name: "Senior Secondary SS 1–3 · Commercial",
+          price: 11000,
+          billing: "₦11,000 · 5 live sessions weekly",
+          features: ["Maths", "English", "Accounting", "Economics", "Commerce"],
+        },
+        {
+          id: "holiday_jss",
+          name: "Junior Secondary JSS 1–3",
+          price: 10500,
+          billing: "₦10,500 · 5 live sessions weekly",
+          features: ["Maths", "English", "Basic Science", "Civic", "Computer"],
+        },
+      ],
+    },
+    {
       title: "One-on-One Classes",
       plans: [
         {
@@ -14,41 +47,20 @@ var CLASS_PACKAGE_SECTIONS = {
         },
       ],
     },
+  ],
+  kind: [
     {
-      title: "Scholaxia Holiday Promo Classes",
+      title: "Holiday Classes",
       plans: [
         {
-          id: "holiday_ss_science",
-          name: "Senior Secondary SS 1–3 · Science",
-          price: 11000,
-          billing: "₦11,000 · 5 classes weekly",
-          features: ["Maths", "English", "Physics", "Chemistry", "Biology"],
-        },
-        {
-          id: "holiday_ss_art",
-          name: "Senior Secondary SS 1–3 · Art",
-          price: 11000,
-          billing: "₦11,000 · 5 classes weekly",
-          features: ["Maths", "English", "Literature", "Government", "CRS/IRS"],
-        },
-        {
-          id: "holiday_ss_commercial",
-          name: "Senior Secondary SS 1–3 · Commercial",
-          price: 11000,
-          billing: "₦11,000 · 5 classes weekly",
-          features: ["Maths", "English", "Accounting", "Economics", "Commerce"],
-        },
-        {
-          id: "holiday_jss",
-          name: "Junior Secondary JSS 1–3",
-          price: 10500,
-          billing: "₦10,500 · 5 classes weekly",
-          features: ["Maths", "English", "Basic Science", "Civic", "Computer"],
+          id: "holiday_primary",
+          name: "Primary Holiday Classes",
+          price: 15000,
+          billing: "₦15,000 · 5 live sessions weekly",
+          features: ["Mathematics", "English language", "Phonics", "Moral values"],
         },
       ],
     },
-  ],
-  kind: [
     {
       title: "One-on-One Classes",
       plans: [
@@ -56,7 +68,7 @@ var CLASS_PACKAGE_SECTIONS = {
           id: "nursery_standard",
           name: "Nursery One-on-One Classes",
           price: 50000,
-          billing: "₦50,000 / Month",
+          billing: "₦50,000 / Month · 4 sessions weekly",
           features: ["Reading", "Phonics", "Counting", "Fun games", "Parent feedback"],
         },
         {
@@ -65,18 +77,6 @@ var CLASS_PACKAGE_SECTIONS = {
           price: 55000,
           billing: "₦55,000 / Monthly",
           features: ["Mathematics", "Phonics", "English", "Homework", "Progress report"],
-        },
-      ],
-    },
-    {
-      title: "Holiday Classes",
-      plans: [
-        {
-          id: "holiday_primary",
-          name: "Primary Holiday Classes",
-          price: 15000,
-          billing: "₦15,000",
-          features: ["Mathematics", "English language", "Phonics", "Moral values"],
         },
       ],
     },
@@ -108,13 +108,13 @@ function renderClassPackages(rootId, opts) {
     "</h2><p>Pay with Paystack — same packages as the mobile app.</p></div>";
 
   sections.forEach(function (sec) {
-    html += '<h3 style="margin:20px 0 12px">' + cpEsc(sec.title) + "</h3><div class=\"card-grid\">";
+    html += '<h3 class="cp-section-title">' + cpEsc(sec.title) + "</h3><div class=\"card-grid\">";
     sec.plans.forEach(function (p) {
       html +=
-        '<div class="sx-card" style="padding:18px">' +
+        '<div class="sx-card cp-card">' +
         "<h3>" + cpEsc(p.name) + "</h3>" +
-        "<p><strong>" + cpEsc(p.billing) + "</strong></p>" +
-        "<ul style=\"margin:10px 0 14px;padding-left:18px;color:var(--sx-grey)\">" +
+        '<p class="cp-billing"><strong>' + cpEsc(p.billing) + "</strong></p>" +
+        '<ul class="cp-features">' +
         p.features
           .map(function (f) {
             return "<li>" + cpEsc(f) + "</li>";
@@ -142,8 +142,17 @@ async function buyClassPackage(packageId) {
       productType: "class_package",
       productId: packageId,
     });
-    if (ok) alert("Payment successful! Your class package is active.");
-    else alert("Payment was not completed.");
+    if (ok) {
+      if (typeof refreshLivePlanAccessAfterPayment === "function") {
+        await refreshLivePlanAccessAfterPayment();
+      } else {
+        try { sessionStorage.removeItem("sia_live_plans_cache"); } catch (e) { /* ignore */ }
+        if (typeof loadLivePlans === "function") await loadLivePlans(null, false);
+      }
+      alert("Payment successful! Your class package is active — Live Class will recognize your subscription.");
+    } else {
+      alert("Payment was not completed.");
+    }
   } catch (e) {
     alert(e.message || "Payment failed.");
   }

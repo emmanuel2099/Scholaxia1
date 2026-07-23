@@ -906,12 +906,29 @@ body:has(.app-shell-sidebar) {
 }
 .live-plan-price {
   font-size: 1.1rem;
-  color: #1a5c3a;
+  color: var(--sx-price, #0f7a45);
 }
 .live-plan-price span {
   font-size: 0.75rem;
   font-weight: 500;
-  color: #5a6f64;
+  color: var(--sx-grey, #5a6f64);
+}
+html[data-app-theme="dark"] .live-plan-price {
+  color: #4ade80 !important;
+}
+html[data-app-theme="dark"] .live-plan-price span {
+  color: #a7f3d0 !important;
+}
+html[data-app-theme="dark"] .plan-price {
+  color: #fbbf24 !important;
+}
+html[data-app-theme="dark"] .live-plan-features li,
+html[data-app-theme="dark"] .live-plan-card,
+html[data-app-theme="dark"] .live-plan-card h3 {
+  color: #f2f3f5 !important;
+}
+html[data-app-theme="dark"] .live-plan-meta {
+  color: #c4c9ce !important;
 }
 .live-plan-pay {
   width: auto;
@@ -2476,9 +2493,12 @@ body.exam-lock-active .main-content-topnav {
   inset: 0;
   background: rgba(0,0,0,0.6);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   z-index: 100;
+  padding: 24px 12px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .modal-box {
@@ -2488,6 +2508,10 @@ body.exam-lock-active .main-content-topnav {
   max-width: 480px;
   width: 90%;
   text-align: center;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  margin: auto;
+  box-sizing: border-box;
 }
 
 .modal-box h3 { margin-bottom: 8px; }
@@ -3299,7 +3323,12 @@ body.exam-lock-active .main-content-topnav {
   box-shadow: 0 4px 14px rgba(26, 143, 74, 0.35);
 }
 .btn-enroll:hover { filter: brightness(1.05); }
-.skill-enroll-box { text-align: left; max-width: 520px; }
+.skill-enroll-box {
+  text-align: left;
+  max-width: 520px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+}
 .skill-enroll-form { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
 .skill-enroll-form label { display: flex; flex-direction: column; gap: 6px; font-size: 0.85rem; font-weight: 600; color: #2d4a38; }
 .skill-enroll-form input,
@@ -3311,7 +3340,15 @@ body.exam-lock-active .main-content-topnav {
   font-size: 0.92rem;
 }
 .skill-enroll-fee { font-size: 0.88rem; color: #1a5c3a; margin: 4px 0 0; line-height: 1.45; }
-.skill-enroll-actions { justify-content: flex-end; margin-top: 8px; }
+.skill-enroll-actions {
+  justify-content: flex-end;
+  margin-top: 8px;
+  position: sticky;
+  bottom: 0;
+  padding: 12px 0 4px;
+  background: inherit;
+  z-index: 2;
+}
 .section-sub { margin: -8px 0 20px; color: #5a6f62; font-size: 0.92rem; max-width: 720px; }
 
 /* Dashboard skills preview */
@@ -3414,12 +3451,12 @@ body.exam-lock-active .main-content-topnav {
 /* Student contact page */
 .student-contact-page { max-width: 1100px; margin: 0 auto; }
 .contact-hero {
-  background: linear-gradient(135deg, #1e4d32 0%, #2d6a4f 55%, #3d8f5a 100%);
+  background: linear-gradient(135deg, #5b21b6 0%, #7c3aed 55%, #a78bfa 100%);
   border-radius: 20px;
   padding: 28px 32px;
   margin-bottom: 24px;
   color: #fff;
-  box-shadow: 0 12px 40px rgba(30, 77, 50, 0.22);
+  box-shadow: 0 12px 40px rgba(124, 58, 237, 0.28);
 }
 .contact-hero-badge {
   display: inline-block;
@@ -3456,32 +3493,32 @@ body.exam-lock-active .main-content-topnav {
   width: 44px;
   height: 44px;
   border-radius: 12px;
-  background: #e8f5ee;
-  color: #1e4d32;
+  background: #f3eeff;
+  color: #7c3aed;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 1.25rem;
   flex-shrink: 0;
 }
-.contact-info-card h3 { margin: 0 0 4px; font-size: 0.92rem; color: #1a3d28; }
-.contact-info-card p { margin: 0; font-size: 0.85rem; color: #5f756a; line-height: 1.45; }
-.contact-info-card a { color: #1e4d32; font-weight: 600; text-decoration: none; font-size: 0.9rem; }
+.contact-info-card h3 { margin: 0 0 4px; font-size: 0.92rem; color: #1e1b2e; }
+.contact-info-card p { margin: 0; font-size: 0.85rem; color: #6b6280; line-height: 1.45; }
+.contact-info-card a { color: #7c3aed; font-weight: 600; text-decoration: none; font-size: 0.9rem; }
 .contact-info-card a:hover { text-decoration: underline; }
-.contact-info-strong { font-weight: 600; color: #2a4036 !important; }
-.contact-info-tip ul { margin: 0; padding-left: 18px; font-size: 0.84rem; color: #5f756a; line-height: 1.5; }
+.contact-info-strong { font-weight: 600; color: #1e1b2e !important; }
+.contact-info-tip ul { margin: 0; padding-left: 18px; font-size: 0.84rem; color: #6b6280; line-height: 1.5; }
 .contact-info-tip li { margin-bottom: 6px; }
 
 .contact-form-wrap { min-width: 0; }
 .contact-form-card {
   background: #fff;
-  border: 1px solid #dce5e0;
+  border: 1px solid #e9e5f5;
   border-radius: 18px;
   padding: 24px 26px;
-  box-shadow: 0 8px 28px rgba(30, 77, 50, 0.07);
+  box-shadow: 0 8px 28px rgba(124, 58, 237, 0.08);
 }
-.contact-form-card h3 { margin: 0 0 6px; font-size: 1.15rem; color: #0f3320; }
-.contact-form-sub { margin: 0 0 16px; font-size: 0.88rem; color: #6b8578; }
+.contact-form-card h3 { margin: 0 0 6px; font-size: 1.15rem; color: #1e1b2e; }
+.contact-form-sub { margin: 0 0 16px; font-size: 0.88rem; color: #6b6280; }
 
 .contact-topics {
   display: flex;
@@ -3492,18 +3529,18 @@ body.exam-lock-active .main-content-topnav {
 .contact-topic {
   padding: 8px 14px;
   border-radius: 999px;
-  border: 1px solid #c5d5cc;
-  background: #f7faf8;
-  color: #3d5248;
+  border: 1px solid #ddd6fe;
+  background: #f5f3ff;
+  color: #5b21b6;
   font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
-.contact-topic:hover { border-color: #3d8f5a; color: #1e4d32; }
+.contact-topic:hover { border-color: #7c3aed; color: #5b21b6; }
 .contact-topic.active {
-  background: #1e4d32;
-  border-color: #1e4d32;
+  background: #7c3aed;
+  border-color: #7c3aed;
   color: #fff;
 }
 
@@ -3892,11 +3929,11 @@ html[data-app-theme="dark"] .sia-bubble .sia-h {
   color: #57f287;
 }
 html[data-app-theme="dark"] .contact-info-icon {
-  background: #404249;
-  color: #57f287;
+  background: #352f45;
+  color: #c4b5fd;
 }
 html[data-app-theme="dark"] .contact-info-card a {
-  color: #57f287;
+  color: #c4b5fd;
 }
 html[data-app-theme="dark"] .contact-topic {
   background: #383a40;
@@ -3904,8 +3941,8 @@ html[data-app-theme="dark"] .contact-topic {
   color: #dbdee1;
 }
 html[data-app-theme="dark"] .contact-topic.active {
-  background: #1a5c3a;
-  border-color: #57f287;
+  background: #7c3aed;
+  border-color: #a78bfa;
   color: #fff;
 }
 html[data-app-theme="dark"] .loading {

@@ -27,6 +27,11 @@ from app.core.database import get_db
 from app.core.datetime_utils import naive_utc_now
 from app.core.deps import require_student_or_kind
 from app.core.live_class_plans import get_plan
+from app.core.skills_programs import (
+    get_skill_program,
+    payment_amount_for_mode,
+    skill_plan_key,
+)
 from app.models.content import Book, BookPurchase
 from app.models.payment import Payment, PaymentStatus, StudentEntitlement
 from app.models.marketplace import MarketplaceBooking, MarketplaceProduct
@@ -38,6 +43,12 @@ from app.services.live_class_access import (
     parse_uuid,
 )
 from app.services.paystack_service import PaystackError
+from app.services.skills_enrollment import (
+    get_skill_entitlement,
+    grant_or_update_skill_enrollment,
+    refresh_skill_entitlement_status,
+    serialize_skill_enrollment,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -49,11 +60,13 @@ PRODUCT_LIBRARY_BOOK = "library_book"
 PRODUCT_CBT_PACKAGE = "cbt_package"
 PRODUCT_CLASS_PACKAGE = "class_package"
 PRODUCT_MARKETPLACE_BOOKING = "marketplace_booking"
+PRODUCT_SKILL_ENROLLMENT = "skill_enrollment"
 PRODUCT_TYPES = {
     PRODUCT_LIBRARY_BOOK,
     PRODUCT_CBT_PACKAGE,
     PRODUCT_CLASS_PACKAGE,
     PRODUCT_MARKETPLACE_BOOKING,
+    PRODUCT_SKILL_ENROLLMENT,
 }
 
 ENTITLEMENT_CBT_PACKAGE = "cbt_package"
@@ -62,6 +75,14 @@ ENTITLEMENT_CBT_PACKAGE = "cbt_package"
 class InitializeRequest(BaseModel):
     product_type: str
     product_id: str
+    payment_mode: Optional[str] = None
+    installment: Optional[int] = None
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    location: Optional[str] = None
+    preferred_start: Optional[str] = None
+    notes: Optional[str] = None
 
 
 class VerifyRequest(BaseModel):
@@ -79,6 +100,7 @@ def _new_reference(product_type: str) -> str:
         "cbt_package": "cbt",
         "class_package": "class",
         "marketplace_booking": "market",
+        "skill_enrollment": "skill",
     }[product_type]
     return f"pstk-{short}-{uuid.uuid4().hex}"
 
@@ -164,7 +186,82 @@ async def _resolve_product(
             "extra": {"booking_id": str(booking.id)},
         }
 
+    if product_type == PRODUCT_SKILL_ENROLLMENT:
+        raise HTTPException(
+            status_code=400,
+            detail="skill_enrollment requires payment_mode via initialize payload",
+        )
+
     raise HTTPException(status_code=400, detail=f"Unknown product_type. Use one of: {sorted(PRODUCT_TYPES)}")
+
+
+async def _resolve_skill_product(
+    db: AsyncSession,
+    student_id: str,
+    skill_id: str,
+    *,
+    payment_mode: str = "half",
+    installment: int = 1,
+) -> dict:
+    program = get_skill_program(skill_id)
+    if not program:
+        raise HTTPException(status_code=404, detail="Training program not found")
+
+    mode = (payment_mode or "half").strip().lower()
+    if mode not in ("once", "half"):
+        raise HTTPException(status_code=400, detail="payment_mode must be once or half")
+    installment = int(installment or 1)
+    if installment not in (1, 2):
+        raise HTTPException(status_code=400, detail="installment must be 1 or 2")
+    if mode == "once" and installment != 1:
+        raise HTTPException(status_code=400, detail="Full payment uses installment 1 only")
+
+    existing_ent = await get_skill_entitlement(db, student_id, skill_id)
+    if existing_ent:
+        await refresh_skill_entitlement_status(db, existing_ent)
+        details = dict(existing_ent.details or {})
+        status = (details.get("status") or "").lower()
+        paid_n = int(details.get("installments_paid") or 0)
+        if status == "completed" or (details.get("payment_mode") == "once" and paid_n >= 1):
+            return {
+                "price_naira": 0.0,
+                "title": program["title"],
+                "already_owned": True,
+                "extra": {
+                    "enrollment": serialize_skill_enrollment(existing_ent),
+                    "payment_mode": mode,
+                    "installment": installment,
+                },
+            }
+        if installment == 2:
+            if status == "suspended":
+                raise HTTPException(
+                    status_code=403,
+                    detail="Enrollment was shut down because the balance was not paid on time. Contact support.",
+                )
+            if paid_n < 1:
+                raise HTTPException(status_code=400, detail="Pay the first installment before the balance.")
+            if paid_n >= 2:
+                return {
+                    "price_naira": 0.0,
+                    "title": program["title"],
+                    "already_owned": True,
+                    "extra": {"enrollment": serialize_skill_enrollment(existing_ent)},
+                }
+            mode = "half"
+        elif installment == 1 and paid_n >= 1 and status == "active":
+            raise HTTPException(
+                status_code=400,
+                detail="First installment already paid. Pay the balance installment when due.",
+            )
+
+    amount = payment_amount_for_mode(program["fee"], mode, installment)
+    return {
+        "price_naira": float(amount),
+        "title": program["title"],
+        "already_owned": False,
+        "extra": {"payment_mode": mode, "installment": installment, "fee": program["fee"]},
+    }
 
 
 # ── Idempotent fulfillment ────────────────────────────────────────────────────
@@ -247,11 +344,43 @@ async def _fulfill(db: AsyncSession, payment: Payment, tx_data: dict) -> None:
         await _grant_book(db, payment)
     elif payment.product_type == PRODUCT_CBT_PACKAGE:
         await _grant_cbt_package(db, payment)
-    elif payment.product_type == PRODUCT_CLASS_PACKAGE and not already_fulfilled:
-        # Not repeated on replays — re-activation would reset session counters.
-        await _grant_class_package(db, payment)
+    elif payment.product_type == PRODUCT_CLASS_PACKAGE:
+        # Grant on first success; on verify/webhook replay, re-apply only if
+        # the student has no active plan row (missed grant), not when sessions
+        # are exhausted (that would unfairly reset the counter).
+        if not already_fulfilled:
+            await _grant_class_package(db, payment)
+        else:
+            from app.services.live_class_access import get_live_access_info
+
+            access = await get_live_access_info(db, str(payment.student_id))
+            if not access.get("active_plan"):
+                await _grant_class_package(db, payment)
     elif payment.product_type == PRODUCT_MARKETPLACE_BOOKING:
         await _grant_marketplace_booking(db, payment)
+    elif payment.product_type == PRODUCT_SKILL_ENROLLMENT and not already_fulfilled:
+        desc = payment.description or ""
+        mode = "half"
+        installment = 1
+        if "mode=once" in desc:
+            mode = "once"
+        if "installment=2" in desc:
+            installment = 2
+            mode = "half"
+        contact = {}
+        if "contact=" in desc:
+            # contact is stored in payment metadata via description prefix only; details in entitlement
+            pass
+        await grant_or_update_skill_enrollment(
+            db,
+            student_id=str(payment.student_id),
+            skill_id=payment.product_id or "",
+            payment_mode=mode,
+            installment=installment,
+            amount_paid=float(payment.amount or 0),
+            payment_id=payment.id,
+            contact=contact or None,
+        )
 
     await db.flush()
 
@@ -304,7 +433,20 @@ async def initialize_payment(
         raise HTTPException(status_code=400, detail="product_id is required")
 
     student_id = current_user["sub"]
-    product = await _resolve_product(db, student_id, product_type, product_id)
+    if product_type == PRODUCT_SKILL_ENROLLMENT:
+        product = await _resolve_skill_product(
+            db,
+            student_id,
+            product_id,
+            payment_mode=payload.payment_mode or "half",
+            installment=int(payload.installment or 1),
+        )
+        if int(payload.installment or 1) == 1:
+            if not (payload.full_name or "").strip() or not (payload.phone or "").strip():
+                raise HTTPException(status_code=400, detail="Full name and phone are required")
+    else:
+        product = await _resolve_product(db, student_id, product_type, product_id)
+
     if product["already_owned"]:
         return {
             "already_owned": True,
@@ -315,11 +457,21 @@ async def initialize_payment(
         }
 
     user = await _get_user(db, student_id)
-    if not user or not user.email:
+    email = (payload.email or "").strip() if product_type == PRODUCT_SKILL_ENROLLMENT else ""
+    email = email or (user.email if user else "")
+    if not email:
         raise HTTPException(status_code=400, detail="Your account has no email for payment receipts")
 
     amount_kobo = paystack_service.naira_to_kobo(product["price_naira"])
     reference = _new_reference(product_type)
+
+    mode = (product.get("extra") or {}).get("payment_mode") or payload.payment_mode or "half"
+    installment = (product.get("extra") or {}).get("installment") or payload.installment or 1
+    desc = f"{product_type}: {product['title']}"
+    if product_type == PRODUCT_SKILL_ENROLLMENT:
+        desc = (
+            f"Skills enroll: {product['title']} | mode={mode} | installment={installment}"
+        )[:255]
 
     payment = Payment(
         student_id=parse_uuid(student_id),
@@ -332,25 +484,31 @@ async def initialize_payment(
         product_id=product_id,
         # Keep legacy columns populated so existing access checks keep working.
         book_id=parse_uuid(product_id) if product_type == PRODUCT_LIBRARY_BOOK else None,
-        live_plan_id=product_id if product_type == PRODUCT_CLASS_PACKAGE else None,
-        description=f"{product_type}: {product['title']}"[:255],
+        live_plan_id=(
+            skill_plan_key(product_id)
+            if product_type == PRODUCT_SKILL_ENROLLMENT
+            else (product_id if product_type == PRODUCT_CLASS_PACKAGE else None)
+        ),
+        description=desc[:255],
     )
     db.add(payment)
     await db.flush()
 
     try:
         data = await paystack_service.initialize_transaction(
-            email=user.email,
+            email=email,
             amount_kobo=amount_kobo,
             reference=reference,
-            # The embedded Flutter WebView intercepts this URL and verifies the
-            # transaction server-side; no public callback page is required.
             callback_url="https://scholaxia.app/paystack/callback",
             metadata={
                 "student_id": str(student_id),
                 "product_type": product_type,
                 "product_id": product_id,
                 "payment_id": str(payment.id),
+                "payment_mode": str(mode),
+                "installment": str(installment),
+                "full_name": (payload.full_name or "")[:120],
+                "phone": (payload.phone or "")[:40],
             },
         )
     except PaystackError as exc:
@@ -369,7 +527,9 @@ async def initialize_payment(
         "product_type": product_type,
         "product_id": product_id,
         "title": product["title"],
-        "customer": {"email": user.email, "name": user.full_name},
+        "payment_mode": mode,
+        "installment": installment,
+        "customer": {"email": email, "name": user.full_name if user else payload.full_name},
     }
 
 

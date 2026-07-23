@@ -16,14 +16,28 @@
     }
     if (typeof api !== "function") throw new Error("API helper not loaded.");
 
+    var body = {
+      product_type: productType,
+      product_id: String(productId),
+    };
+    [
+      "payment_mode",
+      "installment",
+      "full_name",
+      "phone",
+      "email",
+      "location",
+      "preferred_start",
+      "notes",
+    ].forEach(function (k) {
+      if (opts[k] != null && opts[k] !== "") body[k] = opts[k];
+    });
+
     var initialized = await api("/api/v1/payments/paystack/initialize", {
       method: "POST",
-      body: JSON.stringify({
-        product_type: productType,
-        product_id: String(productId),
-      }),
+      body: JSON.stringify(body),
     });
-    if (initialized && initialized.already_owned) return true;
+    if (initialized && (initialized.already_owned || initialized.already_paid)) return true;
 
     var url = (initialized && initialized.authorization_url) || "";
     var reference = (initialized && initialized.reference) || "";

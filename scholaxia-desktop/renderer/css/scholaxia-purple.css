@@ -13,10 +13,30 @@
   --sx-border: #e9e5f5;
   --sx-text: #1e1b2e;
   --sx-grey: #6b6280;
+  --sx-price: #0f7a45;
   --sx-hero-gradient: linear-gradient(135deg, #7c3aed 0%, #9333ea 50%, #a78bfa 100%);
   --sx-hero-gradient-deep: linear-gradient(135deg, #5b21b6 0%, #7c3aed 50%, #8b5cf6 100%);
   --sx-shadow: rgba(124, 58, 237, 0.25);
   --sx-shadow-btn: rgba(124, 58, 237, 0.35);
+}
+
+html[data-app-theme="dark"] {
+  --sx-primary: #a78bfa;
+  --sx-primary-dark: #8b5cf6;
+  --sx-primary-darker: #c4b5fd;
+  --sx-primary-light: #c4b5fd;
+  --sx-accent: #ddd6fe;
+  --sx-bg: #1e1f22;
+  --sx-bg-soft: #2b2d31;
+  --sx-surface: #2b2d31;
+  --sx-border: #3f4147;
+  --sx-text: #f2f3f5;
+  --sx-grey: #c4c9ce;
+  --sx-price: #4ade80;
+  --sx-hero-gradient: linear-gradient(135deg, #5b21b6 0%, #7c3aed 50%, #8b5cf6 100%);
+  --sx-hero-gradient-deep: linear-gradient(135deg, #4c1d95 0%, #6d28d9 50%, #7c3aed 100%);
+  --sx-shadow: rgba(0, 0, 0, 0.35);
+  --sx-shadow-btn: rgba(124, 58, 237, 0.45);
 }
 
 /* ── Auth page ── */
@@ -115,11 +135,13 @@ body:has(.app-shell-sidebar) { background: var(--sx-bg) !important; }
 .app-shell-sidebar { background: var(--sx-bg) !important; }
 .app-main-wrap { background: var(--sx-bg) !important; }
 .app-topbar {
-  background: rgba(255, 255, 255, 0.92) !important;
+  background: var(--sx-surface) !important;
   backdrop-filter: blur(12px);
   border-bottom-color: var(--sx-border) !important;
 }
-#page-title, .app-topbar h1 { color: var(--sx-primary-darker) !important; }
+#page-title, .app-topbar h1, #kind-page-title {
+  color: var(--sx-primary-darker) !important;
+}
 .sidebar-brand-text { color: var(--sx-primary-darker) !important; }
 .sidebar-brand-logo { background: var(--sx-bg-soft) !important; }
 .card-grid .card, .card-grid-premium .card {
@@ -460,6 +482,113 @@ html[data-app-theme="dark"] .btn-action,
 html[data-app-theme="dark"] .discord-group-btn-primary,
 html[data-app-theme="dark"] .discord-send-btn {
   background: linear-gradient(135deg, #7c3aed, #6d28d9) !important;
+  color: #ffffff !important;
+}
+
+.btn-action,
+.btn-join {
+  color: #ffffff !important;
+}
+.btn-action.btn-sm,
+.btn-join.btn-sm {
+  color: #ffffff !important;
+  background: linear-gradient(135deg, #7c3aed, #6d28d9);
+}
+
+.page-back-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  border: 2px solid var(--sx-primary);
+  background: var(--sx-primary);
+  color: #fff !important;
+  font-size: 1.25rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 10px;
+  flex-shrink: 0;
+  box-shadow: 0 4px 14px var(--sx-shadow-btn);
+}
+.page-back-btn:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+.page-back-btn.is-hidden {
+  display: none !important;
+}
+html[data-app-theme="dark"] .page-back-btn {
+  background: #a78bfa;
+  border-color: #c4b5fd;
+  color: #1e1b2e !important;
+}
+
+.cp-card { padding: 18px; }
+.cp-section-title { margin: 20px 0 12px; color: var(--sx-text); }
+.cp-billing, .cp-desc { color: var(--sx-grey); margin: 6px 0 10px; }
+.cp-features {
+  margin: 10px 0 14px;
+  padding-left: 18px;
+  color: var(--sx-text);
+}
+.cp-card-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.cp-price { color: var(--sx-price); font-size: 1.05rem; }
+
+.game-math-expr {
+  color: var(--sx-text) !important;
+}
+.game-play-area {
+  background: var(--sx-surface) !important;
+  color: var(--sx-text);
+}
+.game-prompt,
+.game-play-header,
+.game-score {
+  color: var(--sx-text) !important;
+}
+.game-input {
+  background: var(--sx-bg-soft);
+  color: var(--sx-text);
+  border-color: var(--sx-border);
+}
+html[data-app-theme="dark"] .game-play-area,
+html[data-app-theme="dark"] .kind-game-play-area {
+  background: #2b2d31 !important;
+  border-color: #3f4147 !important;
+  color: #f2f3f5 !important;
+}
+html[data-app-theme="dark"] .game-math-expr,
+html[data-app-theme="dark"] .game-prompt,
+html[data-app-theme="dark"] .game-play-header,
+html[data-app-theme="dark"] .game-score,
+html[data-app-theme="dark"] .sx-card,
+html[data-app-theme="dark"] .sx-card h3,
+html[data-app-theme="dark"] .sx-card p,
+html[data-app-theme="dark"] .sx-card li,
+html[data-app-theme="dark"] .mp-product-body h3,
+html[data-app-theme="dark"] .game-tile-body p {
+  color: #f2f3f5 !important;
+}
+html[data-app-theme="dark"] .cp-billing,
+html[data-app-theme="dark"] .cp-desc,
+html[data-app-theme="dark"] .game-tile-body p,
+html[data-app-theme="dark"] .game-tile-chevron {
+  color: #c4c9ce !important;
+}
+html[data-app-theme="dark"] .btn-secondary {
+  background: #3f4147 !important;
+  color: #f2f3f5 !important;
+  border-color: #52555c !important;
 }
 
 /* ── Page heroes & premium cards ── */

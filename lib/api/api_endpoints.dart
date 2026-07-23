@@ -157,6 +157,9 @@ class ApiEndpoints {
   static const String liveClassAccessCodesMarkRead = '$_v1/live-classes/access-codes/mark-read';
   static const String liveClassJoinByCode = '$_v1/live-classes/join-by-code';
   static const String liveClassJoinPreview = '$_v1/live-classes/join-preview';
+  static const String liveClassPlans = '$_v1/payments/live-class/plans';
+  static String liveClassAccess(String classId) =>
+      '$_v1/payments/live-class/$classId/access';
 
   // Student groups
   static const String studentGroups = '$_v1/student-groups/';

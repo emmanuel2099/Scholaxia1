@@ -29,12 +29,12 @@ async function loadCbtPackagesPage() {
         var name = p.name || p.title || id;
         var price = Number(p.price || p.amount || 0);
         html +=
-          '<div class="sx-card" style="padding:18px">' +
+          '<div class="sx-card cp-card">' +
           "<h3>" + escHtml(name) + "</h3>" +
-          '<p style="color:var(--sx-grey)">' + escHtml(p.description || "1 year CBT + Sia support") + "</p>" +
-          '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px">' +
-          "<strong>₦" + price.toLocaleString("en-NG") + "</strong>" +
-          '<button type="button" class="btn-action btn-sm" onclick="buyCbtPackage(\'' + escHtml(id) + '\')">Pay with Paystack</button>' +
+          '<p class="cp-desc">' + escHtml(p.description || "1 year CBT + Sia support") + "</p>" +
+          '<div class="cp-card-foot">' +
+          '<strong class="cp-price">₦' + price.toLocaleString("en-NG") + "</strong>" +
+          '<button type="button" class="btn-action" onclick="buyCbtPackage(\'' + escHtml(id) + '\')">Pay with Paystack</button>' +
           "</div></div>";
       });
       html += "</div>";

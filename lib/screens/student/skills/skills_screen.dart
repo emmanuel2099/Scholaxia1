@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../api/api_service.dart';
-import '../../../services/flutterwave_checkout_service.dart';
+import '../../../services/paystack_checkout_service.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/student_ui.dart';
 
@@ -669,11 +669,12 @@ class _EnrollSheetState extends State<_EnrollSheet> {
       _error = null;
     });
     try {
-      final paid = await FlutterwaveCheckoutService.paySkillEnrollment(
+      final paid = await PaystackCheckoutService.purchase(
         context: context,
         api: _api,
-        skillId: widget.skill.id,
-        initPayload: {
+        productType: 'skill_enrollment',
+        productId: widget.skill.id,
+        extra: {
           'full_name': name,
           'phone': phone,
           'email': _email.text.trim(),

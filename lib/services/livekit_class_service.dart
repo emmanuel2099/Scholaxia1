@@ -5,9 +5,15 @@ import 'package:livekit_client/livekit_client.dart';
 
 /// Manages a LiveKit room for live class video/audio.
 class LiveKitClassService {
-  LiveKitClassService({required this.onChanged});
+  LiveKitClassService({
+    required this.onChanged,
+    this.preferredTeacherIdentity,
+  });
 
   final VoidCallback onChanged;
+
+  /// When set, only this remote identity is used for the student main stage.
+  String? preferredTeacherIdentity;
 
   Room? room;
   EventsListener<RoomEvent>? _listener;
@@ -16,6 +22,11 @@ class LiveKitClassService {
   VideoTrack? screenShareVideo;
   VideoTrack? cameraVideo;
   VideoTrack? localCameraVideo;
+
+  /// Active student cameras for the teacher sidebar (capped for performance).
+  final Map<String, VideoTrack> studentCameras = {};
+  static const int maxStudentCameras = 6;
+
   String status = 'Connecting…';
   bool connected = false;
   bool screenShareOn = false;
@@ -205,6 +216,7 @@ class LiveKitClassService {
     screenShareVideo = null;
     cameraVideo = null;
     localCameraVideo = null;
+    studentCameras.clear();
     screenShareOn = false;
     connected = false;
   }
@@ -241,6 +253,7 @@ class LiveKitClassService {
     final localShare = screenShareVideo;
     screenShareVideo = null;
     cameraVideo = null;
+    studentCameras.clear();
 
     _scanLocal();
 
@@ -258,7 +271,30 @@ class LiveKitClassService {
     onChanged();
   }
 
+  bool _isTeacherRemote(RemoteParticipant participant) {
+    final preferred = preferredTeacherIdentity?.trim();
+    if (preferred != null && preferred.isNotEmpty) {
+      return participant.identity == preferred;
+    }
+    try {
+      final raw = participant.metadata;
+      if (raw != null && raw.isNotEmpty) {
+        final lower = raw.toLowerCase();
+        if (lower.contains('"role":"teacher"') ||
+            lower.contains('"role": "teacher"') ||
+            lower.contains('"role":"host"')) {
+          return true;
+        }
+      }
+    } catch (_) {}
+    // Unknown teacher id: only treat sole remote as teacher.
+    final remotes = room?.remoteParticipants.length ?? 0;
+    return remotes == 1;
+  }
+
   void _scanParticipant(RemoteParticipant participant) {
+    final isTeacherRemote = _isTeacherRemote(participant);
+
     for (final pub in participant.videoTrackPublications) {
       if (!_isActiveVideoPublication(pub)) continue;
 
@@ -268,7 +304,15 @@ class LiveKitClassService {
       if (pub.source == TrackSource.screenShareVideo) {
         screenShareVideo = track;
       } else if (pub.source == TrackSource.camera) {
-        cameraVideo = track;
+        if (isTeacherRemote) {
+          cameraVideo = track;
+        } else {
+          // Cap simultaneous student cam tiles for large rooms.
+          if (studentCameras.length < maxStudentCameras ||
+              studentCameras.containsKey(participant.identity)) {
+            studentCameras[participant.identity] = track;
+          }
+        }
       }
     }
 

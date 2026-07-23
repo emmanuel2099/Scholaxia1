@@ -224,7 +224,10 @@ class ApiService {
     return !path.contains('/download') &&
         !path.contains('/read') &&
         !path.contains('/join') &&
-        !path.contains('/stream');
+        !path.contains('/stream') &&
+        !path.contains('/access') &&
+        !path.contains('/live-class/plans') &&
+        !path.contains('/paystack/verify');
   }
 
   Future<http.Response> _cachedGet(
@@ -1093,14 +1096,17 @@ class ApiService {
   Future<Map<String, dynamic>> initializePaystack({
     required String productType,
     required String productId,
+    Map<String, dynamic>? extra,
   }) async {
+    final body = <String, dynamic>{
+      'product_type': productType,
+      'product_id': productId,
+      if (extra != null) ...extra,
+    };
     final res = await _onlinePost(
       _uri('/api/v1/payments/paystack/initialize'),
       headers: await _authHeaders(),
-      body: jsonEncode({
-        'product_type': productType,
-        'product_id': productId,
-      }),
+      body: jsonEncode(body),
     );
     return _parseMap(res);
   }
@@ -2137,6 +2143,26 @@ class ApiService {
       _uri(ApiEndpoints.liveClassJoinByCode),
       headers: await _authHeaders(),
       body: jsonEncode({'code': normalized}),
+    );
+    return _parseMap(res);
+  }
+
+  /// Active live-class subscription / plan status (after Subscription payment).
+  Future<Map<String, dynamic>> getLiveClassPlans() async {
+    final res = await _cachedGet(
+      _uri(ApiEndpoints.liveClassPlans),
+      headers: await _authHeaders(),
+      trackConnectivity: false,
+    );
+    return _parseMap(res);
+  }
+
+  /// Whether the signed-in student can join a specific live class.
+  Future<Map<String, dynamic>> getLiveClassAccess(String classId) async {
+    final res = await _cachedGet(
+      _uri(ApiEndpoints.liveClassAccess(classId)),
+      headers: await _authHeaders(),
+      trackConnectivity: false,
     );
     return _parseMap(res);
   }

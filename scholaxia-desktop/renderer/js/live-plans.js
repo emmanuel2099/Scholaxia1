@@ -44,6 +44,16 @@ function sessionLabel(plan) {
   var subs = plan.max_subjects === "All core subjects" || plan.max_subjects >= 99
     ? "All core subjects"
     : "Up to " + plan.max_subjects + " subjects";
+  var cat = String(plan.category || "");
+  var billing = String(plan.billing || "");
+  var isHoliday = billing === "holiday" || /holiday/i.test(cat);
+  var isNursery = /nursery/i.test(cat);
+  if (isHoliday) {
+    return plan.sessions + " live sessions weekly · " + mins + " each · " + subs;
+  }
+  if (isNursery) {
+    return plan.sessions + " sessions weekly · " + mins + " each · " + subs;
+  }
   return plan.sessions + " live sessions · " + mins + " each · " + subs;
 }
 
@@ -92,6 +102,9 @@ function renderLivePlansPage(data, pendingClassId) {
         " · <strong>" + escHtml(String(active.sessions_left)) + "</strong> sessions left" +
         (active.expires_at ? " · renews/ends " + escHtml(new Date(active.expires_at).toLocaleDateString()) : "") +
         "</div>";
+    } else if (data && (data.paid || data.can_join)) {
+      statusEl.innerHTML =
+        '<div class="live-plan-active"><strong>Subscription active.</strong> You can join live classes.</div>';
     } else {
       statusEl.innerHTML =
         '<p class="live-plan-hint">Pick a monthly plan below. One payment covers your live classes for 30 days.</p>';

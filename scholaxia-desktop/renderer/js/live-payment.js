@@ -111,6 +111,22 @@ function setJoinButtonBusy(btn, busy, label) {
   }
 }
 
+async function refreshLivePlanAccessAfterPayment() {
+  if (typeof clearPlansCache === "function") clearPlansCache();
+  else {
+    try { sessionStorage.removeItem("sia_live_plans_cache"); } catch (e) { /* ignore */ }
+    window._livePlansCache = null;
+  }
+  try {
+    sessionStorage.setItem("sia_live_plan_just_paid", String(Date.now()));
+  } catch (e) { /* ignore */ }
+  if (typeof loadLivePlans === "function") {
+    try {
+      await loadLivePlans(null, false);
+    } catch (e) { /* ignore */ }
+  }
+}
+
 async function payForLivePlan(planId, classId, btn) {
   if (_livePayBusy) return;
   if (!planId) {
@@ -127,7 +143,11 @@ async function payForLivePlan(planId, classId, btn) {
         productId: String(planId),
       });
       if (!paid) throw new Error("Payment was not completed.");
+      await refreshLivePlanAccessAfterPayment();
       if (classId) await completeJoinClass(classId, null);
+      else {
+        alert("Payment successful. Your live class subscription is active — you can join classes now.");
+      }
       return { paid: true };
     }
 
@@ -216,8 +236,12 @@ async function joinClassWithAccessCode(code) {
     if (!preview || !preview.id) throw new Error("Invalid code. Check Access Code tab.");
     var classId = preview.id;
     var access = await api("/api/v1/payments/live-class/" + encodeURIComponent(classId) + "/access");
-    if (access && access.requires_payment && !access.can_join) {
-      alert("You need an active subscription for this class. Open Subscription in the menu.");
+    var needsPlan = !!(access && (access.need_plan || access.requires_payment));
+    var canJoin = !!(access && (access.paid || access.can_join));
+    if (access && needsPlan && !canJoin) {
+      alert("You need an active subscription for this class. Open Subscription in the menu to pay, then join again.");
+      if (typeof showPage === "function") showPage("subscription");
+      else if (typeof loadLivePlans === "function") loadLivePlans(classId, false);
       return;
     }
     var data = await api("/api/v1/live-classes/join-by-code", {
@@ -276,7 +300,8 @@ async function joinClassWithPayment(btn) {
       }
     }
     var access = await api("/api/v1/payments/live-class/" + encodeURIComponent(classId) + "/access");
-    if (!access || !access.paid) {
+    var canJoin = !!(access && (access.paid || access.can_join));
+    if (!access || !canJoin) {
       if (access && access.visibility && access.visibility !== "subject") {
         await completeJoinClass(classId, card);
         return;
@@ -344,6 +369,7 @@ if (document.readyState === "loading") {
 window.joinClassWithPayment = joinClassWithPayment;
 window.completeJoinClass = completeJoinClass;
 window.payForLivePlan = payForLivePlan;
+window.refreshLivePlanAccessAfterPayment = refreshLivePlanAccessAfterPayment;
 window.reconcilePendingPlanPayment = reconcilePendingPlanPayment;
 window.clearPlanPaymentPending = clearPlanPaymentPending;
 
@@ -413,34 +439,27 @@ window.payForBook = payForBook;
 
 async function payForSkillEnrollment(skillId, form, btn) {
   if (!skillId) throw new Error("Program not found.");
-  await loadFlutterwaveScript();
-
-  var init = await api("/api/v1/payments/flutterwave/skills/" + encodeURIComponent(skillId) + "/init", {
-    method: "POST",
-    body: JSON.stringify(form || {}),
-  });
-
-  if (!init) throw new Error("Could not start payment.");
-  if (init.already_paid) {
-    alert("You are already enrolled in this program.");
-    return true;
+  if (typeof paystackPurchase !== "function") {
+    throw new Error("Paystack is not available. Refresh and try again.");
   }
 
-  if (!init.public_key || !init.tx_ref) {
-    throw new Error("Payment could not be started. Try again later.");
-  }
-
-  var modeLabel = init.mode_label || (init.payment_mode === "once" ? "full payment" : "installment " + (init.installment || 1));
-  return startFlutterwaveRedirect(init, {
-    type: "skill",
-    skill_id: skillId,
-    tx_ref: init.tx_ref,
-    payment_mode: init.payment_mode || "half",
-    installment: init.installment || 1,
-    custom_title: "Scholaxia Skills Training",
-    custom_description: (init.program_title || "Training program") + " — " + modeLabel + " " + formatNaira(init.amount),
-    meta: { skill_id: skillId, payment_mode: init.payment_mode || "half", installment: String(init.installment || 1) },
+  var paid = await paystackPurchase({
+    productType: "skill_enrollment",
+    productId: skillId,
+    payment_mode: (form && form.payment_mode) || "half",
+    installment: (form && form.installment) || 1,
+    full_name: (form && form.full_name) || "",
+    phone: (form && form.phone) || "",
+    email: (form && form.email) || "",
+    preferred_start: (form && form.preferred_start) || "",
+    notes: (form && form.notes) || "",
+    location: (form && form.location) || "",
   });
+  if (paid) {
+    alert("Payment successful! Your skills enrollment is active.");
+    if (typeof loadSkills === "function") loadSkills();
+  }
+  return !!paid;
 }
 
 window.payForSkillEnrollment = payForSkillEnrollment;

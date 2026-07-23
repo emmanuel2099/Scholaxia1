@@ -75,7 +75,15 @@ function initKindApp() {
   loadKindHome();
 }
 
-function kindNav(page) {
+var kindPageHistory = [];
+
+function kindNav(page, opts) {
+  opts = opts || {};
+  var prev = kindCurrentPage;
+  if (!opts.replace && prev && prev !== page) {
+    kindPageHistory.push(prev);
+    if (kindPageHistory.length > 30) kindPageHistory.shift();
+  }
   kindCurrentPage = page;
   document.querySelectorAll(".kind-page").forEach(function (p) { p.classList.remove("active"); });
   document.querySelectorAll(".kind-nav-btn").forEach(function (b) {
@@ -87,6 +95,11 @@ function kindNav(page) {
   var title = document.getElementById("kind-page-title");
   if (title) title.textContent = KIND_PAGE_TITLES[page] || page;
 
+  var backBtn = document.getElementById("kind-page-back-btn");
+  if (backBtn) {
+    backBtn.classList.toggle("is-hidden", page === "home" && !kindPageHistory.length);
+  }
+
   if (page === "live") loadKindLive();
   else if (page === "saved") loadKindSaved();
   else if (page === "games") loadKindGames();
@@ -97,6 +110,13 @@ function kindNav(page) {
     if (typeof loadKindClassPackagesPage === "function") loadKindClassPackagesPage();
   }
 }
+
+function kindGoBack() {
+  var prev = kindPageHistory.pop();
+  if (!prev) prev = "home";
+  kindNav(prev, { replace: true });
+}
+window.kindGoBack = kindGoBack;
 
 function kindRefresh() {
   if (kindCurrentPage === "home") loadKindHome();
@@ -308,12 +328,23 @@ async function kindSendSia() {
       method: "POST",
       body: JSON.stringify({ question: q, subject: "General", conversation_history: history }),
     });
-    var reply = (r && (r.text || r.response || r.answer)) || "I'm here to help! Can you ask in another way?";
+    var reply =
+      (r && (r.sia_kind || r.text || r.response || r.answer || r.message || r.reply)) ||
+      "";
+    if (!String(reply).trim()) {
+      reply =
+        "I'd love to help you learn! Tell me a subject (like English or Maths) and what you want to practice — reading, spelling, or a homework question.";
+    }
     kindSiaHistory.push({ isAi: true, text: reply });
     renderKindSia();
     if (typeof kindSpeak === "function") kindSpeak(reply);
   } catch (e) {
     if (err) err.textContent = e.message || "Sia is resting. Try again!";
+    kindSiaHistory.push({
+      isAi: true,
+      text: "Hmm, I lost that answer. Try again — ask me something like “help me study English” or “teach me nouns”.",
+    });
+    renderKindSia();
   }
 }
 

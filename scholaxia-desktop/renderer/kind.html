@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="css/app.css" />
   <link rel="stylesheet" href="css/scholaxia-purple.css" />
   <link rel="stylesheet" href="css/kind.css" />
+  <link rel="stylesheet" href="css/dark-mode.css" />
 </head>
 <body>
 
@@ -68,6 +69,7 @@
   <div class="app-main-wrap">
     <header class="app-topbar">
       <div class="app-topbar-left">
+        <button type="button" class="page-back-btn is-hidden" id="kind-page-back-btn" onclick="kindGoBack()" title="Go back" aria-label="Go back">&#8592;</button>
         <h1 id="kind-page-title">Home</h1>
         <span class="topbar-exam-pill kind-pill">Kids</span>
       </div>
@@ -280,6 +282,7 @@
 </div>
 
 <script src="js/api.js"></script>
+<script src="js/theme.js"></script>
 <script src="js/paystack-checkout.js"></script>
 <script src="js/class-packages.js"></script>
 <script src="js/kind-voice.js"></script>

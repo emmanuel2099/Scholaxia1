@@ -1,0 +1,512 @@
+/**
+ * Global dark-mode readability — loaded LAST so text stays clear on every screen.
+ * Rule: dark surfaces = light text; light surfaces = dark text.
+ */
+html[data-app-theme="dark"] {
+  color-scheme: dark;
+}
+
+/* ── Base text ── */
+html[data-app-theme="dark"] body,
+html[data-app-theme="dark"] .main-content,
+html[data-app-theme="dark"] .main-content-sidebar,
+html[data-app-theme="dark"] .page,
+html[data-app-theme="dark"] .kind-page {
+  color: #f2f3f5 !important;
+}
+
+html[data-app-theme="dark"] h1,
+html[data-app-theme="dark"] h2,
+html[data-app-theme="dark"] h3,
+html[data-app-theme="dark"] h4,
+html[data-app-theme="dark"] h5,
+html[data-app-theme="dark"] strong,
+html[data-app-theme="dark"] label,
+html[data-app-theme="dark"] .dash-section-title,
+html[data-app-theme="dark"] .section-header h2,
+html[data-app-theme="dark"] .page-head-bar h1 {
+  color: #f5f3ff !important;
+}
+
+html[data-app-theme="dark"] p,
+html[data-app-theme="dark"] li,
+html[data-app-theme="dark"] .meta,
+html[data-app-theme="dark"] .section-sub,
+html[data-app-theme="dark"] .loading,
+html[data-app-theme="dark"] .empty,
+html[data-app-theme="dark"] .dash-greeting p {
+  color: #c8cdd3 !important;
+}
+
+/* ── Surfaces / cards ── */
+html[data-app-theme="dark"] .card,
+html[data-app-theme="dark"] .sx-card,
+html[data-app-theme="dark"] .profile-card,
+html[data-app-theme="dark"] .setup-card,
+html[data-app-theme="dark"] .dash-stat-card,
+html[data-app-theme="dark"] .dash-side-card,
+html[data-app-theme="dark"] .skill-card,
+html[data-app-theme="dark"] .dash-skill-card,
+html[data-app-theme="dark"] .live-plan-card,
+html[data-app-theme="dark"] .study-mat-card,
+html[data-app-theme="dark"] .empty-state,
+html[data-app-theme="dark"] .empty-state-premium,
+html[data-app-theme="dark"] .about-block,
+html[data-app-theme="dark"] .contact-form-card,
+html[data-app-theme="dark"] .contact-info-card,
+html[data-app-theme="dark"] .request-box,
+html[data-app-theme="dark"] .sia-chat-wrap,
+html[data-app-theme="dark"] .access-code-card,
+html[data-app-theme="dark"] .as-panel,
+html[data-app-theme="dark"] .as-empty,
+html[data-app-theme="dark"] .as-notice-card,
+html[data-app-theme="dark"] .as-pdf-card,
+html[data-app-theme="dark"] .pq-card,
+html[data-app-theme="dark"] .mp-product-card,
+html[data-app-theme="dark"] .game-tile,
+html[data-app-theme="dark"] .game-play-area,
+html[data-app-theme="dark"] .kind-game-play-area,
+html[data-app-theme="dark"] .kind-stat-box,
+html[data-app-theme="dark"] .kind-quick-tile,
+html[data-app-theme="dark"] .kind-hero-card,
+html[data-app-theme="dark"] .kind-sia-wrap,
+html[data-app-theme="dark"] .league-action-card {
+  background: #2b2d31 !important;
+  border-color: #3f4147 !important;
+  color: #f2f3f5 !important;
+}
+
+html[data-app-theme="dark"] .card h3,
+html[data-app-theme="dark"] .card h4,
+html[data-app-theme="dark"] .sx-card h3,
+html[data-app-theme="dark"] .skill-card-summary h3,
+html[data-app-theme="dark"] .skill-card-body h4,
+html[data-app-theme="dark"] .dash-skill-card h4,
+html[data-app-theme="dark"] .dash-stat-card strong,
+html[data-app-theme="dark"] .live-plan-card h3,
+html[data-app-theme="dark"] .pq-card-body h3,
+html[data-app-theme="dark"] .mp-product-body h3,
+html[data-app-theme="dark"] .as-panel-head h3,
+html[data-app-theme="dark"] .as-pdf-body h4,
+html[data-app-theme="dark"] .as-empty h3,
+html[data-app-theme="dark"] .game-tile-body strong,
+html[data-app-theme="dark"] .league-action-card h3 {
+  color: #f5f3ff !important;
+}
+
+html[data-app-theme="dark"] .card p,
+html[data-app-theme="dark"] .sx-card p,
+html[data-app-theme="dark"] .sx-card li,
+html[data-app-theme="dark"] .cp-features,
+html[data-app-theme="dark"] .cp-features li,
+html[data-app-theme="dark"] .skill-subtitle,
+html[data-app-theme="dark"] .skill-description,
+html[data-app-theme="dark"] .skill-outcomes,
+html[data-app-theme="dark"] .dash-skill-card p,
+html[data-app-theme="dark"] .dash-stat-card span,
+html[data-app-theme="dark"] .live-plan-meta,
+html[data-app-theme="dark"] .live-plan-features,
+html[data-app-theme="dark"] .live-plan-features li,
+html[data-app-theme="dark"] .pq-card-body p,
+html[data-app-theme="dark"] .game-tile-body p,
+html[data-app-theme="dark"] .league-action-card p,
+html[data-app-theme="dark"] .cp-billing,
+html[data-app-theme="dark"] .cp-desc {
+  color: #c8cdd3 !important;
+}
+
+/* ── Home quick-action tiles (the broken ones) ── */
+html[data-app-theme="dark"] .dash-action-card {
+  background: #2b2d31 !important;
+  border-color: #4e5058 !important;
+  color: #f2f3f5 !important;
+}
+
+html[data-app-theme="dark"] .dash-action-card strong {
+  color: #ffffff !important;
+}
+
+html[data-app-theme="dark"] .dash-action-card > span:last-child {
+  color: #c8cdd3 !important;
+}
+
+/* Pastel accent tiles: keep soft bg, force dark readable text */
+html[data-app-theme="dark"] .dash-action-live {
+  background: #3f1d22 !important;
+  border-color: #7f1d1d !important;
+}
+html[data-app-theme="dark"] .dash-action-school,
+html[data-app-theme="dark"] .dash-action-skills {
+  background: #14352a !important;
+  border-color: #166534 !important;
+}
+html[data-app-theme="dark"] .dash-action-subscription {
+  background: #3b2f14 !important;
+  border-color: #a16207 !important;
+}
+html[data-app-theme="dark"] .dash-action-sia {
+  background: #2e1065 !important;
+  border-color: #7c3aed !important;
+}
+
+html[data-app-theme="dark"] .dash-action-card[class*="dash-action-"] strong,
+html[data-app-theme="dark"] .dash-action-card[class*="dash-action-"] > span:last-child {
+  color: #f5f3ff !important;
+}
+
+html[data-app-theme="dark"] .dash-action-card[class*="dash-action-"].active strong,
+html[data-app-theme="dark"] .dash-action-card[class*="dash-action-"].active > span:last-child,
+html[data-app-theme="dark"] .dash-action-card[class*="dash-action-"]:active strong,
+html[data-app-theme="dark"] .dash-action-card[class*="dash-action-"]:active > span:last-child {
+  color: #ffffff !important;
+}
+
+/* ── Skills home strip ── */
+html[data-app-theme="dark"] .dash-skills-all {
+  background: #352f45 !important;
+  border-color: #7c3aed !important;
+  color: #e9d5ff !important;
+}
+html[data-app-theme="dark"] .dash-skill-fee,
+html[data-app-theme="dark"] .skill-fee,
+html[data-app-theme="dark"] .cp-price,
+html[data-app-theme="dark"] .live-plan-price,
+html[data-app-theme="dark"] .mp-book-price,
+html[data-app-theme="dark"] .pq-price,
+html[data-app-theme="dark"] .material-price {
+  color: #4ade80 !important;
+}
+html[data-app-theme="dark"] .live-plan-price span {
+  color: #a7f3d0 !important;
+}
+
+/* ── Forms / inputs ── */
+html[data-app-theme="dark"] input,
+html[data-app-theme="dark"] select,
+html[data-app-theme="dark"] textarea,
+html[data-app-theme="dark"] .game-input,
+html[data-app-theme="dark"] .kind-sia-compose input {
+  background: #1e1f22 !important;
+  color: #f2f3f5 !important;
+  border-color: #4e5058 !important;
+}
+html[data-app-theme="dark"] input::placeholder,
+html[data-app-theme="dark"] textarea::placeholder {
+  color: #949ba4 !important;
+}
+
+/* ── Buttons that must stay readable ── */
+html[data-app-theme="dark"] .btn-action,
+html[data-app-theme="dark"] .btn-join,
+html[data-app-theme="dark"] .btn-action.btn-sm,
+html[data-app-theme="dark"] .dash-skill-btn {
+  color: #ffffff !important;
+}
+html[data-app-theme="dark"] .btn-secondary,
+html[data-app-theme="dark"] .btn-sm:not(.primary):not(.btn-action) {
+  background: #3f4147 !important;
+  border-color: #52555c !important;
+  color: #f2f3f5 !important;
+}
+html[data-app-theme="dark"] .page-back-btn {
+  background: #a78bfa !important;
+  border-color: #c4b5fd !important;
+  color: #1e1b2e !important;
+}
+
+/* ── Games / CBT / marketplace leftovers ── */
+html[data-app-theme="dark"] .game-prompt,
+html[data-app-theme="dark"] .game-math-expr,
+html[data-app-theme="dark"] .game-play-header,
+html[data-app-theme="dark"] .game-score,
+html[data-app-theme="dark"] .game-timer {
+  color: #f5f3ff !important;
+}
+html[data-app-theme="dark"] .sia-bubble {
+  background: #3f4147 !important;
+  color: #f2f3f5 !important;
+}
+html[data-app-theme="dark"] .sia-bubble .sia-h,
+html[data-app-theme="dark"] .sia-bubble strong {
+  color: #e9d5ff !important;
+}
+
+/* Light hero / pastel banners: keep their own contrast */
+html[data-app-theme="dark"] .sx-page-hero,
+html[data-app-theme="dark"] .sx-page-hero h2,
+html[data-app-theme="dark"] .sx-page-hero p,
+html[data-app-theme="dark"] .games-hero,
+html[data-app-theme="dark"] .league-hero,
+html[data-app-theme="dark"] .dash-hero-card,
+html[data-app-theme="dark"] .contact-hero,
+html[data-app-theme="dark"] .contact-hero h2,
+html[data-app-theme="dark"] .contact-hero p {
+  color: #ffffff !important;
+}
+
+/* Tables / lists often missed */
+html[data-app-theme="dark"] table,
+html[data-app-theme="dark"] th,
+html[data-app-theme="dark"] td,
+html[data-app-theme="dark"] .profile-field span,
+html[data-app-theme="dark"] .profile-header h2,
+html[data-app-theme="dark"] .topbar-user-meta strong {
+  color: #f5f3ff !important;
+}
+html[data-app-theme="dark"] .topbar-user-meta span,
+html[data-app-theme="dark"] .profile-field label {
+  color: #c8cdd3 !important;
+}
+
+/* Top bar must follow dark mode (was stuck on white glass) */
+html[data-app-theme="dark"] .app-topbar {
+  background: #1e1f22 !important;
+  border-bottom-color: #2b2d31 !important;
+}
+html[data-app-theme="dark"] #page-title,
+html[data-app-theme="dark"] .app-topbar h1,
+html[data-app-theme="dark"] #kind-page-title {
+  color: #f5f3ff !important;
+}
+html[data-app-theme="dark"] .topbar-exam-pill {
+  background: #2b2d31 !important;
+  color: #c4b5fd !important;
+  border-color: #4e5058 !important;
+}
+html[data-app-theme="dark"] .app-topbar .btn-refresh {
+  background: #2b2d31 !important;
+  border-color: #4e5058 !important;
+  color: #e9d5ff !important;
+}
+html[data-app-theme="dark"] .app-topbar .topbar-bell,
+html[data-app-theme="dark"] .app-topbar .topbar-whatsapp,
+html[data-app-theme="dark"] .app-topbar .topbar-user {
+  background: #2b2d31 !important;
+  border-color: #4e5058 !important;
+  color: #f2f3f5 !important;
+}
+html[data-app-theme="light"] #page-title,
+html[data-app-theme="light"] .app-topbar h1,
+html[data-app-theme="light"] #kind-page-title {
+  color: #5b21b6 !important;
+}
+html[data-app-theme="light"] .app-topbar {
+  background: #ffffff !important;
+}
+
+/* Study Materials / light glass banners */
+html[data-app-theme="dark"] .portal-embed-head,
+html[data-app-theme="dark"] .page-hero,
+html[data-app-theme="dark"] .page-intro,
+html[data-app-theme="dark"] .skills-hero {
+  background: #2b2d31 !important;
+  border-color: #3f4147 !important;
+  box-shadow: none !important;
+  color: #f2f3f5 !important;
+}
+html[data-app-theme="dark"] .portal-embed-head p,
+html[data-app-theme="dark"] .page-hero p,
+html[data-app-theme="dark"] .page-hero h2,
+html[data-app-theme="dark"] .skills-hero h2,
+html[data-app-theme="dark"] .skills-hero > p {
+  color: #e8eaed !important;
+}
+html[data-app-theme="dark"] .portal-pill,
+html[data-app-theme="dark"] .badge,
+html[data-app-theme="dark"] .hero-eyebrow {
+  background: #352f45 !important;
+  color: #e9d5ff !important;
+  border-color: #7c3aed !important;
+}
+
+/* White modals were getting light text � make modals dark */
+html[data-app-theme="dark"] .modal-box,
+html[data-app-theme="dark"] .skill-enroll-box,
+html[data-app-theme="dark"] .teacher-modal-box,
+html[data-app-theme="dark"] .join-access-modal .join-access-box,
+html[data-app-theme="dark"] #marketplace-book-modal .modal-box,
+html[data-app-theme="dark"] #camera-modal .modal-box,
+html[data-app-theme="dark"] #join-access-modal > div:not(.hidden) {
+  background: #2b2d31 !important;
+  color: #f2f3f5 !important;
+  border: 1px solid #3f4147 !important;
+}
+html[data-app-theme="dark"] .modal-box h3,
+html[data-app-theme="dark"] .modal-box p,
+html[data-app-theme="dark"] .modal-box label,
+html[data-app-theme="dark"] .modal-box legend,
+html[data-app-theme="dark"] .skill-enroll-form label,
+html[data-app-theme="dark"] .skill-enroll-fee,
+html[data-app-theme="dark"] #skill-enroll-title,
+html[data-app-theme="dark"] #skill-enroll-sub,
+html[data-app-theme="dark"] #skill-enroll-fee,
+html[data-app-theme="dark"] .skill-pay-mode legend,
+html[data-app-theme="dark"] .skill-pay-option,
+html[data-app-theme="dark"] .teacher-modal-head h3 {
+  color: #f2f3f5 !important;
+}
+html[data-app-theme="dark"] .skill-pay-mode {
+  background: #1e1f22 !important;
+  border-color: #7c3aed !important;
+}
+html[data-app-theme="dark"] .skill-enroll-form input,
+html[data-app-theme="dark"] .skill-enroll-form textarea,
+html[data-app-theme="dark"] .modal-box input,
+html[data-app-theme="dark"] .modal-box textarea,
+html[data-app-theme="dark"] .modal-box select {
+  background: #1e1f22 !important;
+  color: #f2f3f5 !important;
+  border-color: #4e5058 !important;
+}
+
+/* Contact page purple accents + scrollable enroll modal */
+html[data-app-theme="dark"] .contact-hero {
+  background: linear-gradient(135deg, #5b21b6 0%, #7c3aed 55%, #a78bfa 100%) !important;
+  box-shadow: 0 12px 40px rgba(124, 58, 237, 0.35) !important;
+}
+html[data-app-theme="dark"] .contact-info-icon {
+  background: #352f45 !important;
+  color: #c4b5fd !important;
+}
+html[data-app-theme="dark"] .contact-info-card a,
+html[data-app-theme="dark"] .contact-info-strong {
+  color: #c4b5fd !important;
+}
+html[data-app-theme="dark"] .contact-topic.active {
+  background: #7c3aed !important;
+  border-color: #a78bfa !important;
+  color: #fff !important;
+}
+html[data-app-theme="dark"] .modal-box,
+html[data-app-theme="dark"] .skill-enroll-box {
+  max-height: calc(100vh - 48px) !important;
+  overflow-y: auto !important;
+}
+html[data-app-theme="dark"] .skill-enroll-actions {
+  background: #2b2d31 !important;
+}
+
+/* Library toolbar */
+.library-toolbar { margin: 0 0 16px; display: flex; flex-direction: column; gap: 12px; }
+.library-search {
+  width: 100%; max-width: 420px; padding: 12px 14px; border-radius: 12px;
+  border: 1px solid var(--sx-border, #e9e5f5); background: var(--sx-surface, #fff);
+  color: var(--sx-text, #1e1b2e); font-size: 0.95rem;
+}
+.library-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
+.lib-tab {
+  border: 1px solid #ddd6fe; background: #f5f3ff; color: #5b21b6;
+  border-radius: 999px; padding: 8px 14px; font-weight: 700; font-size: 0.82rem; cursor: pointer;
+}
+.lib-tab.active { background: #7c3aed; border-color: #7c3aed; color: #fff; }
+html[data-app-theme="dark"] .library-search {
+  background: #1e1f22 !important; border-color: #4e5058 !important; color: #f2f3f5 !important;
+}
+html[data-app-theme="dark"] .lib-tab {
+  background: #2b2d31 !important; border-color: #4e5058 !important; color: #e9d5ff !important;
+}
+html[data-app-theme="dark"] .lib-tab.active {
+  background: #7c3aed !important; border-color: #a78bfa !important; color: #fff !important;
+}
+
+/* Games tiles (class is game-tile-btn, not game-tile) */
+html[data-app-theme="dark"] .game-card,
+html[data-app-theme="dark"] .game-tile-btn,
+html[data-app-theme="dark"] .game-tile {
+  background: #2b2d31 !important;
+  border-color: #4e5058 !important;
+  color: #f2f3f5 !important;
+}
+html[data-app-theme="dark"] .game-tile-btn h3,
+html[data-app-theme="dark"] .game-tile-body h3,
+html[data-app-theme="dark"] .game-tile-body p,
+html[data-app-theme="dark"] .game-tile-chevron {
+  color: #f2f3f5 !important;
+}
+
+/* Tutor AI / info banners */
+html[data-app-theme="dark"] .info-banner,
+html[data-app-theme="dark"] .info-banner.success {
+  background: #352f45 !important;
+  border-color: #7c3aed !important;
+  color: #f2f3f5 !important;
+}
+html[data-app-theme="dark"] .sia-welcome,
+html[data-app-theme="dark"] .sia-welcome p,
+html[data-app-theme="dark"] .sia-welcome strong {
+  color: #f2f3f5 !important;
+}
+html[data-app-theme="dark"] .sia-compose,
+html[data-app-theme="dark"] .sia-input-row {
+  background: #2b2d31 !important;
+  border-color: #4e5058 !important;
+}
+
+/* Kids live + CBT cards */
+html[data-app-theme="dark"] .kind-live-card,
+html[data-app-theme="dark"] .kind-live-hero,
+html[data-app-theme="dark"] .kind-live-empty,
+html[data-app-theme="dark"] .kind-book-card,
+html[data-app-theme="dark"] .kind-cbt-paywall,
+html[data-app-theme="dark"] .kind-cbt-card,
+html[data-app-theme="dark"] .kind-cbt-player {
+  background: #2b2d31 !important;
+  border-color: #4e5058 !important;
+  color: #f2f3f5 !important;
+}
+html[data-app-theme="dark"] .kind-live-hero h2,
+html[data-app-theme="dark"] .kind-live-hero p,
+html[data-app-theme="dark"] .kind-live-kicker,
+html[data-app-theme="dark"] .kind-live-empty h3,
+html[data-app-theme="dark"] .kind-live-empty p,
+html[data-app-theme="dark"] .kind-cbt-paywall h3,
+html[data-app-theme="dark"] .kind-cbt-paywall p,
+html[data-app-theme="dark"] .kind-cbt-card h4,
+html[data-app-theme="dark"] .kind-book-card h3,
+html[data-app-theme="dark"] .kind-book-card p,
+html[data-app-theme="dark"] .kind-book-card label {
+  color: #f2f3f5 !important;
+}
+html[data-app-theme="dark"] .kind-cbt-status {
+  background: #14352a !important;
+  color: #4ade80 !important;
+}
+
+/* CBT / exam practice screens */
+html[data-app-theme="dark"] .exam-screen,
+html[data-app-theme="dark"] .q-panel,
+html[data-app-theme="dark"] .result-screen,
+html[data-app-theme="dark"] .subject-start-box,
+html[data-app-theme="dark"] .cbt-year-picker,
+html[data-app-theme="dark"] .card.sx-card {
+  background: #2b2d31 !important;
+  color: #f2f3f5 !important;
+  border-color: #4e5058 !important;
+}
+html[data-app-theme="dark"] .q-text,
+html[data-app-theme="dark"] .q-num,
+html[data-app-theme="dark"] .exam-header h2,
+html[data-app-theme="dark"] .result-screen h2,
+html[data-app-theme="dark"] .opt,
+html[data-app-theme="dark"] .subject-start-box h3,
+html[data-app-theme="dark"] .subject-start-box p {
+  color: #f2f3f5 !important;
+}
+html[data-app-theme="dark"] .opt {
+  background: #1e1f22 !important;
+  border-color: #4e5058 !important;
+}
+html[data-app-theme="dark"] .opt.selected {
+  border-color: #a78bfa !important;
+  background: #352f45 !important;
+}
+html[data-app-theme="dark"] .material-card,
+html[data-app-theme="dark"] .material-body h4,
+html[data-app-theme="dark"] .material-meta,
+html[data-app-theme="dark"] .material-desc {
+  color: #f2f3f5 !important;
+}
+html[data-app-theme="dark"] .material-card {
+  background: #2b2d31 !important;
+  border-color: #4e5058 !important;
+}

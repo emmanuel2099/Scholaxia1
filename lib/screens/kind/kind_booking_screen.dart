@@ -68,13 +68,6 @@ class _KindBookingScreenState extends State<KindBookingScreen> {
       savings: 'Save ₦2,500',
       subtitle: '90 minutes each',
     ),
-    _KindPlan(
-      id: 'live_tutoring_10',
-      classes: 10,
-      priceNaira: 43000,
-      savings: 'Save ₦7,000',
-      subtitle: '90 minutes each',
-    ),
   ];
 
   final _api = ApiService();

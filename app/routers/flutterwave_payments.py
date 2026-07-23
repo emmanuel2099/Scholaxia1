@@ -213,6 +213,7 @@ async def list_live_class_plans(
     suggested = suggest_plan_ids(education_level, exam_type)
     access = await get_live_access_info(db, current_user["sub"])
     active = access.get("active_plan")
+    can_join = bool(access.get("can_join"))
     return {
         "plans": all_plans_dict(),
         "suggested_plan_ids": suggested,
@@ -220,6 +221,10 @@ async def list_live_class_plans(
             **active,
             "expires_at": active["expires_at"].isoformat() if active and active.get("expires_at") else None,
         } if active else None,
+        "paid": can_join,
+        "can_join": can_join,
+        "need_plan": not can_join,
+        "sessions_left": access.get("sessions_left", 0),
         "currency": "NGN",
         "public_key": settings.FLUTTERWAVE_PUBLIC_KEY,
     }
@@ -239,7 +244,9 @@ async def live_class_access(
     if not live_class_requires_subscription(live_class.visibility):
         return {
             "paid": True,
+            "can_join": True,
             "need_plan": False,
+            "requires_payment": False,
             "monthly_pass": False,
             "sessions_left": 0,
             "active_plan": None,
@@ -252,13 +259,18 @@ async def live_class_access(
     access = await get_live_access_info(db, current_user["sub"], class_id)
     valid_until = access.get("valid_until")
     active = access.get("active_plan")
+    can_join = bool(access.get("can_join"))
+    need_plan = bool(access.get("need_plan", not can_join))
     return {
-        "paid": access["can_join"],
-        "need_plan": access.get("need_plan", True),
+        "paid": can_join,
+        "can_join": can_join,
+        "need_plan": need_plan,
+        "requires_payment": need_plan,
         "monthly_pass": access.get("monthly_pass", False),
         "sessions_left": access.get("sessions_left", 0),
         "active_plan": active,
         "valid_until": valid_until.isoformat() if valid_until else None,
+        "visibility": live_class.visibility,
         "currency": "NGN",
         "public_key": settings.FLUTTERWAVE_PUBLIC_KEY,
     }

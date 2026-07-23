@@ -136,11 +136,17 @@ function renderInternalExamsList() {
       '<p class="meta">' + ieEsc(e.subject) + " · " + ieEsc(e.teacher_name || "Admin") + " · " + (e.total_questions || "?") + " questions · " + (e.duration_minutes || 60) + " min</p>" +
       (cached ? '<p class="meta sx-meta-ok">&#10003; Downloaded — ready for offline use</p>' : "") +
       (pending ? '<p class="meta sx-meta-warn">&#128228; Answers saved — will submit when online</p>' : "") +
-      (e.notes_url ? '<a href="' + ieEsc(e.notes_url) + '" target="_blank" rel="noopener" class="btn-secondary btn-sm">View notes</a> ' : "") +
+      (e.notes_url ? '<a href="' + ieEsc(e.notes_url) + '" target="_blank" rel="noopener" class="btn-secondary btn-sm">View notes / PDF</a> ' : "") +
       '<div class="card-actions-row">' +
       (!taken && !cached ? '<button type="button" class="btn-action btn-sm" onclick="downloadInternalExam(\'' + ieEsc(String(e.id)) + '\')">Download for offline</button>' : "") +
       (!taken && cached ? '<button type="button" class="btn-join" onclick="startInternalExam(\'' + ieEsc(String(e.id)) + '\')">Take exam</button>' : "") +
-      (taken ? '<span class="meta">Already submitted</span>' : "") +
+      (taken
+        ? '<span class="meta">Submitted' +
+          (e.my_score_percent != null
+            ? ' · Your score: <strong>' + Math.round(Number(e.my_score_percent)) + "%</strong>"
+            : " — awaiting board publish") +
+          "</span>"
+        : "") +
       "</div></div>"
     );
   }).join("");
