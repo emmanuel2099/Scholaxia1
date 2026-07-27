@@ -77,12 +77,19 @@ def upload_file(file_bytes: bytes, folder: str) -> dict:
     Upload a file to Cloudinary.
     Returns public_id (stored in DB) and the delivery URL.
     """
+    from io import BytesIO
+
     params = get_upload_params(folder)
-    result = cloudinary.uploader.upload(file_bytes, **params)
+    # BytesIO helps Cloudinary sniff image format for marketplace photos.
+    result = cloudinary.uploader.upload(BytesIO(file_bytes), **params)
+    secure = result.get("secure_url") or result.get("url") or ""
+    if secure.startswith("http://"):
+        secure = "https://" + secure[len("http://") :]
     return {
         "public_id": result["public_id"],
         "resource_type": result["resource_type"],
-        "secure_url": result.get("secure_url", ""),
+        "secure_url": secure,
+        "url": secure,
     }
 
 

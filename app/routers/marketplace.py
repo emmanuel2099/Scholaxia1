@@ -10,13 +10,31 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.deps import require_student, require_admin, get_current_user
+from app.core.deps import require_student, require_admin
 from app.models.marketplace import MarketplaceProduct, MarketplaceBooking, MARKETPLACE_CATEGORIES
-from app.models.user import User
 from app.services.notification_service import send_admins_notification
 from app.services.media_service import upload_file
 
 router = APIRouter(prefix="/marketplace", tags=["Marketplace"])
+
+
+def _absolute_image_url(url: Optional[str]) -> Optional[str]:
+    """Normalize stored image paths so Flutter / desktop can load them."""
+    if not url:
+        return None
+    value = str(url).strip()
+    if not value:
+        return None
+    if value.startswith("//"):
+        return f"https:{value}"
+    if value.startswith("http://"):
+        return "https://" + value[len("http://") :]
+    if value.startswith("https://"):
+        return value
+    # Relative /media path — leave as-is; clients resolve against API base.
+    if value.startswith("/"):
+        return value
+    return value
 
 
 def _product_dict(p: MarketplaceProduct) -> dict:
@@ -27,7 +45,7 @@ def _product_dict(p: MarketplaceProduct) -> dict:
         "category": p.category,
         "price": float(p.price or 0),
         "currency": p.currency or "NGN",
-        "image_url": p.image_url,
+        "image_url": _absolute_image_url(p.image_url),
         "is_available": bool(p.is_available),
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }
@@ -240,16 +258,25 @@ async def admin_upload_product_image(
     current_user: dict = Depends(require_admin),
 ):
     """Upload a product photo for the marketplace."""
-    if file.content_type not in _MP_IMAGE_TYPES:
+    content_type = (file.content_type or "").split(";")[0].strip().lower()
+    name = (file.filename or "").lower()
+    if content_type not in _MP_IMAGE_TYPES and not name.endswith(
+        (".jpg", ".jpeg", ".png", ".webp", ".gif")
+    ):
         raise HTTPException(status_code=400, detail="Use JPEG, PNG, WebP, or GIF.")
     content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty image file.")
     if len(content) > 6 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Image too large (max 6MB).")
     try:
         result = upload_file(content, "marketplace")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
-    return {"image_url": result["secure_url"]}
+    image_url = _absolute_image_url(result.get("secure_url") or result.get("url"))
+    if not image_url:
+        raise HTTPException(status_code=500, detail="Upload succeeded but no image URL returned.")
+    return {"image_url": image_url, "secure_url": image_url}
 
 
 @admin_router.post("/products", status_code=201)
@@ -264,9 +291,18 @@ async def admin_create_product(
             status_code=400,
             detail=f"category must be one of {', '.join(MARKETPLACE_CATEGORIES)}",
         )
-    image_url = (payload.image_url or "").strip() or None
+    image_url = _absolute_image_url(payload.image_url)
     if not image_url:
         raise HTTPException(status_code=400, detail="Product image is required.")
+    if not (
+        image_url.startswith("https://")
+        or image_url.startswith("http://")
+        or image_url.startswith("/")
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="image_url must be an http(s) URL or uploaded media path.",
+        )
     product = MarketplaceProduct(
         title=payload.title.strip(),
         description=(payload.description or "").strip() or None,
@@ -321,7 +357,7 @@ async def admin_update_product(
     if payload.price is not None:
         product.price = max(float(payload.price), 0)
     if payload.image_url is not None:
-        product.image_url = payload.image_url.strip() or None
+        product.image_url = _absolute_image_url(payload.image_url)
     if payload.is_available is not None:
         product.is_available = payload.is_available
     if payload.is_active is not None:

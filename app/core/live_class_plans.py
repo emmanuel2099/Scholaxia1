@@ -30,7 +30,7 @@ LIVE_CLASS_PLANS: tuple[LiveClassPlan, ...] = (
         sessions=5,
         session_minutes=60,
         max_subjects=4,
-        features=("Mathematics", "English Language", "Phonics", "Moral values"),
+        features=("Mathematics", "English Language", "Phonics", "Moral values", "5 live sessions weekly"),
         education_levels=tuple(f"PRIMARY {i}" for i in range(1, 7))
         + ("PRIMARY",),
         exam_types=("COMMON_ENTRANCE",),
