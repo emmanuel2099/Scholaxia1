@@ -797,6 +797,13 @@ async def confirm_cbt_import(
     if not payload.questions:
         raise HTTPException(status_code=400, detail="No questions to save")
 
+    subject = (payload.subject or "").strip()
+    if not subject:
+        raise HTTPException(status_code=400, detail="Pick a subject before saving")
+    year = _normalize_cbt_year(payload.year)
+    if year is None:
+        raise HTTPException(status_code=400, detail="Pick the exam year before saving")
+
     if payload.skip_duplicates:
         existing = await db.execute(
             select(CBTExam).where(CBTExam.title == payload.title.strip())
@@ -815,8 +822,8 @@ async def confirm_cbt_import(
 
     exam_payload = CBTExamCreate(
         title=payload.title.strip(),
-        subject=payload.subject,
-        year=payload.year,
+        subject=subject,
+        year=year,
         exam_type=payload.exam_type,
         duration_minutes=payload.duration_minutes,
         is_published=publish,
