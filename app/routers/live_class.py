@@ -833,8 +833,9 @@ async def join_class(
             att.is_muted = False
             await db.flush()
         try:
-            from app.services.live_class_room import grant_mic
+            from app.services.live_class_room import grant_mic, grant_camera
             grant_mic(live_class.room_id, sid)
+            grant_camera(live_class.room_id, sid)
         except Exception:
             pass
         can_pub = True
@@ -846,6 +847,7 @@ async def join_class(
             role="student",
         )
         return {
+            "class_id": str(live_class.id),
             **payload,
             **teacher_meta,
             "title": live_class.title,
@@ -853,7 +855,7 @@ async def join_class(
             "is_live": live_class.is_live,
             "end_time": live_class.end_time.isoformat() if live_class.end_time else None,
             "mic_allowed": True,
-            "camera_allowed": _camera_allowed_for(live_class.room_id, sid),
+            "camera_allowed": True,
         }
 
     if requires_plan:
@@ -868,8 +870,10 @@ async def join_class(
     await db.flush()
 
     try:
-        from app.services.live_class_room import grant_mic
+        from app.services.live_class_room import grant_mic, grant_camera
         grant_mic(live_class.room_id, current_user["sub"])
+        # Open camera by default so teacher ↔ student can see each other
+        grant_camera(live_class.room_id, current_user["sub"])
     except Exception:
         pass
 
@@ -892,7 +896,7 @@ async def join_class(
         "is_live": live_class.is_live,
         "end_time": live_class.end_time.isoformat() if live_class.end_time else None,
         "mic_allowed": True,
-        "camera_allowed": has_camera_access(live_class.room_id, sid),
+        "camera_allowed": True,
     }
 
 
@@ -1479,7 +1483,7 @@ async def update_session_request(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Admin updates request status. Teachers cannot approve unassigned requests."""
+    """Admin or assigned teacher can approve/update session requests."""
     role = current_user.get("role")
     if role not in ("teacher", "admin"):
         raise HTTPException(status_code=403, detail="Teachers and admins only")
@@ -1490,10 +1494,12 @@ async def update_session_request(
         raise HTTPException(status_code=404, detail="Request not found")
 
     if role == "teacher":
-        if not req.assigned_teacher_id or str(req.assigned_teacher_id) != current_user["sub"]:
+        # Teachers may approve/host for requests assigned to them — no admin gate.
+        # They may also claim an unassigned request by approving it for themselves.
+        if req.assigned_teacher_id and str(req.assigned_teacher_id) != current_user["sub"]:
             raise HTTPException(status_code=403, detail="Not assigned to you")
-        if payload.status in (LiveSessionRequestStatus.approved, LiveSessionRequestStatus.dismissed):
-            raise HTTPException(status_code=403, detail="Only admin can approve or dismiss requests")
+        if not req.assigned_teacher_id and payload.status == LiveSessionRequestStatus.approved:
+            req.assigned_teacher_id = current_user["sub"]
 
     req.status = payload.status
     req.reviewed_by = current_user["sub"]
