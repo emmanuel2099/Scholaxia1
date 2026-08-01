@@ -10,6 +10,14 @@ bool _accessAllowsJoin(Map<String, dynamic> access) {
 }
 
 bool _accessNeedsPlan(Map<String, dynamic> access) {
+  final vis = (access['visibility'] ?? '').toString().toLowerCase();
+  // Private / public / school-group invites are always free.
+  if (access['is_free'] == true ||
+      vis == 'private' ||
+      vis == 'public' ||
+      vis == 'school_group') {
+    return false;
+  }
   if (_accessAllowsJoin(access)) return false;
   return access['need_plan'] == true ||
       access['requires_payment'] == true ||

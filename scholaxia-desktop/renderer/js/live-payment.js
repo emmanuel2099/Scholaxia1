@@ -236,8 +236,12 @@ async function joinClassWithAccessCode(code) {
     if (!preview || !preview.id) throw new Error("Invalid code. Check Access Code tab.");
     var classId = preview.id;
     var access = await api("/api/v1/payments/live-class/" + encodeURIComponent(classId) + "/access");
-    var needsPlan = !!(access && (access.need_plan || access.requires_payment));
-    var canJoin = !!(access && (access.paid || access.can_join));
+    var vis = ((access && access.visibility) || (preview && preview.visibility) || "").toLowerCase();
+    var isFree = !!(access && (access.is_free || access.requires_payment === false)) ||
+      vis === "private" || vis === "public" || vis === "school_group" ||
+      !!(preview && (preview.is_free || preview.requires_payment === false));
+    var needsPlan = !isFree && !!(access && (access.need_plan || access.requires_payment));
+    var canJoin = isFree || !!(access && (access.paid || access.can_join));
     if (access && needsPlan && !canJoin) {
       alert("You need an active subscription for this class. Open Subscription in the menu to pay, then join again.");
       if (typeof showPage === "function") showPage("subscription");
@@ -300,9 +304,13 @@ async function joinClassWithPayment(btn) {
       }
     }
     var access = await api("/api/v1/payments/live-class/" + encodeURIComponent(classId) + "/access");
-    var canJoin = !!(access && (access.paid || access.can_join));
+    var vis = ((access && access.visibility) || "").toLowerCase();
+    var isFree = !!(access && access.is_free) ||
+      vis === "private" || vis === "public" || vis === "school_group" ||
+      (access && access.requires_payment === false && access.need_plan === false);
+    var canJoin = isFree || !!(access && (access.paid || access.can_join));
     if (!access || !canJoin) {
-      if (access && access.visibility && access.visibility !== "subject") {
+      if (isFree || (access && access.visibility && access.visibility !== "subject")) {
         await completeJoinClass(classId, card);
         return;
       }

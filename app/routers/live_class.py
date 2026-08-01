@@ -26,7 +26,7 @@ from app.services.live_class_room import (
     revoke_camera,
 )
 from app.websockets import live_class_ws
-from app.services.live_class_access import get_live_access_info, parse_uuid, consume_live_session, live_class_requires_subscription
+from app.services.live_class_access import get_live_access_info, parse_uuid, consume_live_session, live_class_requires_subscription, is_free_live_class
 from app.services.notification_service import send_subject_notification, send_user_notification, send_admins_notification, send_all_students_notification
 from app.services.access_code_delivery import deliver_access_codes_for_class
 from app.models.live_class_access_code import LiveClassAccessCodeDelivery
@@ -105,6 +105,8 @@ async def join_preview(
 
     now = naive_utc_now()
     joinable = _class_is_active(live_class, now)
+    vis = live_class.visibility or LiveClassVisibility.subject.value
+    free = is_free_live_class(vis)
     return {
         "id": str(live_class.id),
         "title": live_class.title,
@@ -113,7 +115,10 @@ async def join_preview(
         "is_live": bool(live_class.is_live),
         "is_joinable": joinable,
         "join_code": live_class.join_code,
-        "visibility": live_class.visibility or LiveClassVisibility.subject.value,
+        "visibility": vis,
+        "requires_payment": not free,
+        "need_plan": not free,
+        "is_free": free,
         "start_time": live_class.start_time.isoformat() if live_class.start_time else None,
         "end_time": live_class.end_time.isoformat() if live_class.end_time else None,
     }
@@ -244,6 +249,17 @@ async def join_class_by_code(
     can_access, detail = await _student_can_access_class(
         db, current_user["sub"], live_class, profile
     )
+    # Private class access code IS the invite — student joins free (no subscription).
+    if not can_access and _class_visibility(live_class) == LiveClassVisibility.private.value:
+        can_access, detail = True, ""
+        try:
+            invited = _parse_id_list(live_class.invited_student_ids)
+            uid = str(current_user["sub"])
+            if uid not in invited:
+                invited.append(uid)
+                live_class.invited_student_ids = json.dumps(invited)
+        except Exception:
+            pass
     if not can_access:
         raise HTTPException(status_code=403, detail=detail)
 
@@ -254,7 +270,10 @@ async def join_class_by_code(
     if delivery_row:
         delivery_row.is_read = True
         delivery_row.is_used = True
-    elif _class_visibility(live_class) == LiveClassVisibility.public.value:
+    elif _class_visibility(live_class) in (
+        LiveClassVisibility.public.value,
+        LiveClassVisibility.private.value,
+    ):
         db.add(
             LiveClassAccessCodeDelivery(
                 student_id=sid,
@@ -797,8 +816,9 @@ async def join_class(
     if not live_class.is_live:
         live_class.is_live = True
 
+    # Private / public / school-group classes are free — never charge students.
     requires_plan = live_class_requires_subscription(live_class.visibility)
-    if requires_plan:
+    if requires_plan and not is_free_live_class(live_class.visibility):
         access = await get_live_access_info(db, current_user["sub"], class_id)
         if not access["can_join"]:
             if access.get("active_plan") and access.get("sessions_left", 0) <= 0:
@@ -810,6 +830,8 @@ async def join_class(
                 status_code=402,
                 detail="Choose a Scholaxia One-on-One Live Class plan before joining.",
             )
+    else:
+        requires_plan = False
 
     student_uid = parse_uuid(current_user["sub"])
     from app.models.user import User

@@ -19,8 +19,13 @@ PLATFORM_VISIBILITIES = frozenset({"public", "private", "school_group"})
 
 def live_class_requires_subscription(visibility: str | None) -> bool:
     """Platform public/private/school classes join free; subject-matched 1-on-1 needs a plan."""
-    vis = (visibility or "subject").lower()
+    vis = (visibility or "subject").lower().strip()
     return vis not in PLATFORM_VISIBILITIES
+
+
+def is_free_live_class(visibility: str | None) -> bool:
+    """True when students must not be charged to join (private invites, public, school group)."""
+    return not live_class_requires_subscription(visibility)
 
 
 def parse_uuid(value: str):

@@ -33,6 +33,7 @@ from app.services.live_class_access import (
     get_live_access_info,
     parse_uuid,
     live_class_requires_subscription,
+    is_free_live_class,
 )
 
 router = APIRouter(prefix="/payments", tags=["Payments"])
@@ -247,6 +248,7 @@ async def live_class_access(
             "can_join": True,
             "need_plan": False,
             "requires_payment": False,
+            "is_free": True,
             "monthly_pass": False,
             "sessions_left": 0,
             "active_plan": None,
