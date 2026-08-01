@@ -1297,6 +1297,8 @@ async def list_live_classes(
             "created_at": c.created_at,
             "visibility": c.visibility or LiveClassVisibility.subject.value,
             "join_code": c.join_code,
+            "is_free": is_free_live_class(c.visibility),
+            "requires_payment": not is_free_live_class(c.visibility),
             "school_group_id": str(c.school_group_id) if c.school_group_id else None,
         }
         for c in classes
