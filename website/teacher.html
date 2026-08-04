@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Scholaxia — Teacher</title>
+    <link rel="icon" type="image/png" href="media/logo-main.png" />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="css/teacher.css?v=10" />
+  </head>
+  <body class="teacher-body">
+    <div class="teacher-shell" id="teacherShell">
+      <div class="sidebar-wrap">
+        <aside class="teacher-side" aria-label="Teacher navigation">
+          <div class="side-brand">
+            <img class="side-logo-main" src="media/logo-main.png" alt="Scholaxia" />
+            <div>
+              <span>Teacher studio</span>
+            </div>
+            <button type="button" class="side-close-btn" id="sidebarCloseBtn" aria-label="Close menu">✕</button>
+          </div>
+          <nav class="teacher-nav">
+            <button type="button" class="nav-btn is-active" data-page="live"><span class="ico">📹</span>Live Classes</button>
+            <button type="button" class="nav-btn" data-page="materials"><span class="ico">📚</span>Materials</button>
+            <button type="button" class="nav-btn" data-page="exams"><span class="ico">📝</span>Exams</button>
+            <button type="button" class="nav-btn" data-page="students"><span class="ico">👥</span>Students</button>
+            <button type="button" class="nav-btn" data-page="grading"><span class="ico">✅</span>Grading</button>
+            <button type="button" class="nav-btn" data-page="community"><span class="ico">📣</span>Community</button>
+            <button type="button" class="nav-btn" data-page="ai"><span class="ico">✦</span>Teacher AI</button>
+            <button type="button" class="nav-btn" data-page="profile"><span class="ico">👤</span>Profile</button>
+          </nav>
+          <div class="side-foot">
+            <strong>Teacher studio</strong>
+            <p>Host live, share notes, publish exams &amp; grade work.</p>
+          </div>
+        </aside>
+        <button type="button" class="sidebar-edge-toggle" id="sidebarToggle" aria-label="Hide menu">‹</button>
+      </div>
+
+      <div class="teacher-main">
+        <div class="sidebar-backdrop" id="sidebarBackdrop" hidden></div>
+        <header class="teacher-top">
+          <button type="button" class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Open menu">☰</button>
+          <button type="button" class="back-btn" id="backBtn" aria-label="Go back" hidden>←</button>
+          <span class="role-pill">Teacher</span>
+          <strong class="page-title" id="pageTitle">Live Classes</strong>
+          <div class="top-spacer"></div>
+          <div class="user-chip">
+            <span class="user-av" id="userAv">T</span>
+            <div class="user-meta">
+              <strong id="userName">Teacher</strong>
+              <span id="userEmail">—</span>
+            </div>
+            <button type="button" class="btn-out" id="logoutBtn">Log out</button>
+          </div>
+        </header>
+
+        <div class="teacher-content">
+          <!-- LIVE -->
+          <section class="page is-on" id="page-live">
+            <header class="page-hero live-hero">
+              <div>
+                <span class="kicker">Broadcast</span>
+                <h2>Live Classes</h2>
+                <p>Schedule or go live — public, private, or school-group sessions. Private invites are free for students (no subscription).</p>
+              </div>
+              <div class="hero-stats">
+                <div><strong id="statLive">0</strong><em>Live now</em></div>
+                <div><strong id="statUpcoming">0</strong><em>Upcoming</em></div>
+              </div>
+            </header>
+
+            <div class="host-card">
+              <h3>Host a class</h3>
+              <div class="vis-row">
+                <label class="vis-opt"><input type="radio" name="host-visibility" value="public" checked /> Public</label>
+                <label class="vis-opt"><input type="radio" name="host-visibility" value="private" /> Private</label>
+                <label class="vis-opt"><input type="radio" name="host-visibility" value="school_group" /> School group</label>
+              </div>
+              <div id="hostPrivateWrap" class="extra-panel" hidden>
+                <label>Invite by email
+                  <textarea id="hostInviteEmails" rows="3" placeholder="student1@email.com&#10;student2@email.com"></textarea>
+                </label>
+                <p class="hint">Enter one student email per line. They must already have a Scholaxia student account. Each invited student gets the class access code.</p>
+                <label>Or pick assigned students
+                  <select id="hostInvitedStudents" multiple size="4"></select>
+                </label>
+                <p class="hint">Hold Ctrl / Cmd to select multiple. Private classes go live without admin approval.</p>
+              </div>
+              <div id="hostSchoolWrap" class="extra-panel" hidden>
+                <label>School group
+                  <select id="hostSchoolGroup"><option value="">Loading…</option></select>
+                </label>
+              </div>
+              <div class="form-grid">
+                <label>Title <input id="hostTitle" placeholder="e.g. Algebra — Quadratics" /></label>
+                <label>Subject <input id="hostSubject" placeholder="e.g. Mathematics" /></label>
+                <label>Date <input type="date" id="hostDate" /></label>
+                <label>Start <input type="time" id="hostStart" /></label>
+                <label>End <input type="time" id="hostEnd" /></label>
+                <label>Duration (min) <input type="number" id="hostDuration" value="60" min="15" max="180" /></label>
+              </div>
+              <div class="btn-row">
+                <button type="button" class="btn btn-ghost" id="hostScheduleBtn">Schedule class</button>
+                <button type="button" class="btn btn-primary" id="hostLiveBtn">Go live now</button>
+              </div>
+              <p class="form-status" id="hostError"></p>
+            </div>
+
+            <div class="host-card soft">
+              <h3>School groups</h3>
+              <p class="card-sub">Create groups so school-group live classes notify the right students.</p>
+              <div class="form-grid">
+                <label>School name <input id="sgSchool" placeholder="e.g. ABC Secondary" /></label>
+                <label>Group name <input id="sgName" placeholder="e.g. SS1 Science" /></label>
+              </div>
+              <label>Add students
+                <select id="sgStudents" multiple size="3"></select>
+              </label>
+              <button type="button" class="btn btn-ghost" id="sgCreateBtn">Create group</button>
+              <div id="schoolGroupsList" class="groups-list"></div>
+            </div>
+
+            <div class="section-head">
+              <h3>Your classes</h3>
+              <div class="section-actions">
+                <select id="liveFilter">
+                  <option value="">All</option>
+                  <option value="live">Live now</option>
+                  <option value="upcoming">Upcoming</option>
+                  <option value="past">Past</option>
+                </select>
+                <button type="button" class="btn btn-mini" id="liveRefreshBtn">⟲ Refresh</button>
+              </div>
+            </div>
+            <div id="liveList" class="card-list"><div class="loading">Loading classes…</div></div>
+          </section>
+
+          <!-- MATERIALS -->
+          <section class="page" id="page-materials">
+            <header class="page-hero materials-hero">
+              <div>
+                <span class="kicker">Library</span>
+                <h2>Study Materials</h2>
+                <p>Upload PDFs, docs, images, and links for your students.</p>
+              </div>
+              <button type="button" class="btn btn-light" id="openMaterialBtn">+ Add material</button>
+            </header>
+            <div class="toolbar">
+              <select id="matSubjectFilter"><option value="">All subjects</option></select>
+              <select id="matTypeFilter">
+                <option value="">All types</option>
+                <option value="pdf">PDF</option>
+                <option value="doc">Document</option>
+                <option value="image">Image</option>
+                <option value="video">Video link</option>
+                <option value="link">Web link</option>
+              </select>
+              <button type="button" class="btn btn-mini" id="matRefreshBtn">⟲ Refresh</button>
+            </div>
+            <div id="materialsStats" class="stats-pills"></div>
+            <div id="materialsList" class="materials-grid"><div class="loading">Loading materials…</div></div>
+          </section>
+
+          <!-- EXAMS -->
+          <section class="page" id="page-exams">
+            <header class="page-hero exams-hero">
+              <div>
+                <span class="kicker">Assessment</span>
+                <h2>Scholaxia Exams</h2>
+                <p>Publish JSON exams — students take them and you review scores here.</p>
+              </div>
+            </header>
+            <div class="host-card">
+              <h3>Publish exam</h3>
+              <div class="form-grid">
+                <label>Title <input id="texamTitle" placeholder="e.g. Maths — Week 4 test" /></label>
+                <label>Subject <input id="texamSubject" list="texamSubjectList" placeholder="Mathematics" /></label>
+                <datalist id="texamSubjectList"></datalist>
+                <label>Duration (min) <input type="number" id="texamDuration" value="30" min="5" max="180" /></label>
+                <label>Open from <input type="datetime-local" id="texamStart" /></label>
+                <label>Close at <input type="datetime-local" id="texamEnd" /></label>
+                <div class="file-field">
+                  <span class="file-label">Questions JSON</span>
+                  <label class="file-drop" for="texamFile">
+                    <input type="file" id="texamFile" accept=".json,application/json" hidden />
+                    <span class="file-drop-ico">📄</span>
+                    <span class="file-drop-text">
+                      <strong id="texamFileName">Choose JSON file</strong>
+                      <small>or drag &amp; drop · .json only</small>
+                    </span>
+                  </label>
+                </div>
+              </div>
+              <div class="btn-row">
+                <button type="button" class="btn btn-ghost" id="texamTemplateBtn">Download sample JSON</button>
+                <button type="button" class="btn btn-primary" id="texamPublishBtn">Publish exam</button>
+              </div>
+              <p class="form-status" id="texamError"></p>
+            </div>
+            <div class="section-head"><h3>Your exams &amp; scores</h3></div>
+            <div id="examList" class="card-list"><div class="loading">Loading exams…</div></div>
+          </section>
+
+          <!-- STUDENTS -->
+          <section class="page" id="page-students">
+            <header class="page-hero students-hero">
+              <div>
+                <span class="kicker">Learners</span>
+                <h2>My Students</h2>
+                <p>Assigned session requests — host a class for their subject anytime.</p>
+              </div>
+              <button type="button" class="btn btn-light" id="studentsRefreshBtn">⟲ Refresh</button>
+            </header>
+            <div id="studentsList" class="card-list"><div class="loading">Loading students…</div></div>
+          </section>
+
+          <!-- GRADING -->
+          <section class="page" id="page-grading">
+            <header class="page-hero grading-hero">
+              <div>
+                <span class="kicker">Marking</span>
+                <h2>Grading</h2>
+                <p>Score pending assignment submissions from your students.</p>
+              </div>
+              <button type="button" class="btn btn-light" id="gradingRefreshBtn">⟲ Refresh</button>
+            </header>
+            <div id="gradingList" class="card-list"><div class="loading">Loading submissions…</div></div>
+          </section>
+
+          <!-- COMMUNITY -->
+          <section class="page" id="page-community">
+            <header class="page-hero community-hero">
+              <div>
+                <span class="kicker">Announce</span>
+                <h2>Community</h2>
+                <p>Post announcements — students see them in #announcements.</p>
+              </div>
+            </header>
+            <div class="host-card">
+              <h3>New announcement</h3>
+              <textarea id="announceInput" rows="4" placeholder="Write an announcement for your students…"></textarea>
+              <div class="btn-row">
+                <button type="button" class="btn btn-primary" id="announceSendBtn">Send announcement</button>
+              </div>
+              <p class="form-status" id="announceError"></p>
+            </div>
+            <div class="section-head"><h3>Recent posts</h3></div>
+            <div id="announceList" class="card-list"><div class="loading">Loading…</div></div>
+          </section>
+
+          <!-- AI -->
+          <section class="page" id="page-ai">
+            <header class="page-hero ai-hero">
+              <div>
+                <span class="kicker">Assistant</span>
+                <h2>Teacher AI</h2>
+                <p>Draft lessons, quizzes, explanations, and classroom announcements.</p>
+              </div>
+            </header>
+            <div class="ai-chips" id="aiChips">
+              <button type="button" class="chip" data-task="lesson_plan" data-prompt="Create a 40-minute lesson plan with objectives, activities, and a short exit ticket.">Lesson plan</button>
+              <button type="button" class="chip" data-task="quiz" data-prompt="Write 5 multiple-choice questions with answers and brief explanations.">Quiz</button>
+              <button type="button" class="chip" data-task="explanation" data-prompt="Explain this topic simply with examples a secondary student can follow.">Explain topic</button>
+              <button type="button" class="chip" data-task="announcement" data-prompt="Write a clear, friendly class announcement for students and parents.">Announcement</button>
+            </div>
+            <div class="host-card">
+              <div class="form-grid">
+                <label>Task
+                  <select id="aiTask">
+                    <option value="lesson_plan">Lesson plan</option>
+                    <option value="quiz">Quiz</option>
+                    <option value="explanation">Explanation</option>
+                    <option value="announcement">Announcement</option>
+                    <option value="other">Other</option>
+                  </select>
+                </label>
+                <label>Subject <input id="aiSubject" list="aiSubjectList" placeholder="Mathematics" /></label>
+                <datalist id="aiSubjectList"></datalist>
+                <label>Level <input id="aiLevel" placeholder="SS2" value="SS2" /></label>
+              </div>
+              <label>Details
+                <textarea id="aiDetails" rows="4" placeholder="What do you need help with?"></textarea>
+              </label>
+              <button type="button" class="btn btn-primary" id="aiAskBtn">Ask Teacher AI</button>
+              <p class="form-status" id="aiError"></p>
+              <div class="ai-result" id="aiResultWrap" hidden>
+                <h4>Result</h4>
+                <pre id="aiResult"></pre>
+              </div>
+            </div>
+          </section>
+
+          <!-- PROFILE -->
+          <section class="page" id="page-profile">
+            <header class="page-hero soft-hero">
+              <div>
+                <span class="kicker">Account</span>
+                <h2>Profile</h2>
+                <p>Your teacher account details</p>
+              </div>
+            </header>
+            <div class="profile-card">
+              <div class="profile-av" id="profileAv">T</div>
+              <div>
+                <h3 id="profileName">Teacher</h3>
+                <p id="profileText">Loading…</p>
+              </div>
+            </div>
+            <div class="quick-grid">
+              <button type="button" class="quick" data-goto="live"><span>📹</span><strong>Host a class</strong><small>Go live or schedule</small></button>
+              <button type="button" class="quick" data-goto="exams"><span>📝</span><strong>Publish exam</strong><small>Upload JSON questions</small></button>
+              <button type="button" class="quick" data-goto="materials"><span>📚</span><strong>Add material</strong><small>Share notes &amp; PDFs</small></button>
+              <button type="button" class="quick" data-goto="ai"><span>✦</span><strong>Teacher AI</strong><small>Plan lessons faster</small></button>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <!-- Material modal -->
+    <div class="modal" id="materialModal" hidden>
+      <div class="modal-box">
+        <div class="modal-head">
+          <h3>Add material</h3>
+          <button type="button" class="modal-x" id="closeMaterialBtn">✕</button>
+        </div>
+        <div class="form-grid">
+          <label>Title <input id="matTitle" /></label>
+          <label>Subject <input id="matSubject" list="matSubjectList" /></label>
+          <datalist id="matSubjectList"></datalist>
+          <label>Type
+            <select id="matType">
+              <option value="pdf">PDF</option>
+              <option value="doc">Document</option>
+              <option value="image">Image</option>
+              <option value="video">Video link</option>
+              <option value="link">Web link</option>
+            </select>
+          </label>
+          <label>Access
+            <select id="matAccess">
+              <option value="free">Free</option>
+              <option value="paid">Paid</option>
+            </select>
+          </label>
+          <label class="mat-price-wrap" id="matPriceWrap" hidden>Price (₦) <input type="number" id="matPrice" value="500" min="100" /></label>
+        </div>
+        <label>Description <textarea id="matDesc" rows="2"></textarea></label>
+        <div class="file-field mat-file-wrap" id="matFileWrap">
+          <span class="file-label">File</span>
+          <label class="file-drop" for="matFile">
+            <input type="file" id="matFile" hidden />
+            <span class="file-drop-ico">📎</span>
+            <span class="file-drop-text">
+              <strong id="matFileName">Choose file</strong>
+              <small>PDF, doc, or image</small>
+            </span>
+          </label>
+        </div>
+        <label class="mat-link-wrap" id="matLinkWrap" hidden>URL <input id="matUrl" placeholder="https://" /></label>
+        <p class="form-status" id="matError"></p>
+        <div class="btn-row">
+          <button type="button" class="btn btn-ghost" id="cancelMaterialBtn">Cancel</button>
+          <button type="button" class="btn btn-primary" id="saveMaterialBtn">Save material</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Grade modal -->
+    <div class="modal" id="gradeModal" hidden>
+      <div class="modal-box">
+        <div class="modal-head">
+          <h3>Score submission</h3>
+          <button type="button" class="modal-x" id="closeGradeBtn">✕</button>
+        </div>
+        <p id="gradeMeta" class="card-sub"></p>
+        <div id="gradePreview" class="grade-preview"></div>
+        <div class="form-grid">
+          <label>Score <input type="number" id="gradeScore" min="0" max="100" value="70" /></label>
+          <label>Feedback <input id="gradeFeedback" placeholder="Optional comment" /></label>
+        </div>
+        <p class="form-status" id="gradeError"></p>
+        <div class="btn-row">
+          <button type="button" class="btn btn-ghost" id="cancelGradeBtn">Cancel</button>
+          <button type="button" class="btn btn-primary" id="saveGradeBtn">Submit score</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="js/api.js?v=7"></script>
+    <script src="js/teacher-app.js?v=9"></script>
+  </body>
+</html>

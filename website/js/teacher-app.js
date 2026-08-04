@@ -1,0 +1,1450 @@
+/* Scholaxia Teacher website — full desktop/app feature set */
+(function () {
+  var api = window.ScholaxiaAPI;
+  if (!api || typeof api.requireAuth !== "function") return;
+  if (!api.requireAuth(["teacher", "admin"])) return;
+
+  var TITLES = {
+    live: "Live Classes",
+    materials: "Materials",
+    exams: "Exams",
+    students: "Students",
+    grading: "Grading",
+    community: "Community",
+    ai: "Teacher AI",
+    profile: "Profile",
+  };
+
+  var pageHistory = ["live"];
+  var currentPage = "live";
+  var hostBusy = false;
+  var gradeSubmissionId = null;
+  var announceChannelId = null;
+  var shell = document.getElementById("teacherShell");
+
+  function $(id) {
+    return document.getElementById(id);
+  }
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function formatDT(iso) {
+    if (!iso) return "—";
+    try {
+      var d = new Date(iso);
+      if (isNaN(d.getTime())) return String(iso);
+      return d.toLocaleString();
+    } catch (e) {
+      return String(iso);
+    }
+  }
+
+  function subjects() {
+    try {
+      var list = JSON.parse(localStorage.getItem("sia_teacher_subjects") || "[]");
+      if (Array.isArray(list) && list.length) return list;
+    } catch (e) {}
+    return ["Mathematics", "Physics", "Chemistry", "English"];
+  }
+
+  async function uploadFile(file) {
+    var fd = new FormData();
+    fd.append("file", file);
+    return api.apiUpload("/api/v1/community/upload", fd);
+  }
+
+  function closeMobileNav() {
+    document.body.classList.remove("nav-open");
+    var bd = $("sidebarBackdrop");
+    if (bd) bd.hidden = true;
+  }
+
+  function openMobileNav() {
+    document.body.classList.add("nav-open");
+    var bd = $("sidebarBackdrop");
+    if (bd) bd.hidden = false;
+  }
+
+  function updateBackBtn() {
+    var btn = $("backBtn");
+    if (!btn) return;
+    btn.hidden = !(pageHistory.length > 1 || currentPage !== "live");
+  }
+
+  function showPage(id, opts) {
+    id = String(id || "").trim();
+    if (!TITLES[id]) return;
+    opts = opts || {};
+    if (!opts.replace && currentPage !== id) {
+      pageHistory.push(id);
+      if (pageHistory.length > 24) pageHistory.shift();
+    }
+    currentPage = id;
+    document.querySelectorAll(".page").forEach(function (p) {
+      p.classList.toggle("is-on", p.id === "page-" + id);
+    });
+    document.querySelectorAll(".nav-btn").forEach(function (b) {
+      b.classList.toggle("is-active", b.getAttribute("data-page") === id);
+    });
+    if ($("pageTitle")) $("pageTitle").textContent = TITLES[id];
+    updateBackBtn();
+    closeMobileNav();
+
+    try {
+      if (id === "live") {
+        setDefaultSchedule();
+        loadLive();
+        loadStudentPickers();
+        loadSchoolGroups();
+      } else if (id === "materials") loadMaterials();
+      else if (id === "exams") loadExams();
+      else if (id === "students") loadStudents();
+      else if (id === "grading") loadGrading();
+      else if (id === "community") loadCommunity();
+      else if (id === "ai") initAI();
+      else if (id === "profile") loadProfile();
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  window.teacherShowPage = showPage;
+
+  function goBack() {
+    if (pageHistory.length > 1) {
+      pageHistory.pop();
+      showPage(pageHistory[pageHistory.length - 1] || "live", { replace: true });
+      return;
+    }
+    if (currentPage !== "live") showPage("live", { replace: true });
+  }
+
+  function setUserChip(name, email) {
+    var first = (name || "Teacher").split(" ")[0];
+    var letter = first.charAt(0).toUpperCase() || "T";
+    if ($("userName")) $("userName").textContent = first;
+    if ($("userAv")) $("userAv").textContent = letter;
+    if ($("userEmail")) $("userEmail").textContent = email || "";
+    if ($("profileName")) $("profileName").textContent = name || first;
+    if ($("profileAv")) $("profileAv").textContent = letter;
+  }
+
+  function setDefaultSchedule() {
+    var d = new Date();
+    var pad = function (n) {
+      return String(n).padStart(2, "0");
+    };
+    if ($("hostDate") && !$("hostDate").value) {
+      $("hostDate").value = d.toISOString().slice(0, 10);
+    }
+    if ($("hostStart") && !$("hostStart").value) {
+      $("hostStart").value = pad(d.getHours()) + ":" + pad(d.getMinutes());
+    }
+    if ($("hostEnd") && !$("hostEnd").value) {
+      var end = new Date(d.getTime() + 60 * 60 * 1000);
+      $("hostEnd").value = pad(end.getHours()) + ":" + pad(end.getMinutes());
+    }
+  }
+
+  function onVisibilityChange() {
+    var vis = (document.querySelector('input[name="host-visibility"]:checked') || {}).value || "public";
+    if ($("hostPrivateWrap")) $("hostPrivateWrap").hidden = vis !== "private";
+    if ($("hostSchoolWrap")) $("hostSchoolWrap").hidden = vis !== "school_group";
+  }
+
+  function getHostPayload(goLiveNow) {
+    var title = (($("hostTitle") && $("hostTitle").value) || "").trim();
+    var subject = (($("hostSubject") && $("hostSubject").value) || "").trim();
+    var date = ($("hostDate") && $("hostDate").value) || "";
+    var startTime = ($("hostStart") && $("hostStart").value) || "";
+    var endTime = ($("hostEnd") && $("hostEnd").value) || "";
+    var duration = parseInt(($("hostDuration") && $("hostDuration").value) || "60", 10) || 60;
+    if (!title || !subject) throw new Error("Title and subject are required.");
+
+    var vis = (document.querySelector('input[name="host-visibility"]:checked') || {}).value || "public";
+    var body = {
+      title: title,
+      subject: subject,
+      duration_minutes: duration,
+      go_live_now: !!goLiveNow,
+      visibility: vis,
+    };
+
+    if (vis === "private") {
+      var sel = $("hostInvitedStudents");
+      var invited = sel
+        ? Array.prototype.slice.call(sel.selectedOptions).map(function (o) {
+            return o.value;
+          }).filter(Boolean)
+        : [];
+      var emailRaw = (($("hostInviteEmails") && $("hostInviteEmails").value) || "").trim();
+      var emails = emailRaw
+        ? emailRaw.split(/[\n,;]+/).map(function (e) { return e.trim().toLowerCase(); }).filter(Boolean)
+        : [];
+      if (!invited.length && !emails.length) {
+        throw new Error("Invite at least one student by email (or select an assigned student).");
+      }
+      if (invited.length) body.invited_student_ids = invited;
+      if (emails.length) body.invited_student_emails = emails;
+    }
+    if (vis === "school_group") {
+      var gid = ($("hostSchoolGroup") && $("hostSchoolGroup").value) || "";
+      if (!gid) throw new Error("Select a school group.");
+      body.school_group_id = gid;
+    }
+
+    function parseDT(dateStr, timeStr) {
+      if (!dateStr || !timeStr) return null;
+      var d = new Date(dateStr + "T" + timeStr);
+      return isNaN(d.getTime()) ? null : d;
+    }
+
+    if (!goLiveNow) {
+      if (!date || !startTime) throw new Error("Pick a date and start time to schedule.");
+      var startDt = parseDT(date, startTime);
+      if (!startDt) throw new Error("Invalid date or start time.");
+      body.start_time = startDt.toISOString();
+      if (endTime) {
+        var endDt = parseDT(date, endTime);
+        if (!endDt) throw new Error("Invalid end time.");
+        if (endDt <= startDt) throw new Error("End time must be after start time.");
+        body.end_time = endDt.toISOString();
+      }
+    } else if (endTime && date) {
+      var liveEnd = parseDT(date, endTime);
+      if (liveEnd && liveEnd > new Date()) body.end_time = liveEnd.toISOString();
+    }
+    return body;
+  }
+
+  async function hostClass(goLiveNow) {
+    if (hostBusy) return;
+    hostBusy = true;
+    var err = $("hostError");
+    if (err) {
+      err.textContent = "";
+      err.className = "form-status";
+    }
+    var scheduleBtn = $("hostScheduleBtn");
+    var liveBtn = $("hostLiveBtn");
+    if (scheduleBtn) {
+      scheduleBtn.disabled = true;
+      if (!goLiveNow) scheduleBtn.textContent = "Scheduling…";
+    }
+    if (liveBtn) {
+      liveBtn.disabled = true;
+      if (goLiveNow) liveBtn.textContent = "Going live…";
+    }
+    try {
+      var body = getHostPayload(goLiveNow);
+      var created = await api.api("/api/v1/live-classes/", { method: "POST", body: body });
+      if ($("hostTitle")) $("hostTitle").value = "";
+      await loadLive();
+      if (goLiveNow && created && created.id) {
+        var code = created.join_code ? "\n\nAccess code for students: " + created.join_code : "";
+        if (confirm("Class is live!" + code + "\n\nOpen classroom now?")) {
+          enterClassroom(created.id, body.title, body.subject, created.end_time, true);
+        }
+      } else {
+        var schedCode = created && created.join_code ? "\nAccess code: " + created.join_code : "";
+        alert("Class scheduled successfully." + schedCode + "\nInvited students will see the code in their Live Class tab.");
+      }
+    } catch (e) {
+      if (err) {
+        err.textContent = e.message || "Could not host class.";
+        err.className = "form-status err";
+      }
+    } finally {
+      hostBusy = false;
+      if (scheduleBtn) {
+        scheduleBtn.disabled = false;
+        scheduleBtn.textContent = "Schedule class";
+      }
+      if (liveBtn) {
+        liveBtn.disabled = false;
+        liveBtn.textContent = "Go live now";
+      }
+    }
+  }
+
+  async function startClass(id) {
+    try {
+      await api.api("/api/v1/live-classes/" + encodeURIComponent(id) + "/start", { method: "POST" });
+      alert("Class started — students notified.");
+      loadLive();
+    } catch (e) {
+      alert(e.message || "Could not start class.");
+    }
+  }
+
+  async function endClass(id) {
+    try {
+      await api.api("/api/v1/live-classes/" + encodeURIComponent(id) + "/end", { method: "POST" });
+      loadLive();
+    } catch (e) {
+      alert(e.message || "Could not end class.");
+    }
+  }
+
+  async function enterClassroom(classId, title, subject, endTime, alreadyLive) {
+    try {
+      if (!alreadyLive) {
+        await api.api("/api/v1/live-classes/" + encodeURIComponent(classId) + "/start", {
+          method: "POST",
+        });
+      }
+      var token = await api.api("/api/v1/live-classes/" + encodeURIComponent(classId) + "/token");
+      if (!token) throw new Error("Could not get classroom token.");
+      var user = api.getUser();
+      localStorage.setItem(
+        "live_session",
+        JSON.stringify({
+          class_id: classId,
+          classId: classId,
+          room_id: token.channel_id,
+          channel_id: token.channel_id,
+          livekit_token: token.livekit_token || token.token,
+          livekit_url: token.livekit_url,
+          identity: token.identity,
+          teacher_id: token.teacher_id || token.identity,
+          can_publish: token.can_publish !== false,
+          title: title || "Live Class",
+          subject: subject || "",
+          teacher_name: user.name,
+          role: "teacher",
+          end_time: endTime || token.end_time || null,
+          already_live: !!alreadyLive,
+        })
+      );
+      window.location.href = "classroom.html";
+    } catch (e) {
+      alert(e.message || "Could not enter classroom.");
+    }
+  }
+
+  async function loadLive() {
+    var el = $("liveList");
+    if (!el) return;
+    el.innerHTML = '<div class="loading">Loading classes…</div>';
+    try {
+      var status = ($("liveFilter") && $("liveFilter").value) || "";
+      var url = "/api/v1/live-classes/?limit=50";
+      if (status) url += "&status=" + encodeURIComponent(status);
+      var rows = await api.api(url);
+      if (!Array.isArray(rows)) rows = rows.items || rows.classes || [];
+      var liveN = rows.filter(function (c) {
+        return c.is_live;
+      }).length;
+      var upN = rows.filter(function (c) {
+        return !c.is_live && c.status !== "ended" && c.status !== "past";
+      }).length;
+      if ($("statLive")) $("statLive").textContent = String(liveN);
+      if ($("statUpcoming")) $("statUpcoming").textContent = String(upN);
+      if (!rows.length) {
+        el.innerHTML = '<div class="empty">No classes yet. Schedule or go live above.</div>';
+        return;
+      }
+      el.innerHTML = rows
+        .map(function (c) {
+          var live = !!c.is_live;
+          var actions = live
+            ? '<button type="button" class="btn-sm" data-enter="' +
+              esc(c.id) +
+              '" data-title="' +
+              esc(c.title) +
+              '" data-subject="' +
+              esc(c.subject || "") +
+              '" data-end="' +
+              esc(c.end_time || "") +
+              '" data-live="1">Enter</button>' +
+              '<button type="button" class="btn-danger" data-end-class="' +
+              esc(c.id) +
+              '">End</button>'
+            : '<button type="button" class="btn-sm" data-start="' +
+              esc(c.id) +
+              '">Start</button>' +
+              '<button type="button" class="btn-sm" data-enter="' +
+              esc(c.id) +
+              '" data-title="' +
+              esc(c.title) +
+              '" data-subject="' +
+              esc(c.subject || "") +
+              '" data-end="' +
+              esc(c.end_time || "") +
+              '">Enter</button>';
+          return (
+            '<article class="item-card' +
+            (live ? " is-live" : "") +
+            '">' +
+            (live ? '<span class="badge live">LIVE</span>' : '<span class="badge muted">Scheduled</span>') +
+            "<h4>" +
+            esc(c.title || "Live class") +
+            "</h4>" +
+            '<p class="meta">' +
+            esc(c.subject || "") +
+            " · " +
+            esc(c.visibility || "public") +
+            (c.join_code ? ' · <code class="join-code">' + esc(c.join_code) + "</code>" : "") +
+            "</p>" +
+            '<p class="meta">' +
+            formatDT(c.start_time) +
+            "</p>" +
+            '<div class="actions">' +
+            actions +
+            "</div></article>"
+          );
+        })
+        .join("");
+    } catch (e) {
+      el.innerHTML = '<div class="empty">' + esc(e.message || "Could not load classes") + "</div>";
+    }
+  }
+
+  async function loadStudentPickers() {
+    try {
+      var rows = await api.api("/api/v1/live-classes/requests?status=approved").catch(function () {
+        return [];
+      });
+      if (!Array.isArray(rows) || !rows.length) {
+        rows = await api.api("/api/v1/live-classes/requests").catch(function () {
+          return [];
+        });
+      }
+      if (!Array.isArray(rows)) rows = [];
+      var opts = rows
+        .map(function (r) {
+          var id = r.student_id || r.user_id || r.id;
+          if (!id) return "";
+          return (
+            '<option value="' +
+            esc(String(id)) +
+            '">' +
+            esc(r.student_name || r.name || "Student") +
+            " — " +
+            esc(r.subject || "") +
+            "</option>"
+          );
+        })
+        .filter(Boolean)
+        .join("");
+      if ($("hostInvitedStudents")) {
+        $("hostInvitedStudents").innerHTML = opts || '<option value="" disabled>No assigned students</option>';
+      }
+      if ($("sgStudents")) {
+        $("sgStudents").innerHTML = opts || '<option value="" disabled>No assigned students</option>';
+      }
+    } catch (e) {
+      /* optional */
+    }
+  }
+
+  async function loadSchoolGroups() {
+    try {
+      var groups = await api.api("/api/v1/school-groups/mine");
+      if (!Array.isArray(groups)) groups = groups.items || [];
+      var sel = $("hostSchoolGroup");
+      if (sel) {
+        sel.innerHTML =
+          '<option value="">Select group</option>' +
+          groups
+            .map(function (g) {
+              return (
+                '<option value="' +
+                esc(g.id) +
+                '">' +
+                esc(g.name || g.group_name || "Group") +
+                (g.school_name ? " · " + esc(g.school_name) : "") +
+                "</option>"
+              );
+            })
+            .join("");
+      }
+      var list = $("schoolGroupsList");
+      if (list) {
+        list.innerHTML = groups.length
+          ? groups
+              .map(function (g) {
+                return (
+                  '<div class="item-card"><h4>' +
+                  esc(g.name || g.group_name || "Group") +
+                  '</h4><p class="meta">' +
+                  esc(g.school_name || "") +
+                  " · " +
+                  esc(String((g.student_ids || g.members || []).length)) +
+                  " students</p></div>"
+                );
+              })
+              .join("")
+          : '<div class="empty">No school groups yet.</div>';
+      }
+    } catch (e) {
+      if ($("hostSchoolGroup")) $("hostSchoolGroup").innerHTML = '<option value="">No groups</option>';
+      if ($("schoolGroupsList")) {
+        $("schoolGroupsList").innerHTML = '<div class="empty">' + esc(e.message || "Could not load groups") + "</div>";
+      }
+    }
+  }
+
+  async function createSchoolGroup() {
+    var school = (($("sgSchool") && $("sgSchool").value) || "").trim();
+    var name = (($("sgName") && $("sgName").value) || "").trim();
+    var sel = $("sgStudents");
+    var ids = sel
+      ? Array.prototype.slice.call(sel.selectedOptions).map(function (o) {
+          return o.value;
+        })
+      : [];
+    if (!school || !name) {
+      alert("Enter school name and group name.");
+      return;
+    }
+    try {
+      await api.api("/api/v1/school-groups/", {
+        method: "POST",
+        body: { school_name: school, name: name, student_ids: ids },
+      });
+      if ($("sgSchool")) $("sgSchool").value = "";
+      if ($("sgName")) $("sgName").value = "";
+      loadSchoolGroups();
+      alert("School group created.");
+    } catch (e) {
+      alert(e.message || "Could not create group.");
+    }
+  }
+
+  /* Materials */
+  function populateSubjectFilters() {
+    var subs = subjects();
+    var filter = $("matSubjectFilter");
+    if (filter) {
+      var cur = filter.value;
+      filter.innerHTML =
+        '<option value="">All subjects</option>' +
+        subs
+          .map(function (s) {
+            return '<option value="' + esc(s) + '">' + esc(s) + "</option>";
+          })
+          .join("");
+      if (cur) filter.value = cur;
+    }
+    ["matSubjectList", "texamSubjectList", "aiSubjectList"].forEach(function (id) {
+      var dl = $(id);
+      if (dl) {
+        dl.innerHTML = subs
+          .map(function (s) {
+            return '<option value="' + esc(s) + '">';
+          })
+          .join("");
+      }
+    });
+  }
+
+  function toggleMatInputs() {
+    var type = ($("matType") && $("matType").value) || "pdf";
+    var isLink = type === "link" || type === "video";
+    if ($("matFileWrap")) $("matFileWrap").hidden = isLink;
+    if ($("matLinkWrap")) $("matLinkWrap").hidden = !isLink;
+    var paid = ($("matAccess") && $("matAccess").value) === "paid";
+    if ($("matPriceWrap")) $("matPriceWrap").hidden = !paid;
+  }
+
+  async function loadMaterials() {
+    populateSubjectFilters();
+    var el = $("materialsList");
+    if (!el) return;
+    el.innerHTML = '<div class="loading">Loading materials…</div>';
+    try {
+      var mine = await api.api("/api/v1/materials/mine").catch(function () {
+        return [];
+      });
+      if (!Array.isArray(mine)) mine = mine.items || mine.materials || [];
+      var books = await api.api("/api/v1/library/teacher").catch(function () {
+        return [];
+      });
+      if (!Array.isArray(books)) books = books.books || books.items || [];
+
+      var subjectF = ($("matSubjectFilter") && $("matSubjectFilter").value) || "";
+      var typeF = ($("matTypeFilter") && $("matTypeFilter").value) || "";
+      var filtered = mine.filter(function (m) {
+        if (subjectF && String(m.subject || "") !== subjectF) return false;
+        if (typeF && String(m.material_type || m.type || "") !== typeF) return false;
+        return true;
+      });
+
+      if ($("materialsStats")) {
+        $("materialsStats").innerHTML =
+          '<span class="stat-pill">' +
+          filtered.length +
+          " materials</span>" +
+          (books.length ? '<span class="stat-pill">' + books.length + " library books</span>" : "");
+      }
+
+      var cards = filtered.map(function (m) {
+        return (
+          '<article class="item-card"><span class="badge muted">' +
+          esc(m.material_type || m.type || "file") +
+          "</span><h4>" +
+          esc(m.title) +
+          '</h4><p class="meta">' +
+          esc(m.subject || "") +
+          (m.is_free === false ? " · Paid" : " · Free") +
+          "</p>" +
+          (m.description ? '<p class="meta">' + esc(m.description) + "</p>" : "") +
+          '<div class="actions">' +
+          (m.file_url
+            ? '<a class="btn-sm" href="' + esc(m.file_url) + '" target="_blank" rel="noopener">Open</a>'
+            : "") +
+          '<button type="button" class="btn-danger" data-del-mat="' +
+          esc(m.id) +
+          '">Delete</button></div></article>'
+        );
+      });
+
+      books.forEach(function (b) {
+        cards.push(
+          '<article class="item-card"><span class="badge ok">Library</span><h4>' +
+            esc(b.title || "Book") +
+            '</h4><p class="meta">' +
+            esc(b.subject || "") +
+            '</p><div class="actions"><button type="button" class="btn-sm" data-open-book="' +
+            esc(b.id) +
+            '">Read</button></div></article>'
+        );
+      });
+
+      el.innerHTML = cards.length ? cards.join("") : '<div class="empty">No materials yet. Add one to get started.</div>';
+    } catch (e) {
+      el.innerHTML = '<div class="empty">' + esc(e.message || "Could not load materials") + "</div>";
+    }
+  }
+
+  async function saveMaterial() {
+    var err = $("matError");
+    if (err) {
+      err.textContent = "";
+      err.className = "form-status";
+    }
+    var title = (($("matTitle") && $("matTitle").value) || "").trim();
+    var subject = (($("matSubject") && $("matSubject").value) || "").trim();
+    var type = ($("matType") && $("matType").value) || "pdf";
+    var desc = (($("matDesc") && $("matDesc").value) || "").trim();
+    var access = ($("matAccess") && $("matAccess").value) || "free";
+    var isFree = access !== "paid";
+    var price = parseFloat(($("matPrice") && $("matPrice").value) || "0") || 0;
+    if (!title || !subject) {
+      if (err) {
+        err.textContent = "Title and subject are required.";
+        err.className = "form-status err";
+      }
+      return;
+    }
+    if (!isFree && price < 100) {
+      if (err) {
+        err.textContent = "Paid materials need a price of at least ₦100.";
+        err.className = "form-status err";
+      }
+      return;
+    }
+    var btn = $("saveMaterialBtn");
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Saving…";
+    }
+    try {
+      var url = "";
+      if (type === "link" || type === "video") {
+        url = (($("matUrl") && $("matUrl").value) || "").trim();
+        if (!url) throw new Error("Enter a URL for this material.");
+      } else {
+        var fileInput = $("matFile");
+        if (!fileInput || !fileInput.files || !fileInput.files[0]) throw new Error("Choose a file to upload.");
+        var uploaded = await uploadFile(fileInput.files[0]);
+        url = uploaded.file_url;
+        if (uploaded.file_type === "pdf") type = "pdf";
+        else if (uploaded.file_type === "doc") type = "doc";
+        else if (uploaded.file_type === "image") type = "image";
+      }
+      await api.api("/api/v1/materials/", {
+        method: "POST",
+        body: {
+          title: title,
+          subject: subject,
+          material_type: type,
+          file_url: url,
+          description: desc || null,
+          is_free: isFree,
+          price: isFree ? 0 : price,
+        },
+      });
+      $("materialModal").hidden = true;
+      loadMaterials();
+    } catch (e) {
+      if (err) {
+        err.textContent = e.message || "Save failed.";
+        err.className = "form-status err";
+      }
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "Save material";
+      }
+    }
+  }
+
+  /* Exams */
+  function toLocalDatetimeInput(d) {
+    var pad = function (n) {
+      return String(n).padStart(2, "0");
+    };
+    return (
+      d.getFullYear() +
+      "-" +
+      pad(d.getMonth() + 1) +
+      "-" +
+      pad(d.getDate()) +
+      "T" +
+      pad(d.getHours()) +
+      ":" +
+      pad(d.getMinutes())
+    );
+  }
+
+  function initExamForm() {
+    populateSubjectFilters();
+    var now = new Date();
+    if ($("texamStart") && !$("texamStart").value) $("texamStart").value = toLocalDatetimeInput(now);
+    if ($("texamEnd") && !$("texamEnd").value) {
+      $("texamEnd").value = toLocalDatetimeInput(new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000));
+    }
+    if ($("texamSubject") && !$("texamSubject").value && subjects()[0]) {
+      $("texamSubject").value = subjects()[0];
+    }
+  }
+
+  function downloadExamTemplate() {
+    var sample = {
+      title: "Mathematics — Week 4 test",
+      subject: "Mathematics",
+      duration_minutes: 30,
+      questions: [
+        {
+          question_text: "What is 15% of 200?",
+          option_a: "25",
+          option_b: "30",
+          option_c: "35",
+          option_d: "40",
+          correct_option: "B",
+          explanation: "15/100 × 200 = 30",
+          topic: "Percentages",
+        },
+        {
+          question_text: "Solve: 2x + 5 = 17",
+          option_a: "x = 5",
+          option_b: "x = 6",
+          option_c: "x = 7",
+          option_d: "x = 8",
+          correct_option: "B",
+          topic: "Algebra",
+        },
+      ],
+    };
+    var blob = new Blob([JSON.stringify(sample, null, 2)], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "scholaxia-exam-template.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function publishExam() {
+    var err = $("texamError");
+    if (err) {
+      err.textContent = "";
+      err.className = "form-status";
+    }
+    var title = (($("texamTitle") && $("texamTitle").value) || "").trim();
+    var subject = (($("texamSubject") && $("texamSubject").value) || "").trim();
+    var duration = parseInt(($("texamDuration") && $("texamDuration").value) || "30", 10) || 30;
+    var startVal = ($("texamStart") && $("texamStart").value) || "";
+    var endVal = ($("texamEnd") && $("texamEnd").value) || "";
+    var fileInput = $("texamFile");
+    if (!title || !subject) {
+      if (err) {
+        err.textContent = "Title and subject are required.";
+        err.className = "form-status err";
+      }
+      return;
+    }
+    if (!fileInput || !fileInput.files || !fileInput.files[0]) {
+      if (err) {
+        err.textContent = "Choose a JSON questions file.";
+        err.className = "form-status err";
+      }
+      return;
+    }
+    var btn = $("texamPublishBtn");
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Publishing…";
+    }
+    try {
+      var text = await fileInput.files[0].text();
+      var data = JSON.parse(text);
+      var questions = Array.isArray(data) ? data : data.questions || [];
+      if (!questions.length) throw new Error("The JSON file has no questions.");
+      await api.api("/api/v1/cbt/school-exams", {
+        method: "POST",
+        body: {
+          title: title || data.title,
+          subject: subject || data.subject,
+          duration_minutes: data.duration_minutes || duration,
+          scheduled_start: startVal ? new Date(startVal).toISOString() : new Date().toISOString(),
+          scheduled_end: endVal
+            ? new Date(endVal).toISOString()
+            : new Date(Date.now() + 14 * 86400000).toISOString(),
+          questions: questions,
+          camera_required: false,
+          ai_locked: true,
+          block_minimize: true,
+        },
+      });
+      fileInput.value = "";
+      if ($("texamFileName")) $("texamFileName").textContent = "Choose JSON file";
+      var drop = fileInput.closest(".file-drop");
+      if (drop) drop.classList.remove("has-file");
+      alert("Exam published! Students were notified.");
+      loadExams();
+    } catch (e) {
+      if (err) {
+        err.textContent = e.message || "Publish failed.";
+        err.className = "form-status err";
+      }
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "Publish exam";
+      }
+    }
+  }
+
+  async function loadExamResults(examId, panel) {
+    if (!panel) return;
+    panel.hidden = false;
+    panel.innerHTML = '<div class="loading">Loading scores…</div>';
+    try {
+      var data = await api.api("/api/v1/cbt/school-exams/" + encodeURIComponent(examId) + "/results");
+      var rows = (data && data.results) || [];
+      if (!rows.length) {
+        panel.innerHTML = '<p class="meta">No submissions yet.</p>';
+        return;
+      }
+      panel.innerHTML =
+        '<div class="exam-results"><table><thead><tr><th>Student</th><th>Score</th><th>%</th><th>Submitted</th></tr></thead><tbody>' +
+        rows
+          .map(function (r) {
+            return (
+              "<tr><td>" +
+              esc(r.student_name) +
+              "</td><td>" +
+              esc(String(r.score)) +
+              "</td><td>" +
+              esc(String(Math.round(r.percentage || 0))) +
+              "%</td><td>" +
+              esc(formatDT(r.submitted_at)) +
+              "</td></tr>"
+            );
+          })
+          .join("") +
+        "</tbody></table></div>";
+    } catch (e) {
+      panel.innerHTML = '<p class="form-status err">' + esc(e.message) + "</p>";
+    }
+  }
+
+  async function loadExams() {
+    initExamForm();
+    var el = $("examList");
+    if (!el) return;
+    el.innerHTML = '<div class="loading">Loading exams…</div>';
+    try {
+      var exams = await api.api("/api/v1/cbt/school-exams/mine");
+      if (!Array.isArray(exams)) exams = exams.exams || [];
+      if (!exams.length) {
+        el.innerHTML = '<div class="empty">No exams yet. Publish a JSON exam above.</div>';
+        return;
+      }
+      el.innerHTML = exams
+        .map(function (e) {
+          return (
+            '<article class="item-card"><span class="badge muted">' +
+            esc(String(e.duration_minutes || 0)) +
+            " min</span><h4>" +
+            esc(e.title) +
+            '</h4><p class="meta">' +
+            esc(e.subject) +
+            " · " +
+            esc(String(e.total_questions || 0)) +
+            " questions</p><p class='meta'>Open: " +
+            formatDT(e.scheduled_start) +
+            " — " +
+            formatDT(e.scheduled_end) +
+            '</p><div class="actions"><button type="button" class="btn-sm" data-exam-scores="' +
+            esc(e.id) +
+            '">View scores</button></div><div class="exam-results" id="examResults-' +
+            esc(e.id) +
+            '" hidden></div></article>'
+          );
+        })
+        .join("");
+    } catch (e) {
+      el.innerHTML = '<div class="empty">' + esc(e.message || "Could not load exams") + "</div>";
+    }
+  }
+
+  /* Students */
+  async function loadStudents() {
+    var el = $("studentsList");
+    if (!el) return;
+    el.innerHTML = '<div class="loading">Loading students…</div>';
+    try {
+      var rows = await api.api("/api/v1/live-classes/requests?status=approved");
+      if (!Array.isArray(rows) || !rows.length) {
+        rows = await api.api("/api/v1/live-classes/requests");
+      }
+      if (!Array.isArray(rows) || !rows.length) {
+        el.innerHTML =
+          '<div class="empty">No session requests yet. Host a <strong>Private</strong> class and invite students by email — no admin approval needed.</div>';
+        return;
+      }
+      el.innerHTML = rows
+        .map(function (r) {
+          return (
+            '<article class="item-card"><h4>' +
+            esc(r.student_name || "Student") +
+            '</h4><p class="meta">' +
+            esc(r.subject || "") +
+            " · " +
+            esc(r.topic || r.message || "Live session") +
+            '</p><p class="meta">' +
+            formatDT(r.preferred_time || r.created_at) +
+            ' · <span class="badge ok">' +
+            esc(r.status || "approved") +
+            '</span></p><div class="actions"><button type="button" class="btn-sm" data-host-for="' +
+            esc(r.subject || "") +
+            '" data-topic="' +
+            esc(r.topic || r.message || "Live session") +
+            '">Host class</button></div></article>'
+          );
+        })
+        .join("");
+    } catch (e) {
+      el.innerHTML = '<div class="empty">' + esc(e.message || "Could not load students") + "</div>";
+    }
+  }
+
+  /* Grading */
+  async function loadGrading() {
+    var el = $("gradingList");
+    if (!el) return;
+    el.innerHTML = '<div class="loading">Loading submissions…</div>';
+    try {
+      var rows = await api.api("/api/v1/community/assignments/pending");
+      if (!Array.isArray(rows)) rows = rows.items || rows.submissions || [];
+      if (!rows.length) {
+        el.innerHTML = '<div class="empty">No pending submissions to grade.</div>';
+        return;
+      }
+      el.innerHTML = rows
+        .map(function (s) {
+          return (
+            '<article class="item-card"><h4>' +
+            esc(s.student_name || s.caption || "Student submission") +
+            '</h4><p class="meta">' +
+            esc(s.file_type || "file") +
+            (s.caption ? " · " + esc(s.caption) : "") +
+            '</p><p class="meta">' +
+            formatDT(s.submitted_at || s.created_at) +
+            '</p><div class="actions"><button type="button" class="btn-sm" data-grade="' +
+            esc(s.id) +
+            '" data-url="' +
+            esc(s.file_url || "") +
+            '" data-name="' +
+            esc(s.student_name || "Student") +
+            '" data-title="' +
+            esc(s.caption || "Assignment") +
+            '">Score</button>' +
+            (s.file_url
+              ? '<a class="btn-sm" href="' + esc(s.file_url) + '" target="_blank" rel="noopener">Open file</a>'
+              : "") +
+            "</div></article>"
+          );
+        })
+        .join("");
+    } catch (e) {
+      el.innerHTML = '<div class="empty">' + esc(e.message || "Could not load grading queue") + "</div>";
+    }
+  }
+
+  async function saveGrade() {
+    if (!gradeSubmissionId) return;
+    var err = $("gradeError");
+    if (err) {
+      err.textContent = "";
+      err.className = "form-status";
+    }
+    var score = parseFloat(($("gradeScore") && $("gradeScore").value) || "0");
+    var feedback = (($("gradeFeedback") && $("gradeFeedback").value) || "").trim();
+    try {
+      await api.api("/api/v1/community/assignments/" + encodeURIComponent(gradeSubmissionId) + "/result", {
+        method: "POST",
+        body: {
+          result_text: "Score: " + score + "/100",
+          result_score: String(score) + "/100",
+          result_feedback: feedback || null,
+        },
+      });
+      $("gradeModal").hidden = true;
+      gradeSubmissionId = null;
+      loadGrading();
+    } catch (e) {
+      if (err) {
+        err.textContent = e.message || "Could not save score.";
+        err.className = "form-status err";
+      }
+    }
+  }
+
+  /* Community */
+  async function loadCommunity() {
+    var el = $("announceList");
+    if (!el) return;
+    el.innerHTML = '<div class="loading">Loading…</div>';
+    try {
+      var channels = await api.api("/api/v1/community/channels");
+      var ann = (channels || []).find(function (c) {
+        return c.type === "teacher_announcement";
+      });
+      if (!ann) {
+        el.innerHTML = '<div class="empty">Announcement channel not found.</div>';
+        return;
+      }
+      announceChannelId = ann.id;
+      var posts = await api.api(
+        "/api/v1/community/posts?channel_id=" + encodeURIComponent(ann.id) + "&limit=30"
+      );
+      if (!Array.isArray(posts) || !posts.length) {
+        el.innerHTML = '<div class="empty">No announcements yet. Send one above.</div>';
+        return;
+      }
+      el.innerHTML = posts
+        .map(function (p) {
+          var media =
+            p.media_url && p.media_type === "audio"
+              ? '<audio controls src="' + esc(p.media_url) + '" style="width:100%;margin-top:0.4rem"></audio>'
+              : "";
+          return (
+            '<article class="item-card"><p class="meta">' +
+            formatDT(p.created_at) +
+            '</p><p style="font-weight:700;line-height:1.45">' +
+            esc(p.content || "Voice announcement") +
+            "</p>" +
+            media +
+            "</article>"
+          );
+        })
+        .join("");
+    } catch (e) {
+      el.innerHTML = '<div class="empty">' + esc(e.message || "Could not load announcements") + "</div>";
+    }
+  }
+
+  async function sendAnnouncement() {
+    var err = $("announceError");
+    if (err) {
+      err.textContent = "";
+      err.className = "form-status";
+    }
+    var text = (($("announceInput") && $("announceInput").value) || "").trim();
+    if (!text) {
+      if (err) {
+        err.textContent = "Write a message first.";
+        err.className = "form-status err";
+      }
+      return;
+    }
+    if (!announceChannelId) await loadCommunity();
+    if (!announceChannelId) {
+      if (err) {
+        err.textContent = "Announcement channel not ready.";
+        err.className = "form-status err";
+      }
+      return;
+    }
+    try {
+      await api.api("/api/v1/community/posts", {
+        method: "POST",
+        body: {
+          channel_id: announceChannelId,
+          content: text,
+          visibility: "everyone",
+        },
+      });
+      if ($("announceInput")) $("announceInput").value = "";
+      loadCommunity();
+      alert("Announcement sent — students were notified.");
+    } catch (e) {
+      if (err) {
+        err.textContent = e.message || "Send failed.";
+        err.className = "form-status err";
+      }
+    }
+  }
+
+  /* AI */
+  function initAI() {
+    populateSubjectFilters();
+    if ($("aiSubject") && !$("aiSubject").value && subjects()[0]) {
+      $("aiSubject").value = subjects()[0];
+    }
+  }
+
+  async function askAI() {
+    var err = $("aiError");
+    if (err) {
+      err.textContent = "";
+      err.className = "form-status";
+    }
+    var task = ($("aiTask") && $("aiTask").value) || "lesson_plan";
+    var subject = (($("aiSubject") && $("aiSubject").value) || "").trim();
+    var level = (($("aiLevel") && $("aiLevel").value) || "").trim();
+    var details = (($("aiDetails") && $("aiDetails").value) || "").trim();
+    if (!subject || !details) {
+      if (err) {
+        err.textContent = "Subject and details are required.";
+        err.className = "form-status err";
+      }
+      return;
+    }
+    var btn = $("aiAskBtn");
+    var wrap = $("aiResultWrap");
+    var out = $("aiResult");
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Working…";
+    }
+    if (wrap) wrap.hidden = false;
+    if (out) out.textContent = "Teacher AI is thinking…";
+    try {
+      var res = await api.api("/api/v1/teacher-ai/ask", {
+        method: "POST",
+        body: {
+          task: task,
+          subject: subject,
+          education_level: level || "SS2",
+          details: details,
+        },
+      });
+      if (out) out.textContent = (res && res.result) || "No response.";
+    } catch (e) {
+      if (err) {
+        err.textContent = e.message || "AI request failed.";
+        err.className = "form-status err";
+      }
+      if (wrap) wrap.hidden = true;
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "Ask Teacher AI";
+      }
+    }
+  }
+
+  /* Profile */
+  async function loadProfile() {
+    var user = api.getUser();
+    setUserChip(user.name, user.email);
+    if ($("profileText")) {
+      $("profileText").textContent =
+        (user.name || "Teacher") + " · " + (user.email || "") + " · Teacher";
+    }
+    try {
+      var me = await api.api("/api/v1/teachers/me");
+      if (me) {
+        if (me.full_name) {
+          localStorage.setItem("sia_name", me.full_name);
+          setUserChip(me.full_name, me.email || user.email);
+        }
+        if (me.subjects) localStorage.setItem("sia_teacher_subjects", JSON.stringify(me.subjects));
+        if ($("profileText")) {
+          $("profileText").textContent =
+            (me.full_name || user.name) +
+            " · " +
+            (me.email || user.email) +
+            " · Teacher" +
+            (me.subjects && me.subjects.length ? " · " + me.subjects.join(", ") : "");
+        }
+      }
+    } catch (e) {
+      /* keep session */
+    }
+  }
+
+  /* Events */
+  document.addEventListener("click", function (e) {
+    var t = e.target;
+    if (!t || !t.closest) return;
+
+    var nav = t.closest(".nav-btn, [data-page]");
+    if (nav && nav.getAttribute("data-page") && nav.classList.contains("nav-btn")) {
+      e.preventDefault();
+      showPage(nav.getAttribute("data-page"));
+      return;
+    }
+    var goto = t.closest("[data-goto]");
+    if (goto && goto.getAttribute("data-goto")) {
+      e.preventDefault();
+      showPage(goto.getAttribute("data-goto"));
+      return;
+    }
+    var start = t.closest("[data-start]");
+    if (start) {
+      startClass(start.getAttribute("data-start"));
+      return;
+    }
+    var endC = t.closest("[data-end-class]");
+    if (endC) {
+      endClass(endC.getAttribute("data-end-class"));
+      return;
+    }
+    var enter = t.closest("[data-enter]");
+    if (enter) {
+      enterClassroom(
+        enter.getAttribute("data-enter"),
+        enter.getAttribute("data-title"),
+        enter.getAttribute("data-subject"),
+        enter.getAttribute("data-end"),
+        enter.getAttribute("data-live") === "1"
+      );
+      return;
+    }
+    var del = t.closest("[data-del-mat]");
+    if (del) {
+      if (!confirm("Remove this material?")) return;
+      api
+        .api("/api/v1/materials/" + encodeURIComponent(del.getAttribute("data-del-mat")), {
+          method: "DELETE",
+        })
+        .then(loadMaterials)
+        .catch(function (err) {
+          alert(err.message);
+        });
+      return;
+    }
+    var book = t.closest("[data-open-book]");
+    if (book) {
+      api
+        .api("/api/v1/library/" + encodeURIComponent(book.getAttribute("data-open-book")) + "/read")
+        .then(function (data) {
+          if (data && data.read_url) window.open(data.read_url, "_blank", "noopener");
+        })
+        .catch(function (err) {
+          alert(err.message);
+        });
+      return;
+    }
+    var scores = t.closest("[data-exam-scores]");
+    if (scores) {
+      var id = scores.getAttribute("data-exam-scores");
+      var panel = $("examResults-" + id);
+      if (panel) {
+        if (panel.hidden) loadExamResults(id, panel);
+        else panel.hidden = true;
+      }
+      return;
+    }
+    var hostFor = t.closest("[data-host-for]");
+    if (hostFor) {
+      showPage("live");
+      if ($("hostSubject")) $("hostSubject").value = hostFor.getAttribute("data-host-for") || "";
+      if ($("hostTitle")) $("hostTitle").value = hostFor.getAttribute("data-topic") || "";
+      return;
+    }
+    var grade = t.closest("[data-grade]");
+    if (grade) {
+      gradeSubmissionId = grade.getAttribute("data-grade");
+      if ($("gradeMeta")) {
+        $("gradeMeta").textContent =
+          (grade.getAttribute("data-name") || "Student") +
+          " · " +
+          (grade.getAttribute("data-title") || "Assignment");
+      }
+      var url = grade.getAttribute("data-url") || "";
+      if ($("gradePreview")) {
+        $("gradePreview").innerHTML = url
+          ? url.match(/\.(png|jpe?g|gif|webp)$/i)
+            ? '<img src="' + esc(url) + '" alt="Submission" />'
+            : '<a href="' + esc(url) + '" target="_blank" rel="noopener">Open submission file</a>'
+          : "No file preview";
+      }
+      if ($("gradeError")) $("gradeError").textContent = "";
+      $("gradeModal").hidden = false;
+      return;
+    }
+    var chip = t.closest("#aiChips .chip");
+    if (chip) {
+      if ($("aiTask") && chip.getAttribute("data-task")) $("aiTask").value = chip.getAttribute("data-task");
+      if ($("aiDetails") && chip.getAttribute("data-prompt")) {
+        $("aiDetails").value = chip.getAttribute("data-prompt");
+        $("aiDetails").focus();
+      }
+    }
+  });
+
+  document.querySelectorAll('input[name="host-visibility"]').forEach(function (r) {
+    r.addEventListener("change", onVisibilityChange);
+  });
+
+  if ($("hostScheduleBtn")) $("hostScheduleBtn").addEventListener("click", function () { hostClass(false); });
+  if ($("hostLiveBtn")) $("hostLiveBtn").addEventListener("click", function () { hostClass(true); });
+  if ($("liveRefreshBtn")) $("liveRefreshBtn").addEventListener("click", loadLive);
+  if ($("liveFilter")) $("liveFilter").addEventListener("change", loadLive);
+  if ($("sgCreateBtn")) $("sgCreateBtn").addEventListener("click", createSchoolGroup);
+
+  if ($("openMaterialBtn")) {
+    $("openMaterialBtn").addEventListener("click", function () {
+      populateSubjectFilters();
+      toggleMatInputs();
+      if ($("matError")) $("matError").textContent = "";
+      if ($("matFile")) $("matFile").value = "";
+      if ($("matFileName")) $("matFileName").textContent = "Choose file";
+      var drop = $("matFile") && $("matFile").closest(".file-drop");
+      if (drop) drop.classList.remove("has-file");
+      $("materialModal").hidden = false;
+    });
+  }
+  if ($("closeMaterialBtn")) $("closeMaterialBtn").addEventListener("click", function () { $("materialModal").hidden = true; });
+  if ($("cancelMaterialBtn")) $("cancelMaterialBtn").addEventListener("click", function () { $("materialModal").hidden = true; });
+  if ($("saveMaterialBtn")) $("saveMaterialBtn").addEventListener("click", saveMaterial);
+  if ($("matType")) $("matType").addEventListener("change", toggleMatInputs);
+  if ($("matAccess")) $("matAccess").addEventListener("change", toggleMatInputs);
+  if ($("matRefreshBtn")) $("matRefreshBtn").addEventListener("click", loadMaterials);
+  if ($("matSubjectFilter")) $("matSubjectFilter").addEventListener("change", loadMaterials);
+  if ($("matTypeFilter")) $("matTypeFilter").addEventListener("change", loadMaterials);
+
+  if ($("texamTemplateBtn")) $("texamTemplateBtn").addEventListener("click", downloadExamTemplate);
+  if ($("texamPublishBtn")) $("texamPublishBtn").addEventListener("click", publishExam);
+  if ($("studentsRefreshBtn")) $("studentsRefreshBtn").addEventListener("click", loadStudents);
+  if ($("gradingRefreshBtn")) $("gradingRefreshBtn").addEventListener("click", loadGrading);
+  if ($("announceSendBtn")) $("announceSendBtn").addEventListener("click", sendAnnouncement);
+  if ($("aiAskBtn")) $("aiAskBtn").addEventListener("click", askAI);
+
+  if ($("closeGradeBtn")) $("closeGradeBtn").addEventListener("click", function () { $("gradeModal").hidden = true; });
+  if ($("cancelGradeBtn")) $("cancelGradeBtn").addEventListener("click", function () { $("gradeModal").hidden = true; });
+  if ($("saveGradeBtn")) $("saveGradeBtn").addEventListener("click", saveGrade);
+
+  if ($("logoutBtn")) {
+    $("logoutBtn").addEventListener("click", function () {
+      api.clearSession();
+      window.location.href = "auth.html";
+    });
+  }
+  if ($("mobileMenuBtn")) {
+    $("mobileMenuBtn").addEventListener("click", function () {
+      if (document.body.classList.contains("nav-open")) closeMobileNav();
+      else openMobileNav();
+    });
+  }
+  if ($("sidebarBackdrop")) $("sidebarBackdrop").addEventListener("click", closeMobileNav);
+  if ($("sidebarCloseBtn")) {
+    $("sidebarCloseBtn").addEventListener("click", function () {
+      if (window.matchMedia("(max-width: 900px)").matches) closeMobileNav();
+      else if (shell) {
+        shell.classList.add("sidebar-collapsed");
+        if ($("sidebarToggle")) $("sidebarToggle").textContent = "›";
+      }
+    });
+  }
+  if ($("sidebarToggle")) {
+    $("sidebarToggle").addEventListener("click", function () {
+      if (!shell) return;
+      var collapsed = !shell.classList.contains("sidebar-collapsed");
+      shell.classList.toggle("sidebar-collapsed", collapsed);
+      $("sidebarToggle").textContent = collapsed ? "›" : "‹";
+    });
+  }
+  if ($("backBtn")) $("backBtn").addEventListener("click", goBack);
+
+  function bindFileDrop(inputId, nameId) {
+    var input = $(inputId);
+    var nameEl = $(nameId);
+    if (!input || !nameEl) return;
+    var drop = input.closest(".file-drop");
+
+    function syncName() {
+      var file = input.files && input.files[0];
+      if (file) {
+        nameEl.textContent = file.name;
+        if (drop) drop.classList.add("has-file");
+      } else {
+        nameEl.textContent = inputId === "texamFile" ? "Choose JSON file" : "Choose file";
+        if (drop) drop.classList.remove("has-file");
+      }
+    }
+
+    input.addEventListener("change", syncName);
+
+    if (drop) {
+      ["dragenter", "dragover"].forEach(function (ev) {
+        drop.addEventListener(ev, function (e) {
+          e.preventDefault();
+          drop.classList.add("is-drag");
+        });
+      });
+      ["dragleave", "drop"].forEach(function (ev) {
+        drop.addEventListener(ev, function (e) {
+          e.preventDefault();
+          drop.classList.remove("is-drag");
+        });
+      });
+      drop.addEventListener("drop", function (e) {
+        var files = e.dataTransfer && e.dataTransfer.files;
+        if (!files || !files.length) return;
+        try {
+          input.files = files;
+        } catch (err) {
+          /* some browsers block setting files; click still works */
+        }
+        if (input.files && input.files.length) syncName();
+        else {
+          // Fallback: create DataTransfer
+          try {
+            var dt = new DataTransfer();
+            dt.items.add(files[0]);
+            input.files = dt.files;
+            syncName();
+          } catch (err2) {
+            nameEl.textContent = files[0].name;
+            drop.classList.add("has-file");
+          }
+        }
+      });
+    }
+  }
+
+  bindFileDrop("texamFile", "texamFileName");
+  bindFileDrop("matFile", "matFileName");
+
+  /* boot */
+  var user = api.getUser();
+  setUserChip(user.name, user.email);
+  loadProfile();
+  var hash = (location.hash || "").replace("#", "");
+  showPage(TITLES[hash] ? hash : "live", { replace: true });
+})();

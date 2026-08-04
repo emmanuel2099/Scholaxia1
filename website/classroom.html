@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; script-src-attr 'unsafe-inline'; connect-src 'self' https://scholaxia1.onrender.com wss://scholaxia1.onrender.com http://127.0.0.1:* wss://scholaxia-neyu04kd.livekit.cloud https://scholaxia-neyu04kd.livekit.cloud wss://*.livekit.cloud https://*.livekit.cloud; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self' blob: https: wss:; worker-src 'self' blob:;" />
+  <title>Live Classroom — Scholaxia</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/classroom.css" />
+  <link rel="stylesheet" href="css/responsive.css" />
+</head>
+<body>
+
+<div class="classroom-shell">
+  <div id="audio-unlock-banner" class="audio-unlock-banner hidden" role="alert">
+    <strong>Tap to hear audio</strong>
+    <button type="button" class="btn-sm" onclick="unlockClassAudio()">Enable sound</button>
+  </div>
+
+  <div id="classroom-toast" class="classroom-toast hidden" role="status" aria-live="polite"></div>
+
+  <div id="livekit-setup-banner" class="livekit-setup-banner hidden" role="alert">
+    <strong>Live video not connected.</strong>
+    <span id="livekit-setup-msg">Students cannot see your camera or screen until LiveKit is configured on the server.</span>
+    <button type="button" class="btn-sm" onclick="retryLiveKitConnect()">Retry video</button>
+  </div>
+
+  <header class="classroom-top">
+    <button type="button" class="btn-back" onclick="leaveClassroom()">&#8592; Leave</button>
+    <div class="classroom-title-wrap">
+      <span class="live-pill">LIVE</span>
+      <div>
+        <h1 id="cr-title">Live Class</h1>
+        <p id="cr-meta">—</p>
+      </div>
+    </div>
+    <span id="audience-badge" class="audience-badge">0 in class</span>
+    <button type="button" id="btn-save-class-top" class="btn-save-class-top student-only hidden" onclick="toggleSaveLive()" title="Save this class on your device">&#128190; Save class</button>
+    <span id="cr-status" class="cr-status">Connecting…</span>
+  </header>
+
+  <main class="classroom-layout">
+    <aside class="participants-panel" id="participants-panel">
+      <div class="participants-head">
+        <h2>Participants <span id="participants-count">(0)</span></h2>
+        <p id="participants-teacher-line" class="participants-sub">Teacher: —</p>
+        <p id="participants-students-line" class="participants-sub">Students online: 0</p>
+      </div>
+      <div id="student-self-panel" class="student-self-panel student-only hidden">
+        <p class="student-self-title">Your camera</p>
+        <div id="student-self-video" class="student-self-video"></div>
+        <p id="student-self-status" class="student-self-status">Camera is on</p>
+      </div>
+      <div id="participants-list" class="participants-list">
+        <p class="participants-empty">Waiting for participants…</p>
+      </div>
+      <div id="attendance-panel" class="attendance-panel host-only hidden">
+        <h3>Attendance</h3>
+        <div id="attendance-log" class="attendance-log"></div>
+      </div>
+      <div id="raise-hand-panel" class="raise-hand-panel host-only hidden">
+        <h3>Raised hands</h3>
+        <div id="raise-hand-list" class="raise-hand-list">
+          <p class="raise-hand-empty">No students waiting.</p>
+        </div>
+      </div>
+    </aside>
+
+    <section class="main-stage-wrap">
+      <div id="video-stage" class="video-stage">
+        <div id="video-local" class="video-tile local hidden"></div>
+        <div id="video-remote" class="video-remote"></div>
+        <div id="board-overlay" class="board-overlay hidden">
+          <canvas id="whiteboard" class="whiteboard-canvas"></canvas>
+          <div id="board-cursor" class="board-cursor hidden"></div>
+          <div id="board-toolbar" class="board-toolbar host-only hidden">
+            <div class="board-toolbar-row">
+              <label class="board-label" for="subject-keyboard">Subject keyboard</label>
+              <select id="subject-keyboard" onchange="renderSymbolPalette()">
+                <option value="mathematics">Mathematics</option>
+                <option value="physics">Physics</option>
+                <option value="chemistry">Chemistry</option>
+                <option value="english">English</option>
+                <option value="igbo">Igbo</option>
+                <option value="yoruba">Yoruba</option>
+                <option value="hausa">Hausa</option>
+              </select>
+              <button type="button" id="btn-board-type" class="vc-btn sm active" onclick="setBoardTool('type')">Type</button>
+              <button type="button" id="btn-board-draw" class="vc-btn sm" onclick="setBoardTool('draw')">Draw</button>
+              <button type="button" id="btn-board-erase" class="vc-btn sm" onclick="setBoardTool('erase')">Eraser</button>
+              <button type="button" class="vc-btn sm" onclick="pickBoardImage()">Add image</button>
+              <button type="button" class="vc-btn sm" onclick="clearBoard()">Clear</button>
+              <button type="button" class="vc-btn sm" onclick="toggleBoard()">Close board</button>
+              <input type="file" id="board-image-input" class="hidden" accept="image/jpeg,image/png,image/webp" />
+            </div>
+            <div class="board-type-row">
+              <input type="text" id="board-type-input" class="board-type-input"
+                placeholder="Type here — students see it live on the board. Press Enter for new line."
+                autocomplete="off" />
+            </div>
+            <div id="symbol-palette" class="symbol-palette"></div>
+            <p id="board-hint" class="board-hint">Type in the box, tap symbols, or use Add image to show a picture on the board for everyone.</p>
+          </div>
+        </div>
+        <div id="video-placeholder" class="video-placeholder">
+          <div class="ph-icon">&#127909;</div>
+          <p id="video-placeholder-text">Class is live — connecting…</p>
+        </div>
+      </div>
+    </section>
+
+    <aside id="chat-drawer" class="chat-drawer">
+      <div class="chat-drawer-head">
+        <h2>Class chat</h2>
+        <button type="button" class="btn-sm" onclick="toggleChatDrawer(false)">&#10005;</button>
+      </div>
+      <div id="chat-log" class="chat-log"></div>
+      <form class="chat-form" onsubmit="sendChatMessage(event)">
+        <input type="text" id="chat-input" placeholder="Say something to the class…" autocomplete="off" />
+        <button type="submit">Send</button>
+      </form>
+    </aside>
+  </main>
+
+  <footer class="classroom-toolbar">
+    <div class="toolbar-left">
+      <div class="mic-wrap">
+        <button type="button" id="btn-mic" class="vc-btn toolbar-btn" onclick="toggleMic()" title="Microphone">&#127908; <span>Mic</span></button>
+        <div id="mic-meter" class="mic-meter hidden" title="Mic level"><div id="mic-meter-fill" class="mic-meter-fill"></div></div>
+      </div>
+      <button type="button" id="btn-cam" class="vc-btn toolbar-btn" onclick="toggleCam()" title="Camera">&#128247; <span>Camera</span></button>
+      <button type="button" id="btn-chat" class="vc-btn toolbar-btn" onclick="toggleChatDrawer()" title="Chat">&#128172; <span>Chat</span></button>
+      <button type="button" class="vc-btn toolbar-btn" onclick="raiseHand()" title="Raise hand">&#9995; <span>Raise hand</span></button>
+      <button type="button" id="btn-share" class="vc-btn toolbar-btn host-only hidden" onclick="toggleScreenShare()" title="Share screen">&#128187; <span>Share screen</span></button>
+      <button type="button" id="btn-board" class="vc-btn toolbar-btn host-only hidden" onclick="toggleBoard()" title="Teaching board">&#128221; <span>Board</span></button>
+      <button type="button" id="btn-save-live" class="vc-btn toolbar-btn save-class-btn student-only hidden" onclick="toggleSaveLive()" title="Record and save">&#128190; <span>Save</span></button>
+    </div>
+    <div class="toolbar-right">
+      <span id="mic-live-badge" class="mic-live-badge hidden">Students hear you</span>
+      <span id="save-live-badge" class="save-live-badge student-only hidden">Recording…</span>
+      <button type="button" class="btn-sm host-only hidden" id="btn-give-access-all" onclick="giveAccessToWaitingStudents()">Allow raised hands to speak</button>
+    </div>
+  </footer>
+</div>
+
+<script src="js/api.js?v=5"></script>
+<script src="js/classroom-bridge.js?v=1"></script>
+<script src="js/saved-live.js?v=1"></script>
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2.9.3/dist/livekit-client.umd.js"></script>
+<script src="js/classroom-livekit.js?v=1"></script>
+<script src="js/classroom.js?v=1"></script>
+</body>
+</html>
