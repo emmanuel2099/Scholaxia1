@@ -231,12 +231,18 @@ async def firebase_phone_auth(payload: FirebaseAuthRequest, db: AsyncSession = D
     if role == "kind" and payload.age_group not in ("3-5", "6-8", "9-12"):
         raise HTTPException(status_code=400, detail="age_group must be 3-5, 6-8, or 9-12")
 
+    role_map = {
+        "student": UserRole.student,
+        "kind": UserRole.kind,
+        "teacher": UserRole.teacher,
+        "vendor": UserRole.vendor,
+    }
     user = User(
         email=phone_to_email(phone),
         phone=phone,
         hashed_password=hash_password(password),
         full_name=full_name,
-        role=UserRole.kind if role == "kind" else UserRole.student,
+        role=role_map.get(role, UserRole.student),
         is_verified=True,
         oauth_provider="firebase_phone",
         oauth_id=phone,
@@ -252,6 +258,26 @@ async def firebase_phone_auth(payload: FirebaseAuthRequest, db: AsyncSession = D
                 grade_level=payload.grade_level,
                 parent_email=payload.parent_email,
                 favorite_subjects=[],
+            )
+        )
+    elif role == "teacher":
+        db.add(
+            TeacherProfile(
+                user_id=user.id,
+                subjects=[],
+                location=None,
+                bio="",
+                is_approved=False,
+            )
+        )
+    elif role == "vendor":
+        db.add(
+            VendorProfile(
+                user_id=user.id,
+                business_name=full_name,
+                location=None,
+                categories=[],
+                is_approved=False,
             )
         )
     else:
@@ -308,8 +334,11 @@ async def signup_start(payload: SignupStartRequest, db: AsyncSession = Depends(g
     """
     email = payload.email.lower().strip()
     role = (payload.role or "student").strip().lower()
-    if role not in ("student", "kind"):
-        raise HTTPException(status_code=400, detail="role must be student or kind")
+    if role not in ("student", "kind", "teacher", "vendor"):
+        raise HTTPException(
+            status_code=400,
+            detail="role must be student, kind, teacher, or vendor",
+        )
     if len(payload.password) < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
     if role == "kind" and payload.age_group not in ("3-5", "6-8", "9-12"):
