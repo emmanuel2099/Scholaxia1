@@ -445,6 +445,7 @@ class ApiService {
     String? parentEmail,
     String? phone,
     String? location,
+    String? address,
     List<String>? subjects,
     String? businessName,
     List<String>? categories,
@@ -464,6 +465,7 @@ class ApiService {
           'parent_email': parentEmail,
         if (phone != null && phone.isNotEmpty) 'phone': phone,
         if (location != null && location.isNotEmpty) 'location': location,
+        if (address != null && address.isNotEmpty) 'address': address,
         if (subjects != null && subjects.isNotEmpty) 'subjects': subjects,
         if (businessName != null && businessName.isNotEmpty)
           'business_name': businessName,
@@ -1356,6 +1358,55 @@ class ApiService {
       headers: await _authHeaders(),
     );
     return _parseList(res);
+  }
+
+  Future<List<dynamic>> vendorBookings() async {
+    final res = await _cachedGet(
+      _uri(ApiEndpoints.vendorMarketplaceBookings),
+      headers: await _authHeaders(),
+    );
+    return _parseList(res);
+  }
+
+  Future<Map<String, dynamic>> vendorUpdateBookingStatus({
+    required String bookingId,
+    required String status,
+  }) async {
+    final res = await _onlinePatch(
+      _uri(
+        ApiEndpoints.vendorMarketplaceBookingStatus(bookingId),
+        {'status': status},
+      ),
+      headers: await _authHeaders(),
+    );
+    return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> vendorGetKyc() async {
+    final res = await _cachedGet(
+      _uri(ApiEndpoints.vendorMarketplaceKyc),
+      headers: await _authHeaders(),
+    );
+    return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> vendorSubmitKyc({
+    required String fullName,
+    required String location,
+    required String address,
+    required String nin,
+  }) async {
+    final res = await _onlinePost(
+      _uri(ApiEndpoints.vendorMarketplaceKyc),
+      headers: await _authHeaders(),
+      body: jsonEncode({
+        'full_name': fullName,
+        'location': location,
+        'address': address,
+        'nin': nin,
+      }),
+    );
+    return _parseMap(res);
   }
 
   Future<Map<String, dynamic>> vendorUpdateOrderTracking({

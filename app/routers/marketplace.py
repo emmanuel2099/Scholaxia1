@@ -19,8 +19,8 @@ from app.models.marketplace import (
     MarketplaceOrderItem,
     MARKETPLACE_CATEGORIES,
 )
-from app.models.user import User
-from app.services.notification_service import send_admins_notification
+from app.models.user import User, VendorProfile
+from app.services.notification_service import send_admins_notification, send_user_notification
 from app.services.media_service import upload_file
 
 router = APIRouter(prefix="/marketplace", tags=["Marketplace"])
@@ -68,6 +68,7 @@ def _booking_dict(b: MarketplaceBooking, product: Optional[MarketplaceProduct] =
         "id": str(b.id),
         "product_id": str(b.product_id),
         "product_title": product.title if product else None,
+        "product_description": product.description if product else None,
         "product_price": float(product.price) if product else None,
         "user_id": str(b.user_id) if b.user_id else None,
         "full_name": b.full_name,
@@ -78,6 +79,19 @@ def _booking_dict(b: MarketplaceBooking, product: Optional[MarketplaceProduct] =
         "status": b.status,
         "created_at": b.created_at.isoformat() if b.created_at else None,
     }
+
+
+async def _require_vendor_kyc(db: AsyncSession, user_id) -> VendorProfile:
+    result = await db.execute(select(VendorProfile).where(VendorProfile.user_id == user_id))
+    profile = result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=400, detail="Vendor profile not found. Complete registration first.")
+    if not profile.kyc_completed or not (profile.nin or "").strip():
+        raise HTTPException(
+            status_code=403,
+            detail="Complete KYC (NIN + address) before posting products.",
+        )
+    return profile
 
 
 @router.get("/categories")
@@ -168,7 +182,7 @@ async def book_product(
     current_user: dict = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ):
-    """Student books a product — admin is notified to chat/follow up."""
+    """Student books a product — vendor (and admin) are notified. Payment is arranged in chat."""
     result = await db.execute(
         select(MarketplaceProduct).where(
             MarketplaceProduct.id == product_id,
@@ -194,26 +208,37 @@ async def book_product(
     await db.flush()
 
     price_label = f"₦{product.price:,.0f}" if product.price else "Price on request"
+    notif_body = (
+        f"{booking.full_name} wants {product.title} ({price_label}). "
+        f"WhatsApp: {booking.whatsapp} · Phone: {booking.phone} · {booking.email}"
+    )
+    notif_data = {
+        "type": "marketplace_booking",
+        "booking_id": str(booking.id),
+        "product_id": str(product.id),
+        "whatsapp": booking.whatsapp,
+        "phone": booking.phone,
+        "email": booking.email,
+    }
+    if product.vendor_id:
+        await send_user_notification(
+            db,
+            str(product.vendor_id),
+            title=f"New booking: {product.title}",
+            body=notif_body,
+            notification_type="marketplace_booking",
+            data=notif_data,
+        )
     await send_admins_notification(
         db,
         title=f"Marketplace booking: {product.title}",
-        body=(
-            f"{booking.full_name} wants {product.title} ({price_label}). "
-            f"WhatsApp: {booking.whatsapp} · Phone: {booking.phone} · {booking.email}"
-        ),
+        body=notif_body,
         notification_type="announcement",
-        data={
-            "type": "marketplace_booking",
-            "booking_id": str(booking.id),
-            "product_id": str(product.id),
-            "whatsapp": booking.whatsapp,
-            "phone": booking.phone,
-            "email": booking.email,
-        },
+        data=notif_data,
     )
 
     return {
-        "message": "Booking submitted. Scholaxia will contact you on WhatsApp / phone.",
+        "message": "Booking submitted. The vendor will review your request and arrange payment in chat.",
         "booking": _booking_dict(booking, product),
     }
 
@@ -453,12 +478,168 @@ async def admin_update_booking_status(
 vendor_router = APIRouter(prefix="/vendor/marketplace", tags=["Vendor — Marketplace"])
 
 
+class VendorKycRequest(BaseModel):
+    full_name: str = Field(..., min_length=2, max_length=255)
+    location: str = Field(..., min_length=2, max_length=255)
+    address: str = Field(..., min_length=5, max_length=500)
+    nin: str = Field(..., min_length=11, max_length=11)
+
+
+@vendor_router.get("/kyc")
+async def vendor_get_kyc(
+    current_user: dict = Depends(require_vendor),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(VendorProfile, User)
+        .join(User, User.id == VendorProfile.user_id)
+        .where(VendorProfile.user_id == current_user["sub"])
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Vendor profile not found")
+    profile, user = row
+    return {
+        "full_name": user.full_name,
+        "business_name": profile.business_name,
+        "location": profile.location,
+        "address": profile.address,
+        "nin": profile.nin,
+        "kyc_completed": bool(profile.kyc_completed and (profile.nin or "").strip()),
+        "phone": user.phone,
+        "email": user.email,
+    }
+
+
+@vendor_router.post("/kyc")
+async def vendor_submit_kyc(
+    payload: VendorKycRequest,
+    current_user: dict = Depends(require_vendor),
+    db: AsyncSession = Depends(get_db),
+):
+    nin = "".join(ch for ch in payload.nin.strip() if ch.isdigit())
+    if len(nin) != 11:
+        raise HTTPException(status_code=400, detail="NIN must be 11 digits")
+    result = await db.execute(
+        select(VendorProfile, User)
+        .join(User, User.id == VendorProfile.user_id)
+        .where(VendorProfile.user_id == current_user["sub"])
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Vendor profile not found")
+    profile, user = row
+    user.full_name = payload.full_name.strip()
+    profile.location = payload.location.strip()
+    profile.address = payload.address.strip()
+    profile.nin = nin
+    profile.kyc_completed = True
+    await db.flush()
+    return {
+        "message": "KYC saved. You can now post products.",
+        "kyc_completed": True,
+    }
+
+
+@vendor_router.get("/bookings")
+async def vendor_bookings(
+    current_user: dict = Depends(require_vendor),
+    db: AsyncSession = Depends(get_db),
+):
+    """Bookings for this vendor's products — shown on the Requests page."""
+    rows = (
+        await db.execute(
+            select(MarketplaceBooking, MarketplaceProduct)
+            .join(MarketplaceProduct, MarketplaceProduct.id == MarketplaceBooking.product_id)
+            .where(MarketplaceProduct.vendor_id == current_user["sub"])
+            .order_by(MarketplaceBooking.created_at.desc())
+        )
+    ).all()
+    out = []
+    for booking, product in rows:
+        out.append(
+            {
+                "kind": "booking",
+                "booking_id": str(booking.id),
+                "order_item_id": None,
+                "order_id": str(booking.id),
+                "buyer_name": booking.full_name,
+                "buyer_email": booking.email,
+                "buyer_whatsapp": booking.whatsapp,
+                "buyer_phone": booking.phone,
+                "contact_phone": booking.phone,
+                "product_title": product.title if product else None,
+                "product_description": product.description if product else None,
+                "quantity": 1,
+                "unit_price": float(product.price or 0) if product else 0,
+                "tracking_status": booking.status,
+                "tracking_note": booking.note,
+                "delivery_address": None,
+                "note": booking.note,
+                "created_at": booking.created_at.isoformat() if booking.created_at else None,
+            }
+        )
+    return out
+
+
+@vendor_router.patch("/bookings/{booking_id}/status")
+async def vendor_update_booking_status(
+    booking_id: str,
+    status: str = Query(...),
+    current_user: dict = Depends(require_vendor),
+    db: AsyncSession = Depends(get_db),
+):
+    """Approve → running (fulfillment starts). Reject closes the request."""
+    allowed = {"pending", "running", "rejected", "closed", "approved"}
+    new_status = status.strip().lower()
+    if new_status == "approved":
+        new_status = "running"
+    if new_status not in allowed:
+        raise HTTPException(status_code=400, detail="Invalid status")
+    result = await db.execute(
+        select(MarketplaceBooking, MarketplaceProduct)
+        .join(MarketplaceProduct, MarketplaceProduct.id == MarketplaceBooking.product_id)
+        .where(
+            MarketplaceBooking.id == booking_id,
+            MarketplaceProduct.vendor_id == current_user["sub"],
+        )
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    booking, product = row
+    booking.status = new_status
+    await db.flush()
+    if booking.user_id and new_status == "running":
+        await send_user_notification(
+            db,
+            str(booking.user_id),
+            title=f"Booking approved: {product.title}",
+            body=(
+                f"Your request for {product.title} was approved and is now running. "
+                "The vendor will contact you to arrange payment in chat."
+            ),
+            notification_type="marketplace_booking",
+            data={
+                "type": "marketplace_booking",
+                "booking_id": str(booking.id),
+                "status": new_status,
+            },
+        )
+    return {
+        "message": "Booking updated",
+        "booking_id": str(booking.id),
+        "status": booking.status,
+    }
+
+
 @vendor_router.post("/products", status_code=201)
 async def vendor_create_product(
     payload: ProductCreate,
     current_user: dict = Depends(require_vendor),
     db: AsyncSession = Depends(get_db),
 ):
+    await _require_vendor_kyc(db, current_user["sub"])
     cat = (payload.category or "gadgets").strip().lower()
     if cat not in MARKETPLACE_CATEGORIES:
         raise HTTPException(status_code=400, detail="Invalid category")
@@ -781,3 +962,35 @@ async def vendor_update_tracking(
     item.tracking_note = (tracking_note or "").strip() or None
     await db.flush()
     return {"message": "Tracking updated", "order_item_id": order_item_id, "tracking_status": item.tracking_status}
+
+
+@vendor_router.delete("/orders/{order_item_id}")
+async def vendor_delete_order_item(
+    order_item_id: str,
+    current_user: dict = Depends(require_vendor),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(MarketplaceOrderItem).where(
+            MarketplaceOrderItem.id == order_item_id,
+            MarketplaceOrderItem.vendor_id == current_user["sub"],
+        )
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Order item not found")
+    order_id = item.order_id
+    await db.delete(item)
+    await db.flush()
+    remaining = (
+        await db.execute(
+            select(MarketplaceOrderItem).where(MarketplaceOrderItem.order_id == order_id)
+        )
+    ).scalars().all()
+    if not remaining:
+        order_res = await db.execute(select(MarketplaceOrder).where(MarketplaceOrder.id == order_id))
+        order = order_res.scalar_one_or_none()
+        if order:
+            await db.delete(order)
+            await db.flush()
+    return {"message": "Order deleted", "order_item_id": order_item_id}

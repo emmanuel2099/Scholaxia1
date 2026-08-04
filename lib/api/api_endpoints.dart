@@ -207,6 +207,10 @@ class ApiEndpoints {
   static String vendorMarketplaceProduct(String id) =>
       '$_v1/vendor/marketplace/products/$id';
   static const String vendorMarketplaceOrders = '$_v1/vendor/marketplace/orders';
+  static const String vendorMarketplaceBookings = '$_v1/vendor/marketplace/bookings';
+  static String vendorMarketplaceBookingStatus(String bookingId) =>
+      '$_v1/vendor/marketplace/bookings/$bookingId/status';
+  static const String vendorMarketplaceKyc = '$_v1/vendor/marketplace/kyc';
   static String vendorMarketplaceOrderTracking(String orderItemId) =>
       '$_v1/vendor/marketplace/orders/$orderItemId/tracking';
   static String vendorMarketplaceOrderItem(String orderItemId) =>

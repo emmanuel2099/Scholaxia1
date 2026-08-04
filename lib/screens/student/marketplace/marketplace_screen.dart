@@ -1,7 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import '../../../api/api_service.dart';
-import '../../../services/paystack_checkout_service.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/student_ui.dart';
 
@@ -23,6 +22,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
     ('gadgets', 'Gadgets'),
     ('laptops', 'Laptops'),
     ('phones', 'Phones'),
+    ('clothes', 'Clothes'),
     ('books', 'Books'),
     ('other', 'Other'),
   ];
@@ -42,8 +42,12 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
       if (!mounted) return;
       final products = raw.whereType<Map>().map((e) {
         final m = Map<String, dynamic>.from(e);
-        final img = m['image_url']?.toString();
-        if (img != null && img.isNotEmpty) {
+        final img = m['image_url']?.toString() ??
+            m['secure_url']?.toString() ??
+            m['image']?.toString() ??
+            m['photo_url']?.toString() ??
+            '';
+        if (img.isNotEmpty) {
           m['image_url'] = _api.resolveMediaUrl(img);
         }
         return m;
@@ -213,7 +217,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                                 ),
                                 const SizedBox(height: 6),
                                 Text(
-                                  'Admin will post items here for students to book.',
+                                  'Vendors post books and products here for you to book.',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
                                       color: context.greyColor, fontSize: 13),
@@ -227,14 +231,14 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                                 crossAxisCount: 2,
                                 mainAxisSpacing: 12,
                                 crossAxisSpacing: 12,
-                                childAspectRatio: 0.68,
+                                mainAxisExtent: 268,
                               ),
                               itemCount: _products.length,
                               itemBuilder: (_, i) {
                                 final p = _products[i];
                                 final title = p['title']?.toString() ?? 'Item';
                                 final image = p['image_url']?.toString();
-                                final cat = p['category']?.toString() ?? '';
+                                final desc = p['description']?.toString() ?? '';
                                 return Material(
                                   color: context.cardColor,
                                   borderRadius: BorderRadius.circular(16),
@@ -250,97 +254,88 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                                       clipBehavior: Clip.antiAlias,
                                       child: Column(
                                         crossAxisAlignment:
-                                            CrossAxisAlignment.start,
+                                            CrossAxisAlignment.stretch,
                                         children: [
-                                          Expanded(
-                                            child: Container(
-                                              width: double.infinity,
-                                              color: context.accentColor
-                                                  .withOpacity(0.08),
-                                              child: image != null &&
-                                                      image.isNotEmpty
-                                                  ? Image.network(
-                                                      image,
-                                                      fit: BoxFit.cover,
-                                                      errorBuilder:
-                                                          (_, __, ___) => Icon(
-                                                        Icons
-                                                            .shopping_bag_outlined,
-                                                        color: context
-                                                            .accentColor,
-                                                        size: 36,
-                                                      ),
-                                                    )
-                                                  : Icon(
-                                                      Icons
-                                                          .shopping_bag_outlined,
-                                                      color:
-                                                          context.accentColor,
-                                                      size: 36,
-                                                    ),
+                                          SizedBox(
+                                            height: 112,
+                                            child: _MarketplaceImage(
+                                              url: image,
+                                              accent: context.accentColor,
                                             ),
                                           ),
-                                          Padding(
-                                            padding: const EdgeInsets.fromLTRB(
-                                                12, 10, 12, 12),
-                                            child: Column(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  title,
-                                                  maxLines: 2,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  style: TextStyle(
-                                                    color: context.textColor,
-                                                    fontWeight: FontWeight.w800,
-                                                    fontSize: 14,
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 4),
-                                                Text(
-                                                  _price(p),
-                                                  style: TextStyle(
-                                                    color: context.accentColor,
-                                                    fontWeight: FontWeight.w800,
-                                                    fontSize: 15,
-                                                  ),
-                                                ),
-                                                if (cat.isNotEmpty)
+                                          Expanded(
+                                            child: Padding(
+                                              padding:
+                                                  const EdgeInsets.fromLTRB(
+                                                      10, 8, 10, 10),
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
                                                   Text(
-                                                    cat.toUpperCase(),
+                                                    title,
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
                                                     style: TextStyle(
-                                                      color: context.greyColor,
-                                                      fontSize: 10,
-                                                      fontWeight:
-                                                          FontWeight.w600,
-                                                    ),
-                                                  ),
-                                                const SizedBox(height: 8),
-                                                Container(
-                                                  width: double.infinity,
-                                                  padding:
-                                                      const EdgeInsets.symmetric(
-                                                          vertical: 8),
-                                                  decoration: BoxDecoration(
-                                                    color: context.accentColor,
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            10),
-                                                  ),
-                                                  alignment: Alignment.center,
-                                                  child: const Text(
-                                                    'Book now',
-                                                    style: TextStyle(
-                                                      color: Colors.white,
+                                                      color: context.textColor,
                                                       fontWeight:
                                                           FontWeight.w800,
-                                                      fontSize: 12,
+                                                      fontSize: 13,
                                                     ),
                                                   ),
-                                                ),
-                                              ],
+                                                  if (desc.isNotEmpty) ...[
+                                                    const SizedBox(height: 3),
+                                                    Text(
+                                                      desc,
+                                                      maxLines: 1,
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                      style: TextStyle(
+                                                        color:
+                                                            context.greyColor,
+                                                        fontSize: 11,
+                                                      ),
+                                                    ),
+                                                  ],
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    _price(p),
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: TextStyle(
+                                                      color:
+                                                          context.accentColor,
+                                                      fontWeight:
+                                                          FontWeight.w800,
+                                                      fontSize: 14,
+                                                    ),
+                                                  ),
+                                                  const Spacer(),
+                                                  Container(
+                                                    width: double.infinity,
+                                                    height: 34,
+                                                    alignment: Alignment.center,
+                                                    decoration: BoxDecoration(
+                                                      color:
+                                                          context.accentColor,
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                              10),
+                                                    ),
+                                                    child: const Text(
+                                                      'Book now',
+                                                      style: TextStyle(
+                                                        color: Colors.white,
+                                                        fontWeight:
+                                                            FontWeight.w800,
+                                                        fontSize: 12,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
                                             ),
                                           ),
                                         ],
@@ -440,30 +435,12 @@ class _BookProductSheetState extends State<_BookProductSheet> {
         email: email,
         note: _noteCtrl.text.trim(),
       );
-      final bookingId =
-          (response['booking'] as Map?)?['id']?.toString() ?? '';
-      final price = (widget.product['price'] as num?)?.toDouble() ?? 0;
-      if (price > 0) {
-        if (!mounted) return;
-        if (bookingId.isEmpty) {
-          throw ApiException.message('Booking was created without a payment id.');
-        }
-        final paid = await PaystackCheckoutService.purchase(
-          context: context,
-          api: widget.api,
-          productType: 'marketplace_booking',
-          productId: bookingId,
-        );
-        if (!mounted || !paid) return;
-      }
       if (!mounted) return;
       Navigator.pop(context);
+      final msg = response['message']?.toString() ??
+          'Booking sent! The vendor will review and arrange payment in chat.';
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Booking confirmed! Admin will handle the rest and contact you.',
-          ),
-        ),
+        SnackBar(content: Text(msg)),
       );
     } on ApiException catch (e) {
       if (mounted) {
@@ -488,82 +465,169 @@ class _BookProductSheetState extends State<_BookProductSheet> {
   @override
   Widget build(BuildContext context) {
     final title = widget.product['title']?.toString() ?? 'Product';
-    return Padding(
-      padding: EdgeInsets.only(
-        left: 20,
-        right: 20,
-        top: 16,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: context.borderColor,
-                  borderRadius: BorderRadius.circular(2),
+    final desc =
+        (widget.product['description']?.toString() ?? '').trim();
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final maxH = MediaQuery.of(context).size.height * 0.92;
+
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(bottom: bottomInset),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: maxH),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 8, 12, 0),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      tooltip: 'Back',
+                      style: IconButton.styleFrom(
+                        backgroundColor: context.surfColor,
+                        foregroundColor: context.textColor,
+                      ),
+                      icon: const Icon(Icons.arrow_back_rounded),
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        'Book item',
+                        style: TextStyle(
+                          color: context.textColor,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Book: $title',
-              style: TextStyle(
-                color: context.textColor,
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Fill your details. Paid products open Paystack, then Admin handles the rest.',
-              style: TextStyle(color: context.greyColor, fontSize: 12),
-            ),
-            const SizedBox(height: 14),
-            _field(_nameCtrl, 'Full name *'),
-            const SizedBox(height: 10),
-            _field(_whatsappCtrl, 'WhatsApp number *',
-                keyboard: TextInputType.phone),
-            const SizedBox(height: 10),
-            _field(_phoneCtrl, 'Phone number *',
-                keyboard: TextInputType.phone),
-            const SizedBox(height: 10),
-            _field(_emailCtrl, 'Email *',
-                keyboard: TextInputType.emailAddress),
-            const SizedBox(height: 10),
-            _field(_noteCtrl, 'Note (optional)', maxLines: 2),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton(
-                onPressed: _submitting ? null : _submit,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: context.accentColor,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if ((widget.product['image_url']?.toString() ?? '')
+                          .isNotEmpty) ...[
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(14),
+                          child: SizedBox(
+                            width: double.infinity,
+                            height: 150,
+                            child: _MarketplaceImage(
+                              url: widget.product['image_url']?.toString(),
+                              accent: context.accentColor,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      Text(
+                        title,
+                        style: TextStyle(
+                          color: context.textColor,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        () {
+                          final price =
+                              (widget.product['price'] as num?)?.toDouble() ?? 0;
+                          if (price <= 0) return 'Ask price';
+                          final whole = price.toStringAsFixed(0);
+                          final buf = StringBuffer('₦');
+                          for (var i = 0; i < whole.length; i++) {
+                            final fromEnd = whole.length - i;
+                            buf.write(whole[i]);
+                            if (fromEnd > 1 && fromEnd % 3 == 1) buf.write(',');
+                          }
+                          return buf.toString();
+                        }(),
+                        style: TextStyle(
+                          color: context.accentColor,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      if (desc.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        Text(
+                          'Description',
+                          style: TextStyle(
+                            color: context.textColor,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          desc,
+                          style: TextStyle(
+                            color: context.textColor.withValues(alpha: 0.85),
+                            fontSize: 13,
+                            height: 1.4,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      Text(
+                        'Fill your details to book. Payment is arranged with the vendor in chat — not charged here.',
+                        style: TextStyle(
+                            color: context.greyColor, fontSize: 12),
+                      ),
+                      const SizedBox(height: 14),
+                      _field(_nameCtrl, 'Full name *'),
+                      const SizedBox(height: 10),
+                      _field(_whatsappCtrl, 'WhatsApp number *',
+                          keyboard: TextInputType.phone),
+                      const SizedBox(height: 10),
+                      _field(_phoneCtrl, 'Phone number *',
+                          keyboard: TextInputType.phone),
+                      const SizedBox(height: 10),
+                      _field(_emailCtrl, 'Email *',
+                          keyboard: TextInputType.emailAddress),
+                      const SizedBox(height: 10),
+                      _field(_noteCtrl, 'Note (optional)', maxLines: 2),
+                    ],
                   ),
                 ),
-                child: _submitting
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white),
-                      )
-                    : Text(
-                        'Book${((widget.product['price'] as num?)?.toDouble() ?? 0) > 0 ? ' & pay' : ''}',
-                        style: const TextStyle(fontWeight: FontWeight.w800),
-                      ),
               ),
-            ),
-          ],
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: _submitting ? null : _submit,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: context.accentColor,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: _submitting
+                        ? const SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Text(
+                            'Book now',
+                            style: TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -590,6 +654,55 @@ class _BookProductSheetState extends State<_BookProductSheet> {
           borderSide: BorderSide.none,
         ),
       ),
+    );
+  }
+}
+
+/// Product photo for grid + booking sheet (loads Cloudinary / API media URLs).
+class _MarketplaceImage extends StatelessWidget {
+  final String? url;
+  final Color accent;
+
+  const _MarketplaceImage({required this.url, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    final imageUrl = (url ?? '').trim();
+    return Container(
+      width: double.infinity,
+      color: accent.withOpacity(0.08),
+      child: imageUrl.isEmpty
+          ? Icon(Icons.shopping_bag_outlined, color: accent, size: 36)
+          : Image.network(
+              imageUrl,
+              fit: BoxFit.cover,
+              width: double.infinity,
+              height: double.infinity,
+              alignment: Alignment.center,
+              filterQuality: FilterQuality.medium,
+              loadingBuilder: (context, child, progress) {
+                if (progress == null) return child;
+                return Center(
+                  child: SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: accent,
+                      value: progress.expectedTotalBytes != null
+                          ? progress.cumulativeBytesLoaded /
+                              progress.expectedTotalBytes!
+                          : null,
+                    ),
+                  ),
+                );
+              },
+              errorBuilder: (_, __, ___) => Icon(
+                Icons.shopping_bag_outlined,
+                color: accent,
+                size: 36,
+              ),
+            ),
     );
   }
 }

@@ -92,6 +92,9 @@ class VendorProfile(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), unique=True)
     business_name: Mapped[str] = mapped_column(String(255), nullable=False)
     location: Mapped[str] = mapped_column(String(255), nullable=True)
+    address: Mapped[str] = mapped_column(String(500), nullable=True)
+    nin: Mapped[str] = mapped_column(String(20), nullable=True)
+    kyc_completed: Mapped[bool] = mapped_column(Boolean, default=False)
     categories: Mapped[list] = mapped_column(ARRAY(String), default=[])
     is_approved: Mapped[bool] = mapped_column(Boolean, default=False)
 

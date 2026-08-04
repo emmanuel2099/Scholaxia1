@@ -67,6 +67,7 @@ class SignupStartRequest(BaseModel):
     parent_email: Optional[str] = None
     phone: Optional[str] = None
     location: Optional[str] = None
+    address: Optional[str] = None
     subjects: Optional[list[str]] = None
     business_name: Optional[str] = None
     categories: Optional[list[str]] = None
@@ -382,6 +383,10 @@ async def signup_start(payload: SignupStartRequest, db: AsyncSession = Depends(g
         raise HTTPException(status_code=400, detail="Teacher subjects are required")
     if role == "vendor" and not (payload.business_name or "").strip():
         raise HTTPException(status_code=400, detail="Business name is required for vendor signup")
+    if role == "vendor" and not (payload.location or "").strip():
+        raise HTTPException(status_code=400, detail="Location is required for vendor signup")
+    if role == "vendor" and not (payload.address or "").strip():
+        raise HTTPException(status_code=400, detail="Address is required for vendor signup")
 
     existing = await _find_user_by_email(db, email)
     if existing:
@@ -397,6 +402,7 @@ async def signup_start(payload: SignupStartRequest, db: AsyncSession = Depends(g
         "parent_email": payload.parent_email,
         "phone": (payload.phone or "").strip() or None,
         "location": (payload.location or "").strip() or None,
+        "address": (payload.address or "").strip() or None,
         "subjects": payload.subjects or [],
         "business_name": (payload.business_name or "").strip() or None,
         "categories": payload.categories or [],
@@ -485,8 +491,10 @@ async def signup_verify(payload: SignupVerifyRequest, db: AsyncSession = Depends
                 user_id=user.id,
                 business_name=pending.get("business_name") or user.full_name,
                 location=pending.get("location"),
+                address=pending.get("address"),
                 categories=pending.get("categories") or [],
                 is_approved=False,
+                kyc_completed=False,
             )
         )
     else:
