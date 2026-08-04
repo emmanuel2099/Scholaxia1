@@ -276,6 +276,23 @@ class BoardController extends ChangeNotifier {
     _activeTextId = null;
     textAnchor = Offset(textAnchor.dx, textAnchor.dy + 34);
     notifyListeners();
+    // Ask the canvas host to scroll so the new line stays visible.
+    onScrollToContent?.call(textAnchor.dy + 48);
+  }
+
+  /// Optional hook used by the scrollable board canvas.
+  void Function(double contentBottom)? onScrollToContent;
+
+  double get contentBottom {
+    var maxY = textAnchor.dy + 48;
+    for (final t in texts) {
+      maxY = maxY > (t.pos.dy + t.size + 24) ? maxY : (t.pos.dy + t.size + 24);
+    }
+    for (final s in strokes) {
+      final y = s.from.dy > s.to.dy ? s.from.dy : s.to.dy;
+      if (y + 24 > maxY) maxY = y + 24;
+    }
+    return maxY;
   }
 
   // ---- Sync / clear ----
@@ -294,6 +311,7 @@ class BoardController extends ChangeNotifier {
         strokes.clear();
         texts.clear();
         notifyListeners();
+        onScrollToContent?.call(contentBottom);
         break;
       case 'erase':
         eraseAt(
@@ -316,6 +334,7 @@ class BoardController extends ChangeNotifier {
           texts[idx] = t;
         }
         notifyListeners();
+        onScrollToContent?.call(contentBottom);
         break;
     }
   }
@@ -330,10 +349,54 @@ class BoardController extends ChangeNotifier {
 }
 
 /// The drawing surface — shown at the top (video area) for everyone.
-class LiveClassBoardCanvas extends StatelessWidget {
+class LiveClassBoardCanvas extends StatefulWidget {
   final BoardController controller;
 
   const LiveClassBoardCanvas({super.key, required this.controller});
+
+  @override
+  State<LiveClassBoardCanvas> createState() => _LiveClassBoardCanvasState();
+}
+
+class _LiveClassBoardCanvasState extends State<LiveClassBoardCanvas> {
+  final ScrollController _scroll = ScrollController();
+
+  BoardController get controller => widget.controller;
+
+  @override
+  void initState() {
+    super.initState();
+    controller.onScrollToContent = _scrollToBottom;
+  }
+
+  @override
+  void didUpdateWidget(covariant LiveClassBoardCanvas oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.onScrollToContent = null;
+      widget.controller.onScrollToContent = _scrollToBottom;
+    }
+  }
+
+  @override
+  void dispose() {
+    controller.onScrollToContent = null;
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  void _scrollToBottom(double contentBottom) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scroll.hasClients) return;
+      final target = (contentBottom - _scroll.position.viewportDimension * 0.55)
+          .clamp(0.0, _scroll.position.maxScrollExtent);
+      _scroll.animateTo(
+        target,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+      );
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -342,56 +405,68 @@ class LiveClassBoardCanvas extends StatelessWidget {
       builder: (context, _) {
         return Container(
           color: _kBoardBg,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  return GestureDetector(
-                    onPanStart: controller.canDraw
-                        ? (d) => controller.panStart(d.localPosition)
-                        : null,
-                    onPanUpdate: controller.canDraw
-                        ? (d) => controller.panUpdate(d.localPosition)
-                        : null,
-                    onPanEnd:
-                        controller.canDraw ? (_) => controller.panEnd() : null,
-                    onTapDown: controller.canDraw &&
-                            controller.tool == BoardTool.type
-                        ? (d) => controller.panStart(d.localPosition)
-                        : null,
-                    child: CustomPaint(
-                      painter: _BoardPainter(
-                        strokes: controller.strokes,
-                        texts: controller.texts,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final minH = constraints.maxHeight;
+              final contentH = controller.contentBottom + 80;
+              final paintH = contentH > minH ? contentH : minH;
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  SingleChildScrollView(
+                    controller: _scroll,
+                    child: SizedBox(
+                      width: constraints.maxWidth,
+                      height: paintH,
+                      child: GestureDetector(
+                        onPanStart: controller.canDraw
+                            ? (d) => controller.panStart(d.localPosition)
+                            : null,
+                        onPanUpdate: controller.canDraw
+                            ? (d) => controller.panUpdate(d.localPosition)
+                            : null,
+                        onPanEnd: controller.canDraw
+                            ? (_) => controller.panEnd()
+                            : null,
+                        onTapDown: controller.canDraw &&
+                                controller.tool == BoardTool.type
+                            ? (d) => controller.panStart(d.localPosition)
+                            : null,
+                        child: CustomPaint(
+                          painter: _BoardPainter(
+                            strokes: controller.strokes,
+                            texts: controller.texts,
+                          ),
+                          size: Size(constraints.maxWidth, paintH),
+                        ),
                       ),
-                      size: Size(constraints.maxWidth, constraints.maxHeight),
-                    ),
-                  );
-                },
-              ),
-              if (controller.canDraw && controller.tool == BoardTool.type)
-                const Positioned(
-                  top: 6,
-                  left: 8,
-                  child: Text(
-                    'Tap where you want to type',
-                    style: TextStyle(color: Colors.white54, fontSize: 11),
-                  ),
-                ),
-              if (!controller.canDraw)
-                const Positioned(
-                  bottom: 8,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: Text(
-                      'Teacher is presenting',
-                      style: TextStyle(color: Colors.white54, fontSize: 11),
                     ),
                   ),
-                ),
-            ],
+                  if (controller.canDraw && controller.tool == BoardTool.type)
+                    const Positioned(
+                      top: 6,
+                      left: 8,
+                      child: Text(
+                        'Tap where you want to type',
+                        style: TextStyle(color: Colors.white54, fontSize: 11),
+                      ),
+                    ),
+                  if (!controller.canDraw)
+                    const Positioned(
+                      bottom: 8,
+                      left: 0,
+                      right: 0,
+                      child: Center(
+                        child: Text(
+                          'Teacher is presenting',
+                          style:
+                              TextStyle(color: Colors.white54, fontSize: 11),
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
           ),
         );
       },

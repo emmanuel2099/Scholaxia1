@@ -261,6 +261,16 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
                     "user_id": user_id,
                 })
 
+            elif event == "reaction":
+                emoji = (message.get("emoji") or "👍").strip()[:8]
+                await broadcast(room_id, {
+                    "event": "reaction",
+                    "user_id": user_id,
+                    "name": message.get("name") or ("Teacher" if role == "teacher" else "Student"),
+                    "emoji": emoji,
+                    "role": role,
+                })
+
             elif event == "poll_answer":
                 await broadcast(room_id, {
                     "event": "poll_answer",

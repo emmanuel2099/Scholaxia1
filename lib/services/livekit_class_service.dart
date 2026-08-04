@@ -62,6 +62,7 @@ class LiveKitClassService {
         defaultAudioCaptureOptions: AudioCaptureOptions(
           echoCancellation: true,
           noiseSuppression: true,
+          autoGainControl: true,
         ),
       ),
     );
@@ -357,6 +358,11 @@ class LiveKitClassService {
 
   Future<void> _enableLoudspeaker() async {
     if (kIsWeb) return;
+    // Speakerphone on desktop/Windows often feeds speakers into the mic (echo).
+    final isMobile = !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.android ||
+            defaultTargetPlatform == TargetPlatform.iOS);
+    if (!isMobile) return;
     try {
       await Hardware.instance.setSpeakerphoneOn(true);
     } catch (_) {}

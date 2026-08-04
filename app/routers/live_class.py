@@ -857,12 +857,13 @@ async def join_class(
             ClassAttendance.is_removed == False,  # noqa: E712
         )
     )
-    if (existing.scalar_one_or_none()):
+    existing_att = existing.scalar_one_or_none()
+    if existing_att is not None:
         sid = current_user["sub"]
-        att = await _active_attendance(db, live_class.id, sid)
-        if att is not None and att.is_muted:
-            att.is_muted = False
-            await db.flush()
+        # Rejoin must clear left_at or presence/roster stay empty while LiveKit still works.
+        existing_att.left_at = None
+        existing_att.is_muted = False
+        await db.flush()
         try:
             from app.services.live_class_room import grant_mic, grant_camera
             grant_mic(live_class.room_id, sid)

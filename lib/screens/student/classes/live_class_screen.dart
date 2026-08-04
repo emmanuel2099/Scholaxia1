@@ -65,6 +65,9 @@ class _LiveClassScreenState extends State<LiveClassScreen>
   bool _saveActive = false;
   bool _saveHintShown = false;
   bool _handRaised = false;
+  final Map<String, String> _raisedHands = {};
+  String? _reactionBurst;
+  Timer? _reactionClear;
   bool _micOn = false;
   bool _camOn = false;
   bool _micAllowed = false;
@@ -106,6 +109,7 @@ class _LiveClassScreenState extends State<LiveClassScreen>
     _chatController.dispose();
     _chatScroll.dispose();
     _studentsPoll?.cancel();
+    _reactionClear?.cancel();
     _attendancePoll?.cancel();
     _wsReconnectTimer?.cancel();
     _wsSub?.cancel();
@@ -300,12 +304,28 @@ class _LiveClassScreenState extends State<LiveClassScreen>
         break;
       case 'raise_hand':
         if (widget.isTeacher) {
-          _addChat(
-            '',
-            '${msg['name'] ?? 'A student'} raised their hand.',
-            system: true,
-          );
+          final uid = msg['user_id']?.toString() ?? '';
+          final name = msg['name']?.toString() ?? 'Student';
+          if (uid.isNotEmpty) {
+            setState(() => _raisedHands[uid] = name);
+          }
+          _addChat('', '$name raised their hand.', system: true);
+          _toast('$name raised their hand');
         }
+        break;
+      case 'lower_hand':
+        if (widget.isTeacher) {
+          final uid = msg['user_id']?.toString() ?? '';
+          if (uid.isNotEmpty) {
+            setState(() => _raisedHands.remove(uid));
+          }
+        }
+        break;
+      case 'reaction':
+        final emoji = msg['emoji']?.toString() ?? '👍';
+        final name = msg['name']?.toString() ?? 'Someone';
+        _showReaction(emoji);
+        _addChat('', '$name reacted $emoji', system: true);
         break;
       case 'mic_access_granted':
         if (!widget.isTeacher && _isMe(msg)) {
@@ -607,9 +627,8 @@ class _LiveClassScreenState extends State<LiveClassScreen>
           (presence['students'] is List
               ? (presence['students'] as List).length
               : 0);
-      // Include teacher in the in-class count.
-      final shown = students + 1;
-      if (mounted) setState(() => _participantCount = shown);
+      // Store student count only; UI adds the teacher once.
+      if (mounted) setState(() => _participantCount = students);
     } catch (_) {
       try {
         final detail = await _api.getLiveClassDetail(widget.classId);
@@ -660,12 +679,42 @@ class _LiveClassScreenState extends State<LiveClassScreen>
 
   void _toggleHand() {
     if (widget.isTeacher || _channel == null) return;
+    const name = 'Student';
     if (_handRaised) {
       _channel!.sink.add(jsonEncode({'event': 'lower_hand'}));
     } else {
-      _channel!.sink.add(jsonEncode({'event': 'raise_hand', 'name': 'Student'}));
+      _channel!.sink.add(jsonEncode({'event': 'raise_hand', 'name': name}));
     }
     setState(() => _handRaised = !_handRaised);
+  }
+
+  void _sendReaction(String emoji) {
+    if (_channel == null) {
+      _toast('Reconnecting chat… try again in a moment.');
+      _scheduleWsReconnect();
+      return;
+    }
+    final name = widget.isTeacher ? 'Teacher' : 'Student';
+    try {
+      _channel!.sink.add(jsonEncode({
+        'event': 'reaction',
+        'emoji': emoji,
+        'name': name,
+      }));
+      _showReaction(emoji);
+    } catch (_) {
+      _toast('Reaction not sent — reconnecting.');
+      _scheduleWsReconnect();
+    }
+  }
+
+  void _showReaction(String emoji) {
+    _reactionClear?.cancel();
+    if (!mounted) return;
+    setState(() => _reactionBurst = emoji);
+    _reactionClear = Timer(const Duration(milliseconds: 1600), () {
+      if (mounted) setState(() => _reactionBurst = null);
+    });
   }
 
   Future<void> _toggleMic() async {
@@ -953,7 +1002,11 @@ class _LiveClassScreenState extends State<LiveClassScreen>
           children: [
             _topBar(context),
             _videoArea(context),
+            if (_reactionBurst != null) _reactionBanner(context),
+            if (widget.isTeacher && _raisedHands.isNotEmpty)
+              _raisedHandsStrip(context),
             _controls(context),
+            _reactionRow(context),
             _tabBar(context),
             Expanded(
               child: TabBarView(
@@ -1166,6 +1219,89 @@ class _LiveClassScreenState extends State<LiveClassScreen>
     );
   }
 
+  Widget _reactionBanner(BuildContext context) {
+    return IgnorePointer(
+      child: Container(
+        height: 48,
+        alignment: Alignment.center,
+        child: Text(
+          _reactionBurst ?? '',
+          style: const TextStyle(fontSize: 34),
+        ),
+      ),
+    );
+  }
+
+  Widget _raisedHandsStrip(BuildContext context) {
+    final entries = _raisedHands.entries.toList();
+    return Container(
+      width: double.infinity,
+      color: context.accentColor.withOpacity(0.12),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Raised hands (${entries.length})',
+            style: TextStyle(
+              color: context.accentColor,
+              fontWeight: FontWeight.w700,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: entries.map((e) {
+              return ActionChip(
+                label: Text('✋ ${e.value}'),
+                onPressed: () async {
+                  await _allowMic(e.key);
+                  if (mounted) {
+                    setState(() => _raisedHands.remove(e.key));
+                  }
+                },
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _reactionRow(BuildContext context) {
+    const emojis = ['👍', '❤️', '😂', '👏', '🎉'];
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 0, 10, 8),
+      color: context.surfColor,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: emojis
+            .map(
+              (e) => Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: InkWell(
+                  onTap: () => _sendReaction(e),
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    width: 36,
+                    height: 36,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: context.accentColor.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(e, style: const TextStyle(fontSize: 18)),
+                  ),
+                ),
+              ),
+            )
+            .toList(),
+      ),
+    );
+  }
+
   Widget _controls(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         color: context.surfColor,
@@ -1348,7 +1484,7 @@ class _LiveClassScreenState extends State<LiveClassScreen>
 
   Widget _participants(BuildContext context) {
     if (!widget.isTeacher) {
-      final total = _participantCount + 1;
+      final total = _participantCount + 1; // students + teacher
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -1368,7 +1504,7 @@ class _LiveClassScreenState extends State<LiveClassScreen>
               const SizedBox(height: 8),
               Text(
                 'You and your teacher are connected.\n'
-                'Mic and camera need teacher approval.',
+                'Use reactions or raise hand below.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: context.greyColor, fontSize: 13),
               ),

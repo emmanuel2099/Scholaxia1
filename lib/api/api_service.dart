@@ -2174,7 +2174,7 @@ class ApiService {
   }
 
   Future<List<dynamic>> listLiveClassStudents(String classId) async {
-    final res = await _cachedGet(
+    final res = await _onlineGet(
       _uri(ApiEndpoints.liveClassStudents(classId)),
       headers: await _authHeaders(),
     );
