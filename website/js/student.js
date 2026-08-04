@@ -1266,12 +1266,19 @@
   /* Live class invitation ringtone (same sound as the mobile app) */
   var liveRingAudio = null;
   var liveRingTimer = null;
+  var liveRingLimitTimer = null;
   var knownUnreadCodes = {};
+  var LIVE_RING_MAX_MS = 45000;
+  var LIVE_RING_BURST_MS = 4000;
 
   function stopLiveClassRing() {
     if (liveRingTimer) {
       clearInterval(liveRingTimer);
       liveRingTimer = null;
+    }
+    if (liveRingLimitTimer) {
+      clearTimeout(liveRingLimitTimer);
+      liveRingLimitTimer = null;
     }
     try {
       if (liveRingAudio) {
@@ -1300,7 +1307,14 @@
     var bar = $("liveInviteRingBar");
     if (bar) bar.hidden = false;
     playLiveClassRingBurst();
-    liveRingTimer = setInterval(playLiveClassRingBurst, 4000);
+    liveRingTimer = setInterval(playLiveClassRingBurst, LIVE_RING_BURST_MS);
+    // Hard stop so ringtone is never endless while a class stays live.
+    liveRingLimitTimer = setTimeout(function () {
+      stopLiveClassRing();
+      try {
+        localStorage.setItem("sia_stop_live_ring", String(Date.now()));
+      } catch (e) {}
+    }, LIVE_RING_MAX_MS);
   }
 
   function pollLiveInvitesForRing() {
@@ -1314,6 +1328,7 @@
       .then(function (data) {
         var items = firstArray(data, ["codes", "items", "results"]);
         var unread = items.filter(function (c) {
+          if (c.is_class_live === false) return false;
           return c.is_read === false || c.read === false;
         });
         var hasNew = false;
@@ -1509,34 +1524,57 @@
     var roomId = res.room_id || res.channel_id || "";
     var token = res.livekit_token || res.token || "";
     var url = res.livekit_url || "";
-    if (!roomId || !token) {
-      alert("Joined, but classroom media was not ready. Ask the teacher to restart the class, then try again.");
+    function go(sessRes) {
+      var r = sessRes || res || {};
+      var rid = r.room_id || r.channel_id || roomId;
+      var tok = r.livekit_token || r.token || token;
+      var lurl = r.livekit_url || url;
+      if (!rid || !tok) {
+        alert("Joined, but classroom media was not ready. Ask the teacher to restart the class, then try again.");
+        return;
+      }
+      var user = api.getUser();
+      var sess = {
+        class_id: classId || r.class_id || "",
+        classId: classId || r.class_id || "",
+        room_id: rid,
+        channel_id: rid,
+        livekit_token: tok,
+        livekit_url: lurl,
+        identity: r.identity || "",
+        teacher_id: r.teacher_id || "",
+        title: r.title || r.topic || r.subject || "Live Class",
+        subject: r.subject || "",
+        teacher_name: r.teacher_name || r.host_name || "",
+        mic_allowed: r.mic_allowed !== false,
+        camera_allowed: r.camera_allowed !== false,
+        can_publish: r.can_publish !== false,
+        role: "student",
+        end_time: r.end_time || null,
+      };
+      writeLocalJson("live_session", sess);
+      try {
+        localStorage.setItem("sia_stop_live_ring", String(Date.now()));
+      } catch (e) {}
+      window.location.href = "classroom.html";
+    }
+    if (roomId && token && url) {
+      go(res);
       return;
     }
-    var user = api.getUser();
-    var sess = {
-      class_id: classId,
-      classId: classId,
-      room_id: roomId,
-      channel_id: roomId,
-      livekit_token: token,
-      livekit_url: url,
-      identity: res.identity || "",
-      teacher_id: res.teacher_id || "",
-      title: res.title || res.topic || res.subject || "Live Class",
-      subject: res.subject || "",
-      teacher_name: res.teacher_name || res.host_name || "",
-      mic_allowed: res.mic_allowed !== false,
-      camera_allowed: res.camera_allowed !== false,
-      can_publish: res.can_publish !== false,
-      role: "student",
-      end_time: res.end_time || null,
-    };
-    writeLocalJson("live_session", sess);
-    try {
-      localStorage.setItem("sia_stop_live_ring", String(Date.now()));
-    } catch (e) {}
-    window.location.href = "classroom.html";
+    // Missing LiveKit URL/token — fetch a fresh one before opening the room.
+    if (!classId) {
+      go(res);
+      return;
+    }
+    api
+      .api("/api/v1/live-classes/" + encodeURIComponent(classId) + "/token")
+      .then(function (tokRes) {
+        go(Object.assign({}, res || {}, tokRes || {}));
+      })
+      .catch(function () {
+        go(res);
+      });
   }
 
   function showLiveJoinResult(res) {
