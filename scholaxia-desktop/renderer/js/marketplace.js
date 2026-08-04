@@ -8,6 +8,7 @@ var MP_TABS = [
   { id: "gadgets", label: "Gadgets" },
   { id: "laptops", label: "Laptops" },
   { id: "phones", label: "Phones" },
+  { id: "clothes", label: "Clothes" },
   { id: "books", label: "Books" },
   { id: "other", label: "Other" },
 ];
@@ -18,6 +19,14 @@ function mpEsc(s) {
   return d.innerHTML;
 }
 
+function mpAttr(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 function mpPrice(p) {
   var n = Number(p.price || 0);
   if (n <= 0) return "Ask price";
@@ -26,9 +35,13 @@ function mpPrice(p) {
 
 function mpImageUrl(url) {
   if (!url) return "";
-  if (/^https?:\/\//i.test(url)) return url;
+  var u = String(url).trim();
+  if (!u) return "";
+  if (u.indexOf("//") === 0) u = "https:" + u;
+  if (/^http:\/\//i.test(u)) u = "https://" + u.slice(7);
+  if (/^https?:\/\//i.test(u)) return u;
   var base = typeof API_BASE !== "undefined" ? API_BASE : "";
-  return base + (url.startsWith("/") ? url : "/" + url);
+  return base + (u.startsWith("/") ? u : "/" + u);
 }
 
 async function loadMarketplacePage() {
@@ -68,11 +81,15 @@ function renderMarketplaceGrid() {
     return;
   }
   grid.innerHTML = mpProducts.map(function (p) {
-    var img = mpImageUrl(p.image_url);
+    var img = mpImageUrl(p.image_url || p.secure_url || p.image || "");
     return (
       '<div class="mp-product-card sx-card">' +
       (img
-        ? '<div class="mp-product-img" style="background-image:url(' + mpEsc(img) + ')"></div>'
+        ? '<div class="mp-product-img"><img src="' +
+          mpAttr(img) +
+          '" alt="' +
+          mpAttr(p.title || "Product") +
+          '" loading="lazy" referrerpolicy="no-referrer" onerror="this.parentNode.classList.add(\'mp-product-img-placeholder\');this.remove();" /></div>'
         : '<div class="mp-product-img mp-product-img-placeholder">&#128722;</div>') +
       '<div class="mp-product-body">' +
       '<span class="mp-product-cat">' + mpEsc(p.category || "item") + "</span>" +

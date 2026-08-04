@@ -1,12 +1,12 @@
 /**
- * Global dark-mode readability — loaded LAST so text stays clear on every screen.
+ * Global dark-mode readability ? loaded LAST so text stays clear on every screen.
  * Rule: dark surfaces = light text; light surfaces = dark text.
  */
 html[data-app-theme="dark"] {
   color-scheme: dark;
 }
 
-/* ── Base text ── */
+/* ?? Base text ?? */
 html[data-app-theme="dark"] body,
 html[data-app-theme="dark"] .main-content,
 html[data-app-theme="dark"] .main-content-sidebar,
@@ -38,7 +38,7 @@ html[data-app-theme="dark"] .dash-greeting p {
   color: #c8cdd3 !important;
 }
 
-/* ── Surfaces / cards ── */
+/* ?? Surfaces / cards ?? */
 html[data-app-theme="dark"] .card,
 html[data-app-theme="dark"] .sx-card,
 html[data-app-theme="dark"] .profile-card,
@@ -115,7 +115,7 @@ html[data-app-theme="dark"] .cp-desc {
   color: #c8cdd3 !important;
 }
 
-/* ── Home quick-action tiles (the broken ones) ── */
+/* ?? Home quick-action tiles (the broken ones) ?? */
 html[data-app-theme="dark"] .dash-action-card {
   background: #2b2d31 !important;
   border-color: #4e5058 !important;
@@ -161,7 +161,7 @@ html[data-app-theme="dark"] .dash-action-card[class*="dash-action-"]:active > sp
   color: #ffffff !important;
 }
 
-/* ── Skills home strip ── */
+/* ?? Skills home strip ?? */
 html[data-app-theme="dark"] .dash-skills-all {
   background: #352f45 !important;
   border-color: #7c3aed !important;
@@ -180,7 +180,7 @@ html[data-app-theme="dark"] .live-plan-price span {
   color: #a7f3d0 !important;
 }
 
-/* ── Forms / inputs ── */
+/* ?? Forms / inputs ?? */
 html[data-app-theme="dark"] input,
 html[data-app-theme="dark"] select,
 html[data-app-theme="dark"] textarea,
@@ -195,7 +195,7 @@ html[data-app-theme="dark"] textarea::placeholder {
   color: #949ba4 !important;
 }
 
-/* ── Buttons that must stay readable ── */
+/* ?? Buttons that must stay readable ?? */
 html[data-app-theme="dark"] .btn-action,
 html[data-app-theme="dark"] .btn-join,
 html[data-app-theme="dark"] .btn-action.btn-sm,
@@ -214,7 +214,7 @@ html[data-app-theme="dark"] .page-back-btn {
   color: #1e1b2e !important;
 }
 
-/* ── Games / CBT / marketplace leftovers ── */
+/* ?? Games / CBT / marketplace leftovers ?? */
 html[data-app-theme="dark"] .game-prompt,
 html[data-app-theme="dark"] .game-math-expr,
 html[data-app-theme="dark"] .game-play-header,
@@ -319,7 +319,7 @@ html[data-app-theme="dark"] .hero-eyebrow {
   border-color: #7c3aed !important;
 }
 
-/* White modals were getting light text � make modals dark */
+/* White modals were getting light text ? make modals dark */
 html[data-app-theme="dark"] .modal-box,
 html[data-app-theme="dark"] .skill-enroll-box,
 html[data-app-theme="dark"] .teacher-modal-box,
@@ -509,4 +509,260 @@ html[data-app-theme="dark"] .material-desc {
 html[data-app-theme="dark"] .material-card {
   background: #2b2d31 !important;
   border-color: #4e5058 !important;
+}
+
+/* ???????????????????????????????????????????????????????????????????????????
+   Kids portal ? dark mode (games, home tiles, Sia chat, live booking)
+   ??????????????????????????????????????????????????????????????????????????? */
+
+html[data-app-theme="dark"] .kind-desktop {
+  background: #1e1f22 !important;
+}
+
+html[data-app-theme="dark"] .kind-desktop .main-content {
+  background: #1e1f22 !important;
+  border-top: none !important;
+}
+
+/* Bottom home banner ? was white bar with invisible grey text */
+html[data-app-theme="dark"] .kind-banner-card {
+  background: linear-gradient(135deg, #352f45 0%, #2b2d31 100%) !important;
+  border: 1px solid #7c3aed !important;
+  color: #f2f3f5 !important;
+  box-shadow: none !important;
+}
+html[data-app-theme="dark"] .kind-banner-card div,
+html[data-app-theme="dark"] .kind-banner-card strong {
+  color: #f2f3f5 !important;
+}
+
+/* Quick access tiles ? colored accents (not flat grey) */
+html[data-app-theme="dark"] .kind-quick-tile {
+  border-color: #4e5058 !important;
+  color: #f2f3f5 !important;
+}
+html[data-app-theme="dark"] .kind-quick-tile strong {
+  color: #ffffff !important;
+}
+html[data-app-theme="dark"] .kind-quick-tile span {
+  color: #d1d5db !important;
+}
+html[data-app-theme="dark"] .kind-quick-tile.tile-sia {
+  background: linear-gradient(145deg, #2e1065, #3b1d6e) !important;
+  border-color: #7c3aed !important;
+}
+html[data-app-theme="dark"] .kind-quick-tile.tile-live {
+  background: linear-gradient(145deg, #3f1d22, #4a1c28) !important;
+  border-color: #dc2626 !important;
+}
+html[data-app-theme="dark"] .kind-quick-tile.tile-games {
+  background: linear-gradient(145deg, #3b2f14, #4a3a12) !important;
+  border-color: #d97706 !important;
+}
+html[data-app-theme="dark"] .kind-quick-tile.tile-saved {
+  background: linear-gradient(145deg, #14352a, #14532d) !important;
+  border-color: #16a34a !important;
+}
+html[data-app-theme="dark"] .kind-quick-tile.tile-sia .tile-icon { background: rgba(167, 139, 250, 0.25) !important; }
+html[data-app-theme="dark"] .kind-quick-tile.tile-live .tile-icon { background: rgba(248, 113, 113, 0.22) !important; }
+html[data-app-theme="dark"] .kind-quick-tile.tile-games .tile-icon { background: rgba(251, 191, 36, 0.22) !important; }
+html[data-app-theme="dark"] .kind-quick-tile.tile-saved .tile-icon { background: rgba(74, 222, 128, 0.2) !important; }
+html[data-app-theme="dark"] .kind-quick-grid .kind-quick-tile:nth-child(5) {
+  background: linear-gradient(145deg, #1e3a5f, #1e40af) !important;
+  border-color: #3b82f6 !important;
+}
+html[data-app-theme="dark"] .kind-quick-grid .kind-quick-tile:nth-child(6) {
+  background: linear-gradient(145deg, #3b2f14, #4a3a12) !important;
+  border-color: #eab308 !important;
+}
+html[data-app-theme="dark"] .kind-quick-grid .kind-quick-tile:nth-child(7) {
+  background: linear-gradient(145deg, #134e4a, #115e59) !important;
+  border-color: #2dd4bf !important;
+}
+
+/* Home stat boxes */
+html[data-app-theme="dark"] .kind-stat-box {
+  background: #2b2d31 !important;
+  border-color: #4e5058 !important;
+}
+html[data-app-theme="dark"] .kind-stat-box strong {
+  color: #c4b5fd !important;
+}
+html[data-app-theme="dark"] .kind-stat-box span {
+  color: #c8cdd3 !important;
+}
+html[data-app-theme="dark"] .kind-stat-icon {
+  background: #352f45 !important;
+}
+
+/* Hero card stays purple gradient in dark mode */
+html[data-app-theme="dark"] .kind-hero-card {
+  background: linear-gradient(135deg, #4c1d95 0%, #6d28d9 50%, #7c3aed 100%) !important;
+  border: 1px solid #8b5cf6 !important;
+  color: #fff !important;
+}
+html[data-app-theme="dark"] .kind-hero-card h2,
+html[data-app-theme="dark"] .kind-hero-card p {
+  color: #fff !important;
+}
+
+/* Games grid cards — colored tiles, readable text */
+html[data-app-theme="dark"] .kind-game-card {
+  background: #2b2d31 !important;
+  border-color: #4e5058 !important;
+  color: #f2f3f5 !important;
+}
+html[data-app-theme="dark"] .kind-game-card strong {
+  color: #ffffff !important;
+}
+html[data-app-theme="dark"] .kind-game-card .leaf {
+  color: #4ade80 !important;
+}
+html[data-app-theme="dark"] .kind-games-grid .kind-game-card:nth-child(6n+1) {
+  background: linear-gradient(160deg, #2e1065, #3b1d6e) !important;
+  border-color: #7c3aed !important;
+}
+html[data-app-theme="dark"] .kind-games-grid .kind-game-card:nth-child(6n+2) {
+  background: linear-gradient(160deg, #1e3a5f, #1e40af) !important;
+  border-color: #3b82f6 !important;
+}
+html[data-app-theme="dark"] .kind-games-grid .kind-game-card:nth-child(6n+3) {
+  background: linear-gradient(160deg, #14352a, #14532d) !important;
+  border-color: #22c55e !important;
+}
+html[data-app-theme="dark"] .kind-games-grid .kind-game-card:nth-child(6n+4) {
+  background: linear-gradient(160deg, #3b2f14, #4a3a12) !important;
+  border-color: #f59e0b !important;
+}
+html[data-app-theme="dark"] .kind-games-grid .kind-game-card:nth-child(6n+5) {
+  background: linear-gradient(160deg, #3f1d22, #4a1c28) !important;
+  border-color: #f87171 !important;
+}
+html[data-app-theme="dark"] .kind-games-grid .kind-game-card:nth-child(6n+6) {
+  background: linear-gradient(160deg, #134e4a, #115e59) !important;
+  border-color: #2dd4bf !important;
+}
+
+/* Game answer buttons — were white boxes with invisible text */
+html[data-app-theme="dark"] .game-option-btn,
+html[data-app-theme="dark"] .kind-game-opt {
+  background: #1e1f22 !important;
+  border-color: #4e5058 !important;
+  color: #f2f3f5 !important;
+}
+html[data-app-theme="dark"] .game-option-btn:hover,
+html[data-app-theme="dark"] .kind-game-opt:hover {
+  background: #352f45 !important;
+  border-color: #a78bfa !important;
+  color: #ffffff !important;
+}
+html[data-app-theme="dark"] .kind-opt-correct,
+html[data-app-theme="dark"] .game-option-btn.correct {
+  background: rgba(34, 197, 94, 0.2) !important;
+  border-color: #22c55e !important;
+  color: #4ade80 !important;
+}
+html[data-app-theme="dark"] .kind-opt-wrong,
+html[data-app-theme="dark"] .game-option-btn.wrong {
+  background: rgba(239, 68, 68, 0.18) !important;
+  border-color: #ef4444 !important;
+  color: #fca5a5 !important;
+}
+html[data-app-theme="dark"] .kind-game-progress {
+  background: #352f45 !important;
+}
+html[data-app-theme="dark"] .kind-game-feedback {
+  color: #c8cdd3 !important;
+}
+
+/* Sia chat — white compose bar at bottom */
+html[data-app-theme="dark"] .kind-sia-compose {
+  background: #2b2d31 !important;
+  border-top-color: #4e5058 !important;
+}
+html[data-app-theme="dark"] .kind-sia-wrap {
+  background: #2b2d31 !important;
+  border-color: #4e5058 !important;
+}
+html[data-app-theme="dark"] .kind-sia-messages {
+  background: #1e1f22 !important;
+}
+
+/* Live class page */
+html[data-app-theme="dark"] .kind-live-hero {
+  background:
+    radial-gradient(ellipse 80% 120% at 0% 0%, rgba(124, 58, 237, 0.22), transparent 55%),
+    linear-gradient(145deg, #2b2d31 0%, #1e1f22 100%) !important;
+  border-color: #4e5058 !important;
+}
+html[data-app-theme="dark"] .kind-live-kicker {
+  color: #c4b5fd !important;
+}
+html[data-app-theme="dark"] .kind-live-empty {
+  background: #2b2d31 !important;
+  border-color: #4e5058 !important;
+}
+html[data-app-theme="dark"] .kind-live-empty h4,
+html[data-app-theme="dark"] .kind-live-empty p {
+  color: #f2f3f5 !important;
+}
+html[data-app-theme="dark"] .kind-live-card {
+  background: #2b2d31 !important;
+  border-color: #4e5058 !important;
+}
+html[data-app-theme="dark"] .kind-live-card.live-now {
+  background: linear-gradient(90deg, #2b2d31, #3f1d22) !important;
+  border-color: #dc2626 !important;
+}
+html[data-app-theme="dark"] .kind-live-card strong,
+html[data-app-theme="dark"] .kind-live-card-body span {
+  color: #f2f3f5 !important;
+}
+
+/* Book panel — was solid white card */
+html[data-app-theme="dark"] .kind-book-panel-inner {
+  background: #2b2d31 !important;
+  border: 1px solid #4e5058 !important;
+  box-shadow: none !important;
+}
+html[data-app-theme="dark"] .kind-book-panel-inner h3 {
+  color: #f5f3ff !important;
+}
+html[data-app-theme="dark"] .kind-book-lead {
+  color: #c8cdd3 !important;
+}
+html[data-app-theme="dark"] .kind-book-field span {
+  color: #e9d5ff !important;
+}
+html[data-app-theme="dark"] .kind-book-field em {
+  color: #9ca3af !important;
+}
+html[data-app-theme="dark"] .kind-book-field input,
+html[data-app-theme="dark"] .kind-book-field select {
+  background: #1e1f22 !important;
+  border-color: #4e5058 !important;
+  color: #f2f3f5 !important;
+}
+html[data-app-theme="dark"] .kind-book-link {
+  color: #c4b5fd !important;
+}
+
+/* Page headers on kids screens */
+html[data-app-theme="dark"] .kind-page-header h2 {
+  color: #f5f3ff !important;
+}
+html[data-app-theme="dark"] .kind-page-header p,
+html[data-app-theme="dark"] .kind-page-header p strong {
+  color: #c8cdd3 !important;
+}
+html[data-app-theme="dark"] .kind-section-title {
+  color: #f5f3ff !important;
+}
+
+/* Remove stray light line at bottom of scroll area */
+html[data-app-theme="dark"] .kind-desktop .main-content::after {
+  display: none !important;
+}
+html[data-app-theme="dark"] .kind-page {
+  border-bottom: none !important;
 }

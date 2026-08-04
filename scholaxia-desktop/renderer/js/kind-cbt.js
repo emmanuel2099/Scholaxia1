@@ -37,30 +37,28 @@ async function loadKindCbtPage() {
       hasAccess = false;
     }
 
-    var paywall =
+    var payBanner =
       '<div class="kind-cbt-paywall">' +
-      "<h3>Common Entrance CBT — ₦2,000 / year</h3>" +
-      "<p>Unlock Primary 6 Common Entrance practice with Paystack. Same setting as the mobile Kids app.</p>" +
+      "<h3>Browse exams below — pay to start</h3>" +
+      "<p>Common Entrance CBT is ₦2,000 / year. Tap <strong>Start practice</strong> or pay with Paystack to unlock.</p>" +
       '<button type="button" class="btn-action" onclick="payKindCbtPackage()">Pay ₦2,000 with Paystack</button>' +
       "</div>";
 
-    if (!hasAccess) {
-      root.innerHTML =
-        paywall +
-        (exams.length
-          ? '<p class="cbt-hint" style="margin-top:16px">Exams are ready — pay to start practising.</p>'
-          : '<p class="cbt-hint" style="margin-top:16px">Admin will publish Common Entrance exams here.</p>');
-      return;
-    }
-
     if (!exams.length) {
       root.innerHTML =
-        '<div class="as-empty"><h3>No exams yet</h3><p>You have CBT access. When admin uploads Common Entrance exams, they appear here.</p></div>';
+        (hasAccess ? "" : payBanner) +
+        '<div class="as-empty"><h3>No exams yet</h3><p>' +
+        (hasAccess
+          ? "You have CBT access. When admin uploads Common Entrance exams, they appear here."
+          : "Admin will publish Common Entrance exams here. You can pay anytime to unlock practice.") +
+        "</p></div>";
       return;
     }
 
     root.innerHTML =
-      '<div class="kind-cbt-status is-active">Access active — Common Entrance unlocked</div>' +
+      (hasAccess
+        ? '<div class="kind-cbt-status is-active">Access active — Common Entrance unlocked</div>'
+        : payBanner) +
       '<div class="kind-cbt-grid">' +
       exams
         .map(function (ex) {

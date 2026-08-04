@@ -10,13 +10,11 @@ import '../classes/classes_screen.dart';
 import '../../../utils/live_join_helper.dart';
 import '../saved/saved_classes_screen.dart';
 import '../notifications/notifications_screen.dart';
-import '../sia/sia_screen.dart';
 import '../cbt/internal_exams_screen.dart';
 import '../games/games_screen.dart';
 import '../library/library_screen.dart';
 import '../marketplace/marketplace_screen.dart';
 import '../assignments/assignment_screen.dart';
-import '../sil/sil_entry.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -263,19 +261,16 @@ class _HomeScreenState extends State<HomeScreen> {
                       title: 'Ask Sia anything',
                       subtitle:
                           'Your 24/7 AI tutor for JAMB, WAEC & NECO — get instant explanations.',
-                      buttonLabel: 'Start chatting',
+                      buttonLabel: 'Coming soon',
                       icon: Icons.auto_awesome_rounded,
                       badge: '✨ AI POWERED',
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const SiaScreen()),
-                      ),
+                      onTap: null,
                     ),
                     StudentBannerSlide(
                       title: 'Join Scholaxia Intellect League',
                       subtitle:
                           'Compete live, earn coins, climb national rankings — represent your school.',
-                      buttonLabel: 'Enter League',
+                      buttonLabel: 'Coming soon',
                       icon: Icons.emoji_events_rounded,
                       badge: '🏆 LEAGUE',
                       colors: const [
@@ -283,12 +278,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         Color(0xFF7C3AED),
                         Color(0xFFC026D3),
                       ],
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const SilEntryScreen(),
-                        ),
-                      ),
+                      onTap: null,
                     ),
                     StudentBannerSlide(
                       title: 'Friday National Challenge is Live',
@@ -302,14 +292,13 @@ class _HomeScreenState extends State<HomeScreen> {
                         Color(0xFF7C3AED),
                         Color(0xFF2563EB),
                       ],
-                      // Temporarily disabled — re-enable when Friday Challenge opens.
                       onTap: null,
                     ),
                     StudentBannerSlide(
                       title: 'Buy Scholaxia Coins',
                       subtitle:
                           'Fuel AI Challenges, Student bets, Class & School battles.',
-                      buttonLabel: 'Open Wallet',
+                      buttonLabel: 'Coming soon',
                       icon: Icons.monetization_on_rounded,
                       badge: '💰 COINS',
                       colors: const [
@@ -317,12 +306,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         Color(0xFF7C3AED),
                         Color(0xFFF59E0B),
                       ],
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const SilEntryScreen(),
-                        ),
-                      ),
+                      onTap: null,
                     ),
                   ],
                 ),

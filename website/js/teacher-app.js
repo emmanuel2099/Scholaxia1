@@ -307,8 +307,8 @@
         JSON.stringify({
           class_id: classId,
           classId: classId,
-          room_id: token.channel_id,
-          channel_id: token.channel_id,
+          room_id: token.room_id || token.channel_id,
+          channel_id: token.channel_id || token.room_id,
           livekit_token: token.livekit_token || token.token,
           livekit_url: token.livekit_url,
           identity: token.identity,

@@ -742,6 +742,13 @@ html[data-app-theme="dark"] .btn-secondary {
   background-size: cover;
   background-position: center;
   background-color: var(--sx-bg-soft);
+  overflow: hidden;
+}
+.mp-product-img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 .mp-product-img-placeholder {
   display: flex;

@@ -92,12 +92,53 @@ class _KindCbtScreenState extends State<KindCbtScreen> {
       );
     } on ApiException catch (e) {
       if (!mounted) return;
+      if (e.statusCode == 402 ||
+          e.message.toLowerCase().contains('package') ||
+          e.message.toLowerCase().contains('required')) {
+        await _openPackage();
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.message), backgroundColor: Colors.red),
       );
     } finally {
       if (mounted) setState(() => _startingExamId = null);
     }
+  }
+
+  Widget _kidsPayBanner(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: context.cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: context.accentColor.withOpacity(0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Browse exams below — pay to start',
+            style: TextStyle(
+              color: context.textColor,
+              fontWeight: FontWeight.w800,
+              fontSize: 15,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Common Entrance CBT is ₦2,000 / year. Tap an exam or Pay with Paystack to unlock.',
+            style: TextStyle(color: context.greyColor, height: 1.4, fontSize: 13),
+          ),
+          const SizedBox(height: 12),
+          FilledButton(
+            onPressed: _openPackage,
+            child: const Text('Pay with Paystack'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _openPackage() async {
@@ -179,39 +220,6 @@ class _KindCbtScreenState extends State<KindCbtScreen> {
                         color: context.accentColor,
                       ),
                     )
-                  : !_hasPaidAccess
-                  ? ListView(
-                      padding: const EdgeInsets.all(24),
-                      children: [
-                        const SizedBox(height: 50),
-                        Icon(
-                          Icons.workspace_premium_rounded,
-                          size: 52,
-                          color: context.accentColor,
-                        ),
-                        const SizedBox(height: 14),
-                        Text(
-                          'Annual Common Entrance package required',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: context.textColor,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Pay ₦2,000 securely in the app for one year of CBT practice.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: context.greyColor, height: 1.4),
-                        ),
-                        const SizedBox(height: 18),
-                        FilledButton(
-                          onPressed: _openPackage,
-                          child: const Text('Pay with Paystack'),
-                        ),
-                      ],
-                    )
                   : RefreshIndicator(
                       color: context.accentColor,
                       onRefresh: _load,
@@ -219,6 +227,17 @@ class _KindCbtScreenState extends State<KindCbtScreen> {
                           ? ListView(
                               physics: const AlwaysScrollableScrollPhysics(),
                               children: [
+                                if (!_hasPaidAccess) ...[
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      20,
+                                      8,
+                                      20,
+                                      16,
+                                    ),
+                                    child: _kidsPayBanner(context),
+                                  ),
+                                ],
                                 const SizedBox(height: 80),
                                 Icon(
                                   Icons.assignment_outlined,
@@ -248,10 +267,19 @@ class _KindCbtScreenState extends State<KindCbtScreen> {
                             )
                           : ListView.builder(
                               padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
-                              itemCount: _exams.length,
+                              itemCount:
+                                  _exams.length + (!_hasPaidAccess ? 1 : 0),
                               itemBuilder: (context, i) {
+                                if (!_hasPaidAccess && i == 0) {
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 14),
+                                    child: _kidsPayBanner(context),
+                                  );
+                                }
+                                final examIndex =
+                                    !_hasPaidAccess ? i - 1 : i;
                                 final exam = Map<String, dynamic>.from(
-                                  _exams[i] as Map,
+                                  _exams[examIndex] as Map,
                                 );
                                 final id = exam['id']?.toString() ?? '';
                                 final title =

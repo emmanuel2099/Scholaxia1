@@ -1,7 +1,5 @@
 import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
-import 'package:flutter/foundation.dart'
-    show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter/services.dart';
 import '../api/api_service.dart';
 
@@ -29,11 +27,6 @@ class LiveClassRingService {
   DateTime? _ringStartedAt;
   String? _lastInviteKey;
   AudioPlayer? _player;
-
-  static bool get _isMobile =>
-      !kIsWeb &&
-      (defaultTargetPlatform == TargetPlatform.android ||
-          defaultTargetPlatform == TargetPlatform.iOS);
 
   bool get isRinging => _ringing;
 

@@ -20,7 +20,9 @@ var selfHearAudio = null;
 var classAutoEndTimer = null;
 var raisedHands = {};
 var wsStudentCount = 0;
-var API_WS = "wss://scholaxia1.onrender.com";
+var API_WS = (typeof window !== "undefined" && window.API_WS)
+  ? window.API_WS
+  : "wss://scholaxia1.onrender.com";
 var JOIN_TIMEOUT_MS = 45000;
 
 var SUBJECT_SYMBOLS = {
@@ -987,14 +989,11 @@ function renderParticipantsForStudent(students) {
 
 function refreshLiveKitRoster() {
   if (!liveSession) return;
-  if (isTeacherRole()) {
-    // Teacher roster comes from API polls; still re-apply video budget on join/leave.
-    if (typeof window.reattachParticipantVideos === "function") {
-      window.reattachParticipantVideos();
-    }
-    return;
+  // Merge LiveKit remotes into the HTTP presence list for everyone.
+  loadClassroomStudents(true);
+  if (typeof window.reattachParticipantVideos === "function") {
+    window.reattachParticipantVideos();
   }
-  renderParticipantsForStudent([]);
 }
 
 window.refreshLiveKitRoster = refreshLiveKitRoster;
@@ -1065,19 +1064,45 @@ async function loadClassroomStudents(quiet) {
   if (!liveSession) return;
   var classId = liveSession.class_id || liveSession.classId;
   if (!classId) return;
-  if (!isTeacherRole()) {
-    renderParticipantsForStudent([]);
-    updateParticipantsHeader(wsStudentCount || 0, liveSession.teacher_name || liveSession.teacher);
-    return;
-  }
   var list = document.getElementById("participants-list");
   if (!quiet && list) list.innerHTML = '<p class="participants-empty">Loading students…</p>';
   try {
-    var students = await api("/api/v1/live-classes/" + classId + "/students") || [];
-    renderClassroomStudents(students);
-    loadClassAttendance();
+    // Presence works for teacher + joined students (does not depend on chat WS).
+    var presence = await api("/api/v1/live-classes/" + classId + "/presence");
+    var students = (presence && presence.students) || [];
+    if (presence && presence.teacher_name) {
+      liveSession.teacher_name = presence.teacher_name;
+    }
+    if (isTeacherRole()) {
+      renderClassroomStudents(students);
+      loadClassAttendance();
+    } else {
+      renderParticipantsForStudent(students);
+      updateParticipantsHeader(
+        presence.active_attendees || students.length || 0,
+        (presence && presence.teacher_name) || liveSession.teacher_name || "Teacher"
+      );
+    }
+    var badge = document.getElementById("audience-badge");
+    if (badge) {
+      var n = (presence && presence.active_attendees != null)
+        ? Number(presence.active_attendees) + 1
+        : students.length + 1;
+      badge.textContent = n + " in class";
+      badge.classList.remove("hidden");
+    }
   } catch (e) {
-    if (list) list.innerHTML = '<p class="participants-empty">Could not load students.</p>';
+    if (isTeacherRole()) {
+      try {
+        var students2 = await api("/api/v1/live-classes/" + classId + "/students") || [];
+        renderClassroomStudents(students2);
+      } catch (e2) {
+        if (list) list.innerHTML = '<p class="participants-empty">Could not load students.</p>';
+      }
+    } else {
+      renderParticipantsForStudent([]);
+      updateParticipantsHeader(wsStudentCount || 0, liveSession.teacher_name || liveSession.teacher);
+    }
   }
 }
 
@@ -1658,9 +1683,22 @@ function handleBoardMessage(msg) {
 }
 
 function connectChat() {
-  if (!liveSession || !liveSession.room_id) return;
+  if (!liveSession || !liveSession.room_id) {
+    setStatus("No room id — rejoin the class");
+    return;
+  }
+  // If a socket is stuck CONNECTING, kill it and open a fresh one.
+  if (liveSocket) {
+    if (liveSocket.readyState === WebSocket.OPEN) return;
+    if (liveSocket.readyState === WebSocket.CONNECTING) {
+      var startedAt = liveSocket._siaOpenedAt || 0;
+      if (startedAt && Date.now() - startedAt < 8000) return;
+      try { liveSocket.close(); } catch (e) { /* ignore */ }
+      liveSocket = null;
+    }
+  }
   var payload = parseJwt(getAuthToken());
-  var userId = payload.sub || liveSession.user_id || "user";
+  var userId = payload.sub || liveSession.user_id || liveSession.identity || "user";
   var role = isTeacherRole() ? "teacher" : "student";
   var displayName = localStorage.getItem("sia_name") || (liveSession.teacher_name && isTeacherRole() ? liveSession.teacher_name : "Student");
   var url = API_WS + "/ws/live-class/" + encodeURIComponent(liveSession.room_id)
@@ -1668,14 +1706,26 @@ function connectChat() {
     + "&role=" + encodeURIComponent(role)
     + "&display_name=" + encodeURIComponent(displayName);
 
-  liveSocket = new WebSocket(url);
+  setStatus("Connecting chat…");
+  try {
+    liveSocket = new WebSocket(url);
+    liveSocket._siaOpenedAt = Date.now();
+  } catch (e) {
+    setStatus("Chat blocked — check network");
+    return;
+  }
   liveSocket.onopen = function () {
-    setStatus("Connected — chat ready");
+    var videoOk = window.LiveClassMedia && LiveClassMedia.isJoined && LiveClassMedia.isJoined();
+    setStatus(videoOk ? "Connected — video + chat" : "Connected — chat ready");
     addChatMessage("", "You joined the class. Use the chat to talk with everyone.", true);
     if (!isTeacherRole()) {
       liveSocket.send(JSON.stringify({ event: "request_board_sync" }));
     }
     updateAudienceStats();
+    var studBadge = document.getElementById("audience-badge");
+    if (studBadge && !isTeacherRole()) {
+      studBadge.textContent = "In class";
+    }
   };
   liveSocket.onmessage = function (ev) {
     try {
@@ -2000,15 +2050,15 @@ async function leaveClassroom() {
   if (typeof clearLiveSession === "function") clearLiveSession();
   else localStorage.removeItem("live_session");
   if (liveSession && (liveSession.role === "teacher" || liveSession.role === "admin")) {
-    window.location.href = localStorage.getItem("sia_teacher_token") ? "teacher.html" : "admin.html";
+    window.location.href = "teacher.html#live";
   } else {
-    window.location.href = "app.html";
+    window.location.href = "student.html#live";
   }
 }
 
 window.onload = function () {
   if (!getAuthToken()) {
-    window.location.href = "index.html";
+    window.location.href = "auth.html";
     return;
   }
   liveSession = loadLiveSession();
@@ -2017,22 +2067,33 @@ window.onload = function () {
       liveSession.livekit_token = liveSession.agora_token || liveSession.token || "";
     }
     if (!liveSession.livekit_url) liveSession.livekit_url = "";
+    // Keep room id even if only channel_id was stored.
+    if (!liveSession.room_id && liveSession.channel_id) {
+      liveSession.room_id = liveSession.channel_id;
+    }
+    if (!liveSession.channel_id && liveSession.room_id) {
+      liveSession.channel_id = liveSession.room_id;
+    }
   }
   window.liveSession = liveSession;
   window.board = board;
   if (!liveSession || !liveSession.room_id) {
-    window.location.href = "app.html";
+    setStatus("Missing class session — go back and join again");
+    var role = (localStorage.getItem("sia_role") || "").toLowerCase();
+    setTimeout(function () {
+      window.location.href = role === "teacher" || role === "admin" ? "teacher.html#live" : "student.html#live";
+    }, 1200);
     return;
   }
 
   window.studentMicAllowed = studentMicAllowed;
   window.studentCameraAllowed = studentCameraAllowed;
   if (!isTeacherRole() && liveSession) {
-    if (liveSession.mic_allowed) {
+    if (liveSession.mic_allowed !== false) {
       studentMicAllowed = true;
       window.studentMicAllowed = true;
     }
-    if (liveSession.camera_allowed) {
+    if (liveSession.camera_allowed !== false) {
       studentCameraAllowed = true;
       window.studentCameraAllowed = true;
     }
@@ -2041,8 +2102,28 @@ window.onload = function () {
   document.getElementById("cr-meta").textContent =
     (liveSession.subject || "Subject") + " · " + (liveSession.teacher_name || liveSession.role || "Class");
 
-  initWhiteboard();
   setVideoControlsEnabled(false);
+  setStatus("Connecting…");
+  if (typeof showVideoPlaceholder === "function") {
+    showVideoPlaceholder("Joining live video…");
+  }
+
+  // Connect media FIRST — whiteboard setup must never block chat/video.
+  try {
+    connectChat();
+  } catch (chatErr) {
+    setStatus("Chat error — still joining video…");
+  }
+  if (typeof initLiveVideo === "function") {
+    try { initLiveVideo(); } catch (vErr) {
+      setStatus("Video init error — tap Retry video");
+    }
+  }
+
+  try {
+    initWhiteboard();
+  } catch (boardErr) { /* non-fatal */ }
+
   if (isTeacherRole()) {
     showHostTools(true);
     var rhPanel = document.getElementById("raise-hand-panel");
@@ -2054,26 +2135,66 @@ window.onload = function () {
     bindClassroomAudioUnlock();
   } else {
     showStudentTools(true);
+    var studBadge = document.getElementById("audience-badge");
+    if (studBadge) {
+      studBadge.textContent = "Joining…";
+      studBadge.classList.remove("hidden");
+    }
     startClassroomStudentsPoll();
     startStudentMicPermissionPoll();
     bindClassroomAudioUnlock();
   }
-  connectChat();
-  (async function () {
-    await syncLiveSessionFromServer();
-    scheduleClassAutoEnd();
-    if (isTeacherRole()) {
-      var startClassId = liveSession.class_id || liveSession.classId;
-      if (startClassId && !liveSession.already_live) {
-        api("/api/v1/live-classes/" + startClassId + "/start", { method: "POST" })
-          .then(function () {
-            addChatMessage("", "Students can now see this class on Live Class and tap Join.", true);
-          })
-          .catch(function () { /* already live or network */ });
-      }
+
+  // If chat never opens, keep retrying so status does not freeze on Connecting…
+  var chatRetry = 0;
+  var chatRetryTimer = setInterval(function () {
+    chatRetry += 1;
+    if (liveSocket && liveSocket.readyState === WebSocket.OPEN) {
+      clearInterval(chatRetryTimer);
+      return;
     }
-    if (typeof initLiveVideo === "function") {
-      initLiveVideo();
+    if (chatRetry > 12) {
+      clearInterval(chatRetryTimer);
+      if (!(window.LiveClassMedia && LiveClassMedia.isJoined && LiveClassMedia.isJoined())) {
+        setStatus("Still connecting — tap Retry video");
+      }
+      return;
+    }
+    setStatus("Reconnecting chat… (" + chatRetry + ")");
+    try {
+      connectChat();
+    } catch (e) { /* ignore */ }
+    if (typeof tryConnectLiveVideo === "function") {
+      tryConnectLiveVideo(true);
+    }
+  }, 4000);
+
+  (async function () {
+    try {
+      await syncLiveSessionFromServer();
+      scheduleClassAutoEnd();
+      if (isTeacherRole()) {
+        var startClassId = liveSession.class_id || liveSession.classId;
+        if (startClassId && !liveSession.already_live) {
+          api("/api/v1/live-classes/" + startClassId + "/start", { method: "POST" })
+            .then(function () {
+              addChatMessage("", "Students can now see this class on Live Class and tap Join.", true);
+            })
+            .catch(function () { /* already live or network */ });
+        }
+      }
+      // Refresh token after sync and reconnect video if needed.
+      if (typeof refreshLiveKitToken === "function") {
+        await refreshLiveKitToken();
+      }
+      if (typeof tryConnectLiveVideo === "function") {
+        tryConnectLiveVideo(true);
+      }
+    } catch (e) {
+      setStatus("Connected locally — retrying server sync…");
+      if (typeof tryConnectLiveVideo === "function") {
+        tryConnectLiveVideo(true);
+      }
     }
   })();
 };

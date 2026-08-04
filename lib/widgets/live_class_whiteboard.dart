@@ -277,26 +277,49 @@ class BoardController extends ChangeNotifier {
       onSend?.call('text', t.toJson());
     }
     _activeTextId = null;
-    textAnchor = Offset(textAnchor.dx, textAnchor.dy + 34);
+    textAnchor = Offset(textAnchor.dx, textAnchor.dy + 40);
     notifyListeners();
-    // Ask the canvas host to scroll so the new line stays visible.
-    onScrollToContent?.call(textAnchor.dy + 48);
+    onScrollToContent?.call(contentBottomFor(_lastKnownWidth));
   }
 
   /// Optional hook used by the scrollable board canvas.
   void Function(double contentBottom)? onScrollToContent;
 
-  double get contentBottom {
+  /// Last board width from the canvas LayoutBuilder (for height estimates).
+  double _lastKnownWidth = 360;
+
+  void setKnownWidth(double width) {
+    if (width > 0) _lastKnownWidth = width;
+  }
+
+  /// Vertical extent including wrapped text at [width].
+  double contentBottomFor(double width) {
+    final w = width > 0 ? width : _lastKnownWidth;
     var maxY = textAnchor.dy + 48;
-    for (final t in texts) {
-      maxY = maxY > (t.pos.dy + t.size + 24) ? maxY : (t.pos.dy + t.size + 24);
+    final ordered = [...texts]
+      ..sort((a, b) {
+        final dy = a.pos.dy.compareTo(b.pos.dy);
+        if (dy != 0) return dy;
+        return a.pos.dx.compareTo(b.pos.dx);
+      });
+    var cursorBottom = 0.0;
+    for (final t in ordered) {
+      final laid = layoutBoardText(t, w);
+      final topFromBaseline = t.pos.dy - (t.size * 0.85);
+      final paintTop =
+          topFromBaseline > (cursorBottom + 8) ? topFromBaseline : (cursorBottom + 8);
+      final bottom = paintTop + laid.height;
+      if (bottom > maxY) maxY = bottom;
+      cursorBottom = bottom;
     }
     for (final s in strokes) {
       final y = s.from.dy > s.to.dy ? s.from.dy : s.to.dy;
       if (y + 24 > maxY) maxY = y + 24;
     }
-    return maxY;
+    return maxY + 48;
   }
+
+  double get contentBottom => contentBottomFor(_lastKnownWidth);
 
   // ---- Sync / clear ----
   void handleRemoteMessage(Map<String, dynamic> msg) {
@@ -417,14 +440,20 @@ class _LiveClassBoardCanvasState extends State<LiveClassBoardCanvas> {
           color: _kBoardBg,
           child: LayoutBuilder(
             builder: (context, constraints) {
+              controller.setKnownWidth(constraints.maxWidth);
               final minH = constraints.maxHeight;
-              final contentH = controller.contentBottom + 80;
+              final contentH =
+                  controller.contentBottomFor(constraints.maxWidth) + 80;
               final paintH = contentH > minH ? contentH : minH;
               return Stack(
                 fit: StackFit.expand,
                 children: [
+                  // Slide the board when wrapped text grows past the screen height.
                   SingleChildScrollView(
                     controller: _scroll,
+                    physics: const BouncingScrollPhysics(
+                      parent: AlwaysScrollableScrollPhysics(),
+                    ),
                     child: SizedBox(
                       width: constraints.maxWidth,
                       height: paintH,
@@ -446,6 +475,7 @@ class _LiveClassBoardCanvasState extends State<LiveClassBoardCanvas> {
                           painter: _BoardPainter(
                             strokes: controller.strokes,
                             texts: controller.texts,
+                            boardWidth: constraints.maxWidth,
                           ),
                           size: Size(constraints.maxWidth, paintH),
                         ),
@@ -743,8 +773,13 @@ class _LiveClassBoardControlsState extends State<LiveClassBoardControls> {
 class _BoardPainter extends CustomPainter {
   final List<BoardStroke> strokes;
   final List<BoardText> texts;
+  final double boardWidth;
 
-  _BoardPainter({required this.strokes, required this.texts});
+  _BoardPainter({
+    required this.strokes,
+    required this.texts,
+    required this.boardWidth,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -760,28 +795,43 @@ class _BoardPainter extends CustomPainter {
         ..style = PaintingStyle.stroke;
       canvas.drawLine(s.from, s.to, paint);
     }
-    for (final t in texts) {
-      final tp = TextPainter(
-        text: TextSpan(
-          text: t.text,
-          style: TextStyle(
-            color: t.color,
-            fontSize: t.size,
-            fontWeight: FontWeight.w600,
-            height: 1.15,
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-        maxLines: 1,
-        ellipsis: null,
-      )..layout();
-      // Website canvas fillText uses alphabetic baseline for Y — match that.
-      final baseline = tp.computeDistanceToActualBaseline(TextBaseline.alphabetic) ??
-          (t.size * 0.8);
-      tp.paint(canvas, Offset(t.pos.dx, t.pos.dy - baseline));
+
+    // Paint in Y order; wrap at screen width and push later lines down so
+    // wrapped blocks never sit on top of each other.
+    final ordered = [...texts]
+      ..sort((a, b) {
+        final dy = a.pos.dy.compareTo(b.pos.dy);
+        if (dy != 0) return dy;
+        return a.pos.dx.compareTo(b.pos.dx);
+      });
+    var cursorBottom = 0.0;
+    for (final t in ordered) {
+      if (t.text.trim().isEmpty) continue;
+      final tp = layoutBoardText(t, boardWidth > 0 ? boardWidth : size.width);
+      final topFromBaseline = t.pos.dy - (t.size * 0.85);
+      final paintTop =
+          topFromBaseline > (cursorBottom + 8) ? topFromBaseline : (cursorBottom + 8);
+      tp.paint(canvas, Offset(t.pos.dx, paintTop));
+      cursorBottom = paintTop + tp.height;
     }
   }
 
   @override
   bool shouldRepaint(covariant _BoardPainter oldDelegate) => true;
+}
+
+TextPainter layoutBoardText(BoardText t, double boardWidth) {
+  final maxW = (boardWidth - t.pos.dx - 16).clamp(48.0, boardWidth);
+  return TextPainter(
+    text: TextSpan(
+      text: t.text,
+      style: TextStyle(
+        color: t.color,
+        fontSize: t.size,
+        fontWeight: FontWeight.w600,
+        height: 1.25,
+      ),
+    ),
+    textDirection: TextDirection.ltr,
+  )..layout(maxWidth: maxW);
 }

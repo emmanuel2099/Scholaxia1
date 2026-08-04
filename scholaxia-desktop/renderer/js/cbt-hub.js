@@ -295,7 +295,13 @@ async function cbtHubDownload(examId) {
     cbtHubState.downloaded[examId] = true;
     alert("Downloaded! You can start this exam offline.");
   } catch (e) {
-    alert(e.message || "Download failed.");
+    var msg = e.message || "Download failed.";
+    if (/402|cbt_package|package|paid|required/i.test(msg)) {
+      if (typeof showPage === "function") showPage("cbt-packages");
+      else alert(msg);
+    } else {
+      alert(msg);
+    }
   } finally {
     cbtHubState.busyId = null;
     cbtRefreshDownloadedSet();
@@ -321,7 +327,13 @@ async function cbtHubDownloadJamb(year) {
     }
     alert("JAMB full exam downloaded — 4 subjects ready offline.");
   } catch (e) {
-    alert(e.message || "Download failed.");
+    var msg = e.message || "Download failed.";
+    if (/402|cbt_package|package|paid|required/i.test(msg)) {
+      if (typeof showPage === "function") showPage("cbt-packages");
+      else alert(msg);
+    } else {
+      alert(msg);
+    }
   } finally {
     cbtHubState.busyId = null;
     cbtRefreshDownloadedSet();
@@ -342,7 +354,14 @@ async function cbtHubStart(examId) {
   var session = null;
   try {
     session = await api("/api/v1/cbt/sessions/" + examId + "/start", { method: "POST" });
-  } catch (e) { /* offline ok */ }
+  } catch (e) {
+    var msg = (e && e.message) || "";
+    if (/402|cbt_package|package|paid|required/i.test(msg)) {
+      if (typeof showPage === "function") showPage("cbt-packages");
+      return;
+    }
+    /* offline ok for already-downloaded packs */
+  }
   currentExam = pack;
   currentSession = session
     ? { session_id: session.session_id || session.id, is_school_exam: false }

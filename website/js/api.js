@@ -10,18 +10,37 @@
   }
 
   function getToken() {
-    var teacherTok = localStorage.getItem("sia_teacher_token") || "";
+    var teacherTok = localStorage.getItem("sia_teacher_token") || localStorage.getItem("sia_admin_token") || "";
     var studentTok = localStorage.getItem("sia_token") || "";
+    var role = "";
     try {
-      if (/classroom\.html/i.test(window.location.pathname || "")) {
-        var sess = JSON.parse(localStorage.getItem("live_session") || "null");
-        if (sess && (sess.role === "teacher" || sess.role === "admin")) {
-          return teacherTok || studentTok;
-        }
+      role = localStorage.getItem("sia_role") || "";
+    } catch (e) {}
+    try {
+      var path = String(window.location.pathname || "");
+      var onClassroom = /classroom(\.html)?$/i.test(path) || /\/classroom/i.test(path);
+      var sess = null;
+      try {
+        sess = JSON.parse(localStorage.getItem("live_session") || "null");
+      } catch (e2) {
+        sess = null;
+      }
+      var sessRole = (sess && sess.role) || "";
+      // Host classroom must never send a leftover student JWT — presence/students will 403.
+      if (onClassroom && (sessRole === "teacher" || sessRole === "admin")) {
+        return teacherTok || studentTok;
+      }
+      if (onClassroom && sessRole === "student") {
+        return studentTok || teacherTok;
+      }
+      if (role === "teacher" || role === "admin") {
+        return teacherTok || studentTok;
+      }
+      if (role === "student" || role === "kind") {
         return studentTok || teacherTok;
       }
     } catch (e) {}
-    return studentTok || teacherTok;
+    return teacherTok || studentTok;
   }
 
   function getUser() {
@@ -97,7 +116,7 @@
       options.headers || {}
     );
     var token = getToken();
-    if (token && !options.noAuth) {
+    if (token && !options.noAuth && !headers.Authorization) {
       headers.Authorization = "Bearer " + token;
     }
     var res = await fetch(API_BASE + path, {
@@ -113,7 +132,7 @@
     options = options || {};
     var headers = { Accept: "application/json" };
     var token = getToken();
-    if (token && !options.noAuth) {
+    if (token && !options.noAuth && !headers.Authorization) {
       headers.Authorization = "Bearer " + token;
     }
     var res = await fetch(API_BASE + path, {

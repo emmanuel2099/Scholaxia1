@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; script-src-attr 'unsafe-inline'; connect-src 'self' https://scholaxia1.onrender.com wss://scholaxia1.onrender.com http://127.0.0.1:* wss://scholaxia-neyu04kd.livekit.cloud https://scholaxia-neyu04kd.livekit.cloud wss://*.livekit.cloud https://*.livekit.cloud; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self' blob: https: wss:; worker-src 'self' blob:;" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; script-src-attr 'unsafe-inline'; connect-src * blob: data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src * data: blob:; media-src * blob: data:; worker-src 'self' blob:; frame-src 'self' blob:;" />
   <title>Live Classroom — Scholaxia</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/classroom.css" />
-  <link rel="stylesheet" href="css/responsive.css" />
+  <link rel="stylesheet" href="css/classroom.css?v=20260804d" />
+  <link rel="stylesheet" href="css/responsive.css?v=20260804d" />
 </head>
 <body>
 
@@ -34,7 +34,7 @@
         <p id="cr-meta">—</p>
       </div>
     </div>
-    <span id="audience-badge" class="audience-badge">0 in class</span>
+    <span id="audience-badge" class="audience-badge">Joining…</span>
     <button type="button" id="btn-save-class-top" class="btn-save-class-top student-only hidden" onclick="toggleSaveLive()" title="Save this class on your device">&#128190; Save class</button>
     <span id="cr-status" class="cr-status">Connecting…</span>
   </header>
@@ -143,10 +143,11 @@
   </footer>
 </div>
 
-<script src="js/api.js"></script>
-<script src="js/saved-live.js"></script>
+<script src="js/api.js?v=20260804d"></script>
+<script src="js/classroom-bridge.js?v=20260804d"></script>
+<script src="js/saved-live.js?v=20260804d"></script>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.9.3/dist/livekit-client.umd.js"></script>
-<script src="js/classroom-livekit.js"></script>
-<script src="js/classroom.js"></script>
+<script src="js/classroom-livekit.js?v=20260804d"></script>
+<script src="js/classroom.js?v=20260804d"></script>
 </body>
 </html>

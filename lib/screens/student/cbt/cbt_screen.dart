@@ -234,11 +234,11 @@ class _CbtScreenState extends State<CbtScreen> {
           Text(
             _subjectChangeRequiresPayment
                 ? 'Subjects changed — activate them'
-                : 'Annual CBT package required',
+                : 'Browse exams below — pay to download or start',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: context.textColor,
-              fontSize: 18,
+              fontSize: 17,
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -246,7 +246,7 @@ class _CbtScreenState extends State<CbtScreen> {
           Text(
             _subjectChangeRequiresPayment
                 ? 'Your paid package covered the subjects previously registered. Pay for a package to activate the new subject selection.'
-                : 'Choose a one-year package to download and take CBT practice exams.',
+                : 'You can see all CBT exams. When you tap Download or Start, Paystack opens if you have not paid yet.',
             textAlign: TextAlign.center,
             style: TextStyle(color: context.greyColor, height: 1.45),
           ),
@@ -256,7 +256,7 @@ class _CbtScreenState extends State<CbtScreen> {
             child: FilledButton.icon(
               onPressed: _openPackages,
               icon: const Icon(Icons.lock_open_rounded),
-              label: const Text('View packages & pay'),
+              label: const Text('Pay with Paystack'),
             ),
           ),
         ],
@@ -559,6 +559,10 @@ class _CbtScreenState extends State<CbtScreen> {
       );
     } on ApiException catch (e) {
       if (!mounted) return;
+      if (e.statusCode == 402) {
+        await _openPackages();
+        return;
+      }
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.message), backgroundColor: Colors.red),
       );
@@ -727,9 +731,13 @@ class _CbtScreenState extends State<CbtScreen> {
                             ),
                           ),
                         )
-                      else if (!_hasActiveTabAccess)
-                        _paymentRequiredCard(context)
-                      else if (_isJambTab) ...[
+                      else ...[
+                        // Always show exam list first; Paystack only on download/start.
+                        if (!_hasActiveTabAccess) ...[
+                          _paymentRequiredCard(context),
+                          const SizedBox(height: 16),
+                        ],
+                        if (_isJambTab) ...[
                         Builder(
                           builder: (ctx) {
                             final members = _jambAvailableMembers();
@@ -844,6 +852,7 @@ class _CbtScreenState extends State<CbtScreen> {
                           const SizedBox.shrink()
                         else
                           _examCardsForList(context, exams),
+                      ],
                       ],
                       const SizedBox(height: 60),
                     ],

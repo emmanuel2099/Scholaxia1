@@ -23,6 +23,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _passCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
   final _otpCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
+  final _locationCtrl = TextEditingController();
+  final _subjectsCtrl = TextEditingController();
   bool _obscurePass = true;
   bool _obscureConfirm = true;
   bool _loading = false;
@@ -37,6 +40,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _passCtrl.dispose();
     _confirmCtrl.dispose();
     _otpCtrl.dispose();
+    _phoneCtrl.dispose();
+    _locationCtrl.dispose();
+    _subjectsCtrl.dispose();
     super.dispose();
   }
 
@@ -68,13 +74,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
       ).showSnackBar(const SnackBar(content: Text('Passwords do not match.')));
       return;
     }
+    if (widget.accountRole == AccountRole.teacher &&
+        _csv(_subjectsCtrl.text).isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add at least one teaching subject.')),
+      );
+      return;
+    }
     setState(() => _loading = true);
     try {
       final result = await _api.signupStart(
         email: email,
         password: pass,
         fullName: name,
-        role: 'student',
+        role: _roleSlug,
+        phone: _phoneCtrl.text.trim(),
+        location: _locationCtrl.text.trim(),
+        subjects: _csv(_subjectsCtrl.text),
       );
       if (!mounted) return;
       setState(() {
@@ -122,6 +138,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
       await FirebasePushService.instance.registerAfterLogin();
       if (!mounted) return;
       if (auth.role == 'teacher') {
+        final me = await _api.getTeacherMe();
+        final approved = me['is_approved'] == true;
+        if (!approved && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Teacher account created. Waiting for admin approval.'),
+            ),
+          );
+        }
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(builder: (_) => const TeacherShell()),
@@ -265,6 +290,36 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   ),
                 ),
               ),
+              if (widget.accountRole == AccountRole.teacher) ...[
+                const SizedBox(height: 16),
+                _label(context, 'Phone Number'),
+                const SizedBox(height: 6),
+                _field(
+                  context,
+                  ctrl: _phoneCtrl,
+                  hint: '+234...',
+                  icon: Icons.phone_outlined,
+                  type: TextInputType.phone,
+                ),
+                const SizedBox(height: 16),
+                _label(context, 'Location'),
+                const SizedBox(height: 6),
+                _field(
+                  context,
+                  ctrl: _locationCtrl,
+                  hint: 'City / State',
+                  icon: Icons.location_on_outlined,
+                ),
+                const SizedBox(height: 16),
+                _label(context, 'Subjects (comma separated)'),
+                const SizedBox(height: 6),
+                _field(
+                  context,
+                  ctrl: _subjectsCtrl,
+                  hint: 'Mathematics, English, Physics',
+                  icon: Icons.menu_book_outlined,
+                ),
+              ],
             ] else ...[
               _label(context, 'Email OTP'),
               const SizedBox(height: 6),
@@ -348,6 +403,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ),
       ),
     );
+  }
+
+  String get _roleSlug {
+    switch (widget.accountRole) {
+      case AccountRole.teacher:
+        return 'teacher';
+      case AccountRole.kind:
+        return 'kind';
+      case AccountRole.student:
+      case null:
+        return 'student';
+    }
+  }
+
+  List<String> _csv(String raw) {
+    return raw
+        .split(',')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
   }
 
   Widget _label(BuildContext context, String t) => Text(
