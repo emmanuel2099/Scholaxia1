@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; script-src-attr 'unsafe-inline'; connect-src 'self' https://scholaxia1.onrender.com wss://scholaxia1.onrender.com http://127.0.0.1:* wss://scholaxia-neyu04kd.livekit.cloud https://scholaxia-neyu04kd.livekit.cloud wss://*.livekit.cloud https://*.livekit.cloud; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:; media-src 'self' blob: https: wss:; worker-src 'self' blob:;" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; script-src-attr 'unsafe-inline'; connect-src * blob: data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src * data: blob:; media-src * blob: data:; worker-src 'self' blob:; frame-src 'self' blob:;" />
   <title>Live Classroom — Scholaxia</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/classroom.css" />
-  <link rel="stylesheet" href="css/responsive.css" />
+  <link rel="stylesheet" href="css/classroom.css?v=20260804h" />
+  <link rel="stylesheet" href="css/responsive.css?v=20260804h" />
 </head>
 <body>
 
@@ -34,7 +34,7 @@
         <p id="cr-meta">—</p>
       </div>
     </div>
-    <span id="audience-badge" class="audience-badge">0 in class</span>
+    <span id="audience-badge" class="audience-badge">Joining…</span>
     <button type="button" id="btn-save-class-top" class="btn-save-class-top student-only hidden" onclick="toggleSaveLive()" title="Save this class on your device">&#128190; Save class</button>
     <span id="cr-status" class="cr-status">Connecting…</span>
   </header>
@@ -71,8 +71,10 @@
         <div id="video-local" class="video-tile local hidden"></div>
         <div id="video-remote" class="video-remote"></div>
         <div id="board-overlay" class="board-overlay hidden">
-          <canvas id="whiteboard" class="whiteboard-canvas"></canvas>
-          <div id="board-cursor" class="board-cursor hidden"></div>
+          <div id="board-scroll" class="board-scroll">
+            <canvas id="whiteboard" class="whiteboard-canvas"></canvas>
+            <div id="board-cursor" class="board-cursor hidden"></div>
+          </div>
           <div id="board-toolbar" class="board-toolbar host-only hidden">
             <div class="board-toolbar-row">
               <label class="board-label" for="subject-keyboard">Subject keyboard</label>
@@ -102,6 +104,7 @@
             <p id="board-hint" class="board-hint">Type in the box, tap symbols, or use Add image to show a picture on the board for everyone.</p>
           </div>
         </div>
+        <div id="reaction-overlay" class="reaction-overlay" aria-hidden="true"></div>
         <div id="video-placeholder" class="video-placeholder">
           <div class="ph-icon">&#127909;</div>
           <p id="video-placeholder-text">Class is live — connecting…</p>
@@ -131,6 +134,13 @@
       <button type="button" id="btn-cam" class="vc-btn toolbar-btn" onclick="toggleCam()" title="Camera">&#128247; <span>Camera</span></button>
       <button type="button" id="btn-chat" class="vc-btn toolbar-btn" onclick="toggleChatDrawer()" title="Chat">&#128172; <span>Chat</span></button>
       <button type="button" class="vc-btn toolbar-btn" onclick="raiseHand()" title="Raise hand">&#9995; <span>Raise hand</span></button>
+      <div class="reaction-bar" title="Quick reactions">
+        <button type="button" class="vc-btn toolbar-btn reaction-btn" onclick="sendReaction('👍')" title="Thumbs up">👍</button>
+        <button type="button" class="vc-btn toolbar-btn reaction-btn" onclick="sendReaction('❤️')" title="Love">❤️</button>
+        <button type="button" class="vc-btn toolbar-btn reaction-btn" onclick="sendReaction('😂')" title="Laugh">😂</button>
+        <button type="button" class="vc-btn toolbar-btn reaction-btn" onclick="sendReaction('👏')" title="Clap">👏</button>
+        <button type="button" class="vc-btn toolbar-btn reaction-btn" onclick="sendReaction('🎉')" title="Celebrate">🎉</button>
+      </div>
       <button type="button" id="btn-share" class="vc-btn toolbar-btn host-only hidden" onclick="toggleScreenShare()" title="Share screen">&#128187; <span>Share screen</span></button>
       <button type="button" id="btn-board" class="vc-btn toolbar-btn host-only hidden" onclick="toggleBoard()" title="Teaching board">&#128221; <span>Board</span></button>
       <button type="button" id="btn-save-live" class="vc-btn toolbar-btn save-class-btn student-only hidden" onclick="toggleSaveLive()" title="Record and save">&#128190; <span>Save</span></button>
@@ -143,11 +153,11 @@
   </footer>
 </div>
 
-<script src="js/api.js?v=5"></script>
-<script src="js/classroom-bridge.js?v=1"></script>
-<script src="js/saved-live.js?v=1"></script>
+<script src="js/api.js?v=20260804h"></script>
+<script src="js/classroom-bridge.js?v=20260804h"></script>
+<script src="js/saved-live.js?v=20260804h"></script>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.9.3/dist/livekit-client.umd.js"></script>
-<script src="js/classroom-livekit.js?v=1"></script>
-<script src="js/classroom.js?v=1"></script>
+<script src="js/classroom-livekit.js?v=20260804h"></script>
+<script src="js/classroom.js?v=20260804h"></script>
 </body>
 </html>

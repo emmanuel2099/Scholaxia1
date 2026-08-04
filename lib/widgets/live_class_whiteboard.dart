@@ -77,13 +77,16 @@ class BoardText {
       final v = int.tryParse(hex.substring(1), radix: 16);
       if (v != null) c = Color(0xFF000000 | v);
     }
+    final x = (data['x'] as num?)?.toDouble() ?? 24;
+    final y = (data['y'] as num?)?.toDouble() ?? 40;
+    final rawId = data['id']?.toString().trim() ?? '';
+    // Website used to omit id — key by position so stream updates replace instead of stack.
+    final id = rawId.isNotEmpty
+        ? rawId
+        : 'pos-${x.round()}-${y.round()}';
     return BoardText(
-      id: data['id']?.toString() ??
-          DateTime.now().microsecondsSinceEpoch.toString(),
-      pos: Offset(
-        (data['x'] as num?)?.toDouble() ?? 24,
-        (data['y'] as num?)?.toDouble() ?? 40,
-      ),
+      id: id,
+      pos: Offset(x, y),
       text: data['text']?.toString() ?? '',
       color: c,
       size: (data['size'] as num?)?.toDouble() ?? 20,
@@ -325,6 +328,13 @@ class BoardController extends ChangeNotifier {
       case 'text':
       case 'text_stream':
         final t = BoardText.fromJson(m);
+        // Drop leftover stream ghosts at the same baseline (older clients).
+        texts.removeWhere((e) {
+          if (e.id == t.id) return false;
+          if (!e.id.startsWith('pos-') && !e.id.startsWith('live-')) return false;
+          return (e.pos.dx - t.pos.dx).abs() < 2 &&
+              (e.pos.dy - t.pos.dy).abs() < 2;
+        });
         final idx = texts.indexWhere((e) => e.id == t.id);
         if (t.text.trim().isEmpty) {
           if (idx != -1) texts.removeAt(idx);
@@ -757,13 +767,18 @@ class _BoardPainter extends CustomPainter {
           style: TextStyle(
             color: t.color,
             fontSize: t.size,
-            fontWeight: FontWeight.w500,
+            fontWeight: FontWeight.w600,
+            height: 1.15,
           ),
         ),
         textDirection: TextDirection.ltr,
-        maxLines: null,
-      )..layout(maxWidth: (size.width - t.pos.dx - 8).clamp(20, size.width));
-      tp.paint(canvas, t.pos);
+        maxLines: 1,
+        ellipsis: null,
+      )..layout();
+      // Website canvas fillText uses alphabetic baseline for Y — match that.
+      final baseline = tp.computeDistanceToActualBaseline(TextBaseline.alphabetic) ??
+          (t.size * 0.8);
+      tp.paint(canvas, Offset(t.pos.dx, t.pos.dy - baseline));
     }
   }
 
