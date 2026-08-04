@@ -12,6 +12,7 @@ class ApiEndpoints {
   static const String signupStart = '$_v1/auth/signup/start';
   static const String signupVerify = '$_v1/auth/signup/verify';
   static const String otpSend = '$_v1/auth/otp/send';
+  static const String passwordReset = '$_v1/auth/password/reset';
   static const String firebaseAuth = '$_v1/auth/firebase';
   static const String kindMe = '$_v1/kind/me';
   static const String kindSubjects = '$_v1/kind/subjects';
@@ -195,6 +196,19 @@ class ApiEndpoints {
   static String marketplaceBookProduct(String id) =>
       '$_v1/marketplace/products/$id/book';
   static const String marketplaceBookingsMine = '$_v1/marketplace/bookings/mine';
+  static const String marketplaceCart = '$_v1/marketplace/cart';
+  static const String marketplaceCartAdd = '$_v1/marketplace/cart/add';
+  static String marketplaceCartItem(String id) => '$_v1/marketplace/cart/$id';
+  static const String marketplaceCheckout = '$_v1/marketplace/checkout';
+  static const String marketplaceOrdersMine = '$_v1/marketplace/orders/mine';
+  static const String vendorMarketplaceProducts = '$_v1/vendor/marketplace/products';
+  static String vendorMarketplaceProduct(String id) =>
+      '$_v1/vendor/marketplace/products/$id';
+  static const String vendorMarketplaceOrders = '$_v1/vendor/marketplace/orders';
+  static String vendorMarketplaceOrderTracking(String orderItemId) =>
+      '$_v1/vendor/marketplace/orders/$orderItemId/tracking';
+  static String vendorMarketplaceOrderItem(String orderItemId) =>
+      '$_v1/vendor/marketplace/orders/$orderItemId';
 
   // Wallet
   static const String walletMe = '$_v1/wallet/me';

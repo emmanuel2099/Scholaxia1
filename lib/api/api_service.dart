@@ -143,7 +143,7 @@ class ApiService {
   /// Resolve role from storage or API (fixes teachers sent to exam setup).
   Future<String?> resolveSessionRole() async {
     var role = (await getRole())?.toLowerCase().trim();
-    if (role == 'teacher' || role == 'student' || role == 'kind') {
+    if (role == 'teacher' || role == 'student' || role == 'kind' || role == 'vendor') {
       return role;
     }
 
@@ -157,6 +157,12 @@ class ApiService {
       await getStudentProfile();
       await _saveRole('student');
       return 'student';
+    } catch (_) {}
+
+    try {
+      await vendorProductsMine();
+      await _saveRole('vendor');
+      return 'vendor';
     } catch (_) {}
 
     return role;
@@ -181,8 +187,13 @@ class ApiService {
 
   String resolveMediaUrl(String? url) {
     if (url == null || url.isEmpty) return '';
-    if (url.startsWith('http')) return url;
-    return _uri(url.startsWith('/') ? url : '/$url').toString();
+    var value = url.trim();
+    if (value.startsWith('//')) value = 'https:$value';
+    if (value.startsWith('http://')) {
+      value = 'https://${value.substring(7)}';
+    }
+    if (value.startsWith('http')) return value;
+    return _uri(value.startsWith('/') ? value : '/$value').toString();
   }
 
   Map<String, String> _jsonHeaders() => {
@@ -413,6 +424,11 @@ class ApiService {
     String ageGroup = '6-8',
     String? gradeLevel,
     String? parentEmail,
+    String? phone,
+    String? location,
+    List<String>? subjects,
+    String? businessName,
+    List<String>? categories,
   }) async {
     final res = await _onlinePost(
       _uri(ApiEndpoints.signupStart),
@@ -427,6 +443,12 @@ class ApiService {
           'grade_level': gradeLevel,
         if (parentEmail != null && parentEmail.isNotEmpty)
           'parent_email': parentEmail,
+        if (phone != null && phone.isNotEmpty) 'phone': phone,
+        if (location != null && location.isNotEmpty) 'location': location,
+        if (subjects != null && subjects.isNotEmpty) 'subjects': subjects,
+        if (businessName != null && businessName.isNotEmpty)
+          'business_name': businessName,
+        if (categories != null && categories.isNotEmpty) 'categories': categories,
       }),
     );
     return _parseMap(res);
@@ -456,6 +478,23 @@ class ApiService {
       _uri(ApiEndpoints.otpSend),
       headers: _jsonHeaders(),
       body: jsonEncode({'email': email, 'purpose': purpose}),
+    );
+    return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> resetPassword({
+    required String email,
+    required String otp,
+    required String newPassword,
+  }) async {
+    final res = await _onlinePost(
+      _uri(ApiEndpoints.passwordReset),
+      headers: _jsonHeaders(),
+      body: jsonEncode({
+        'email': email,
+        'otp': otp,
+        'new_password': newPassword,
+      }),
     );
     return _parseMap(res);
   }
@@ -1178,6 +1217,150 @@ class ApiService {
       }),
     );
     return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> addToMarketplaceCart({
+    required String productId,
+    int quantity = 1,
+  }) async {
+    final res = await _onlinePost(
+      _uri(ApiEndpoints.marketplaceCartAdd),
+      headers: await _authHeaders(),
+      body: jsonEncode({'product_id': productId, 'quantity': quantity}),
+    );
+    return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> marketplaceCart() async {
+    final res = await _cachedGet(
+      _uri(ApiEndpoints.marketplaceCart),
+      headers: await _authHeaders(),
+    );
+    return _parseMap(res);
+  }
+
+  Future<void> removeMarketplaceCartItem(String cartItemId) async {
+    final res = await _onlineDelete(
+      _uri(ApiEndpoints.marketplaceCartItem(cartItemId)),
+      headers: await _authHeaders(),
+    );
+    _parse(res);
+  }
+
+  Future<Map<String, dynamic>> checkoutMarketplaceCart({
+    required String deliveryAddress,
+    required String contactPhone,
+  }) async {
+    final res = await _onlinePost(
+      _uri(ApiEndpoints.marketplaceCheckout),
+      headers: await _authHeaders(),
+      body: jsonEncode({
+        'delivery_address': deliveryAddress,
+        'contact_phone': contactPhone,
+      }),
+    );
+    return _parseMap(res);
+  }
+
+  Future<List<dynamic>> marketplaceOrdersMine() async {
+    final res = await _cachedGet(
+      _uri(ApiEndpoints.marketplaceOrdersMine),
+      headers: await _authHeaders(),
+    );
+    return _parseList(res);
+  }
+
+  Future<Map<String, dynamic>> vendorCreateProduct({
+    required String title,
+    required String category,
+    required double price,
+    required String imageUrl,
+    String? description,
+    int stockQty = 0,
+    bool isAvailable = true,
+  }) async {
+    final res = await _onlinePost(
+      _uri(ApiEndpoints.vendorMarketplaceProducts),
+      headers: await _authHeaders(),
+      body: jsonEncode({
+        'title': title,
+        'category': category,
+        'price': price,
+        'image_url': imageUrl,
+        'description': description,
+        'stock_qty': stockQty,
+        'is_available': isAvailable,
+      }),
+    );
+    return _parseMap(res);
+  }
+
+  Future<List<dynamic>> vendorProductsMine() async {
+    final res = await _cachedGet(
+      _uri(ApiEndpoints.vendorMarketplaceProducts),
+      headers: await _authHeaders(),
+    );
+    return _parseList(res);
+  }
+
+  Future<Map<String, dynamic>> vendorUpdateProduct({
+    required String productId,
+    String? title,
+    String? description,
+    String? category,
+    double? price,
+    String? imageUrl,
+    int? stockQty,
+    bool? isAvailable,
+    bool? isActive,
+  }) async {
+    final body = <String, dynamic>{};
+    if (title != null) body['title'] = title;
+    if (description != null) body['description'] = description;
+    if (category != null) body['category'] = category;
+    if (price != null) body['price'] = price;
+    if (imageUrl != null) body['image_url'] = imageUrl;
+    if (stockQty != null) body['stock_qty'] = stockQty;
+    if (isAvailable != null) body['is_available'] = isAvailable;
+    if (isActive != null) body['is_active'] = isActive;
+    final res = await _onlinePatch(
+      _uri(ApiEndpoints.vendorMarketplaceProduct(productId)),
+      headers: await _authHeaders(),
+      body: jsonEncode(body),
+    );
+    return _parseMap(res);
+  }
+
+  Future<List<dynamic>> vendorOrders() async {
+    final res = await _cachedGet(
+      _uri(ApiEndpoints.vendorMarketplaceOrders),
+      headers: await _authHeaders(),
+    );
+    return _parseList(res);
+  }
+
+  Future<Map<String, dynamic>> vendorUpdateOrderTracking({
+    required String orderItemId,
+    required String trackingStatus,
+    String? trackingNote,
+  }) async {
+    final query = <String, String>{'tracking_status': trackingStatus};
+    if (trackingNote != null && trackingNote.trim().isNotEmpty) {
+      query['tracking_note'] = trackingNote.trim();
+    }
+    final res = await _onlinePatch(
+      _uri(ApiEndpoints.vendorMarketplaceOrderTracking(orderItemId), query),
+      headers: await _authHeaders(),
+    );
+    return _parseMap(res);
+  }
+
+  Future<void> vendorDeleteOrderItem(String orderItemId) async {
+    final res = await _onlineDelete(
+      _uri(ApiEndpoints.vendorMarketplaceOrderItem(orderItemId)),
+      headers: await _authHeaders(),
+    );
+    _parse(res);
   }
 
   // ── Teacher ────────────────────────────────────────────────────────────────

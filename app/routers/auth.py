@@ -48,7 +48,13 @@ class LoginRequest(BaseModel):
 
 class SendOtpRequest(BaseModel):
     email: EmailStr
-    purpose: str = "signup"  # signup | login
+    purpose: str = "signup"  # signup | login | reset_password
+
+
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+    otp: str = Field(..., min_length=4, max_length=10)
+    new_password: str = Field(..., min_length=8, max_length=128)
 
 
 class SignupStartRequest(BaseModel):
@@ -298,22 +304,33 @@ async def firebase_phone_auth(payload: FirebaseAuthRequest, db: AsyncSession = D
 async def send_otp_email(payload: SendOtpRequest, db: AsyncSession = Depends(get_db)):
     """
     Send an OTP through the configured email provider.
-    purpose=signup → email must NOT be registered
-    purpose=login  → email must already exist
+    purpose=signup         → email must NOT be registered
+    purpose=login          → email must already exist
+    purpose=reset_password → email must already exist
     """
     email = payload.email.lower().strip()
     purpose = (payload.purpose or "signup").strip().lower()
-    if purpose not in ("signup", "login"):
-        raise HTTPException(status_code=400, detail="purpose must be signup or login")
+    if purpose not in ("signup", "login", "reset_password"):
+        raise HTTPException(
+            status_code=400,
+            detail="purpose must be signup, login, or reset_password",
+        )
 
     existing = await _find_user_by_email(db, email)
     if purpose == "signup" and existing:
         raise HTTPException(status_code=400, detail="Email already registered. Please log in.")
-    if purpose == "login" and not existing:
+    if purpose in ("login", "reset_password") and not existing:
         raise HTTPException(status_code=404, detail="No account found for this email.")
 
     name = existing.full_name if existing else "there"
-    otp = await send_otp(email, name, purpose)
+    try:
+        otp = await send_otp(email, name, purpose)
+    except Exception as e:
+        print(f"[OTP] email send failed for {email}: {e}")
+        raise HTTPException(
+            status_code=502,
+            detail="Could not send email. Check the address and try again.",
+        )
     out = {
         "ok": True,
         "message": "OTP sent to your email",
@@ -324,6 +341,24 @@ async def send_otp_email(payload: SendOtpRequest, db: AsyncSession = Depends(get
         out["debug_otp"] = otp
         out["message"] = f"OTP sent to your email (debug code: {otp})"
     return out
+
+
+@router.post("/password/reset")
+async def reset_password(payload: PasswordResetRequest, db: AsyncSession = Depends(get_db)):
+    """Verify reset OTP and set a new password."""
+    email = payload.email.lower().strip()
+    if not await verify_otp(email, payload.otp, purpose="reset_password"):
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+
+    user = await _find_user_by_email(db, email)
+    if not user:
+        raise HTTPException(status_code=404, detail="No account found for this email.")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Account disabled")
+
+    user.hashed_password = hash_password(payload.new_password)
+    await db.flush()
+    return {"ok": True, "message": "Password updated. You can log in with your new password."}
 
 
 @router.post("/signup/start")

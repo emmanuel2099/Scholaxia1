@@ -9,6 +9,7 @@ import '../student/student_shell.dart';
 import '../teacher/teacher_shell.dart';
 import 'kid_register_screen.dart';
 import 'register_screen.dart';
+import 'reset_password_screen.dart';
 import 'role_select_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -257,7 +258,16 @@ class _LoginScreenState extends State<LoginScreen> {
                       children: [
                         _label(context, 'PASSWORD'),
                         GestureDetector(
-                          onTap: () {},
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ResetPasswordScreen(
+                                  initialEmail: _emailCtrl.text.trim(),
+                                ),
+                              ),
+                            );
+                          },
                           child: Text(
                             'Forgot Password?',
                             style: TextStyle(
@@ -395,7 +405,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     if (widget.accountRole == null ||
                         widget.accountRole == AccountRole.student ||
-                        widget.accountRole == AccountRole.kind) ...[
+                        widget.accountRole == AccountRole.kind ||
+                        widget.accountRole == AccountRole.teacher) ...[
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
