@@ -119,6 +119,8 @@ class ApiEndpoints {
   static String liveClassStart(String classId) => '$_v1/live-classes/$classId/start';
   static String liveClassJoin(String classId) => '$_v1/live-classes/$classId/join';
   static String liveClassDetail(String classId) => '$_v1/live-classes/$classId';
+  static String liveClassPresence(String classId) =>
+      '$_v1/live-classes/$classId/presence';
   static String liveClassEnd(String classId) => '$_v1/live-classes/$classId/end';
   static String liveClassLeave(String classId) => '$_v1/live-classes/$classId/leave';
   static String liveClassToken(String classId) => '$_v1/live-classes/$classId/token';

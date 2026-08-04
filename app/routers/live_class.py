@@ -973,6 +973,72 @@ async def get_livekit_token(
     }
 
 
+@router.get("/{class_id}/presence")
+async def class_presence(
+    class_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Who is in this live class right now (HTTP fallback when chat WS is slow).
+    Available to the teacher and any student with active attendance.
+    """
+    class_uuid = parse_uuid(class_id)
+    result = await db.execute(select(LiveClass).where(LiveClass.id == class_uuid))
+    live_class = result.scalar_one_or_none()
+    if not live_class:
+        raise HTTPException(status_code=404, detail="Class not found")
+
+    uid = current_user["sub"]
+    is_teacher = (
+        str(live_class.teacher_id) == uid
+        or current_user.get("role") == "admin"
+    )
+    att = None if is_teacher else await _active_attendance(db, live_class.id, uid)
+    if not is_teacher and att is None:
+        raise HTTPException(status_code=403, detail="Join the class first")
+
+    att_result = await db.execute(
+        select(ClassAttendance).where(
+            ClassAttendance.live_class_id == class_uuid,
+            ClassAttendance.is_removed == False,  # noqa: E712
+            ClassAttendance.left_at.is_(None),
+        )
+    )
+    attendances = att_result.scalars().all()
+    student_ids = [a.student_id for a in attendances]
+    users_map: dict = {}
+    if student_ids:
+        users_res = await db.execute(select(User).where(User.id.in_(student_ids)))
+        users_map = {str(u.id): u for u in users_res.scalars().all()}
+
+    teacher_res = await db.execute(select(User).where(User.id == live_class.teacher_id))
+    teacher = teacher_res.scalar_one_or_none()
+
+    students = []
+    for row in attendances:
+        sid = str(row.student_id)
+        user = users_map.get(sid)
+        students.append({
+            "student_id": sid,
+            "name": user.full_name if user else "Student",
+            "mic_allowed": _mic_allowed_for(live_class.room_id, sid, row),
+            "camera_allowed": _camera_allowed_for(live_class.room_id, sid, row),
+            "is_teacher": False,
+        })
+    students.sort(key=lambda x: (x["name"] or "").lower())
+
+    return {
+        "class_id": str(live_class.id),
+        "room_id": live_class.room_id,
+        "is_live": bool(live_class.is_live),
+        "teacher_id": str(live_class.teacher_id),
+        "teacher_name": teacher.full_name if teacher else "Teacher",
+        "active_attendees": len(students),
+        "students": students,
+    }
+
+
 @router.get("/{class_id}/students")
 async def list_class_students(
     class_id: str,

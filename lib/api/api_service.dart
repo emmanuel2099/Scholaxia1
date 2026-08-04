@@ -2149,6 +2149,14 @@ class ApiService {
     return _parseMap(res);
   }
 
+  Future<Map<String, dynamic>> getLiveClassPresence(String classId) async {
+    final res = await _onlineGet(
+      _uri(ApiEndpoints.liveClassPresence(classId)),
+      headers: await _authHeaders(),
+    );
+    return _parseMap(res);
+  }
+
   Future<Map<String, dynamic>> endLiveClass(String classId) async {
     final res = await _onlinePost(
       _uri(ApiEndpoints.liveClassEnd(classId)),

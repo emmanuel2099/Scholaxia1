@@ -535,7 +535,7 @@ class _LiveClassScreenState extends State<LiveClassScreen>
 
     // Both teacher and student need mic permission to hear / be heard.
     final ok = await _ensureMediaPermissions(
-      camera: widget.isTeacher && _camOn,
+      camera: widget.isTeacher,
       mic: true,
     );
     if (!ok && widget.isTeacher) {
@@ -549,15 +549,19 @@ class _LiveClassScreenState extends State<LiveClassScreen>
       },
     );
 
-    // Teacher always publishes mic on join; students publish when mic is on.
-    final shouldPubMic = widget.isTeacher
-        ? _micOn
-        : (_micAllowed && _micOn);
+    // Always publish mic for teacher; students when allowed.
+    // Teacher also publishes camera so students can see them.
+    final shouldPubMic = widget.isTeacher ? true : (_micAllowed && _micOn);
+    final shouldPubCam = widget.isTeacher ? true : (_cameraAllowed && _camOn);
+    if (widget.isTeacher) {
+      _micOn = true;
+      _camOn = true;
+    }
     await _liveKit!.connect(
       url: _livekitUrl!,
       token: _livekitToken!,
       publishMic: shouldPubMic,
-      publishCamera: widget.isTeacher && _camOn,
+      publishCamera: shouldPubCam,
     );
     await _liveKit!.ensureRemoteAudioSubscribed();
 
@@ -598,10 +602,21 @@ class _LiveClassScreenState extends State<LiveClassScreen>
   Future<void> _pollAttendanceCount() async {
     if (widget.classId.isEmpty) return;
     try {
-      final detail = await _api.getLiveClassDetail(widget.classId);
-      final count = detail['active_attendees'] as int? ?? 0;
-      if (mounted) setState(() => _participantCount = count);
-    } catch (_) {}
+      final presence = await _api.getLiveClassPresence(widget.classId);
+      final students = presence['active_attendees'] as int? ??
+          (presence['students'] is List
+              ? (presence['students'] as List).length
+              : 0);
+      // Include teacher in the in-class count.
+      final shown = students + 1;
+      if (mounted) setState(() => _participantCount = shown);
+    } catch (_) {
+      try {
+        final detail = await _api.getLiveClassDetail(widget.classId);
+        final count = detail['active_attendees'] as int? ?? 0;
+        if (mounted) setState(() => _participantCount = count);
+      } catch (_) {}
+    }
   }
 
   bool get _hasValidLiveKitToken {
