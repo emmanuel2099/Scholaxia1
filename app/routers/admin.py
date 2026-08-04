@@ -87,6 +87,9 @@ class TeacherResponse(BaseModel):
     email: str
     full_name: str
     subjects: list[str]
+    phone: Optional[str] = None
+    location: Optional[str] = None
+    is_approved: bool = False
 
 
 @router.post("/teachers", response_model=TeacherResponse, status_code=status.HTTP_201_CREATED)
@@ -108,10 +111,16 @@ async def create_teacher(
     )
     db.add(user)
     await db.flush()
-    profile = TeacherProfile(user_id=user.id, subjects=payload.subjects, bio=payload.bio)
+    profile = TeacherProfile(user_id=user.id, subjects=payload.subjects, bio=payload.bio, is_approved=True)
     db.add(profile)
     await db.flush()
-    return TeacherResponse(id=str(user.id), email=user.email, full_name=user.full_name, subjects=payload.subjects)
+    return TeacherResponse(
+        id=str(user.id),
+        email=user.email,
+        full_name=user.full_name,
+        subjects=payload.subjects,
+        is_approved=True,
+    )
 
 
 @router.get("/teachers", response_model=list[TeacherResponse])
@@ -125,7 +134,58 @@ async def list_teachers(
         .where(User.role == UserRole.teacher, User.is_active == True)  # noqa: E712
     )
     rows = result.all()
-    return [TeacherResponse(id=str(u.id), email=u.email, full_name=u.full_name, subjects=p.subjects) for u, p in rows]
+    return [
+        TeacherResponse(
+            id=str(u.id),
+            email=u.email,
+            full_name=u.full_name,
+            subjects=p.subjects,
+            phone=u.phone,
+            location=p.location,
+            is_approved=bool(p.is_approved),
+        )
+        for u, p in rows
+    ]
+
+
+@router.post("/teachers/{teacher_id}/approve")
+async def approve_teacher(
+    teacher_id: str,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(TeacherProfile, User)
+        .join(User, User.id == TeacherProfile.user_id)
+        .where(User.id == teacher_id, User.role == UserRole.teacher)
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    profile, _ = row
+    profile.is_approved = True
+    await db.flush()
+    return {"message": "Teacher approved", "teacher_id": teacher_id, "is_approved": True}
+
+
+@router.post("/teachers/{teacher_id}/reject")
+async def reject_teacher(
+    teacher_id: str,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(TeacherProfile, User)
+        .join(User, User.id == TeacherProfile.user_id)
+        .where(User.id == teacher_id, User.role == UserRole.teacher)
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+    profile, _ = row
+    profile.is_approved = False
+    await db.flush()
+    return {"message": "Teacher access locked", "teacher_id": teacher_id, "is_approved": False}
 
 
 @router.delete("/teachers/{teacher_id}", status_code=status.HTTP_204_NO_CONTENT)

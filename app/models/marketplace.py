@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import String, Boolean, DateTime, ForeignKey, Text, Float
+from sqlalchemy import String, Boolean, DateTime, ForeignKey, Text, Float, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
@@ -31,6 +31,10 @@ class MarketplaceProduct(Base):
     is_available: Mapped[bool] = mapped_column(Boolean, default=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    vendor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    approval_status: Mapped[str] = mapped_column(String(20), default="approved")  # pending | approved | rejected
+    source_role: Mapped[str] = mapped_column(String(20), default="admin")  # admin | vendor
+    stock_qty: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -52,3 +56,39 @@ class MarketplaceBooking(Base):
     note: Mapped[str] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(30), default="pending")  # pending | contacted | closed
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class MarketplaceCartItem(Base):
+    __tablename__ = "marketplace_cart_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), index=True, nullable=False)
+    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("marketplace_products.id"), index=True, nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class MarketplaceOrder(Base):
+    __tablename__ = "marketplace_orders"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), index=True, nullable=False)
+    total_amount: Mapped[float] = mapped_column(Float, default=0.0)
+    currency: Mapped[str] = mapped_column(String(10), default="NGN")
+    status: Mapped[str] = mapped_column(String(30), default="pending_payment")  # pending_payment | paid | processing | shipped | delivered | cancelled
+    delivery_address: Mapped[str] = mapped_column(String(500), nullable=True)
+    contact_phone: Mapped[str] = mapped_column(String(40), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class MarketplaceOrderItem(Base):
+    __tablename__ = "marketplace_order_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    order_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("marketplace_orders.id"), index=True, nullable=False)
+    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("marketplace_products.id"), index=True, nullable=False)
+    vendor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    quantity: Mapped[int] = mapped_column(Integer, default=1)
+    unit_price: Mapped[float] = mapped_column(Float, default=0.0)
+    tracking_status: Mapped[str] = mapped_column(String(40), default="pending")
+    tracking_note: Mapped[str] = mapped_column(String(500), nullable=True)

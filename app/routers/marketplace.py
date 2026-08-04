@@ -10,8 +10,16 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.deps import require_student, require_admin
-from app.models.marketplace import MarketplaceProduct, MarketplaceBooking, MARKETPLACE_CATEGORIES
+from app.core.deps import require_student, require_admin, require_vendor
+from app.models.marketplace import (
+    MarketplaceProduct,
+    MarketplaceBooking,
+    MarketplaceCartItem,
+    MarketplaceOrder,
+    MarketplaceOrderItem,
+    MARKETPLACE_CATEGORIES,
+)
+from app.models.user import User
 from app.services.notification_service import send_admins_notification
 from app.services.media_service import upload_file
 
@@ -47,6 +55,10 @@ def _product_dict(p: MarketplaceProduct) -> dict:
         "currency": p.currency or "NGN",
         "image_url": _absolute_image_url(p.image_url),
         "is_available": bool(p.is_available),
+        "vendor_id": str(p.vendor_id) if p.vendor_id else None,
+        "approval_status": p.approval_status or "approved",
+        "source_role": p.source_role or "admin",
+        "stock_qty": int(p.stock_qty or 0),
         "created_at": p.created_at.isoformat() if p.created_at else None,
     }
 
@@ -116,6 +128,7 @@ async def list_products(
     q = select(MarketplaceProduct).where(
         MarketplaceProduct.is_active == True,  # noqa: E712
         MarketplaceProduct.is_available == True,  # noqa: E712
+        MarketplaceProduct.approval_status == "approved",
     )
     if category:
         cat = category.strip().lower()
@@ -235,6 +248,7 @@ class ProductCreate(BaseModel):
     currency: str = "NGN"
     image_url: Optional[str] = None
     is_available: bool = True
+    stock_qty: int = 0
 
 
 class ProductUpdate(BaseModel):
@@ -245,6 +259,7 @@ class ProductUpdate(BaseModel):
     image_url: Optional[str] = None
     is_available: Optional[bool] = None
     is_active: Optional[bool] = None
+    stock_qty: Optional[int] = None
 
 
 admin_router = APIRouter(prefix="/admin/marketplace", tags=["Admin — Marketplace"])
@@ -311,6 +326,9 @@ async def admin_create_product(
         currency=(payload.currency or "NGN").upper(),
         image_url=image_url,
         is_available=payload.is_available,
+        stock_qty=max(int(payload.stock_qty or 0), 0),
+        approval_status="approved",
+        source_role="admin",
         created_by=current_user["sub"],
     )
     db.add(product)
@@ -362,6 +380,8 @@ async def admin_update_product(
         product.is_available = payload.is_available
     if payload.is_active is not None:
         product.is_active = payload.is_active
+    if payload.stock_qty is not None:
+        product.stock_qty = max(int(payload.stock_qty), 0)
     await db.flush()
     return _product_dict(product) | {"is_active": product.is_active}
 
@@ -426,3 +446,338 @@ async def admin_update_booking_status(
         select(MarketplaceProduct).where(MarketplaceProduct.id == booking.product_id)
     )
     return _booking_dict(booking, p_res.scalar_one_or_none())
+
+
+# ── Vendor self-service marketplace ───────────────────────────────────────────
+
+vendor_router = APIRouter(prefix="/vendor/marketplace", tags=["Vendor — Marketplace"])
+
+
+@vendor_router.post("/products", status_code=201)
+async def vendor_create_product(
+    payload: ProductCreate,
+    current_user: dict = Depends(require_vendor),
+    db: AsyncSession = Depends(get_db),
+):
+    cat = (payload.category or "gadgets").strip().lower()
+    if cat not in MARKETPLACE_CATEGORIES:
+        raise HTTPException(status_code=400, detail="Invalid category")
+    image_url = _absolute_image_url(payload.image_url)
+    if not image_url:
+        raise HTTPException(status_code=400, detail="Product image is required.")
+    product = MarketplaceProduct(
+        title=payload.title.strip(),
+        description=(payload.description or "").strip() or None,
+        category=cat,
+        price=max(float(payload.price or 0), 0),
+        currency=(payload.currency or "NGN").upper(),
+        image_url=image_url,
+        is_available=payload.is_available,
+        stock_qty=max(int(payload.stock_qty or 0), 0),
+        approval_status="approved",
+        source_role="vendor",
+        vendor_id=current_user["sub"],
+        created_by=current_user["sub"],
+    )
+    db.add(product)
+    await db.flush()
+    return _product_dict(product)
+
+
+@vendor_router.get("/products")
+async def vendor_list_products(
+    current_user: dict = Depends(require_vendor),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(MarketplaceProduct)
+        .where(MarketplaceProduct.vendor_id == current_user["sub"])
+        .order_by(MarketplaceProduct.created_at.desc())
+    )
+    return [_product_dict(p) | {"is_active": p.is_active} for p in result.scalars().all()]
+
+
+@vendor_router.patch("/products/{product_id}")
+async def vendor_update_product(
+    product_id: str,
+    payload: ProductUpdate,
+    current_user: dict = Depends(require_vendor),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(MarketplaceProduct).where(
+            MarketplaceProduct.id == product_id,
+            MarketplaceProduct.vendor_id == current_user["sub"],
+        )
+    )
+    product = result.scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    if payload.title is not None:
+        product.title = payload.title.strip()
+    if payload.description is not None:
+        product.description = payload.description.strip() or None
+    if payload.category is not None:
+        cat = payload.category.strip().lower()
+        if cat not in MARKETPLACE_CATEGORIES:
+            raise HTTPException(status_code=400, detail="Invalid category")
+        product.category = cat
+    if payload.price is not None:
+        product.price = max(float(payload.price), 0)
+    if payload.image_url is not None:
+        product.image_url = _absolute_image_url(payload.image_url)
+    if payload.is_available is not None:
+        product.is_available = payload.is_available
+    if payload.is_active is not None:
+        product.is_active = payload.is_active
+    if payload.stock_qty is not None:
+        product.stock_qty = max(int(payload.stock_qty), 0)
+    await db.flush()
+    return _product_dict(product) | {"is_active": product.is_active}
+
+
+class CartAddRequest(BaseModel):
+    product_id: str
+    quantity: int = 1
+
+
+@router.post("/cart/add")
+async def add_to_cart(
+    payload: CartAddRequest,
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    if payload.quantity <= 0:
+        raise HTTPException(status_code=400, detail="Quantity must be at least 1")
+    result = await db.execute(
+        select(MarketplaceProduct).where(
+            MarketplaceProduct.id == payload.product_id,
+            MarketplaceProduct.is_active == True,  # noqa: E712
+            MarketplaceProduct.is_available == True,  # noqa: E712
+            MarketplaceProduct.approval_status == "approved",
+        )
+    )
+    product = result.scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not available")
+    existing = await db.execute(
+        select(MarketplaceCartItem).where(
+            MarketplaceCartItem.user_id == current_user["sub"],
+            MarketplaceCartItem.product_id == payload.product_id,
+        )
+    )
+    item = existing.scalar_one_or_none()
+    if item:
+        item.quantity = max(1, int(item.quantity or 1) + int(payload.quantity))
+    else:
+        db.add(
+            MarketplaceCartItem(
+                user_id=current_user["sub"],
+                product_id=payload.product_id,
+                quantity=max(1, int(payload.quantity)),
+            )
+        )
+    await db.flush()
+    return {"message": "Added to cart"}
+
+
+@router.get("/cart")
+async def my_cart(
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    rows = (
+        await db.execute(
+            select(MarketplaceCartItem, MarketplaceProduct)
+            .join(MarketplaceProduct, MarketplaceProduct.id == MarketplaceCartItem.product_id)
+            .where(MarketplaceCartItem.user_id == current_user["sub"])
+            .order_by(MarketplaceCartItem.created_at.desc())
+        )
+    ).all()
+    items = []
+    total = 0.0
+    for cart_item, product in rows:
+        line_total = float(product.price or 0) * int(cart_item.quantity or 1)
+        total += line_total
+        items.append(
+            {
+                "id": str(cart_item.id),
+                "product": _product_dict(product),
+                "quantity": int(cart_item.quantity or 1),
+                "line_total": line_total,
+            }
+        )
+    return {"items": items, "total_amount": total, "currency": "NGN"}
+
+
+@router.delete("/cart/{cart_item_id}")
+async def remove_cart_item(
+    cart_item_id: str,
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(MarketplaceCartItem).where(
+            MarketplaceCartItem.id == cart_item_id,
+            MarketplaceCartItem.user_id == current_user["sub"],
+        )
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Cart item not found")
+    await db.delete(item)
+    await db.flush()
+    return {"message": "Removed from cart"}
+
+
+class CheckoutRequest(BaseModel):
+    delivery_address: str
+    contact_phone: str
+
+
+@router.post("/checkout")
+async def checkout_cart(
+    payload: CheckoutRequest,
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    rows = (
+        await db.execute(
+            select(MarketplaceCartItem, MarketplaceProduct)
+            .join(MarketplaceProduct, MarketplaceProduct.id == MarketplaceCartItem.product_id)
+            .where(MarketplaceCartItem.user_id == current_user["sub"])
+        )
+    ).all()
+    if not rows:
+        raise HTTPException(status_code=400, detail="Cart is empty")
+    total = 0.0
+    order = MarketplaceOrder(
+        user_id=current_user["sub"],
+        delivery_address=payload.delivery_address.strip(),
+        contact_phone=payload.contact_phone.strip(),
+        status="processing",
+    )
+    db.add(order)
+    await db.flush()
+    for cart_item, product in rows:
+        qty = max(1, int(cart_item.quantity or 1))
+        unit = float(product.price or 0)
+        total += qty * unit
+        db.add(
+            MarketplaceOrderItem(
+                order_id=order.id,
+                product_id=product.id,
+                vendor_id=product.vendor_id,
+                quantity=qty,
+                unit_price=unit,
+                tracking_status="processing",
+            )
+        )
+        await db.delete(cart_item)
+    order.total_amount = total
+    await db.flush()
+    return {"message": "Checkout created", "order_id": str(order.id), "total_amount": total, "status": order.status}
+
+
+@router.get("/orders/mine")
+async def my_orders(
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    orders = (
+        await db.execute(
+            select(MarketplaceOrder)
+            .where(MarketplaceOrder.user_id == current_user["sub"])
+            .order_by(MarketplaceOrder.created_at.desc())
+        )
+    ).scalars().all()
+    out = []
+    for order in orders:
+        item_rows = (
+            await db.execute(
+                select(MarketplaceOrderItem, MarketplaceProduct)
+                .join(MarketplaceProduct, MarketplaceProduct.id == MarketplaceOrderItem.product_id)
+                .where(MarketplaceOrderItem.order_id == order.id)
+            )
+        ).all()
+        out.append(
+            {
+                "id": str(order.id),
+                "status": order.status,
+                "total_amount": float(order.total_amount or 0),
+                "currency": order.currency,
+                "delivery_address": order.delivery_address,
+                "contact_phone": order.contact_phone,
+                "created_at": order.created_at.isoformat() if order.created_at else None,
+                "items": [
+                    {
+                        "id": str(item.id),
+                        "product_id": str(item.product_id),
+                        "product_title": product.title if product else None,
+                        "quantity": int(item.quantity or 1),
+                        "unit_price": float(item.unit_price or 0),
+                        "tracking_status": item.tracking_status,
+                        "tracking_note": item.tracking_note,
+                    }
+                    for item, product in item_rows
+                ],
+            }
+        )
+    return out
+
+
+@vendor_router.get("/orders")
+async def vendor_orders(
+    current_user: dict = Depends(require_vendor),
+    db: AsyncSession = Depends(get_db),
+):
+    rows = (
+        await db.execute(
+            select(MarketplaceOrderItem, MarketplaceOrder, MarketplaceProduct, User)
+            .join(MarketplaceOrder, MarketplaceOrder.id == MarketplaceOrderItem.order_id)
+            .join(MarketplaceProduct, MarketplaceProduct.id == MarketplaceOrderItem.product_id)
+            .join(User, User.id == MarketplaceOrder.user_id)
+            .where(MarketplaceOrderItem.vendor_id == current_user["sub"])
+            .order_by(MarketplaceOrder.created_at.desc())
+        )
+    ).all()
+    return [
+        {
+            "order_item_id": str(item.id),
+            "order_id": str(order.id),
+            "buyer_name": buyer.full_name,
+            "buyer_email": buyer.email,
+            "product_title": product.title if product else None,
+            "quantity": int(item.quantity or 1),
+            "unit_price": float(item.unit_price or 0),
+            "tracking_status": item.tracking_status,
+            "tracking_note": item.tracking_note,
+            "delivery_address": order.delivery_address,
+            "contact_phone": order.contact_phone,
+            "created_at": order.created_at.isoformat() if order.created_at else None,
+        }
+        for item, order, product, buyer in rows
+    ]
+
+
+@vendor_router.patch("/orders/{order_item_id}/tracking")
+async def vendor_update_tracking(
+    order_item_id: str,
+    tracking_status: str = Query(...),
+    tracking_note: Optional[str] = Query(None),
+    current_user: dict = Depends(require_vendor),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(MarketplaceOrderItem).where(
+            MarketplaceOrderItem.id == order_item_id,
+            MarketplaceOrderItem.vendor_id == current_user["sub"],
+        )
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Order item not found")
+    item.tracking_status = tracking_status.strip().lower()
+    item.tracking_note = (tracking_note or "").strip() or None
+    await db.flush()
+    return {"message": "Tracking updated", "order_item_id": order_item_id, "tracking_status": item.tracking_status}

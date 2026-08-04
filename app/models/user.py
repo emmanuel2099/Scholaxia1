@@ -10,6 +10,7 @@ import enum
 class UserRole(str, enum.Enum):
     student = "student"
     teacher = "teacher"
+    vendor = "vendor"
     kind = "kind"           # young learners (kids / primary)
     admin = "admin"
     developer = "developer"   # external API developers
@@ -46,6 +47,7 @@ class User(Base):
     # Relationships
     student_profile: Mapped["StudentProfile"] = relationship("StudentProfile", back_populates="user", uselist=False)
     teacher_profile: Mapped["TeacherProfile"] = relationship("TeacherProfile", back_populates="user", uselist=False)
+    vendor_profile: Mapped["VendorProfile"] = relationship("VendorProfile", back_populates="user", uselist=False)
     kind_profile: Mapped["KindProfile"] = relationship("KindProfile", back_populates="user", uselist=False)
 
 
@@ -77,9 +79,23 @@ class TeacherProfile(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), unique=True)
     subjects: Mapped[list] = mapped_column(ARRAY(String), default=[])
     bio: Mapped[str] = mapped_column(String(1000), nullable=True)
-    is_approved: Mapped[bool] = mapped_column(Boolean, default=True)  # admin-created, always approved
+    location: Mapped[str] = mapped_column(String(255), nullable=True)
+    is_approved: Mapped[bool] = mapped_column(Boolean, default=False)
 
     user: Mapped["User"] = relationship("User", back_populates="teacher_profile")
+
+
+class VendorProfile(Base):
+    __tablename__ = "vendor_profiles"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), unique=True)
+    business_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    location: Mapped[str] = mapped_column(String(255), nullable=True)
+    categories: Mapped[list] = mapped_column(ARRAY(String), default=[])
+    is_approved: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    user: Mapped["User"] = relationship("User", back_populates="vendor_profile")
 
 
 class KindProfile(Base):

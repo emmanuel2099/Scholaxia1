@@ -211,6 +211,75 @@ async def _run_schema_migrations(conn) -> None:
         )
         """
     ))
+    await conn.execute(text(
+        """
+        CREATE TABLE IF NOT EXISTS vendor_profiles (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id UUID UNIQUE NOT NULL REFERENCES users(id),
+            business_name VARCHAR(255) NOT NULL,
+            location VARCHAR(255),
+            categories TEXT[] DEFAULT '{}',
+            is_approved BOOLEAN NOT NULL DEFAULT FALSE
+        )
+        """
+    ))
+    await conn.execute(text(
+        "ALTER TABLE teacher_profiles ADD COLUMN IF NOT EXISTS location VARCHAR(255) NULL"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE teacher_profiles ADD COLUMN IF NOT EXISTS is_approved BOOLEAN NOT NULL DEFAULT FALSE"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE marketplace_products ADD COLUMN IF NOT EXISTS vendor_id UUID NULL"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE marketplace_products ADD COLUMN IF NOT EXISTS approval_status VARCHAR(20) NOT NULL DEFAULT 'approved'"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE marketplace_products ADD COLUMN IF NOT EXISTS source_role VARCHAR(20) NOT NULL DEFAULT 'admin'"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE marketplace_products ADD COLUMN IF NOT EXISTS stock_qty INTEGER NOT NULL DEFAULT 0"
+    ))
+    await conn.execute(text(
+        """
+        CREATE TABLE IF NOT EXISTS marketplace_cart_items (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id UUID NOT NULL REFERENCES users(id),
+            product_id UUID NOT NULL REFERENCES marketplace_products(id),
+            quantity INTEGER NOT NULL DEFAULT 1,
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+        """
+    ))
+    await conn.execute(text(
+        """
+        CREATE TABLE IF NOT EXISTS marketplace_orders (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            user_id UUID NOT NULL REFERENCES users(id),
+            total_amount DOUBLE PRECISION NOT NULL DEFAULT 0,
+            currency VARCHAR(10) NOT NULL DEFAULT 'NGN',
+            status VARCHAR(30) NOT NULL DEFAULT 'pending_payment',
+            delivery_address VARCHAR(500),
+            contact_phone VARCHAR(40),
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+        """
+    ))
+    await conn.execute(text(
+        """
+        CREATE TABLE IF NOT EXISTS marketplace_order_items (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            order_id UUID NOT NULL REFERENCES marketplace_orders(id),
+            product_id UUID NOT NULL REFERENCES marketplace_products(id),
+            vendor_id UUID NULL REFERENCES users(id),
+            quantity INTEGER NOT NULL DEFAULT 1,
+            unit_price DOUBLE PRECISION NOT NULL DEFAULT 0,
+            tracking_status VARCHAR(40) NOT NULL DEFAULT 'pending',
+            tracking_note VARCHAR(500)
+        )
+        """
+    ))
     try:
         await conn.execute(text(
             "ALTER TABLE users ALTER COLUMN profile_picture TYPE VARCHAR(1000)"
@@ -233,6 +302,10 @@ async def _run_schema_migrations(conn) -> None:
         pass
     try:
         await conn.execute(text("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'kind'"))
+    except Exception:
+        pass
+    try:
+        await conn.execute(text("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'vendor'"))
     except Exception:
         pass
     try:

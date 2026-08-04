@@ -6,7 +6,7 @@ from typing import Optional
 from app.core.database import get_db
 from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token, issue_auth_tokens
 from app.core.config import settings
-from app.models.user import User, UserRole, StudentProfile, TeacherProfile, KindProfile
+from app.models.user import User, UserRole, StudentProfile, TeacherProfile, VendorProfile, KindProfile
 from app.services.otp_service import (
     send_otp,
     verify_otp,
@@ -55,10 +55,15 @@ class SignupStartRequest(BaseModel):
     email: EmailStr
     full_name: str = Field(..., min_length=2, max_length=255)
     password: str = Field(..., min_length=8, max_length=128)
-    role: str = "student"  # student | kind
+    role: str = "student"  # student | kind | teacher | vendor
     age_group: str = "6-8"
     grade_level: Optional[str] = None
     parent_email: Optional[str] = None
+    phone: Optional[str] = None
+    location: Optional[str] = None
+    subjects: Optional[list[str]] = None
+    business_name: Optional[str] = None
+    categories: Optional[list[str]] = None
 
 
 class SignupVerifyRequest(BaseModel):
@@ -72,7 +77,7 @@ class FirebaseAuthRequest(BaseModel):
     mode: str = "login"  # login | signup
     full_name: Optional[str] = None
     password: Optional[str] = None
-    role: str = "student"  # student | kind
+    role: str = "student"  # student | kind | teacher | vendor
     age_group: str = "6-8"
     grade_level: Optional[str] = None
     parent_email: Optional[str] = None
@@ -97,6 +102,10 @@ class UserInfo(BaseModel):
     has_active_subscription: Optional[bool] = None
     subjects: Optional[list] = None
     bio: Optional[str] = None
+    location: Optional[str] = None
+    is_approved: Optional[bool] = None
+    business_name: Optional[str] = None
+    vendor_categories: Optional[list] = None
     age_group: Optional[str] = None
     grade_level: Optional[str] = None
     parent_email: Optional[str] = None
@@ -135,6 +144,16 @@ async def _build_user_info(user: User, db: AsyncSession) -> UserInfo:
         if profile:
             info.subjects = profile.subjects or []
             info.bio = profile.bio
+            info.location = profile.location
+            info.is_approved = bool(profile.is_approved)
+    elif user.role == UserRole.vendor:
+        res = await db.execute(select(VendorProfile).where(VendorProfile.user_id == user.id))
+        profile = res.scalar_one_or_none()
+        if profile:
+            info.business_name = profile.business_name
+            info.location = profile.location
+            info.vendor_categories = profile.categories or []
+            info.is_approved = bool(profile.is_approved)
     elif user.role == UserRole.kind:
         res = await db.execute(select(KindProfile).where(KindProfile.user_id == user.id))
         profile = res.scalar_one_or_none()
@@ -207,8 +226,8 @@ async def firebase_phone_auth(payload: FirebaseAuthRequest, db: AsyncSession = D
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
 
     role = (payload.role or "student").strip().lower()
-    if role not in ("student", "kind"):
-        raise HTTPException(status_code=400, detail="role must be student or kind")
+    if role not in ("student", "kind", "teacher", "vendor"):
+        raise HTTPException(status_code=400, detail="role must be student, kind, teacher, or vendor")
     if role == "kind" and payload.age_group not in ("3-5", "6-8", "9-12"):
         raise HTTPException(status_code=400, detail="age_group must be 3-5, 6-8, or 9-12")
 
@@ -295,6 +314,10 @@ async def signup_start(payload: SignupStartRequest, db: AsyncSession = Depends(g
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
     if role == "kind" and payload.age_group not in ("3-5", "6-8", "9-12"):
         raise HTTPException(status_code=400, detail="age_group must be 3-5, 6-8, or 9-12")
+    if role == "teacher" and not (payload.subjects or []):
+        raise HTTPException(status_code=400, detail="Teacher subjects are required")
+    if role == "vendor" and not (payload.business_name or "").strip():
+        raise HTTPException(status_code=400, detail="Business name is required for vendor signup")
 
     existing = await _find_user_by_email(db, email)
     if existing:
@@ -308,6 +331,11 @@ async def signup_start(payload: SignupStartRequest, db: AsyncSession = Depends(g
         "age_group": payload.age_group,
         "grade_level": payload.grade_level,
         "parent_email": payload.parent_email,
+        "phone": (payload.phone or "").strip() or None,
+        "location": (payload.location or "").strip() or None,
+        "subjects": payload.subjects or [],
+        "business_name": (payload.business_name or "").strip() or None,
+        "categories": payload.categories or [],
     }
     await store_pending_signup(email, pending)
     try:
@@ -350,12 +378,19 @@ async def signup_verify(payload: SignupVerifyRequest, db: AsyncSession = Depends
         raise HTTPException(status_code=400, detail="Email already registered")
 
     role = pending.get("role") or "student"
+    role_map = {
+        "student": UserRole.student,
+        "kind": UserRole.kind,
+        "teacher": UserRole.teacher,
+        "vendor": UserRole.vendor,
+    }
     user = User(
         email=email,
         hashed_password=pending["password_hash"],
         full_name=pending["full_name"],
-        role=UserRole.kind if role == "kind" else UserRole.student,
+        role=role_map.get(role, UserRole.student),
         is_verified=True,
+        phone=pending.get("phone"),
     )
     db.add(user)
     await db.flush()
@@ -368,6 +403,26 @@ async def signup_verify(payload: SignupVerifyRequest, db: AsyncSession = Depends
                 grade_level=pending.get("grade_level"),
                 parent_email=pending.get("parent_email"),
                 favorite_subjects=[],
+            )
+        )
+    elif role == "teacher":
+        db.add(
+            TeacherProfile(
+                user_id=user.id,
+                subjects=pending.get("subjects") or [],
+                location=pending.get("location"),
+                bio="",
+                is_approved=False,
+            )
+        )
+    elif role == "vendor":
+        db.add(
+            VendorProfile(
+                user_id=user.id,
+                business_name=pending.get("business_name") or user.full_name,
+                location=pending.get("location"),
+                categories=pending.get("categories") or [],
+                is_approved=False,
             )
         )
     else:
