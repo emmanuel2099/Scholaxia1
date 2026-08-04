@@ -105,15 +105,12 @@ class LiveClassRingService {
   }
 
   void _playBurst() {
-    // Prefer Scholaxia custom ringtone (asset); avoid default system beep.
-    if (kIsWeb) {
-      try {
-        SystemSound.play(SystemSoundType.alert);
-      } catch (_) {}
-      return;
-    }
+    // Always prefer the Scholaxia ringtone in asset/sounds/.
+    // audioplayers prefixes AssetSource with "assets/" by default — clear that
+    // so pubspec path `asset/sounds/live_class_ringtone.mp3` resolves correctly.
     unawaited(() async {
       try {
+        AudioCache.instance = AudioCache(prefix: '');
         final p = await _ensurePlayer();
         await p.stop();
         await p.setVolume(1.0);
@@ -121,7 +118,7 @@ class LiveClassRingService {
       } catch (_) {
         try {
           SystemSound.play(SystemSoundType.alert);
-        } catch (__) {}
+        } catch (_) {}
       }
     }());
   }

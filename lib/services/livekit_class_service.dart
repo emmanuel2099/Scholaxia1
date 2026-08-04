@@ -24,7 +24,7 @@ class LiveKitClassService {
   VideoTrack? localCameraVideo;
 
   /// Active student cameras for the teacher sidebar (capped for performance).
-  final Map<String, VideoTrack> studentCameras = {};
+  final Map<String, RemoteVideoTrack> studentCameras = {};
   static const int maxStudentCameras = 6;
 
   String status = 'Connecting…';
@@ -96,7 +96,13 @@ class LiveKitClassService {
       ..on<LocalTrackUnpublishedEvent>((_) => _scanLocal());
 
     try {
-      await lkRoom.connect(url, token);
+      await lkRoom
+          .connect(url, token)
+          .timeout(
+            const Duration(seconds: 45),
+            onTimeout: () =>
+                throw TimeoutException('Live video connection timed out'),
+          );
       _rescanAll();
 
       // Always unlock playback first so remote teacher/student audio is heard.
@@ -273,8 +279,10 @@ class LiveKitClassService {
 
   bool _isTeacherRemote(RemoteParticipant participant) {
     final preferred = preferredTeacherIdentity?.trim();
-    if (preferred != null && preferred.isNotEmpty) {
-      return participant.identity == preferred;
+    if (preferred != null &&
+        preferred.isNotEmpty &&
+        participant.identity == preferred) {
+      return true;
     }
     try {
       final raw = participant.metadata;
@@ -282,12 +290,13 @@ class LiveKitClassService {
         final lower = raw.toLowerCase();
         if (lower.contains('"role":"teacher"') ||
             lower.contains('"role": "teacher"') ||
-            lower.contains('"role":"host"')) {
+            lower.contains('"role":"host"') ||
+            lower.contains('"role":"admin"')) {
           return true;
         }
       }
     } catch (_) {}
-    // Unknown teacher id: only treat sole remote as teacher.
+    // Preferred id missing from room (e.g. admin host) — sole remote is teacher.
     final remotes = room?.remoteParticipants.length ?? 0;
     return remotes == 1;
   }
@@ -306,7 +315,7 @@ class LiveKitClassService {
       } else if (pub.source == TrackSource.camera) {
         if (isTeacherRemote) {
           cameraVideo = track;
-        } else {
+        } else if (track is RemoteVideoTrack) {
           // Cap simultaneous student cam tiles for large rooms.
           if (studentCameras.length < maxStudentCameras ||
               studentCameras.containsKey(participant.identity)) {

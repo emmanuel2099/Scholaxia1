@@ -434,8 +434,15 @@ def _mic_allowed_for(room_id: str, student_id: str, attendance: ClassAttendance 
     return attendance is not None and not attendance.is_muted
 
 
-def _camera_allowed_for(room_id: str, student_id: str) -> bool:
-    return has_camera_access(room_id, student_id)
+def _camera_allowed_for(
+    room_id: str,
+    student_id: str,
+    attendance: ClassAttendance | None = None,
+) -> bool:
+    if has_camera_access(room_id, student_id):
+        return True
+    # Joined students may publish camera by default (same as mic), unless muted.
+    return attendance is not None and not attendance.is_muted
 
 
 def _can_publish_for_student(
@@ -445,7 +452,9 @@ def _can_publish_for_student(
 ) -> bool:
     if has_publish_access(room_id, student_id):
         return True
-    return _mic_allowed_for(room_id, student_id, attendance) or _camera_allowed_for(room_id, student_id)
+    return _mic_allowed_for(room_id, student_id, attendance) or _camera_allowed_for(
+        room_id, student_id, attendance
+    )
 
 
 def _class_is_active(live_class: LiveClass, now: datetime) -> bool:
@@ -950,7 +959,7 @@ async def get_livekit_token(
         role="teacher" if is_teacher else "student",
     )
     mic_ok = is_teacher or _mic_allowed_for(live_class.room_id, uid, att)
-    cam_ok = is_teacher or _camera_allowed_for(live_class.room_id, uid)
+    cam_ok = is_teacher or _camera_allowed_for(live_class.room_id, uid, att)
 
     return {
         **payload,
@@ -999,7 +1008,7 @@ async def list_class_students(
         sid = str(att.student_id)
         user = users_map.get(sid)
         mic_allowed = _mic_allowed_for(live_class.room_id, sid, att)
-        camera_allowed = _camera_allowed_for(live_class.room_id, sid)
+        camera_allowed = _camera_allowed_for(live_class.room_id, sid, att)
         out.append({
             "student_id": sid,
             "name": user.full_name if user else "Student",

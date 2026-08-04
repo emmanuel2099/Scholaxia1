@@ -609,7 +609,8 @@ class _LiveClassScreenState extends State<LiveClassScreen>
     final u = _livekitUrl ?? '';
     return t.isNotEmpty &&
         u.isNotEmpty &&
-        !t.contains('LIVEKIT_NOT_CONFIGURED');
+        !t.contains('LIVEKIT_NOT_CONFIGURED') &&
+        !t.contains('TOKEN_ERROR');
   }
 
   Future<void> _pollStudents() async {

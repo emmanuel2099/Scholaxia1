@@ -237,6 +237,7 @@ class ApiService {
         !path.contains('/join') &&
         !path.contains('/stream') &&
         !path.contains('/access') &&
+        !path.contains('/token') &&
         !path.contains('/live-class/plans') &&
         !path.contains('/paystack/verify');
   }
@@ -288,6 +289,24 @@ class ApiService {
     try {
       final response = await http
           .post(uri, headers: headers, body: body)
+          .timeout(const Duration(seconds: 30));
+      OfflineStatusService.instance.markOnline();
+      return response;
+    } catch (_) {
+      OfflineStatusService.instance.markOffline();
+      throw const ApiException.message(
+        'This action requires internet data. Connect and try again.',
+      );
+    }
+  }
+
+  Future<http.Response> _onlineGet(
+    Uri uri, {
+    Map<String, String>? headers,
+  }) async {
+    try {
+      final response = await http
+          .get(uri, headers: headers)
           .timeout(const Duration(seconds: 30));
       OfflineStatusService.instance.markOnline();
       return response;
@@ -2097,7 +2116,8 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> getLiveClassToken(String classId) async {
-    final res = await _cachedGet(
+    // Always fresh — stale JWTs break publish grants / A/V between teacher & student.
+    final res = await _onlineGet(
       _uri(ApiEndpoints.liveClassToken(classId)),
       headers: await _authHeaders(),
     );
