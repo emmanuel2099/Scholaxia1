@@ -53,7 +53,7 @@ class ClassAttendance(Base):
     student_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     joined_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     left_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
-    is_muted: Mapped[bool] = mapped_column(Boolean, default=True)  # muted by default
+    is_muted: Mapped[bool] = mapped_column(Boolean, default=False)  # open mic unless teacher mutes
     is_removed: Mapped[bool] = mapped_column(Boolean, default=False)
 
     live_class: Mapped["LiveClass"] = relationship("LiveClass", back_populates="attendances")

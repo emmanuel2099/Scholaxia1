@@ -426,6 +426,9 @@ function showAudioUnlockBanner() {
 function unlockClassAudio() {
   var bar = document.getElementById("audio-unlock-banner");
   if (bar) bar.classList.add("hidden");
+  if (typeof reattachRemoteClassAudio === "function") {
+    reattachRemoteClassAudio();
+  }
   if (typeof ensureRoomAudioPlayback === "function") {
     ensureRoomAudioPlayback();
   }

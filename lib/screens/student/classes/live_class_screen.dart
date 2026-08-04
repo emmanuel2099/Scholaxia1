@@ -154,13 +154,14 @@ class _LiveClassScreenState extends State<LiveClassScreen>
       _livekitUrl = widget.livekitUrl ?? tokenData['livekit_url']?.toString();
       _teacherId = tokenData['teacher_id']?.toString() ??
           _classDetails?['teacher_id']?.toString();
-      _micAllowed = widget.isTeacher || tokenData['mic_allowed'] == true;
-      _cameraAllowed = widget.isTeacher || tokenData['camera_allowed'] == true;
+      _micAllowed = widget.isTeacher || tokenData['mic_allowed'] != false;
+      _cameraAllowed = widget.isTeacher || tokenData['camera_allowed'] != false;
       if (widget.isTeacher) {
         _micOn = true;
         _camOn = true;
-      } else if (_micAllowed) {
-        // Auto-open mic so teacher and student hear each other after join.
+      } else {
+        // Open mic by default so teacher can hear the student immediately.
+        _micAllowed = true;
         _micOn = true;
       }
 

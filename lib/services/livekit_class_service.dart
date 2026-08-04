@@ -328,6 +328,9 @@ class LiveKitClassService {
 
     // Ensure remote audio tracks are subscribed and audible
     for (final pub in participant.audioTrackPublications) {
+      if (!pub.subscribed) {
+        unawaited(pub.subscribe());
+      }
       if (pub.subscribed && pub.track != null && !pub.muted) {
         unawaited(_ensureAudioPlayback());
       }

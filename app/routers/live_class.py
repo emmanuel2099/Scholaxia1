@@ -431,7 +431,8 @@ async def _ensure_attendance_for_unmute(
 def _mic_allowed_for(room_id: str, student_id: str, attendance: ClassAttendance | None) -> bool:
     if has_mic_access(room_id, student_id):
         return True
-    return attendance is not None and not attendance.is_muted
+    # Open mic for anyone actively in class unless teacher muted them.
+    return attendance is not None and not bool(attendance.is_muted)
 
 
 def _camera_allowed_for(
@@ -797,6 +798,23 @@ async def start_class(
     if not was_live:
         await _notify_for_class(db, live_class, live_now=True)
         await _notify_assigned_students_for_class(db, str(live_class.teacher_id), live_class)
+    # Open mics for everyone already in the room so teacher ↔ students hear each other.
+    att_res = await db.execute(
+        select(ClassAttendance).where(
+            ClassAttendance.live_class_id == live_class.id,
+            ClassAttendance.is_removed == False,  # noqa: E712
+            ClassAttendance.left_at.is_(None),
+        )
+    )
+    for att in att_res.scalars().all():
+        att.is_muted = False
+        try:
+            from app.services.live_class_room import grant_mic, grant_camera
+            grant_mic(live_class.room_id, str(att.student_id))
+            grant_camera(live_class.room_id, str(att.student_id))
+        except Exception:
+            pass
+    await db.flush()
     return {"message": "Class started", "room_id": live_class.room_id, "is_live": True, "join_code": live_class.join_code}
 
 
@@ -950,6 +968,14 @@ async def get_livekit_token(
     )
     uid = current_user["sub"]
     att = None if is_teacher else await _active_attendance(db, live_class.id, uid)
+    # Keep publish rights open for active students unless teacher muted them.
+    if att is not None and not att.is_muted:
+        try:
+            from app.services.live_class_room import grant_mic, grant_camera
+            grant_mic(live_class.room_id, uid)
+            grant_camera(live_class.room_id, uid)
+        except Exception:
+            pass
     can_publish = is_teacher or _can_publish_for_student(live_class.room_id, uid, att)
     display = current_user.get("email") or current_user.get("sub") or "user"
     payload = _livekit_token_payload(

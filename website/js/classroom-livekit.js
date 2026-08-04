@@ -19,7 +19,11 @@
   var MAX_SIDEBAR_VIDEOS = 9;
   var JOIN_TIMEOUT_MS = 45000;
   var PUBLISH_TIMEOUT_MS = 35000;
-  var AUDIO_CAPTURE_OPTS = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+  var AUDIO_CAPTURE_OPTS = {
+    echoCancellation: { ideal: true },
+    noiseSuppression: { ideal: true },
+    autoGainControl: { ideal: true },
+  };
 
   function lk() {
     return window.LivekitClient || null;
@@ -78,7 +82,11 @@
 
   async function checkLiveKitServerConfig() {
     try {
-      var status = await api("/api/v1/live-classes/livekit/status");
+      var status = await withTimeout(
+        api("/api/v1/live-classes/livekit/status"),
+        8000,
+        "LiveKit status timed out"
+      );
       if (status && !status.configured) {
         showLiveKitSetupBanner(status.message || liveKitMissingMessage());
         return false;
@@ -90,6 +98,7 @@
       }
       return true;
     } catch (e) {
+      // Never block joining on a slow/cold API — try with the session token we already have.
       return true;
     }
   }
@@ -109,15 +118,26 @@
     var classId = liveSession.class_id || liveSession.classId;
     if (!classId) return false;
     try {
-      var data = await api("/api/v1/live-classes/" + classId + "/token");
+      var data = await withTimeout(
+        api("/api/v1/live-classes/" + classId + "/token"),
+        10000,
+        "Token refresh timed out"
+      );
       liveSession.livekit_token = data.livekit_token || data.token;
       liveSession.livekit_url = data.livekit_url || liveSession.livekit_url;
       liveSession.identity = data.identity || liveSession.identity;
       liveSession.channel_id = data.channel_id || liveSession.channel_id;
+      if (data.room_id) liveSession.room_id = data.room_id;
       if (data.end_time) liveSession.end_time = data.end_time;
-      if (data.mic_allowed) liveSession.mic_allowed = true;
-      if (data.camera_allowed) liveSession.camera_allowed = true;
-      if (data.can_publish) liveSession.can_publish = true;
+      if (typeof data.mic_allowed === "boolean") liveSession.mic_allowed = data.mic_allowed;
+      if (typeof data.camera_allowed === "boolean") liveSession.camera_allowed = data.camera_allowed;
+      if (typeof data.can_publish === "boolean") liveSession.can_publish = data.can_publish;
+      if (data.mic_allowed) {
+        window.studentMicAllowed = true;
+      }
+      if (data.camera_allowed) {
+        window.studentCameraAllowed = true;
+      }
       if (data.teacher_id) liveSession.teacher_id = data.teacher_id;
       if (typeof applyStudentMediaPermissions === "function") applyStudentMediaPermissions(data);
       if (typeof persistLiveSession === "function") persistLiveSession(liveSession);
@@ -125,7 +145,11 @@
       window.liveSession = liveSession;
       return hasValidLiveKitToken(liveSession.livekit_token, liveSession.livekit_url);
     } catch (e) {
-      return false;
+      // Keep existing session token if refresh fails/times out.
+      return hasValidLiveKitToken(
+        liveSession.livekit_token || "",
+        liveSession.livekit_url || ""
+      );
     }
   }
 
@@ -208,7 +232,7 @@
 
   function applyStudentMediaPermissions(data) {
     if (isTeacherRole() || !data) return;
-    if (data.mic_allowed) {
+    if (data.mic_allowed !== false) {
       window.studentMicAllowed = true;
       if (typeof syncStudentMicState === "function") syncStudentMicState(true);
     }
@@ -246,13 +270,8 @@
     if (!pid) return;
     remoteAudioEls = remoteAudioEls.filter(function (el) {
       if (el && el.getAttribute && el.getAttribute("data-participant-id") === pid) {
-        try {
-          if (el.srcObject) {
-            el.srcObject.getTracks().forEach(function (t) {
-              try { t.stop(); } catch (e) { /* ignore */ }
-            });
-          }
-        } catch (e) { /* ignore */ }
+        // Never stop() remote tracks — that permanently mutes the student for this page.
+        try { el.srcObject = null; } catch (e) { /* ignore */ }
         try { el.remove(); } catch (e2) { /* ignore */ }
         return false;
       }
@@ -572,13 +591,25 @@
 
   function attachExistingRemoteTracks() {
     if (!liveRoom) return;
+    var c = lk();
     liveRoom.remoteParticipants.forEach(function (participant) {
       wireParticipantVideoEvents(participant);
       participant.trackPublications.forEach(function (pub) {
+        var isAudio = !!(c && (pub.kind === c.Track.Kind.Audio || pub.kind === "audio"));
+        if (isAudio) setPublicationSubscribed(pub, true);
         if (pub.track) attachRemoteTrack(pub.track, pub, participant);
       });
     });
+    ensureRoomAudioPlayback();
   }
+
+  function reattachRemoteClassAudio() {
+    if (!liveRoom) return;
+    attachExistingRemoteTracks();
+    ensureRoomAudioPlayback();
+  }
+  window.reattachRemoteClassAudio = reattachRemoteClassAudio;
+  window.ensureRoomAudioPlayback = ensureRoomAudioPlayback;
 
   function attachLocalCameraPreview() {
     if (!liveRoom) return;
@@ -885,6 +916,9 @@
   function enterChatOnlyMode(message) {
     liveVideoJoined = false;
     liveRoom = null;
+    if (typeof setStatus === "function") {
+      setStatus("Chat only — video reconnecting…");
+    }
     if (!camOn && !window.localPreviewStream && typeof showVideoPlaceholder === "function") {
       showVideoPlaceholder(message);
     }
@@ -923,12 +957,22 @@
     }
 
     liveKitConnecting = true;
+    if (typeof setStatus === "function") setStatus("Connecting live video…");
     liveSession = window.liveSession || liveSession;
     liveSession = normalizeSession(liveSession || (typeof loadLiveSession === "function" ? loadLiveSession() : null));
     window.liveSession = liveSession;
-    await refreshLiveKitToken();
+
+    // Prefer the token already saved at join — don't block on a slow /token API.
     var token = liveSession.livekit_token || "";
     var url = liveSession.livekit_url || "";
+    if (!hasValidLiveKitToken(token, url)) {
+      await refreshLiveKitToken();
+      token = liveSession.livekit_token || "";
+      url = liveSession.livekit_url || "";
+    } else {
+      // Refresh in background for grants; connect with what we have now.
+      refreshLiveKitToken().catch(function () {});
+    }
     if (!hasValidLiveKitToken(token, url)) {
       liveKitConnecting = false;
       if (!isRetry) {
@@ -989,11 +1033,22 @@
         if (micBtn) micBtn.disabled = !canMic;
         if (camBtn) camBtn.disabled = !canCam;
       }
-      await ensureRoomAudioPlayback();
-      if (liveRoom && liveRoom.canPlaybackAudio === false) {
-        if (typeof showAudioUnlockBanner === "function") showAudioUnlockBanner();
-      }
       if (typeof setStatus === "function") setStatus("Connected — video + chat");
+      if (typeof showAudioUnlockBanner === "function") showAudioUnlockBanner();
+      await ensureRoomAudioPlayback();
+      // Keep remote student audio alive for the teacher (autoplay / resubscribe).
+      if (isTeacherRole()) {
+        if (window._sxAudioKeepAlive) clearInterval(window._sxAudioKeepAlive);
+        window._sxAudioKeepAlive = setInterval(function () {
+          if (!liveVideoJoined) return;
+          attachExistingRemoteTracks();
+          ensureRoomAudioPlayback();
+        }, 4000);
+      }
+      var studBadge = document.getElementById("audience-badge");
+      if (studBadge && !isTeacherRole()) {
+        studBadge.textContent = "In class · live";
+      }
 
       if (isTeacherRole()) {
         if (typeof showHostTools === "function") showHostTools(true);
@@ -1003,17 +1058,27 @@
           if (ov2) ov2.classList.remove("view-only");
         }
         await transitionHostToLiveBroadcast();
+        // Stop leftover preview mic/cam so browser AEC is not fighting a second capture (echo).
+        if (typeof clearLocalPreviewStream === "function") {
+          clearLocalPreviewStream();
+        }
+        // Always publish mic so students can hear the teacher.
+        try { await setMic(true); } catch (e) {}
         if (typeof hideVideoPlaceholder === "function") hideVideoPlaceholder();
         if (typeof addChatMessage === "function") {
           addChatMessage("", "You are live — students can see and hear you now.", true);
         }
       } else {
-        // Open mic when already allowed so the teacher can hear this student.
-        if ((window.studentMicAllowed || (liveSession && liveSession.mic_allowed)) && !micOn) {
-          try {
-            await setMic(true);
-          } catch (micErr) { /* user gesture / permission may still be needed */ }
-        }
+        // Always open mic when allowed so the teacher can hear this student.
+        window.studentMicAllowed = true;
+        if (liveSession) liveSession.mic_allowed = true;
+        try {
+          await setMic(true);
+          // Retry once — some browsers need a second publish after permission.
+          setTimeout(function () {
+            setMic(true).catch(function () {});
+          }, 1200);
+        } catch (micErr) { /* permission may need a tap */ }
         if (!liveRoom.remoteParticipants.size) {
           if (typeof showVideoPlaceholder === "function") {
             showVideoPlaceholder("Waiting for the teacher to start video…");
@@ -1440,11 +1505,13 @@
 
   function initLiveVideo() {
     loadLiveKitScript(function () {
+      // Connect immediately — never wait on /livekit/status (Render cold starts hang it).
+      if (isTeacherRole() && typeof startLocalPreviewOnly === "function") {
+        startLocalPreviewOnly().catch(function () {});
+      }
+      tryConnectLiveVideo();
       checkLiveKitServerConfig().then(function () {
-        if (isTeacherRole() && typeof startLocalPreviewOnly === "function") {
-          startLocalPreviewOnly().catch(function () {});
-        }
-        tryConnectLiveVideo();
+        if (!liveVideoJoined) tryConnectLiveVideo(true);
       });
     });
   }
@@ -1497,5 +1564,5 @@
   window.getRemoteClassMediaStream = getRemoteClassMediaStream;
   window.reattachParticipantVideos = reattachParticipantVideos;
   window.reattachTeacherMainStage = reattachTeacherMainStage;
-  window.reattachRemoteClassAudio = attachExistingRemoteTracks;
+  window.reattachRemoteClassAudio = reattachRemoteClassAudio;
 })();
