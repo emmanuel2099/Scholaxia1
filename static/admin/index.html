@@ -113,21 +113,10 @@
       <div class="page-head">
         <h2>Teachers</h2>
         <div class="form-row">
-          <button class="btn-sm danger" onclick="removeAllTeachers()">Remove all</button>
           <button class="btn-sm" onclick="loadTeachers()">Refresh</button>
         </div>
       </div>
-      <div class="panel">
-        <h3>Add Teacher</h3>
-        <div class="form-grid">
-          <label><span>Full name</span><input id="t-name" /></label>
-          <label><span>Email</span><input id="t-email" type="email" /></label>
-          <label><span>Password</span><input id="t-password" type="password" /></label>
-          <label><span>Subjects (comma-separated)</span><input id="t-subjects" placeholder="Mathematics, Physics" /></label>
-        </div>
-        <button class="btn-sm" onclick="createTeacher()">Create Teacher</button>
-        <p id="teacher-form-error" class="error-msg"></p>
-      </div>
+      <p class="cbt-hint small">Teachers sign up themselves (name, email, WhatsApp, subjects). Approve them here after OTP verification.</p>
       <div id="teachers-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
     </section>
 

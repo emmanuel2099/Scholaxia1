@@ -386,6 +386,8 @@ async def signup_start(payload: SignupStartRequest, db: AsyncSession = Depends(g
         raise HTTPException(status_code=400, detail="age_group must be 3-5, 6-8, or 9-12")
     if role == "teacher" and not (payload.subjects or []):
         raise HTTPException(status_code=400, detail="Teacher subjects are required")
+    if role == "teacher" and len((payload.phone or "").strip()) < 7:
+        raise HTTPException(status_code=400, detail="WhatsApp number is required for teacher signup")
     if role == "vendor" and not (payload.business_name or "").strip():
         raise HTTPException(status_code=400, detail="Business name is required for vendor signup")
     if role == "vendor" and not (payload.location or "").strip():

@@ -223,58 +223,49 @@ async function loadTeachers() {
   try {
     var rows = await adminApi("/api/v1/admin/teachers");
     if (!rows) return;
-    if (!rows.length) { el.innerHTML = '<div class="empty-state">No teachers yet.</div>'; return; }
-    el.innerHTML = '<table class="data-table"><thead><tr><th>Name</th><th>Email</th><th>Subjects</th><th></th></tr></thead><tbody>' +
+    if (!rows.length) { el.innerHTML = '<div class="empty-state">No teacher signups yet.</div>'; return; }
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Name</th><th>Email</th><th>WhatsApp</th><th>Subjects</th><th>Status</th><th></th></tr></thead><tbody>' +
       rows.map(function (t) {
         var subs = (t.subjects || []).map(function (x) {
           return '<span class="subj-tag">' + escHtml(x) + '</span>';
         }).join("");
+        var wa = escHtml(t.phone || t.whatsapp || '');
+        var status = t.is_approved ? 'Approved' : 'Pending approval';
         return '<tr><td>' + escHtml(t.full_name) + '</td><td>' + escHtml(t.email) + '</td>' +
-          '<td><div class="subj-tags">' + subs + '</div></td>' +
-          '<td class="actions"><button class="btn-sm danger" onclick="deleteTeacher(\'' + t.id + '\')">Remove</button></td></tr>';
+          '<td>' + (wa || '—') + '</td>' +
+          '<td><div class="subj-tags">' + (subs || '—') + '</div></td>' +
+          '<td>' + escHtml(status) + '</td>' +
+          '<td class="actions">' +
+          (t.is_approved
+            ? '<button class="btn-sm danger" onclick="rejectTeacher(\'' + t.id + '\')">Lock</button>'
+            : '<button class="btn-sm" onclick="approveTeacher(\'' + t.id + '\')">Approve</button>') +
+          ' <button class="btn-sm danger" onclick="deleteTeacher(\'' + t.id + '\')">Remove</button></td></tr>';
       }).join("") + '</tbody></table>';
   } catch (e) {
     el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + '</div>';
   }
 }
 
-async function createTeacher() {
-  var err = document.getElementById("teacher-form-error");
-  err.textContent = "";
-  var subjects = document.getElementById("t-subjects").value.split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+async function approveTeacher(id) {
+  if (!confirm("Approve this teacher?")) return;
   try {
-    await adminApi("/api/v1/admin/teachers", {
-      method: "POST",
-      body: JSON.stringify({
-        full_name: document.getElementById("t-name").value.trim(),
-        email: document.getElementById("t-email").value.trim(),
-        password: document.getElementById("t-password").value,
-        subjects: subjects,
-      }),
-    });
-    document.getElementById("t-name").value = "";
-    document.getElementById("t-email").value = "";
-    document.getElementById("t-password").value = "";
-    document.getElementById("t-subjects").value = "";
+    await adminApi("/api/v1/admin/teachers/" + id + "/approve", { method: "POST" });
     loadTeachers();
-  } catch (e) {
-    err.textContent = e.message;
-  }
+  } catch (e) { alert(e.message); }
+}
+
+async function rejectTeacher(id) {
+  if (!confirm("Lock this teacher account?")) return;
+  try {
+    await adminApi("/api/v1/admin/teachers/" + id + "/reject", { method: "POST" });
+    loadTeachers();
+  } catch (e) { alert(e.message); }
 }
 
 async function deleteTeacher(id) {
   if (!confirm("Remove this teacher? They will not be able to log in.")) return;
   try {
     await adminApi("/api/v1/admin/teachers/" + id, { method: "DELETE" });
-    loadTeachers();
-  } catch (e) { alert(e.message); }
-}
-
-async function removeAllTeachers() {
-  if (!confirm("Remove ALL teachers? This disables every teacher account.")) return;
-  try {
-    var r = await adminApi("/api/v1/admin/teachers/remove-all", { method: "POST" });
-    alert("Removed " + (r.removed || 0) + " teacher(s).");
     loadTeachers();
   } catch (e) { alert(e.message); }
 }

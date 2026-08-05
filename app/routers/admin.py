@@ -132,6 +132,7 @@ async def list_teachers(
         select(User, TeacherProfile)
         .join(TeacherProfile, TeacherProfile.user_id == User.id)
         .where(User.role == UserRole.teacher, User.is_active == True)  # noqa: E712
+        .order_by(TeacherProfile.is_approved.asc(), User.created_at.desc())
     )
     rows = result.all()
     return [

@@ -44,6 +44,7 @@ class MyTeacherProfile(BaseModel):
     user_id: str
     full_name: str
     email: str
+    phone: Optional[str] = None
     subjects: List[str]
     bio: Optional[str]
     profile_picture: Optional[str]
@@ -195,6 +196,7 @@ async def get_my_teacher_profile(
         user_id=str(user.id),
         full_name=user.full_name,
         email=user.email,
+        phone=user.phone,
         subjects=profile.subjects or [],
         bio=profile.bio,
         profile_picture=user.profile_picture,
@@ -208,6 +210,7 @@ async def get_my_teacher_profile(
 class UpdateTeacherProfileRequest(BaseModel):
     bio: Optional[str] = None
     subjects: Optional[List[str]] = None
+    phone: Optional[str] = None
 
 
 @router.patch("/teachers/me", response_model=MyTeacherProfile)
@@ -231,6 +234,11 @@ async def update_my_teacher_profile(
         profile.bio = payload.bio
     if payload.subjects is not None:
         profile.subjects = payload.subjects
+    if payload.phone is not None:
+        phone = (payload.phone or "").strip()
+        if phone and len(phone) < 7:
+            raise HTTPException(status_code=400, detail="WhatsApp number looks too short")
+        user.phone = phone or None
 
     await db.flush()
 
@@ -238,6 +246,7 @@ async def update_my_teacher_profile(
         user_id=str(user.id),
         full_name=user.full_name,
         email=user.email,
+        phone=user.phone,
         subjects=profile.subjects or [],
         bio=profile.bio,
         profile_picture=user.profile_picture,
