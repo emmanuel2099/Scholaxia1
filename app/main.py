@@ -1,13 +1,18 @@
+from pathlib import Path
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, WebSocket, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import AsyncSession
-from contextlib import asynccontextmanager
 
 import app.models  # noqa: F401 — register models with Base.metadata
 from app.core.config import settings
 from app.core.database import engine, get_db
 from app.core.redis import init_redis, close_redis
 from app.core.startup_db import database_ready, initialize_database
+
+ADMIN_STATIC_DIR = Path(__file__).resolve().parent.parent / "static" / "admin"
 
 from app.routers import auth, students, admin, live_class, cbt, community, ai_tutor, notifications, payments, flutterwave_payments, paystack_payments
 from app.routers import developer_auth, developer_keys, public_ai_api, reviews_reports, teacher_ai, library, wallet, materials
@@ -108,7 +113,8 @@ async def health():
         "app": settings.APP_NAME,
         "database": "connected" if ready else "unavailable",
         "database_host": settings.database_host,
-        "fix": (
+        "admin_ui": "/admin/" if ADMIN_STATIC_DIR.is_dir() else None,
+        "hint": (
             None
             if ready
             else "On Render: link a live PostgreSQL database and set DATABASE_URL to its Internal Database URL."
@@ -153,3 +159,12 @@ async def debug_sia(db: AsyncSession = Depends(get_db)):
     except Exception as e:
         import traceback
         return {"status": "error", "detail": str(e), "trace": traceback.format_exc()}
+
+
+# Admin website (same host as API): https://scholaxia1.onrender.com/admin/
+if ADMIN_STATIC_DIR.is_dir():
+    app.mount(
+        "/admin",
+        StaticFiles(directory=str(ADMIN_STATIC_DIR), html=True),
+        name="admin_ui",
+    )

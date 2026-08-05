@@ -157,11 +157,11 @@ databases:
   # Publish directory: . (the sia-web folder itself)
   # No build command needed — pure HTML/CSS/JS
 
-- type: web
-  name: scholaxia-admin-dashboard
-  runtime: static
-  buildCommand: echo "No build needed"
-  startCommand: echo "No start command needed"
-  envVars:
-    - key: ALLOWED_ORIGINS
-      value: '["*"]'
+  # Admin website is served from the API itself at:
+  #   https://scholaxia1.onrender.com/admin/
+  # (static files in static/admin — no separate static service needed)
+
+  # Deprecated separate admin static host — kept disabled intentionally.
+  # - type: web
+  #   name: scholaxia-admin-dashboard
+  #   runtime: static
