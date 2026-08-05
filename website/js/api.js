@@ -147,6 +147,7 @@
   function dashboardForRole(role) {
     if (role === "teacher" || role === "admin") return "teacher.html";
     if (role === "kind") return "kind.html";
+    if (role === "vendor") return "marketplace.html?vendor=pending";
     return "student.html";
   }
 

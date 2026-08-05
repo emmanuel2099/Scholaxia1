@@ -3,6 +3,7 @@
   var role = "student";
   var mode = "login";
   var pendingEmail = "";
+  var nextUrl = "";
 
   var ROLE_META = {
     student: {
@@ -18,6 +19,11 @@
     kind: {
       subLogin: "Kids portal — safe learning for ages 3–12",
       subSignup: "Create a Scholaxia Kids account",
+      allowSignup: true,
+    },
+    vendor: {
+      subLogin: "Vendor portal — sell on Scholaxia Market",
+      subSignup: "Register your store (admin approval required)",
       allowSignup: true,
     },
   };
@@ -43,12 +49,35 @@
     el.classList.toggle("is-off", !on);
   }
 
+  function safeNext(url) {
+    if (!url) return "";
+    try {
+      var u = String(url);
+      if (u.indexOf("://") >= 0 || u.indexOf("//") === 0) return "";
+      if (u.charAt(0) === "/" || u.indexOf("..") >= 0) return "";
+      if (!/\.html(\?|#|$)/.test(u) && u.indexOf("marketplace") < 0) return "";
+      return u;
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function redirectAfterAuth(actual) {
+    if (nextUrl) {
+      window.location.href = nextUrl;
+      return;
+    }
+    window.location.href = api.dashboardForRole(actual);
+  }
+
   function updateCopy() {
-    var meta = ROLE_META[role];
+    var meta = ROLE_META[role] || ROLE_META.student;
     $("portalSub").textContent = mode === "login" ? meta.subLogin : meta.subSignup;
     setVisible($("kindFields"), role === "kind" && mode === "signup");
     setVisible($("teacherFields"), role === "teacher" && mode === "signup");
+    setVisible($("vendorFields"), role === "vendor" && mode === "signup");
     setVisible($("teacherHint"), role === "teacher");
+    setVisible($("vendorHint"), role === "vendor");
     $("btnSignup").disabled = false;
     $("tabSignup").disabled = false;
     $("gotoSignup").disabled = false;
@@ -92,8 +121,10 @@
   function roleMismatch(selected, actual) {
     if (selected === "teacher") return "This account is not a teacher. Pick the correct role.";
     if (selected === "kind") return "This is not a Kid account. Choose Student or create a Kid account.";
+    if (selected === "vendor") return "This is not a vendor account. Choose Vendor to sell on Market.";
     if (actual === "teacher") return "This is a teacher account. Select Teacher above.";
     if (actual === "kind") return "This is a Kid account. Select Kid above.";
+    if (actual === "vendor") return "This is a vendor account. Select Vendor above.";
     return "Account type does not match the role you selected.";
   }
 
@@ -105,7 +136,13 @@
     if (role === "kind" && actual !== "kind") {
       throw new Error(roleMismatch(role, actual));
     }
-    if (role === "student" && (actual === "teacher" || actual === "kind" || actual === "admin")) {
+    if (role === "vendor" && actual !== "vendor") {
+      throw new Error(roleMismatch(role, actual));
+    }
+    if (
+      role === "student" &&
+      (actual === "teacher" || actual === "kind" || actual === "admin" || actual === "vendor")
+    ) {
       throw new Error(roleMismatch(role, actual));
     }
 
@@ -127,14 +164,25 @@
         }
       } catch (e) { /* ignore */ }
     }
+
     if (actual === "teacher" && data && data.user && data.user.is_approved === false) {
       localStorage.setItem("sia_teacher_pending_approval", "1");
       alert("Your teacher account is pending admin approval. You can update profile while waiting.");
+      if (nextUrl) {
+        window.location.href = nextUrl;
+        return;
+      }
       window.location.href = "teacher.html#profile";
       return;
     }
 
-    window.location.href = api.dashboardForRole(actual);
+    if (actual === "vendor") {
+      if (!nextUrl) nextUrl = "marketplace.html?vendor=pending";
+      redirectAfterAuth(actual);
+      return;
+    }
+
+    redirectAfterAuth(actual);
   }
 
   async function onLogin(e) {
@@ -187,6 +235,14 @@
           .map(function (s) { return s.trim(); })
           .filter(Boolean);
         body.subjects = subjects;
+      } else if (role === "vendor") {
+        body.business_name = $("signupBusiness").value.trim();
+        body.phone = $("signupVendorPhone").value.trim();
+        body.location = $("signupVendorLocation").value.trim();
+        body.address = $("signupVendorAddress").value.trim();
+        if (!body.business_name) throw new Error("Business name is required");
+        if (!body.location) throw new Error("Location is required");
+        if (!body.address) throw new Error("Business address is required");
       }
       await api.api("/api/v1/auth/signup/start", {
         method: "POST",
@@ -234,8 +290,16 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
+    var params = new URLSearchParams(window.location.search);
+    nextUrl = safeNext(params.get("next") || "");
+
     if (api.getToken()) {
-      window.location.href = api.dashboardForRole(localStorage.getItem("sia_role") || "student");
+      var existingRole = localStorage.getItem("sia_role") || "student";
+      if (nextUrl) {
+        window.location.href = nextUrl;
+        return;
+      }
+      window.location.href = api.dashboardForRole(existingRole);
       return;
     }
 
@@ -266,7 +330,6 @@
       setVisible($("signupStepOtp"), false);
     });
 
-    var params = new URLSearchParams(window.location.search);
     var roleParam = params.get("role");
     if (roleParam && ROLE_META[roleParam]) setRole(roleParam);
     if (params.get("mode") === "signup") {

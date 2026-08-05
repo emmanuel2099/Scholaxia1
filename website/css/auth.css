@@ -285,12 +285,12 @@ body.auth-body {
 
 .role-row {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 0.35rem;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.3rem;
   margin-bottom: 1.05rem;
   padding: 0.3rem;
   background: linear-gradient(180deg, #f1f5f9, #eef2ff);
-  border-radius: 999px;
+  border-radius: 18px;
   border: 1px solid #e2e8f0;
 }
 
@@ -301,7 +301,7 @@ body.auth-body {
   min-height: 2.4rem;
   font: inherit;
   font-weight: 800;
-  font-size: 0.84rem;
+  font-size: 0.78rem;
   color: var(--muted);
   cursor: pointer;
   transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
@@ -549,6 +549,11 @@ body.auth-body {
 
   .auth-card {
     padding: 1.45rem 1.2rem 1.35rem;
+  }
+
+  .role-row {
+    grid-template-columns: repeat(2, 1fr);
+    border-radius: 16px;
   }
 }
 

@@ -194,7 +194,6 @@
     skills: "Skills",
     library: "Library",
     assignments: "Assignments",
-    marketplace: "Marketplace",
     sia: "Tutor AI",
     community: "Community",
     groups: "Groups",
@@ -219,7 +218,6 @@
     skills: loadSkills,
     library: loadLibrary,
     assignments: loadAssignments,
-    marketplace: loadMarketplace,
     community: loadCommunity,
     groups: loadGroups,
     saved: loadSaved,
@@ -2169,154 +2167,7 @@
     });
   }
 
-  /* =====================================================================
-     MARKETPLACE
-     ===================================================================== */
-
-  var marketplaceCache = [];
-  var marketActiveCat = "all";
-
-  function loadMarketplace() {
-    var wrap = $("marketplaceGrid");
-    if (!wrap) return;
-    wrap.innerHTML = loadingHtml("Loading products…");
-    api
-      .api("/api/v1/marketplace/products")
-      .then(function (data) {
-        marketplaceCache = firstArray(data, ["products", "items", "results"]);
-        var cats = Array.from(
-          new Set(marketplaceCache.map(function (p) { return p.category; }).filter(Boolean))
-        );
-        var tabsWrap = $("marketCategoryTabs");
-        if (tabsWrap) {
-          tabsWrap.innerHTML =
-            '<button type="button" class="tab is-active" data-mcat="all">All</button>' +
-            cats
-              .map(function (c) { return '<button type="button" class="tab" data-mcat="' + esc(c) + '">' + esc(c) + "</button>"; })
-              .join("");
-        }
-        renderMarketplace();
-      })
-      .catch(function (err) {
-        wrap.innerHTML = errorHtml(errMsg(err), "marketplace");
-      });
-  }
-
-  function renderMarketplace() {
-    var wrap = $("marketplaceGrid");
-    if (!wrap) return;
-    var items =
-      marketActiveCat === "all"
-        ? marketplaceCache
-        : marketplaceCache.filter(function (p) { return p.category === marketActiveCat; });
-    if (!items.length) {
-      wrap.innerHTML = emptyHtml("🛍", "No products in this category yet.");
-      return;
-    }
-    wrap.innerHTML = items
-      .map(function (p) {
-        var title = p.title || p.name || "Item";
-        var price = p.price != null ? "₦" + p.price : "";
-        return (
-          '<div class="card">' +
-          (p.image_url || p.secure_url
-            ? '<img src="' + esc(p.image_url || p.secure_url) + '" alt="" />'
-            : '<div class="card-media-fallback">🛍</div>') +
-          '<span class="card-tag">' +
-          esc(p.category || "Marketplace") +
-          "</span><h4>" +
-          esc(title) +
-          "</h4>" +
-          (p.description ? "<p>" + esc(String(p.description).slice(0, 110)) + (String(p.description).length > 110 ? "…" : "") + "</p>" : "") +
-          '<div class="card-foot"><strong>' +
-          esc(price) +
-          '</strong><button type="button" class="btn btn-primary btn-mini" data-book-product="' +
-          esc(p.id) +
-          '" data-product-title="' +
-          esc(title) +
-          '">Book now</button></div></div>'
-        );
-      })
-      .join("");
-  }
-
-  var marketTabsWrap = $("marketCategoryTabs");
-  if (marketTabsWrap) {
-    marketTabsWrap.addEventListener("click", function (e) {
-      var btn = e.target.closest(".tab");
-      if (!btn) return;
-      marketTabsWrap.querySelectorAll(".tab").forEach(function (t) { t.classList.toggle("is-active", t === btn); });
-      marketActiveCat = btn.dataset.mcat;
-      renderMarketplace();
-    });
-  }
-
-  var bookingModal = $("bookingModal");
-  document.addEventListener("click", function (e) {
-    var bookBtn = e.target.closest("[data-book-product]");
-    if (bookBtn) {
-      $("bookingProductId").value = bookBtn.dataset.bookProduct;
-      $("bookingProductName").textContent = bookBtn.dataset.productTitle || "Product";
-      $("bookingFullName").value = user.name || "";
-      $("bookingEmail").value = user.email || "";
-      setStatus($("bookingStatus"), "", false);
-      bookingModal.classList.add("is-on");
-      return;
-    }
-    if (e.target === bookingModal || e.target.closest("#bookingModalClose")) {
-      bookingModal.classList.remove("is-on");
-    }
-  });
-
-  var bookingForm = $("bookingForm");
-  if (bookingForm) {
-    bookingForm.addEventListener("submit", function (e) {
-      e.preventDefault();
-      var productId = $("bookingProductId").value;
-      var statusEl = $("bookingStatus");
-      var body = {
-        full_name: $("bookingFullName").value.trim(),
-        email: $("bookingEmail").value.trim(),
-        phone: $("bookingPhone").value.trim(),
-        whatsapp: $("bookingWhatsapp").value.trim(),
-        note: $("bookingNote").value.trim(),
-      };
-      var btn = bookingForm.querySelector("button[type=submit]");
-      btn.disabled = true;
-      setStatus(statusEl, "Booking…", true);
-      api
-        .api("/api/v1/marketplace/products/" + productId + "/book", { method: "POST", body: body })
-        .then(async function (res) {
-          var bookingId = res && (res.booking_id || res.id || (res.booking && res.booking.id));
-          var product = marketplaceCache.filter(function (p) { return String(p.id) === String(productId); })[0];
-          var price = product ? Number(product.price || 0) : 0;
-          if (price > 0 && bookingId && typeof window.paystackPurchase === "function") {
-            setStatus(statusEl, "Booking created — opening Paystack…", true);
-            try {
-              var ok = await window.paystackPurchase({
-                productType: "marketplace_booking",
-                productId: String(bookingId),
-              });
-              setStatus(statusEl, ok ? "Paid successfully!" : "Booked. Complete payment later if needed.", ok);
-            } catch (err) {
-              setStatus(statusEl, "Booked, but payment failed: " + errMsg(err), false);
-            }
-          } else {
-            setStatus(statusEl, "Booked! We'll reach out shortly.", true);
-          }
-          setTimeout(function () {
-            bookingModal.classList.remove("is-on");
-            bookingForm.reset();
-          }, 1400);
-        })
-        .catch(function (err) {
-          setStatus(statusEl, errMsg(err), false);
-        })
-        .then(function () {
-          btn.disabled = false;
-        });
-    });
-  }
+  /* Marketplace lives on marketplace.html (standalone). */
 
   /* =====================================================================
      TUTOR AI — SIA

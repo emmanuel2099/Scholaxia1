@@ -11,7 +11,7 @@
       href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="css/auth.css?v=13" />
+    <link rel="stylesheet" href="css/auth.css?v=20260805c" />
   </head>
   <body class="auth-body">
     <div class="auth-fx" aria-hidden="true">
@@ -54,6 +54,9 @@
             </button>
             <button type="button" class="role-btn" data-role="kind" role="tab" aria-selected="false">
               Kid
+            </button>
+            <button type="button" class="role-btn" data-role="vendor" role="tab" aria-selected="false">
+              Vendor
             </button>
           </div>
 
@@ -134,8 +137,29 @@
                     <input id="signupSubjects" type="text" placeholder="Mathematics, English, Physics" />
                   </label>
                 </div>
+                <div id="vendorFields" hidden>
+                  <label>
+                    Business name
+                    <input id="signupBusiness" type="text" placeholder="Your shop or brand name" />
+                  </label>
+                  <label>
+                    Phone number
+                    <input id="signupVendorPhone" type="tel" placeholder="+234..." />
+                  </label>
+                  <label>
+                    Location
+                    <input id="signupVendorLocation" type="text" placeholder="City / State" />
+                  </label>
+                  <label>
+                    Business address
+                    <input id="signupVendorAddress" type="text" placeholder="Street, city" />
+                  </label>
+                </div>
                 <p class="auth-hint" id="teacherHint" hidden>
                   Teacher features unlock automatically after admin approval.
+                </p>
+                <p class="auth-hint" id="vendorHint" hidden>
+                  Vendor accounts wait for admin approval before you can list products.
                 </p>
                 <p class="auth-error" id="signupError" hidden></p>
                 <button class="auth-submit" type="submit" id="btnSignup">Create account</button>
@@ -161,7 +185,7 @@
       </section>
     </main>
 
-    <script src="js/api.js?v=13"></script>
-    <script src="js/auth-page.js?v=13"></script>
+    <script src="js/api.js?v=20260805b"></script>
+    <script src="js/auth-page.js?v=20260805b"></script>
   </body>
 </html>

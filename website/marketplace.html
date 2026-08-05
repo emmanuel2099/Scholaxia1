@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Scholaxia Market — books, gadgets, phones and campus essentials. Browse freely, checkout when ready."
+    />
+    <title>Scholaxia Market — Shop campus essentials</title>
+    <link rel="icon" type="image/png" href="media/logo-main.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,800&family=Sora:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/marketplace.css?v=20260805c" />
+  </head>
+  <body class="mkt-body">
+    <div class="mkt-grain" aria-hidden="true"></div>
+    <div class="mkt-orb mkt-orb-a" aria-hidden="true"></div>
+    <div class="mkt-orb mkt-orb-b" aria-hidden="true"></div>
+
+    <header class="mkt-top">
+      <a class="mkt-brand" href="marketplace.html" aria-label="Scholaxia Market home">
+        <img src="media/logo-main.png" alt="" />
+        <span>Scholaxia <em>Market</em></span>
+      </a>
+      <nav class="mkt-nav" aria-label="Market">
+        <a href="#shelf">Shop</a>
+        <a href="#how">How it works</a>
+        <a href="index.html">Learning home</a>
+      </nav>
+      <div class="mkt-actions">
+        <button type="button" class="mkt-ghost" id="btnOrders" hidden>My orders</button>
+        <button type="button" class="mkt-cart-btn" id="btnCart" aria-label="Open cart">
+          <span>Cart</span>
+          <strong id="cartCount">0</strong>
+        </button>
+        <a class="mkt-join" href="auth.html?next=marketplace.html">Join</a>
+      </div>
+    </header>
+
+    <div class="mkt-banner" id="vendorBanner" hidden>
+      <strong>Vendor application received.</strong>
+      <span>Wait for admin approval, then complete KYC in the vendor app before listing products.</span>
+    </div>
+
+    <main>
+      <section class="mkt-hero">
+        <div class="mkt-hero-media" aria-hidden="true">
+          <img src="media/feature-market.png" alt="" />
+          <div class="mkt-hero-scrim"></div>
+        </div>
+        <div class="mkt-hero-copy">
+          <p class="mkt-kicker">Campus essentials · Books · Gadgets</p>
+          <h1>Scholaxia<br /><span>Market</span></h1>
+          <p class="mkt-lead">
+            Browse products from verified vendors. Add to cart anytime —
+            sign in only when you are ready to checkout.
+          </p>
+          <div class="mkt-hero-cta">
+            <a class="mkt-primary" href="#shelf">Shop the shelf</a>
+            <button type="button" class="mkt-secondary" id="btnSell">Sell as a vendor</button>
+          </div>
+        </div>
+      </section>
+
+      <div class="mkt-trust" aria-hidden="true">
+        <span>Verified vendors</span>
+        <span>·</span>
+        <span>Secure Paystack checkout</span>
+        <span>·</span>
+        <span>Books · Phones · Gadgets</span>
+        <span>·</span>
+        <span>Browse free · Pay when ready</span>
+      </div>
+
+      <section class="mkt-how" id="how">
+        <h2>Simple path to checkout</h2>
+        <ol class="mkt-steps">
+          <li><strong>Browse</strong><span>No account needed to explore.</span></li>
+          <li><strong>Cart</strong><span>Save books &amp; gadgets you want.</span></li>
+          <li><strong>Checkout</strong><span>Buyer signup, pay, track delivery.</span></li>
+        </ol>
+      </section>
+
+      <section class="mkt-shelf" id="shelf">
+        <div class="mkt-shelf-head">
+          <div>
+            <p class="mkt-kicker">Live listings</p>
+            <h2>Find what you need</h2>
+          </div>
+          <label class="mkt-search">
+            <span class="visually-hidden">Search products</span>
+            <input type="search" id="mktSearch" placeholder="Search books, phones, gadgets…" autocomplete="off" />
+          </label>
+        </div>
+        <div class="mkt-tabs" id="mktTabs" role="tablist"></div>
+        <div class="mkt-grid" id="mktGrid">
+          <div class="mkt-loading">Loading products…</div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="mkt-foot">
+      <div class="mkt-foot-inner">
+        <div>
+          <strong>Scholaxia Market</strong>
+          <p>Campus shopping, separate from your student study portal.</p>
+        </div>
+        <div class="mkt-foot-links">
+          <a href="index.html">Learning home</a>
+          <a href="auth.html?mode=signup&role=student&next=marketplace.html">Buyer signup</a>
+          <a href="auth.html?mode=signup&role=vendor&next=marketplace.html%3Fvendor%3Dpending">Vendor signup</a>
+        </div>
+      </div>
+    </footer>
+
+    <aside class="mkt-drawer" id="cartDrawer" hidden aria-label="Shopping cart">
+      <div class="mkt-drawer-panel">
+        <header>
+          <h3>Your cart</h3>
+          <button type="button" class="mkt-icon-x" id="closeCart" aria-label="Close">×</button>
+        </header>
+        <div class="mkt-drawer-body" id="cartBody"></div>
+        <footer>
+          <div class="mkt-total">
+            <span>Total</span>
+            <strong id="cartTotal">₦0</strong>
+          </div>
+          <button type="button" class="mkt-primary mkt-full" id="btnCheckout">Checkout &amp; pay</button>
+        </footer>
+      </div>
+    </aside>
+
+    <div class="mkt-modal" id="roleModal" hidden>
+      <div class="mkt-modal-card" role="dialog" aria-labelledby="roleTitle">
+        <button type="button" class="mkt-icon-x" id="closeRole" aria-label="Close">×</button>
+        <p class="mkt-kicker">Continue to checkout</p>
+        <h2 id="roleTitle">Are you a buyer or a vendor?</h2>
+        <p class="mkt-modal-lead">Choose how you want to use Scholaxia Market.</p>
+        <div class="mkt-role-grid">
+          <button type="button" class="mkt-role-card" data-pick="buyer">
+            <span class="mkt-role-ico" aria-hidden="true">🛍️</span>
+            <strong>Buyer</strong>
+            <span>Sign up freely, pay for cart items, track orders.</span>
+          </button>
+          <button type="button" class="mkt-role-card" data-pick="vendor">
+            <span class="mkt-role-ico" aria-hidden="true">🏪</span>
+            <strong>Vendor</strong>
+            <span>Register your store, wait for admin approval, then list products.</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="mkt-modal" id="checkoutModal" hidden>
+      <div class="mkt-modal-card" role="dialog" aria-labelledby="checkoutTitle">
+        <button type="button" class="mkt-icon-x" id="closeCheckout" aria-label="Close">×</button>
+        <p class="mkt-kicker">Almost there</p>
+        <h2 id="checkoutTitle">Delivery details</h2>
+        <p class="mkt-modal-lead">Where should we send your order?</p>
+        <form id="checkoutForm" class="mkt-form">
+          <label>
+            Delivery address
+            <textarea id="checkoutAddress" rows="3" required placeholder="Street, landmark, city"></textarea>
+          </label>
+          <label>
+            Contact phone
+            <input id="checkoutPhone" type="tel" required placeholder="+234..." />
+          </label>
+          <button type="submit" class="mkt-primary mkt-full">Pay with Paystack</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="mkt-toast" id="mktToast" hidden></div>
+
+    <script src="js/api.js?v=20260805c"></script>
+    <script src="js/paystack.js?v=12"></script>
+    <script src="js/marketplace.js?v=20260805c"></script>
+  </body>
+</html>

@@ -29,7 +29,6 @@
           <button class="side-link" data-page="skills" type="button"><span class="ico">🎓</span>Skills</button>
           <button class="side-link" data-page="library" type="button"><span class="ico">📚</span>Library</button>
           <button class="side-link" data-page="assignments" type="button"><span class="ico">📋</span>Assignments</button>
-          <button class="side-link" data-page="marketplace" type="button"><span class="ico">🛍</span>Marketplace</button>
           <button class="side-link" data-page="sia" type="button"><span class="ico">✨</span>Tutor AI</button>
           <button class="side-link" data-page="community" type="button"><span class="ico">💬</span>Community</button>
           <button class="side-link" data-page="groups" type="button"><span class="ico">👥</span>Groups</button>
@@ -112,7 +111,6 @@
               <button type="button" class="quick action qa-past" data-goto="past-questions"><span>📘</span><strong>Past Questions</strong><small>JAMB, WAEC &amp; NECO</small></button>
               <button type="button" class="quick action qa-assign" data-goto="assignments"><span>📋</span><strong>Assignments</strong><small>Submit work &amp; notices</small></button>
               <button type="button" class="quick action qa-cbt" data-goto="cbt"><span>📝</span><strong>CBT Packages</strong><small>Annual CBT access</small></button>
-              <button type="button" class="quick action qa-market" data-goto="marketplace"><span>🛍</span><strong>Marketplace</strong><small>Books &amp; gadgets</small></button>
               <button type="button" class="quick action qa-school" data-goto="school-portal"><span>🏫</span><strong>External School Exam</strong><small>Download &amp; submit later</small></button>
               <button type="button" class="quick action qa-library" data-goto="library"><span>📚</span><strong>Library</strong><small>Notes &amp; resources</small></button>
             </div>
@@ -347,16 +345,6 @@
 
               <div class="section-title"><h2>My submissions</h2></div>
               <div class="card-grid one-col" id="assignmentsMineList"><div class="loading-state">Loading your assignments…</div></div>
-            </div>
-          </section>
-
-          <!-- ================= MARKETPLACE ================= -->
-          <section class="page" id="page-marketplace">
-            <div class="panel">
-              <h2>Marketplace</h2>
-              <p>Books, phones, gadgets, and school materials.</p>
-              <div class="tabs" id="marketCategoryTabs"></div>
-              <div class="card-grid" id="marketplaceGrid"><div class="loading-state">Loading products…</div></div>
             </div>
           </section>
 
@@ -616,44 +604,6 @@
       </div>
     </div>
 
-    <!-- ================= MARKETPLACE BOOKING MODAL ================= -->
-    <div class="modal-overlay" id="bookingModal">
-      <div class="modal">
-        <div class="modal-head">
-          <h3>Book product</h3>
-          <button type="button" class="modal-close" id="bookingModalClose">✕</button>
-        </div>
-        <p class="modal-sub" id="bookingProductName">Product</p>
-        <form id="bookingForm">
-          <input type="hidden" id="bookingProductId" />
-          <div class="form-field">
-            <label>Full name</label>
-            <input id="bookingFullName" required />
-          </div>
-          <div class="form-row-2">
-            <div class="form-field">
-              <label>Email</label>
-              <input id="bookingEmail" type="email" required />
-            </div>
-            <div class="form-field">
-              <label>Phone</label>
-              <input id="bookingPhone" required />
-            </div>
-          </div>
-          <div class="form-field">
-            <label>WhatsApp</label>
-            <input id="bookingWhatsapp" />
-          </div>
-          <div class="form-field">
-            <label>Note</label>
-            <textarea id="bookingNote" rows="2" placeholder="Delivery address, questions…"></textarea>
-          </div>
-          <button type="submit" class="btn btn-primary">Confirm booking</button>
-          <span class="form-status" id="bookingStatus"></span>
-        </form>
-      </div>
-    </div>
-
     <!-- ================= SKILL ENROLL MODAL ================= -->
     <div class="modal-overlay" id="skillEnrollModal">
       <div class="modal">
@@ -746,8 +696,8 @@
       </div>
     </div>
 
-    <script src="js/api.js?v=9"></script>
+    <script src="js/api.js?v=20260805c"></script>
     <script src="js/paystack.js?v=9"></script>
-    <script src="js/student.js?v=11"></script>
+    <script src="js/student.js?v=20260805c"></script>
   </body>
 </html>
