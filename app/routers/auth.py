@@ -288,6 +288,7 @@ async def firebase_phone_auth(payload: FirebaseAuthRequest, db: AsyncSession = D
                 business_name=full_name,
                 location=None,
                 categories=[],
+                whatsapp=phone,
                 is_approved=False,
             )
         )
@@ -391,6 +392,8 @@ async def signup_start(payload: SignupStartRequest, db: AsyncSession = Depends(g
         raise HTTPException(status_code=400, detail="Location is required for vendor signup")
     if role == "vendor" and not (payload.address or "").strip():
         raise HTTPException(status_code=400, detail="Address is required for vendor signup")
+    if role == "vendor" and len((payload.phone or "").strip()) < 7:
+        raise HTTPException(status_code=400, detail="WhatsApp / phone number is required for vendor signup")
 
     existing = await _find_user_by_email(db, email)
     if existing:
@@ -490,12 +493,14 @@ async def signup_verify(payload: SignupVerifyRequest, db: AsyncSession = Depends
             )
         )
     elif role == "vendor":
+        vendor_phone = (pending.get("phone") or "").strip() or None
         db.add(
             VendorProfile(
                 user_id=user.id,
                 business_name=pending.get("business_name") or user.full_name,
                 location=pending.get("location"),
                 address=pending.get("address"),
+                whatsapp=vendor_phone,
                 categories=pending.get("categories") or [],
                 is_approved=False,
                 kyc_completed=False,

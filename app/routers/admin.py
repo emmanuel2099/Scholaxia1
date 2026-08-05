@@ -229,7 +229,7 @@ async def list_vendors(
                 location=p.location,
                 address=p.address,
                 phone=u.phone,
-                whatsapp=p.whatsapp,
+                whatsapp=(p.whatsapp or u.phone or None),
                 is_approved=bool(p.is_approved),
                 kyc_completed=bool(p.kyc_completed and (p.nin or "").strip()),
                 nin=p.nin,

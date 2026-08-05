@@ -293,7 +293,7 @@ async function loadVendors() {
         var status = v.is_approved
           ? ('Approved' + (v.kyc_completed ? ' · KYC done' : ' · KYC pending'))
           : 'Pending approval';
-        var wa = escHtml(v.whatsapp || '');
+        var wa = escHtml(v.whatsapp || v.phone || '');
         return '<tr><td>' + escHtml(v.business_name) + '</td><td>' + escHtml(v.full_name) + '</td>' +
           '<td>' + escHtml(v.email) + '</td><td>' + (wa || '—') + '</td><td>' + escHtml(status) + '</td>' +
           '<td class="actions">' +
