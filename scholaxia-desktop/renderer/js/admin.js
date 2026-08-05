@@ -109,6 +109,7 @@ function showAdminPage(page) {
   if (page === "dashboard") loadDashboard();
   else if (page === "students") loadStudents();
   else if (page === "teachers") loadTeachers();
+  else if (page === "vendors") loadVendors();
   else if (page === "kind") loadKind();
   else if (page === "kind-games") loadKindGamesAdmin();
   else if (page === "requests") loadRequests();
@@ -275,6 +276,56 @@ async function removeAllTeachers() {
     var r = await adminApi("/api/v1/admin/teachers/remove-all", { method: "POST" });
     alert("Removed " + (r.removed || 0) + " teacher(s).");
     loadTeachers();
+  } catch (e) { alert(e.message); }
+}
+
+/* ── Vendors ── */
+async function loadVendors() {
+  var el = document.getElementById("vendors-table");
+  if (!el) return;
+  el.innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    var rows = await adminApi("/api/v1/admin/vendors");
+    if (!rows) return;
+    if (!rows.length) { el.innerHTML = '<div class="empty-state">No vendors yet.</div>'; return; }
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Business</th><th>Name</th><th>Email</th><th>WhatsApp</th><th>Status</th><th></th></tr></thead><tbody>' +
+      rows.map(function (v) {
+        var status = v.is_approved
+          ? ('Approved' + (v.kyc_completed ? ' · KYC done' : ' · KYC pending'))
+          : 'Pending approval';
+        var wa = escHtml(v.whatsapp || '');
+        return '<tr><td>' + escHtml(v.business_name) + '</td><td>' + escHtml(v.full_name) + '</td>' +
+          '<td>' + escHtml(v.email) + '</td><td>' + (wa || '—') + '</td><td>' + escHtml(status) + '</td>' +
+          '<td class="actions">' +
+          (v.is_approved
+            ? '<button class="btn-sm danger" onclick="rejectVendor(\'' + v.id + '\')">Lock</button>'
+            : '<button class="btn-sm" onclick="approveVendor(\'' + v.id + '\',\'' + wa.replace(/'/g, '') + '\')">Approve</button>') +
+          '</td></tr>';
+      }).join("") + '</tbody></table>';
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + '</div>';
+  }
+}
+
+async function approveVendor(id, existingWa) {
+  var wa = prompt("Enter vendor WhatsApp number (required):", existingWa || "");
+  if (wa == null) return;
+  wa = String(wa).trim();
+  if (wa.length < 7) { alert("WhatsApp number is required."); return; }
+  try {
+    await adminApi("/api/v1/admin/vendors/" + id + "/approve", {
+      method: "POST",
+      body: JSON.stringify({ whatsapp: wa, is_approved: true }),
+    });
+    loadVendors();
+  } catch (e) { alert(e.message); }
+}
+
+async function rejectVendor(id) {
+  if (!confirm("Lock this vendor account?")) return;
+  try {
+    await adminApi("/api/v1/admin/vendors/" + id + "/reject", { method: "POST" });
+    loadVendors();
   } catch (e) { alert(e.message); }
 }
 

@@ -113,6 +113,8 @@ class UserInfo(BaseModel):
     is_approved: Optional[bool] = None
     business_name: Optional[str] = None
     vendor_categories: Optional[list] = None
+    vendor_whatsapp: Optional[str] = None
+    kyc_completed: Optional[bool] = None
     age_group: Optional[str] = None
     grade_level: Optional[str] = None
     parent_email: Optional[str] = None
@@ -161,6 +163,8 @@ async def _build_user_info(user: User, db: AsyncSession) -> UserInfo:
             info.location = profile.location
             info.vendor_categories = profile.categories or []
             info.is_approved = bool(profile.is_approved)
+            info.vendor_whatsapp = profile.whatsapp
+            info.kyc_completed = bool(profile.kyc_completed and (profile.nin or "").strip())
     elif user.role == UserRole.kind:
         res = await db.execute(select(KindProfile).where(KindProfile.user_id == user.id))
         profile = res.scalar_one_or_none()

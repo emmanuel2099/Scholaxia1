@@ -6,9 +6,9 @@ import '../../services/firebase_analytics_service.dart';
 import '../../services/firebase_push_service.dart';
 import '../../services/offline_status_service.dart';
 import '../auth/reset_password_screen.dart';
+import 'vendor_gate.dart';
 import 'vendor_onboarding_screen.dart';
 import 'vendor_register_screen.dart';
-import 'vendor_shell.dart';
 import 'vendor_theme.dart';
 
 class VendorLoginScreen extends StatefulWidget {
@@ -70,10 +70,7 @@ class _VendorLoginScreenState extends State<VendorLoginScreen> {
       );
       await FirebasePushService.instance.registerAfterLogin();
       if (!mounted) return;
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const VendorShell()),
-        (_) => false,
-      );
+      await openVendorHome(context, _api);
     } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

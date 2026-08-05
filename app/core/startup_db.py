@@ -227,6 +227,9 @@ async def _run_schema_migrations(conn) -> None:
         "ALTER TABLE vendor_profiles ADD COLUMN IF NOT EXISTS address VARCHAR(500) NULL"
     ))
     await conn.execute(text(
+        "ALTER TABLE vendor_profiles ADD COLUMN IF NOT EXISTS whatsapp VARCHAR(40) NULL"
+    ))
+    await conn.execute(text(
         "ALTER TABLE vendor_profiles ADD COLUMN IF NOT EXISTS nin VARCHAR(20) NULL"
     ))
     await conn.execute(text(

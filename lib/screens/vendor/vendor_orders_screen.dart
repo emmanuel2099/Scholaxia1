@@ -28,30 +28,15 @@ class _VendorOrdersScreenState extends State<VendorOrdersScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final bookingsRaw = await _api.vendorBookings();
-      List<dynamic> ordersRaw = const [];
-      try {
-        ordersRaw = await _api.vendorOrders();
-      } catch (_) {}
-
+      final ordersRaw = await _api.vendorOrders();
       final mapped = <Map<String, dynamic>>[];
-
-      for (final o in bookingsRaw) {
-        if (o is! Map) continue;
-        final m = Map<String, dynamic>.from(o);
-        final id = (m['booking_id'] ?? m['order_id'] ?? '').toString();
-        final short =
-            id.length >= 6 ? id.substring(0, 6).toUpperCase() : id.toUpperCase();
-        m['_kind'] = 'booking';
-        m['_mv_code'] = 'BK${short.padLeft(6, '0')}';
-        m['_ui_status'] = VendorTheme.uiStatus(m['tracking_status']?.toString());
-        m['_amount'] = m['unit_price'] is num ? m['unit_price'] as num : 0;
-        mapped.add(m);
-      }
 
       for (final o in ordersRaw) {
         if (o is! Map) continue;
         final m = Map<String, dynamic>.from(o);
+        // Hide unpaid checkout drafts from vendor fulfillment list.
+        final tracking = (m['tracking_status']?.toString() ?? '').toLowerCase();
+        if (tracking == 'pending_payment') continue;
         final id = (m['order_id'] ?? m['order_item_id'] ?? '').toString();
         final short =
             id.length >= 6 ? id.substring(0, 6).toUpperCase() : id.toUpperCase();
@@ -248,22 +233,13 @@ class _VendorOrdersScreenState extends State<VendorOrdersScreen> {
   }
 
   Future<void> _updateStatus(Map<String, dynamic> order, String tracking) async {
+    final id = order['order_item_id']?.toString();
+    if (id == null || id.isEmpty) return;
     try {
-      if (order['_kind'] == 'booking') {
-        final id = order['booking_id']?.toString();
-        if (id == null || id.isEmpty) return;
-        final status = tracking == 'cancelled' || tracking == 'rejected'
-            ? 'rejected'
-            : 'running';
-        await _api.vendorUpdateBookingStatus(bookingId: id, status: status);
-      } else {
-        final id = order['order_item_id']?.toString();
-        if (id == null || id.isEmpty) return;
-        await _api.vendorUpdateOrderTracking(
-          orderItemId: id,
-          trackingStatus: tracking,
-        );
-      }
+      await _api.vendorUpdateOrderTracking(
+        orderItemId: id,
+        trackingStatus: tracking,
+      );
       await _load();
     } catch (e) {
       if (!mounted) return;
@@ -274,24 +250,6 @@ class _VendorOrdersScreenState extends State<VendorOrdersScreen> {
   }
 
   Future<void> _deleteOrder(Map<String, dynamic> order) async {
-    if (order['_kind'] == 'booking') {
-      final id = order['booking_id']?.toString();
-      if (id == null || id.isEmpty) return;
-      try {
-        await _api.vendorUpdateBookingStatus(bookingId: id, status: 'closed');
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Request closed.')),
-        );
-        await _load();
-      } catch (e) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
-        );
-      }
-      return;
-    }
     final id = order['order_item_id']?.toString();
     if (id == null || id.isEmpty) return;
     final ok = await showDialog<bool>(
@@ -431,8 +389,9 @@ class _VendorOrdersScreenState extends State<VendorOrdersScreen> {
                               separatorBuilder: (_, __) => const SizedBox(height: 10),
                               itemBuilder: (_, i) => _RequestCard(
                                 order: items[i],
-                                onApprove: () => _updateStatus(items[i], 'delivered'),
-                                onReject: () => _updateStatus(items[i], 'cancelled'),
+                                onShip: () => _updateStatus(items[i], 'shipped'),
+                                onDeliver: () => _updateStatus(items[i], 'delivered'),
+                                onCancel: () => _updateStatus(items[i], 'cancelled'),
                                 onDelete: () => _deleteOrder(items[i]),
                               ),
                             ),
@@ -488,20 +447,23 @@ class _TabChip extends StatelessWidget {
 
 class _RequestCard extends StatelessWidget {
   final Map<String, dynamic> order;
-  final VoidCallback onApprove;
-  final VoidCallback onReject;
+  final VoidCallback onShip;
+  final VoidCallback onDeliver;
+  final VoidCallback onCancel;
   final VoidCallback onDelete;
 
   const _RequestCard({
     required this.order,
-    required this.onApprove,
-    required this.onReject,
+    required this.onShip,
+    required this.onDeliver,
+    required this.onCancel,
     required this.onDelete,
   });
 
   @override
   Widget build(BuildContext context) {
     final ui = order['_ui_status']?.toString() ?? 'pending';
+    final tracking = (order['tracking_status']?.toString() ?? 'pending').toLowerCase();
     final created = order['created_at']?.toString();
     String dateLabel = '--';
     if (created != null && created.isNotEmpty) {
@@ -525,7 +487,7 @@ class _RequestCard extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  '${order['_mv_code']}  ·  Market Vendor',
+                  '${order['_mv_code']}  ·  Paid order',
                   style: const TextStyle(
                     color: VendorTheme.text,
                     fontWeight: FontWeight.w800,
@@ -544,10 +506,7 @@ class _RequestCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
-              VendorTheme.statusLabel(
-                ui,
-                raw: order['tracking_status']?.toString(),
-              ),
+              VendorTheme.statusLabel(ui, raw: tracking),
               style: TextStyle(
                 color: VendorTheme.statusFg(ui),
                 fontWeight: FontWeight.w800,
@@ -556,57 +515,37 @@ class _RequestCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          _row('Voucher Type', order['_kind'] == 'booking' ? 'Product Booking' : 'Sales Order'),
-          _row('Voucher Number', voucherNo),
           _row('Buyer name', order['buyer_name']?.toString() ?? 'Student'),
           _row('Email', order['buyer_email']?.toString() ?? '—'),
-          _row(
-            'WhatsApp',
-            order['buyer_whatsapp']?.toString() ??
-                order['contact_phone']?.toString() ??
-                '—',
-          ),
-          _row(
-            'Phone',
-            order['buyer_phone']?.toString() ??
-                order['contact_phone']?.toString() ??
-                '—',
-          ),
+          _row('Phone', order['contact_phone']?.toString() ?? '—'),
+          _row('Address', order['delivery_address']?.toString() ?? '—'),
           _row('Product', order['product_title']?.toString() ?? 'Product'),
-          if ((order['product_description']?.toString() ?? '').trim().isNotEmpty)
-            _row('Description', order['product_description'].toString()),
           _row('Total Amount', VendorTheme.formatNaira(amount), bold: true),
-          if ((order['note']?.toString() ?? order['tracking_note']?.toString() ?? '')
-              .trim()
-              .isNotEmpty)
-            _row(
-              'Buyer note',
-              (order['note'] ?? order['tracking_note']).toString(),
-            ),
-          if (ui == 'pending') ...[
+          _row('Voucher', voucherNo),
+          if (ui != 'approved' && ui != 'rejected') ...[
             const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: onReject,
+                    onPressed: onCancel,
                     style: OutlinedButton.styleFrom(
                       foregroundColor: VendorTheme.rejectedFg,
                       side: const BorderSide(color: VendorTheme.rejectedFg),
                     ),
-                    child: const Text('Reject'),
+                    child: const Text('Cancel'),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: onApprove,
+                    onPressed: tracking.contains('ship') ? onDeliver : onShip,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: VendorTheme.maroon,
                       foregroundColor: Colors.white,
                       elevation: 0,
                     ),
-                    child: const Text('Approve'),
+                    child: Text(tracking.contains('ship') ? 'Delivered' : 'Mark shipped'),
                   ),
                 ),
               ],
@@ -618,10 +557,7 @@ class _RequestCard extends StatelessWidget {
             child: TextButton.icon(
               onPressed: onDelete,
               icon: const Icon(Icons.delete_outline, size: 18, color: VendorTheme.rejectedFg),
-              label: Text(
-                order['_kind'] == 'booking' ? 'Close request' : 'Delete order',
-                style: const TextStyle(color: VendorTheme.rejectedFg),
-              ),
+              label: const Text('Delete order', style: TextStyle(color: VendorTheme.rejectedFg)),
             ),
           ),
         ],
@@ -633,6 +569,7 @@ class _RequestCard extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
             width: 110,

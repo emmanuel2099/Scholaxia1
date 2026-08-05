@@ -204,6 +204,9 @@ class ApiEndpoints {
   static const String marketplaceCheckout = '$_v1/marketplace/checkout';
   static const String marketplaceOrdersMine = '$_v1/marketplace/orders/mine';
   static const String vendorMarketplaceProducts = '$_v1/vendor/marketplace/products';
+  static const String vendorMarketplaceUploadImage =
+      '$_v1/vendor/marketplace/upload-image';
+  static const String vendorMarketplaceStatus = '$_v1/vendor/marketplace/status';
   static String vendorMarketplaceProduct(String id) =>
       '$_v1/vendor/marketplace/products/$id';
   static const String vendorMarketplaceOrders = '$_v1/vendor/marketplace/orders';
@@ -215,6 +218,9 @@ class ApiEndpoints {
       '$_v1/vendor/marketplace/orders/$orderItemId/tracking';
   static String vendorMarketplaceOrderItem(String orderItemId) =>
       '$_v1/vendor/marketplace/orders/$orderItemId';
+  static const String adminVendors = '$_v1/admin/vendors';
+  static String adminVendorApprove(String id) => '$_v1/admin/vendors/$id/approve';
+  static String adminVendorReject(String id) => '$_v1/admin/vendors/$id/reject';
 
   // Wallet
   static const String walletMe = '$_v1/wallet/me';

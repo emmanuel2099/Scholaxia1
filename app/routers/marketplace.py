@@ -86,6 +86,11 @@ async def _require_vendor_kyc(db: AsyncSession, user_id) -> VendorProfile:
     profile = result.scalar_one_or_none()
     if not profile:
         raise HTTPException(status_code=400, detail="Vendor profile not found. Complete registration first.")
+    if not profile.is_approved:
+        raise HTTPException(
+            status_code=403,
+            detail="Your vendor account is waiting for admin approval.",
+        )
     if not profile.kyc_completed or not (profile.nin or "").strip():
         raise HTTPException(
             status_code=403,
@@ -150,7 +155,26 @@ async def list_products(
             raise HTTPException(status_code=400, detail="Invalid category")
         q = q.where(MarketplaceProduct.category == cat)
     result = await db.execute(q.order_by(MarketplaceProduct.created_at.desc()))
-    return [_product_dict(p) for p in result.scalars().all()]
+    products = result.scalars().all()
+    # Only show listings from admin or from approved vendors.
+    approved_vendor_ids = set()
+    vendor_ids = {p.vendor_id for p in products if p.vendor_id}
+    if vendor_ids:
+        rows = (
+            await db.execute(
+                select(VendorProfile.user_id).where(
+                    VendorProfile.user_id.in_(vendor_ids),
+                    VendorProfile.is_approved == True,  # noqa: E712
+                )
+            )
+        ).scalars().all()
+        approved_vendor_ids = set(rows)
+    out = []
+    for p in products:
+        if p.vendor_id and p.vendor_id not in approved_vendor_ids:
+            continue
+        out.append(_product_dict(p))
+    return out
 
 
 @router.get("/products/{product_id}")
@@ -478,6 +502,36 @@ async def admin_update_booking_status(
 vendor_router = APIRouter(prefix="/vendor/marketplace", tags=["Vendor — Marketplace"])
 
 
+@vendor_router.get("/status")
+async def vendor_account_status(
+    current_user: dict = Depends(require_vendor),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(VendorProfile, User)
+        .join(User, User.id == VendorProfile.user_id)
+        .where(VendorProfile.user_id == current_user["sub"])
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Vendor profile not found")
+    profile, user = row
+    return {
+        "full_name": user.full_name,
+        "email": user.email,
+        "phone": user.phone,
+        "business_name": profile.business_name,
+        "location": profile.location,
+        "address": profile.address,
+        "whatsapp": profile.whatsapp,
+        "is_approved": bool(profile.is_approved),
+        "kyc_completed": bool(profile.kyc_completed and (profile.nin or "").strip()),
+        "can_list_products": bool(
+            profile.is_approved and profile.kyc_completed and (profile.nin or "").strip()
+        ),
+    }
+
+
 class VendorKycRequest(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=255)
     location: str = Field(..., min_length=2, max_length=255)
@@ -631,6 +685,33 @@ async def vendor_update_booking_status(
         "booking_id": str(booking.id),
         "status": booking.status,
     }
+
+
+@vendor_router.post("/upload-image")
+async def vendor_upload_product_image(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(require_vendor),
+):
+    """Upload a product photo for the vendor marketplace listing."""
+    content_type = (file.content_type or "").split(";")[0].strip().lower()
+    name = (file.filename or "").lower()
+    if content_type not in _MP_IMAGE_TYPES and not name.endswith(
+        (".jpg", ".jpeg", ".png", ".webp", ".gif")
+    ):
+        raise HTTPException(status_code=400, detail="Use JPEG, PNG, WebP, or GIF.")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty image file.")
+    if len(content) > 6 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Image too large (max 6MB).")
+    try:
+        result = upload_file(content, "marketplace")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
+    image_url = _absolute_image_url(result.get("secure_url") or result.get("url"))
+    if not image_url:
+        raise HTTPException(status_code=500, detail="Upload succeeded but no image URL returned.")
+    return {"image_url": image_url, "secure_url": image_url}
 
 
 @vendor_router.post("/products", status_code=201)
@@ -836,13 +917,18 @@ async def checkout_cart(
         user_id=current_user["sub"],
         delivery_address=payload.delivery_address.strip(),
         contact_phone=payload.contact_phone.strip(),
-        status="processing",
+        status="pending_payment",
     )
     db.add(order)
     await db.flush()
     for cart_item, product in rows:
         qty = max(1, int(cart_item.quantity or 1))
         unit = float(product.price or 0)
+        if unit <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f'"{product.title}" has no checkout price. Remove it from cart.',
+            )
         total += qty * unit
         db.add(
             MarketplaceOrderItem(
@@ -851,13 +937,19 @@ async def checkout_cart(
                 vendor_id=product.vendor_id,
                 quantity=qty,
                 unit_price=unit,
-                tracking_status="processing",
+                tracking_status="pending_payment",
             )
         )
         await db.delete(cart_item)
     order.total_amount = total
     await db.flush()
-    return {"message": "Checkout created", "order_id": str(order.id), "total_amount": total, "status": order.status}
+    return {
+        "message": "Checkout created. Complete payment to confirm the order.",
+        "order_id": str(order.id),
+        "total_amount": total,
+        "status": order.status,
+        "currency": order.currency or "NGN",
+    }
 
 
 @router.get("/orders/mine")

@@ -61,6 +61,7 @@
       <div class="nav-section">People</div>
       <button class="nav-btn" data-page="students" onclick="showAdminPage('students')">Students</button>
       <button class="nav-btn" data-page="teachers" onclick="showAdminPage('teachers')">Teachers</button>
+      <button class="nav-btn" data-page="vendors" onclick="showAdminPage('vendors')">Vendors</button>
       <button class="nav-btn" data-page="kind" onclick="showAdminPage('kind')">Kind (Kids)</button>
       <button class="nav-btn" data-page="kind-games" onclick="showAdminPage('kind-games')">Kids Games Qs</button>
       <div class="nav-section">Learning</div>
@@ -128,6 +129,15 @@
         <p id="teacher-form-error" class="error-msg"></p>
       </div>
       <div id="teachers-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+    </section>
+
+    <section id="page-vendors" class="admin-page">
+      <div class="page-head">
+        <h2>Vendors</h2>
+        <button class="btn-sm" onclick="loadVendors()">Refresh</button>
+      </div>
+      <p class="cbt-hint small">Approve vendors and set their WhatsApp. After approval they complete KYC, then can list products.</p>
+      <div id="vendors-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
     </section>
 
     <section id="page-kind" class="admin-page">

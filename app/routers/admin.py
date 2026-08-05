@@ -11,7 +11,7 @@ from app.core.database import get_db
 from app.core.datetime_utils import naive_utc_now
 from app.core.deps import require_admin
 from app.core.security import hash_password, create_access_token, create_refresh_token, issue_auth_tokens
-from app.models.user import User, UserRole, TeacherProfile, StudentProfile, KindProfile
+from app.models.user import User, UserRole, TeacherProfile, StudentProfile, KindProfile, VendorProfile
 from app.models.content import Book, LibraryTarget
 from app.models.cbt import CBTExam, CBTQuestion, CBTSession, ExamProctorLog
 from app.models.community import CommunityPost, CommunityChannel
@@ -186,6 +186,119 @@ async def reject_teacher(
     profile.is_approved = False
     await db.flush()
     return {"message": "Teacher access locked", "teacher_id": teacher_id, "is_approved": False}
+
+
+class VendorAdminResponse(BaseModel):
+    id: str
+    email: str
+    full_name: str
+    business_name: str
+    location: Optional[str] = None
+    address: Optional[str] = None
+    phone: Optional[str] = None
+    whatsapp: Optional[str] = None
+    is_approved: bool = False
+    kyc_completed: bool = False
+    nin: Optional[str] = None
+
+
+class VendorApproveRequest(BaseModel):
+    whatsapp: str
+    is_approved: bool = True
+
+
+@router.get("/vendors", response_model=list[VendorAdminResponse])
+async def list_vendors(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(User, VendorProfile)
+        .join(VendorProfile, VendorProfile.user_id == User.id)
+        .where(User.role == UserRole.vendor, User.is_active == True)  # noqa: E712
+        .order_by(User.created_at.desc())
+    )
+    out = []
+    for u, p in result.all():
+        out.append(
+            VendorAdminResponse(
+                id=str(u.id),
+                email=u.email,
+                full_name=u.full_name,
+                business_name=p.business_name,
+                location=p.location,
+                address=p.address,
+                phone=u.phone,
+                whatsapp=p.whatsapp,
+                is_approved=bool(p.is_approved),
+                kyc_completed=bool(p.kyc_completed and (p.nin or "").strip()),
+                nin=p.nin,
+            )
+        )
+    return out
+
+
+@router.post("/vendors/{vendor_id}/approve")
+async def approve_vendor(
+    vendor_id: str,
+    payload: VendorApproveRequest,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Approve a vendor and store their WhatsApp for marketplace contact."""
+    wa = (payload.whatsapp or "").strip()
+    if len(wa) < 7:
+        raise HTTPException(status_code=400, detail="WhatsApp number is required to approve a vendor.")
+    result = await db.execute(
+        select(VendorProfile, User)
+        .join(User, User.id == VendorProfile.user_id)
+        .where(User.id == vendor_id, User.role == UserRole.vendor)
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    profile, user = row
+    profile.whatsapp = wa
+    profile.is_approved = bool(payload.is_approved)
+    await db.flush()
+    if profile.is_approved:
+        await send_users_notification(
+            db,
+            [str(user.id)],
+            title="Vendor account approved",
+            body=(
+                "Scholaxia approved your vendor store. Complete KYC (NIN), "
+                "then you can list products for students."
+            ),
+            notification_type="announcement",
+            data={"type": "vendor_approved"},
+        )
+    return {
+        "message": "Vendor updated",
+        "vendor_id": vendor_id,
+        "is_approved": profile.is_approved,
+        "whatsapp": profile.whatsapp,
+    }
+
+
+@router.post("/vendors/{vendor_id}/reject")
+async def reject_vendor(
+    vendor_id: str,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(VendorProfile, User)
+        .join(User, User.id == VendorProfile.user_id)
+        .where(User.id == vendor_id, User.role == UserRole.vendor)
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    profile, _ = row
+    profile.is_approved = False
+    await db.flush()
+    return {"message": "Vendor access locked", "vendor_id": vendor_id, "is_approved": False}
 
 
 @router.delete("/teachers/{teacher_id}", status_code=status.HTTP_204_NO_CONTENT)

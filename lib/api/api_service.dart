@@ -1291,6 +1291,41 @@ class ApiService {
     return _parseList(res);
   }
 
+  Future<Map<String, dynamic>> vendorUploadProductImage(
+    List<int> bytes,
+    String filename,
+  ) async {
+    final token = await getToken();
+    final request = http.MultipartRequest(
+      'POST',
+      _uri(ApiEndpoints.vendorMarketplaceUploadImage),
+    );
+    if (token != null && token.isNotEmpty) {
+      request.headers['Authorization'] = 'Bearer $token';
+    }
+    request.files.add(
+      http.MultipartFile.fromBytes(
+        'file',
+        bytes,
+        filename: filename,
+        contentType: _communityUploadMime(filename),
+      ),
+    );
+    try {
+      final streamed =
+          await request.send().timeout(const Duration(seconds: 60));
+      OfflineStatusService.instance.markOnline();
+      final res = await http.Response.fromStream(streamed);
+      return _parseMap(res);
+    } catch (e) {
+      if (e is ApiException) rethrow;
+      OfflineStatusService.instance.markOffline();
+      throw const ApiException.message(
+        'Uploading requires internet data. Connect and try again.',
+      );
+    }
+  }
+
   Future<Map<String, dynamic>> vendorCreateProduct({
     required String title,
     required String category,
@@ -1385,6 +1420,14 @@ class ApiService {
   Future<Map<String, dynamic>> vendorGetKyc() async {
     final res = await _cachedGet(
       _uri(ApiEndpoints.vendorMarketplaceKyc),
+      headers: await _authHeaders(),
+    );
+    return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> vendorAccountStatus() async {
+    final res = await _cachedGet(
+      _uri(ApiEndpoints.vendorMarketplaceStatus),
       headers: await _authHeaders(),
     );
     return _parseMap(res);

@@ -34,7 +34,7 @@ class _VendorProductsScreenState extends State<VendorProductsScreen> {
     }
   }
 
-  Future<void> _openAdd() async {
+  Future<void> _openAdd({String category = 'books'}) async {
     try {
       final kyc = await _api.vendorGetKyc();
       if (!mounted) return;
@@ -46,32 +46,25 @@ class _VendorProductsScreenState extends State<VendorProductsScreen> {
         if (done != true || !mounted) return;
       }
     } on ApiException catch (e) {
-      if (!mounted) return;
-      if (e.message.toLowerCase().contains('kyc') ||
-          e.message.toLowerCase().contains('not found')) {
-        final done = await Navigator.push<bool>(
-          context,
-          MaterialPageRoute(builder: (_) => const VendorKycScreen()),
-        );
-        if (done != true || !mounted) return;
-      } else {
+      // Older API without KYC — still allow posting books/products.
+      final msg = e.message.toLowerCase();
+      if (!(msg.contains('not found') || msg.contains('404'))) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(e.message), backgroundColor: Colors.red),
         );
         return;
       }
     } catch (_) {
-      if (!mounted) return;
-      final done = await Navigator.push<bool>(
-        context,
-        MaterialPageRoute(builder: (_) => const VendorKycScreen()),
-      );
-      if (done != true || !mounted) return;
+      // Network blip — still open the form; save will report errors.
     }
 
+    if (!mounted) return;
     final created = await Navigator.push<bool>(
       context,
-      MaterialPageRoute(builder: (_) => const VendorAddProductScreen()),
+      MaterialPageRoute(
+        builder: (_) => VendorAddProductScreen(initialCategory: category),
+      ),
     );
     if (created == true) _load();
   }
@@ -98,7 +91,7 @@ class _VendorProductsScreenState extends State<VendorProductsScreen> {
                     ),
                   ),
                   ElevatedButton.icon(
-                    onPressed: _openAdd,
+                    onPressed: () => _openAdd(category: 'books'),
                     icon: const Icon(Icons.add, size: 16),
                     label: const Text('Add'),
                     style: ElevatedButton.styleFrom(
@@ -120,35 +113,47 @@ class _VendorProductsScreenState extends State<VendorProductsScreen> {
                       child: _items.isEmpty
                           ? ListView(
                               children: [
-                                const SizedBox(height: 80),
-                                const Icon(Icons.inventory_2_outlined, size: 48, color: VendorTheme.muted),
+                                const SizedBox(height: 64),
+                                const Icon(Icons.menu_book_rounded, size: 52, color: VendorTheme.maroon),
                                 const SizedBox(height: 12),
                                 const Center(
                                   child: Text(
-                                    'No products yet',
+                                    'Post books & products',
                                     style: TextStyle(
                                       color: VendorTheme.text,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 16,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 18,
                                     ),
                                   ),
                                 ),
-                                const SizedBox(height: 6),
-                                const Center(
+                                const SizedBox(height: 8),
+                                const Padding(
+                                  padding: EdgeInsets.symmetric(horizontal: 32),
                                   child: Text(
-                                    'Tap Add to create your first product',
-                                    style: TextStyle(color: VendorTheme.muted),
+                                    'Sell textbooks, past questions, gadgets, phones and more. Students book them in Marketplace.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(color: VendorTheme.muted, height: 1.4),
                                   ),
                                 ),
-                                const SizedBox(height: 18),
-                                Center(
-                                  child: ElevatedButton(
-                                    onPressed: _openAdd,
+                                const SizedBox(height: 20),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 40),
+                                  child: ElevatedButton.icon(
+                                    onPressed: () => _openAdd(category: 'books'),
+                                    icon: const Icon(Icons.menu_book_rounded),
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: VendorTheme.maroon,
                                       foregroundColor: Colors.white,
+                                      minimumSize: const Size.fromHeight(50),
                                     ),
-                                    child: const Text('Add Product'),
+                                    label: const Text('Post a Book'),
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Center(
+                                  child: TextButton(
+                                    onPressed: () => _openAdd(category: 'gadgets'),
+                                    child: const Text('Add another product type'),
                                   ),
                                 ),
                               ],

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -5,10 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../api/api_service.dart';
+import 'vendor_kyc_screen.dart';
 import 'vendor_theme.dart';
 
 class VendorAddProductScreen extends StatefulWidget {
-  const VendorAddProductScreen({super.key});
+  const VendorAddProductScreen({super.key, this.initialCategory = 'books'});
+
+  final String initialCategory;
 
   @override
   State<VendorAddProductScreen> createState() => _VendorAddProductScreenState();
@@ -22,21 +26,28 @@ class _VendorAddProductScreenState extends State<VendorAddProductScreen> {
   final _stockCtrl = TextEditingController(text: '1');
 
   static const _categories = [
-    'books',
-    'gadgets',
-    'laptops',
-    'phones',
-    'clothes',
-    'other',
+    ('books', 'Books', Icons.menu_book_rounded),
+    ('gadgets', 'Gadgets', Icons.devices_other_rounded),
+    ('laptops', 'Laptops', Icons.laptop_mac_rounded),
+    ('phones', 'Phones', Icons.smartphone_rounded),
+    ('clothes', 'Clothes', Icons.checkroom_rounded),
+    ('other', 'Other', Icons.category_outlined),
   ];
 
-  String _category = 'books';
+  late String _category;
   bool _available = true;
   bool _saving = false;
   bool _uploading = false;
   Uint8List? _imageBytes;
   String? _imageName;
   String? _uploadedImageUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    final seed = widget.initialCategory.trim().toLowerCase();
+    _category = _categories.any((c) => c.$1 == seed) ? seed : 'books';
+  }
 
   @override
   void dispose() {
@@ -54,13 +65,22 @@ class _VendorAddProductScreenState extends State<VendorAddProductScreen> {
     );
     if (result == null || result.files.isEmpty) return;
     final file = result.files.first;
-    if (file.bytes == null) {
-      _toast('Could not read that image. Try another file.');
+    Uint8List? bytes = file.bytes;
+    // Windows often returns path without bytes — read the file ourselves.
+    if (bytes == null && file.path != null && file.path!.isNotEmpty) {
+      try {
+        bytes = await File(file.path!).readAsBytes();
+      } catch (_) {
+        bytes = null;
+      }
+    }
+    if (bytes == null || bytes.isEmpty) {
+      _toast('Could not read that image. Try another photo.');
       return;
     }
     setState(() {
-      _imageBytes = Uint8List.fromList(file.bytes!);
-      _imageName = file.name;
+      _imageBytes = bytes;
+      _imageName = file.name.isNotEmpty ? file.name : 'product.jpg';
       _uploadedImageUrl = null;
     });
   }
@@ -72,8 +92,15 @@ class _VendorAddProductScreenState extends State<VendorAddProductScreen> {
     if (_imageBytes == null || _imageName == null) return null;
     setState(() => _uploading = true);
     try {
-      final uploaded = await _api.communityUpload(_imageBytes!, _imageName!);
-      final raw = uploaded['file_url']?.toString() ??
+      Map<String, dynamic> uploaded;
+      try {
+        uploaded = await _api.vendorUploadProductImage(_imageBytes!, _imageName!);
+      } on ApiException {
+        // Fallback for older API builds without vendor upload.
+        uploaded = await _api.communityUpload(_imageBytes!, _imageName!);
+      }
+      final raw = uploaded['image_url']?.toString() ??
+          uploaded['file_url']?.toString() ??
           uploaded['secure_url']?.toString() ??
           uploaded['url']?.toString() ??
           '';
@@ -133,11 +160,31 @@ class _VendorAddProductScreenState extends State<VendorAddProductScreen> {
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Product added. Students can see it in Marketplace.')),
+        SnackBar(
+          content: Text(
+            _category == 'books'
+                ? 'Book listed. Students can find it under Books in Marketplace.'
+                : 'Product added. Students can see it in Marketplace.',
+          ),
+        ),
       );
       Navigator.pop(context, true);
     } on ApiException catch (e) {
-      _toast(e.message);
+      final msg = e.message.toLowerCase();
+      if (msg.contains('kyc') || msg.contains('nin')) {
+        if (!mounted) return;
+        final done = await Navigator.push<bool>(
+          context,
+          MaterialPageRoute(builder: (_) => const VendorKycScreen()),
+        );
+        if (done == true && mounted) {
+          _toast('KYC saved. Tap Save Product again.');
+        } else {
+          _toast(e.message);
+        }
+      } else {
+        _toast(e.message);
+      }
     } catch (e) {
       _toast(e.toString());
     } finally {
@@ -155,15 +202,16 @@ class _VendorAddProductScreenState extends State<VendorAddProductScreen> {
   @override
   Widget build(BuildContext context) {
     final busy = _saving || _uploading;
+    final isBook = _category == 'books';
     return Scaffold(
       backgroundColor: VendorTheme.bg,
       appBar: AppBar(
         backgroundColor: Colors.white,
         foregroundColor: VendorTheme.text,
         elevation: 0,
-        title: const Text(
-          'Add Product',
-          style: TextStyle(fontWeight: FontWeight.w800),
+        title: Text(
+          isBook ? 'Post a Book' : 'Add Product',
+          style: const TextStyle(fontWeight: FontWeight.w800),
         ),
       ),
       body: SafeArea(
@@ -171,14 +219,71 @@ class _VendorAddProductScreenState extends State<VendorAddProductScreen> {
           padding: const EdgeInsets.fromLTRB(18, 12, 18, 28),
           children: [
             Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: VendorTheme.maroonSoft,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Text(
+                isBook
+                    ? 'List textbooks, past questions, novels and notes. Students will see them under Books.'
+                    : 'Pick a category, add a photo, then save. Students can book from Marketplace.',
+                style: const TextStyle(color: VendorTheme.text, height: 1.4),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Container(
               padding: const EdgeInsets.all(16),
               decoration: VendorTheme.cardDecoration(radius: 18),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Product image',
+                    'Category',
                     style: TextStyle(
+                      color: VendorTheme.text,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final c in _categories)
+                        ChoiceChip(
+                          avatar: Icon(
+                            c.$3,
+                            size: 16,
+                            color: _category == c.$1 ? Colors.white : VendorTheme.maroon,
+                          ),
+                          label: Text(c.$2),
+                          selected: _category == c.$1,
+                          selectedColor: VendorTheme.maroon,
+                          labelStyle: TextStyle(
+                            color: _category == c.$1 ? Colors.white : VendorTheme.text,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          onSelected: busy
+                              ? null
+                              : (_) => setState(() => _category = c.$1),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: VendorTheme.cardDecoration(radius: 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isBook ? 'Book cover / photo' : 'Product image',
+                    style: const TextStyle(
                       color: VendorTheme.text,
                       fontWeight: FontWeight.w800,
                       fontSize: 16,
@@ -211,7 +316,10 @@ class _VendorAddProductScreenState extends State<VendorAddProductScreen> {
                                   right: 10,
                                   bottom: 10,
                                   child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 6,
+                                    ),
                                     decoration: BoxDecoration(
                                       color: Colors.black54,
                                       borderRadius: BorderRadius.circular(99),
@@ -224,15 +332,22 @@ class _VendorAddProductScreenState extends State<VendorAddProductScreen> {
                                 ),
                               ],
                             )
-                          : const Column(
+                          : Column(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.add_photo_alternate_outlined,
-                                    size: 42, color: VendorTheme.maroon),
-                                SizedBox(height: 8),
+                                Icon(
+                                  isBook
+                                      ? Icons.menu_book_rounded
+                                      : Icons.add_photo_alternate_outlined,
+                                  size: 42,
+                                  color: VendorTheme.maroon,
+                                ),
+                                const SizedBox(height: 8),
                                 Text(
-                                  'Tap to add product photo',
-                                  style: TextStyle(
+                                  isBook
+                                      ? 'Tap to add book cover photo'
+                                      : 'Tap to add product photo',
+                                  style: const TextStyle(
                                     color: VendorTheme.text,
                                     fontWeight: FontWeight.w700,
                                   ),
@@ -251,53 +366,28 @@ class _VendorAddProductScreenState extends State<VendorAddProductScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Product details',
-                    style: TextStyle(
+                  Text(
+                    isBook ? 'Book details' : 'Product details',
+                    style: const TextStyle(
                       color: VendorTheme.text,
                       fontWeight: FontWeight.w800,
                       fontSize: 16,
                     ),
                   ),
                   const SizedBox(height: 14),
-                  _label('Title'),
-                  _field(_titleCtrl, 'e.g. JAMB Past Questions Pack'),
+                  _label(isBook ? 'Book title' : 'Title'),
+                  _field(
+                    _titleCtrl,
+                    isBook ? 'e.g. JAMB Past Questions Pack' : 'e.g. Wireless Earbuds',
+                  ),
                   const SizedBox(height: 12),
                   _label('Description (shown to students)'),
                   _field(
                     _descCtrl,
-                    'Describe what students will get…',
+                    isBook
+                        ? 'Subject, condition, edition, what’s included…'
+                        : 'Describe what students will get…',
                     maxLines: 4,
-                  ),
-                  const SizedBox(height: 12),
-                  _label('Category'),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      color: VendorTheme.bg,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: VendorTheme.border),
-                    ),
-                    child: DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: _category,
-                        isExpanded: true,
-                        items: _categories
-                            .map(
-                              (c) => DropdownMenuItem(
-                                value: c,
-                                child: Text(c[0].toUpperCase() + c.substring(1)),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: busy
-                            ? null
-                            : (v) {
-                                if (v == null) return;
-                                setState(() => _category = v);
-                              },
-                      ),
-                    ),
                   ),
                   const SizedBox(height: 12),
                   Row(
@@ -341,9 +431,9 @@ class _VendorAddProductScreenState extends State<VendorAddProductScreen> {
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
                     activeThumbColor: VendorTheme.maroon,
-                    title: const Text(
-                      'Available for students',
-                      style: TextStyle(fontWeight: FontWeight.w600),
+                    title: Text(
+                      isBook ? 'Available for students' : 'Available for students',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                     value: _available,
                     onChanged: busy ? null : (v) => setState(() => _available = v),
@@ -368,9 +458,9 @@ class _VendorAddProductScreenState extends State<VendorAddProductScreen> {
                         height: 22,
                         child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                       )
-                    : const Text(
-                        'Save Product',
-                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                    : Text(
+                        isBook ? 'Post Book' : 'Save Product',
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
                       ),
               ),
             ),
@@ -404,12 +494,13 @@ class _VendorAddProductScreenState extends State<VendorAddProductScreen> {
       maxLines: maxLines,
       keyboardType: type,
       inputFormatters: inputFormatters,
-      style: const TextStyle(color: VendorTheme.text),
+      cursorColor: VendorTheme.maroon,
+      style: const TextStyle(color: VendorTheme.text, fontWeight: FontWeight.w500),
       decoration: InputDecoration(
         hintText: hint,
         hintStyle: const TextStyle(color: VendorTheme.muted),
         filled: true,
-        fillColor: VendorTheme.bg,
+        fillColor: Colors.white,
         contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),

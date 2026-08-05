@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../api/api_service.dart';
+import 'vendor_kyc_screen.dart';
 import 'vendor_login_screen.dart';
 import 'vendor_notifications_screen.dart';
 import 'vendor_theme.dart';
@@ -74,6 +75,18 @@ class VendorProfileScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
+            _tile(
+              icon: Icons.badge_outlined,
+              title: 'KYC / NIN',
+              subtitle: 'Verify identity before posting products',
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const VendorKycScreen()),
+                );
+              },
+            ),
+            const SizedBox(height: 8),
             _tile(
               icon: Icons.notifications_none_rounded,
               title: 'Notifications',

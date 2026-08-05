@@ -34,7 +34,7 @@ from app.core.skills_programs import (
 )
 from app.models.content import Book, BookPurchase
 from app.models.payment import Payment, PaymentStatus, StudentEntitlement
-from app.models.marketplace import MarketplaceBooking, MarketplaceProduct
+from app.models.marketplace import MarketplaceBooking, MarketplaceProduct, MarketplaceOrder, MarketplaceOrderItem
 from app.models.user import StudentProfile, User
 from app.services.cbt_access import active_cbt_access, subject_snapshot
 from app.services import paystack_service
@@ -60,12 +60,14 @@ PRODUCT_LIBRARY_BOOK = "library_book"
 PRODUCT_CBT_PACKAGE = "cbt_package"
 PRODUCT_CLASS_PACKAGE = "class_package"
 PRODUCT_MARKETPLACE_BOOKING = "marketplace_booking"
+PRODUCT_MARKETPLACE_ORDER = "marketplace_order"
 PRODUCT_SKILL_ENROLLMENT = "skill_enrollment"
 PRODUCT_TYPES = {
     PRODUCT_LIBRARY_BOOK,
     PRODUCT_CBT_PACKAGE,
     PRODUCT_CLASS_PACKAGE,
     PRODUCT_MARKETPLACE_BOOKING,
+    PRODUCT_MARKETPLACE_ORDER,
     PRODUCT_SKILL_ENROLLMENT,
 }
 
@@ -100,6 +102,7 @@ def _new_reference(product_type: str) -> str:
         "cbt_package": "cbt",
         "class_package": "class",
         "marketplace_booking": "market",
+        "marketplace_order": "morder",
         "skill_enrollment": "skill",
     }[product_type]
     return f"pstk-{short}-{uuid.uuid4().hex}"
@@ -184,6 +187,30 @@ async def _resolve_product(
             "title": product.title,
             "already_owned": booking.status == "paid",
             "extra": {"booking_id": str(booking.id)},
+        }
+
+    if product_type == PRODUCT_MARKETPLACE_ORDER:
+        try:
+            order_uuid = parse_uuid(product_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid marketplace order id")
+        result = await db.execute(
+            select(MarketplaceOrder).where(
+                MarketplaceOrder.id == order_uuid,
+                MarketplaceOrder.user_id == parse_uuid(student_id),
+            )
+        )
+        order = result.scalar_one_or_none()
+        if not order:
+            raise HTTPException(status_code=404, detail="Marketplace order not found")
+        if not order.total_amount or order.total_amount <= 0:
+            raise HTTPException(status_code=400, detail="Order has no payable amount")
+        already = (order.status or "").lower() in ("paid", "processing", "shipped", "delivered")
+        return {
+            "price_naira": float(order.total_amount),
+            "title": f"Marketplace order {str(order.id)[:8]}",
+            "already_owned": already,
+            "extra": {"order_id": str(order.id)},
         }
 
     if product_type == PRODUCT_SKILL_ENROLLMENT:
@@ -332,6 +359,28 @@ async def _grant_marketplace_booking(db: AsyncSession, payment: Payment) -> None
         booking.status = "paid"
 
 
+async def _grant_marketplace_order(db: AsyncSession, payment: Payment) -> None:
+    result = await db.execute(
+        select(MarketplaceOrder).where(
+            MarketplaceOrder.id == parse_uuid(payment.product_id or "")
+        )
+    )
+    order = result.scalar_one_or_none()
+    if not order:
+        return
+    if (order.status or "").lower() in ("paid", "processing", "shipped", "delivered"):
+        return
+    order.status = "processing"
+    items = (
+        await db.execute(
+            select(MarketplaceOrderItem).where(MarketplaceOrderItem.order_id == order.id)
+        )
+    ).scalars().all()
+    for item in items:
+        if (item.tracking_status or "").lower() in ("pending_payment", "pending", ""):
+            item.tracking_status = "processing"
+
+
 async def _fulfill(db: AsyncSession, payment: Payment, tx_data: dict) -> None:
     """Mark the payment successful and grant the product. Safe to call repeatedly."""
     already_fulfilled = payment.status == PaymentStatus.success
@@ -358,6 +407,8 @@ async def _fulfill(db: AsyncSession, payment: Payment, tx_data: dict) -> None:
                 await _grant_class_package(db, payment)
     elif payment.product_type == PRODUCT_MARKETPLACE_BOOKING:
         await _grant_marketplace_booking(db, payment)
+    elif payment.product_type == PRODUCT_MARKETPLACE_ORDER:
+        await _grant_marketplace_order(db, payment)
     elif payment.product_type == PRODUCT_SKILL_ENROLLMENT and not already_fulfilled:
         desc = payment.description or ""
         mode = "half"

@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 
 import 'vendor_login_screen.dart';
 import 'vendor_onboarding_screen.dart';
+import 'vendor_pending_screen.dart';
 import 'vendor_shell.dart';
 import '../../api/api_service.dart';
 import '../../services/app_prefs.dart';
+import 'vendor_kyc_screen.dart';
 import 'vendor_theme.dart';
 
 class VendorSplashScreen extends StatefulWidget {
@@ -45,6 +47,18 @@ class _VendorSplashScreenState extends State<VendorSplashScreen>
     final role = ((await api.getRole()) ?? '').toLowerCase().trim();
 
     if (hasSession && role == 'vendor') {
+      try {
+        final status = await api.vendorAccountStatus();
+        if (!mounted || _navigated) return;
+        if (status['is_approved'] != true) {
+          _go(const VendorPendingScreen());
+          return;
+        }
+        if (status['kyc_completed'] != true) {
+          _go(const VendorKycScreen());
+          return;
+        }
+      } catch (_) {}
       _go(const VendorShell());
       return;
     }

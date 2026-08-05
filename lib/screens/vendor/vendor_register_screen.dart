@@ -4,8 +4,8 @@ import '../../api/api_service.dart';
 import '../../services/firebase_analytics_service.dart';
 import '../../services/firebase_push_service.dart';
 import '../../theme/app_theme.dart';
+import 'vendor_gate.dart';
 import 'vendor_login_screen.dart';
-import 'vendor_shell.dart';
 
 class VendorRegisterScreen extends StatefulWidget {
   const VendorRegisterScreen({super.key});
@@ -152,10 +152,7 @@ class _VendorRegisterScreenState extends State<VendorRegisterScreen> {
       );
       await FirebasePushService.instance.registerAfterLogin();
       if (!mounted) return;
-      Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const VendorShell()),
-        (_) => false,
-      );
+      await openVendorHome(context, _api);
     } on ApiException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
