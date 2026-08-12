@@ -92,3 +92,26 @@ class MarketplaceOrderItem(Base):
     unit_price: Mapped[float] = mapped_column(Float, default=0.0)
     tracking_status: Mapped[str] = mapped_column(String(40), default="pending")
     tracking_note: Mapped[str] = mapped_column(String(500), nullable=True)
+    # Escrow: after Paystack payment, funds are held until buyer confirms delivery.
+    platform_fee: Mapped[float] = mapped_column(Float, default=0.0)
+    vendor_net: Mapped[float] = mapped_column(Float, default=0.0)
+    escrow_status: Mapped[str] = mapped_column(String(30), default="none")  # none | held | available | withdrawn
+    buyer_confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    buyer_confirmed_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+
+
+class VendorWithdrawalRequest(Base):
+    """Vendor payout request after buyer confirms delivery (admin pays to bank)."""
+    __tablename__ = "vendor_withdrawal_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    vendor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), index=True, nullable=False)
+    amount: Mapped[float] = mapped_column(Float, nullable=False)
+    bank_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    account_number: Mapped[str] = mapped_column(String(40), nullable=False)
+    account_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), default="pending")  # pending | approved | rejected | paid
+    admin_note: Mapped[str] = mapped_column(Text, nullable=True)
+    requested_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    processed_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    processed_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)

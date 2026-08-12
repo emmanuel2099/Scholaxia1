@@ -17,6 +17,7 @@ from app.models.marketplace import (
     MarketplaceCartItem,
     MarketplaceOrder,
     MarketplaceOrderItem,
+    VendorWithdrawalRequest,
     MARKETPLACE_CATEGORIES,
 )
 from app.models.user import User, VendorProfile
@@ -985,18 +986,122 @@ async def my_orders(
                 "items": [
                     {
                         "id": str(item.id),
+                        "order_item_id": str(item.id),
                         "product_id": str(item.product_id),
                         "product_title": product.title if product else None,
                         "quantity": int(item.quantity or 1),
                         "unit_price": float(item.unit_price or 0),
                         "tracking_status": item.tracking_status,
                         "tracking_note": item.tracking_note,
+                        "escrow_status": getattr(item, "escrow_status", None) or "none",
+                        "buyer_confirmed": bool(getattr(item, "buyer_confirmed", False)),
+                        "platform_fee": float(getattr(item, "platform_fee", 0) or 0),
+                        "vendor_net": float(getattr(item, "vendor_net", 0) or 0),
                     }
                     for item, product in item_rows
                 ],
             }
         )
     return out
+
+
+class ConfirmDeliveryBody(BaseModel):
+    note: Optional[str] = Field(None, max_length=500)
+
+
+@router.post("/orders/items/{order_item_id}/confirm-delivery")
+async def buyer_confirm_delivery(
+    order_item_id: str,
+    payload: ConfirmDeliveryBody = None,
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """Buyer confirms product received OK → escrow becomes withdrawable; admin notified."""
+    payload = payload or ConfirmDeliveryBody()
+    row = (
+        await db.execute(
+            select(MarketplaceOrderItem, MarketplaceOrder, MarketplaceProduct)
+            .join(MarketplaceOrder, MarketplaceOrder.id == MarketplaceOrderItem.order_id)
+            .join(MarketplaceProduct, MarketplaceProduct.id == MarketplaceOrderItem.product_id)
+            .where(MarketplaceOrderItem.id == order_item_id)
+        )
+    ).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Order item not found")
+    item, order, product = row
+    if str(order.user_id) != str(current_user["sub"]):
+        raise HTTPException(status_code=403, detail="Not your order")
+    if (order.status or "").lower() not in (
+        "paid",
+        "processing",
+        "shipped",
+        "delivered",
+        "buyer_confirmed",
+    ):
+        raise HTTPException(status_code=400, detail="Order is not paid yet")
+    if item.buyer_confirmed or (item.escrow_status or "") == "available":
+        return {
+            "message": "Already confirmed",
+            "order_item_id": str(item.id),
+            "escrow_status": item.escrow_status,
+            "buyer_confirmed": True,
+        }
+    if (item.tracking_status or "").lower() in ("pending_payment", "pending"):
+        raise HTTPException(status_code=400, detail="Payment not completed for this item")
+
+    gross = float(item.unit_price or 0) * max(1, int(item.quantity or 1))
+    if not float(getattr(item, "vendor_net", 0) or 0):
+        fee = round(gross * 0.10)
+        item.platform_fee = fee
+        item.vendor_net = max(0.0, round(gross - fee, 2))
+
+    item.buyer_confirmed = True
+    item.buyer_confirmed_at = datetime.utcnow()
+    item.escrow_status = "available"
+    item.tracking_status = "buyer_confirmed"
+    note = (payload.note or "").strip()
+    item.tracking_note = note or "Buyer confirmed product received and OK"
+    order.status = "buyer_confirmed"
+    await db.flush()
+
+    title = product.title if product else "your product"
+    try:
+        if item.vendor_id:
+            await send_user_notification(
+                db,
+                user_id=str(item.vendor_id),
+                title="Buyer confirmed delivery",
+                body=(
+                    f'Buyer confirmed "{title}" is OK. '
+                    f"₦{float(item.vendor_net or 0):,.0f} is now available to withdraw."
+                ),
+                notification_type="marketplace_buyer_confirm",
+                data={"order_item_id": str(item.id), "order_id": str(order.id)},
+            )
+        await send_admins_notification(
+            db,
+            title="Buyer confirmed marketplace delivery",
+            body=(
+                f'Order item {item.id} ("{title}") confirmed OK. '
+                f"Vendor may request payout of ₦{float(item.vendor_net or 0):,.0f}."
+            ),
+            notification_type="marketplace_buyer_confirm",
+            data={
+                "order_item_id": str(item.id),
+                "order_id": str(order.id),
+                "vendor_id": str(item.vendor_id) if item.vendor_id else None,
+            },
+        )
+    except Exception:
+        pass
+
+    return {
+        "message": "Delivery confirmed. Vendor can now request payout; admin has been notified.",
+        "order_item_id": str(item.id),
+        "escrow_status": "available",
+        "buyer_confirmed": True,
+        "vendor_net": float(item.vendor_net or 0),
+    }
 
 
 @vendor_router.get("/orders")
@@ -1028,9 +1133,268 @@ async def vendor_orders(
             "delivery_address": order.delivery_address,
             "contact_phone": order.contact_phone,
             "created_at": order.created_at.isoformat() if order.created_at else None,
+            "escrow_status": getattr(item, "escrow_status", None) or "none",
+            "buyer_confirmed": bool(getattr(item, "buyer_confirmed", False)),
+            "buyer_confirmed_at": (
+                item.buyer_confirmed_at.isoformat()
+                if getattr(item, "buyer_confirmed_at", None)
+                else None
+            ),
+            "platform_fee": float(getattr(item, "platform_fee", 0) or 0),
+            "vendor_net": float(getattr(item, "vendor_net", 0) or 0),
+            "vendor_amount": float(getattr(item, "vendor_net", 0) or 0),
+            "payment_status": order.status,
+            "status": item.tracking_status or order.status,
         }
         for item, order, product, buyer in rows
     ]
+
+
+async def _vendor_escrow_totals(db: AsyncSession, vendor_id) -> dict:
+    items = (
+        await db.execute(
+            select(MarketplaceOrderItem).where(MarketplaceOrderItem.vendor_id == vendor_id)
+        )
+    ).scalars().all()
+    held = 0.0
+    available = 0.0
+    for item in items:
+        net = float(getattr(item, "vendor_net", 0) or 0)
+        if not net:
+            gross = float(item.unit_price or 0) * max(1, int(item.quantity or 1))
+            net = max(0.0, round(gross * 0.9, 2))
+        status = (getattr(item, "escrow_status", None) or "").lower()
+        track = (item.tracking_status or "").lower()
+        if status == "withdrawn":
+            continue
+        if status == "available" or getattr(item, "buyer_confirmed", False):
+            available += net
+        elif status == "held" or track in (
+            "held_escrow",
+            "processing",
+            "paid",
+            "shipped",
+            "delivered",
+        ):
+            if track not in ("pending_payment", "pending", "cancelled"):
+                held += net
+    pending_rows = (
+        await db.execute(
+            select(VendorWithdrawalRequest).where(
+                VendorWithdrawalRequest.vendor_id == vendor_id,
+                VendorWithdrawalRequest.status.in_(["pending", "approved"]),
+            )
+        )
+    ).scalars().all()
+    pending = sum(float(w.amount or 0) for w in pending_rows)
+    withdrawable = max(0.0, round(available - pending, 2))
+    return {
+        "held": round(held, 2),
+        "available": round(available, 2),
+        "pending_withdrawals": round(pending, 2),
+        "withdrawable": withdrawable,
+        "currency": "NGN",
+        "platform_fee_percent": 10,
+    }
+
+
+@vendor_router.get("/escrow")
+async def vendor_escrow_balance(
+    current_user: dict = Depends(require_vendor),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _vendor_escrow_totals(db, current_user["sub"])
+
+
+class VendorWithdrawBody(BaseModel):
+    amount: float = Field(..., gt=0)
+    bank_name: str = Field(..., min_length=2, max_length=255)
+    account_number: str = Field(..., min_length=6, max_length=40)
+    account_name: str = Field(..., min_length=2, max_length=255)
+
+
+@vendor_router.post("/withdraw")
+async def vendor_request_withdraw(
+    payload: VendorWithdrawBody,
+    current_user: dict = Depends(require_vendor),
+    db: AsyncSession = Depends(get_db),
+):
+    totals = await _vendor_escrow_totals(db, current_user["sub"])
+    if payload.amount > totals["withdrawable"] + 0.01:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Insufficient withdrawable balance. Available: ₦{totals['withdrawable']:,.2f}",
+        )
+    existing = (
+        await db.execute(
+            select(VendorWithdrawalRequest).where(
+                VendorWithdrawalRequest.vendor_id == current_user["sub"],
+                VendorWithdrawalRequest.status == "pending",
+            )
+        )
+    ).scalar_one_or_none()
+    if existing:
+        raise HTTPException(
+            status_code=400,
+            detail="You already have a pending withdrawal. Wait for admin to process it.",
+        )
+    wd = VendorWithdrawalRequest(
+        vendor_id=current_user["sub"],
+        amount=round(float(payload.amount), 2),
+        bank_name=payload.bank_name.strip(),
+        account_number=payload.account_number.strip().replace(" ", ""),
+        account_name=payload.account_name.strip(),
+        status="pending",
+    )
+    db.add(wd)
+    await db.flush()
+    try:
+        await send_admins_notification(
+            db,
+            title="Vendor withdrawal request",
+            body=(
+                f"Vendor requested ₦{wd.amount:,.2f} → {wd.bank_name} "
+                f"{wd.account_number} ({wd.account_name})."
+            ),
+            notification_type="vendor_withdrawal",
+            data={"withdrawal_id": str(wd.id), "vendor_id": str(current_user["sub"])},
+        )
+    except Exception:
+        pass
+    return {
+        "message": "Withdrawal request sent to admin",
+        "withdrawal_id": str(wd.id),
+        "amount": wd.amount,
+        "status": wd.status,
+    }
+
+
+@vendor_router.get("/withdrawals")
+async def vendor_list_withdrawals(
+    current_user: dict = Depends(require_vendor),
+    db: AsyncSession = Depends(get_db),
+):
+    rows = (
+        await db.execute(
+            select(VendorWithdrawalRequest)
+            .where(VendorWithdrawalRequest.vendor_id == current_user["sub"])
+            .order_by(VendorWithdrawalRequest.requested_at.desc())
+        )
+    ).scalars().all()
+    return [
+        {
+            "id": str(w.id),
+            "amount": float(w.amount or 0),
+            "bank_name": w.bank_name,
+            "account_number": w.account_number,
+            "account_name": w.account_name,
+            "status": w.status,
+            "admin_note": w.admin_note,
+            "requested_at": w.requested_at.isoformat() if w.requested_at else None,
+            "processed_at": w.processed_at.isoformat() if w.processed_at else None,
+        }
+        for w in rows
+    ]
+
+
+class AdminVendorWithdrawBody(BaseModel):
+    status: str = Field(..., pattern="^(approved|rejected|paid)$")
+    admin_note: Optional[str] = None
+
+
+@admin_router.get("/withdrawals")
+async def admin_list_vendor_withdrawals(
+    status: Optional[str] = Query(None),
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    q = select(VendorWithdrawalRequest, User).join(
+        User, User.id == VendorWithdrawalRequest.vendor_id
+    )
+    if status:
+        q = q.where(VendorWithdrawalRequest.status == status.strip().lower())
+    q = q.order_by(VendorWithdrawalRequest.requested_at.desc())
+    rows = (await db.execute(q)).all()
+    return [
+        {
+            "id": str(w.id),
+            "vendor_id": str(w.vendor_id),
+            "vendor_name": user.full_name,
+            "vendor_email": user.email,
+            "amount": float(w.amount or 0),
+            "bank_name": w.bank_name,
+            "account_number": w.account_number,
+            "account_name": w.account_name,
+            "status": w.status,
+            "admin_note": w.admin_note,
+            "requested_at": w.requested_at.isoformat() if w.requested_at else None,
+            "processed_at": w.processed_at.isoformat() if w.processed_at else None,
+        }
+        for w, user in rows
+    ]
+
+
+@admin_router.patch("/withdrawals/{withdrawal_id}")
+async def admin_process_vendor_withdrawal(
+    withdrawal_id: str,
+    payload: AdminVendorWithdrawBody,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(VendorWithdrawalRequest).where(VendorWithdrawalRequest.id == withdrawal_id)
+    )
+    wd = result.scalar_one_or_none()
+    if not wd:
+        raise HTTPException(status_code=404, detail="Withdrawal not found")
+    if (wd.status or "").lower() == "paid":
+        raise HTTPException(status_code=400, detail="Already paid")
+    new_status = payload.status.strip().lower()
+    wd.status = new_status
+    wd.admin_note = (payload.admin_note or "").strip() or None
+    wd.processed_at = datetime.utcnow()
+    wd.processed_by = current_user["sub"]
+
+    if new_status == "paid":
+        remaining = float(wd.amount or 0)
+        items = (
+            await db.execute(
+                select(MarketplaceOrderItem)
+                .where(
+                    MarketplaceOrderItem.vendor_id == wd.vendor_id,
+                    MarketplaceOrderItem.escrow_status == "available",
+                )
+                .order_by(MarketplaceOrderItem.id.asc())
+            )
+        ).scalars().all()
+        for item in items:
+            if remaining <= 0:
+                break
+            net = float(item.vendor_net or 0)
+            if net <= 0:
+                continue
+            item.escrow_status = "withdrawn"
+            item.tracking_note = ((item.tracking_note or "") + " · Payout sent by admin").strip(" ·")
+            remaining -= net
+
+    await db.flush()
+    try:
+        msg = {
+            "approved": "Your withdrawal was approved and will be paid soon.",
+            "rejected": f"Your withdrawal was rejected. {wd.admin_note or ''}",
+            "paid": f"₦{float(wd.amount or 0):,.0f} has been sent to your bank account.",
+        }.get(new_status, "Withdrawal updated")
+        await send_user_notification(
+            db,
+            user_id=str(wd.vendor_id),
+            title="Withdrawal update",
+            body=msg,
+            notification_type="vendor_withdrawal",
+            data={"withdrawal_id": str(wd.id), "status": new_status},
+        )
+    except Exception:
+        pass
+    return {"message": "Withdrawal updated", "withdrawal_id": str(wd.id), "status": wd.status}
 
 
 @vendor_router.patch("/orders/{order_item_id}/tracking")

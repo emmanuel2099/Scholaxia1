@@ -11,6 +11,7 @@ from app.models.marketplace import (
     MarketplaceCartItem,
     MarketplaceOrder,
     MarketplaceOrderItem,
+    VendorWithdrawalRequest,
 )
 from app.models.kid_games import KidGameQuestion
 from app.models.notification import Notification

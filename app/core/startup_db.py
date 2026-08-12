@@ -332,6 +332,33 @@ async def _run_schema_migrations(conn) -> None:
         ))
     except Exception:
         pass
+    # Marketplace escrow / vendor payouts
+    for stmt in (
+        "ALTER TABLE marketplace_order_items ADD COLUMN IF NOT EXISTS platform_fee DOUBLE PRECISION NOT NULL DEFAULT 0",
+        "ALTER TABLE marketplace_order_items ADD COLUMN IF NOT EXISTS vendor_net DOUBLE PRECISION NOT NULL DEFAULT 0",
+        "ALTER TABLE marketplace_order_items ADD COLUMN IF NOT EXISTS escrow_status VARCHAR(30) NOT NULL DEFAULT 'none'",
+        "ALTER TABLE marketplace_order_items ADD COLUMN IF NOT EXISTS buyer_confirmed BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE marketplace_order_items ADD COLUMN IF NOT EXISTS buyer_confirmed_at TIMESTAMP NULL",
+        """
+        CREATE TABLE IF NOT EXISTS vendor_withdrawal_requests (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            vendor_id UUID NOT NULL REFERENCES users(id),
+            amount DOUBLE PRECISION NOT NULL,
+            bank_name VARCHAR(255) NOT NULL,
+            account_number VARCHAR(40) NOT NULL,
+            account_name VARCHAR(255) NOT NULL,
+            status VARCHAR(30) NOT NULL DEFAULT 'pending',
+            admin_note TEXT NULL,
+            requested_at TIMESTAMP DEFAULT NOW(),
+            processed_at TIMESTAMP NULL,
+            processed_by UUID NULL REFERENCES users(id)
+        )
+        """,
+    ):
+        try:
+            await conn.execute(text(stmt))
+        except Exception:
+            pass
 
 
 async def initialize_database() -> bool:

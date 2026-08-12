@@ -43,6 +43,7 @@ from app.services.live_class_access import (
     parse_uuid,
 )
 from app.services.paystack_service import PaystackError
+from app.services.notification_service import send_admins_notification, send_user_notification
 from app.services.skills_enrollment import (
     get_skill_entitlement,
     grant_or_update_skill_enrollment,
@@ -368,17 +369,48 @@ async def _grant_marketplace_order(db: AsyncSession, payment: Payment) -> None:
     order = result.scalar_one_or_none()
     if not order:
         return
-    if (order.status or "").lower() in ("paid", "processing", "shipped", "delivered"):
+    if (order.status or "").lower() in ("paid", "processing", "shipped", "delivered", "buyer_confirmed"):
         return
-    order.status = "processing"
+    order.status = "paid"
+    fee_rate = 0.10
     items = (
         await db.execute(
             select(MarketplaceOrderItem).where(MarketplaceOrderItem.order_id == order.id)
         )
     ).scalars().all()
     for item in items:
-        if (item.tracking_status or "").lower() in ("pending_payment", "pending", ""):
-            item.tracking_status = "processing"
+        gross = float(item.unit_price or 0) * max(1, int(item.quantity or 1))
+        fee = round(gross * fee_rate)
+        net = max(0.0, round(gross - fee, 2))
+        item.platform_fee = fee
+        item.vendor_net = net
+        item.escrow_status = "held"
+        item.buyer_confirmed = False
+        item.buyer_confirmed_at = None
+        item.tracking_status = "held_escrow"
+        item.tracking_note = "Payment received — funds held in escrow until buyer confirms delivery"
+        if item.vendor_id:
+            try:
+                await send_user_notification(
+                    db,
+                    user_id=str(item.vendor_id),
+                    title="New paid order (escrow)",
+                    body=f"₦{net:,.0f} is held in escrow for your sale. Buyer must confirm delivery before you can withdraw.",
+                    notification_type="marketplace_escrow",
+                    data={"order_id": str(order.id), "order_item_id": str(item.id)},
+                )
+            except Exception:
+                pass
+    try:
+        await send_admins_notification(
+            db,
+            title="Marketplace payment held in escrow",
+            body=f"Order {order.id} paid ₦{float(order.total_amount or 0):,.0f}. Funds held until buyer confirmation.",
+            notification_type="marketplace_escrow",
+            data={"order_id": str(order.id)},
+        )
+    except Exception:
+        pass
 
 
 async def _fulfill(db: AsyncSession, payment: Payment, tx_data: dict) -> None:
