@@ -21,11 +21,18 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
 
   static const _tabs = [
     ('all', 'All'),
-    ('gadgets', 'Gadgets'),
-    ('laptops', 'Laptops'),
-    ('phones', 'Phones'),
-    ('clothes', 'Clothes'),
     ('books', 'Books'),
+    ('soft_copy', 'Soft copy / PDF'),
+    ('software', 'Software'),
+    ('educational_materials', 'Educational materials'),
+    ('phones', 'Phones'),
+    ('gadgets', 'Gadgets'),
+    ('flash_drive', 'Flash drive'),
+    ('charger', 'Charger'),
+    ('projector', 'Projector'),
+    ('desktop_computer', 'Desktop computer'),
+    ('bags', 'Bags'),
+    ('laptops', 'Laptops'),
     ('other', 'Other'),
   ];
 

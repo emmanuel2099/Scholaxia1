@@ -27,10 +27,17 @@ class _VendorAddProductScreenState extends State<VendorAddProductScreen> {
 
   static const _categories = [
     ('books', 'Books', Icons.menu_book_rounded),
-    ('gadgets', 'Gadgets', Icons.devices_other_rounded),
-    ('laptops', 'Laptops', Icons.laptop_mac_rounded),
+    ('soft_copy', 'Soft copy / PDF', Icons.picture_as_pdf_rounded),
+    ('software', 'Software', Icons.apps_rounded),
+    ('educational_materials', 'Educational materials', Icons.school_rounded),
     ('phones', 'Phones', Icons.smartphone_rounded),
-    ('clothes', 'Clothes', Icons.checkroom_rounded),
+    ('gadgets', 'Gadgets', Icons.devices_other_rounded),
+    ('flash_drive', 'Flash drive', Icons.usb_rounded),
+    ('charger', 'Charger', Icons.battery_charging_full_rounded),
+    ('projector', 'Projector', Icons.videocam_rounded),
+    ('desktop_computer', 'Desktop computer', Icons.desktop_windows_rounded),
+    ('bags', 'Bags', Icons.shopping_bag_rounded),
+    ('laptops', 'Laptops', Icons.laptop_mac_rounded),
     ('other', 'Other', Icons.category_outlined),
   ];
 

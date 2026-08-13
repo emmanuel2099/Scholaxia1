@@ -103,11 +103,18 @@ async def _require_vendor_kyc(db: AsyncSession, user_id) -> VendorProfile:
 @router.get("/categories")
 async def list_categories():
     labels = {
-        "gadgets": "Gadgets",
-        "laptops": "Laptops",
-        "clothes": "Clothes",
-        "phones": "Phones",
         "books": "Books",
+        "soft_copy": "Soft copy / PDF",
+        "software": "Software",
+        "educational_materials": "Educational materials",
+        "phones": "Phones",
+        "gadgets": "Gadgets",
+        "flash_drive": "Flash drive",
+        "charger": "Charger",
+        "projector": "Projector",
+        "desktop_computer": "Desktop computer",
+        "bags": "Bags",
+        "laptops": "Laptops",
         "other": "Other",
     }
     return {

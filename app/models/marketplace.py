@@ -6,13 +6,20 @@ from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
 
 
-# Canonical category keys used by tabs in the Flutter marketplace.
+# Canonical category keys used by vendor forms and marketplace filters.
 MARKETPLACE_CATEGORIES = (
-    "gadgets",
-    "laptops",
-    "clothes",
-    "phones",
     "books",
+    "soft_copy",
+    "software",
+    "educational_materials",
+    "phones",
+    "gadgets",
+    "flash_drive",
+    "charger",
+    "projector",
+    "desktop_computer",
+    "bags",
+    "laptops",
     "other",
 )
 

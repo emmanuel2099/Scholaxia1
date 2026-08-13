@@ -5,11 +5,18 @@ var mpCategory = "all";
 
 var MP_TABS = [
   { id: "all", label: "All" },
-  { id: "gadgets", label: "Gadgets" },
-  { id: "laptops", label: "Laptops" },
-  { id: "phones", label: "Phones" },
-  { id: "clothes", label: "Clothes" },
   { id: "books", label: "Books" },
+  { id: "soft_copy", label: "Soft copy / PDF" },
+  { id: "software", label: "Software" },
+  { id: "educational_materials", label: "Educational materials" },
+  { id: "phones", label: "Phones" },
+  { id: "gadgets", label: "Gadgets" },
+  { id: "flash_drive", label: "Flash drive" },
+  { id: "charger", label: "Charger" },
+  { id: "projector", label: "Projector" },
+  { id: "desktop_computer", label: "Desktop computer" },
+  { id: "bags", label: "Bags" },
+  { id: "laptops", label: "Laptops" },
   { id: "other", label: "Other" },
 ];
 
