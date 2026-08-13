@@ -254,6 +254,12 @@ async def _run_schema_migrations(conn) -> None:
         "ALTER TABLE marketplace_products ADD COLUMN IF NOT EXISTS stock_qty INTEGER NOT NULL DEFAULT 0"
     ))
     await conn.execute(text(
+        "ALTER TABLE marketplace_products ADD COLUMN IF NOT EXISTS is_available BOOLEAN NOT NULL DEFAULT TRUE"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE marketplace_products ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE"
+    ))
+    await conn.execute(text(
         """
         CREATE TABLE IF NOT EXISTS marketplace_cart_items (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

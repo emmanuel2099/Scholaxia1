@@ -28,7 +28,12 @@ class _VendorProductsScreenState extends State<VendorProductsScreen> {
     try {
       final items = await _api.vendorProductsMine();
       if (!mounted) return;
-      setState(() => _items = items);
+      setState(() {
+        _items = items
+            .whereType<Map>()
+            .where((p) => p['is_active'] != false)
+            .toList();
+      });
     } finally {
       if (mounted) setState(() => _loading = false);
     }

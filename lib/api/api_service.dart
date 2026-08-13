@@ -1387,6 +1387,14 @@ class ApiService {
     return _parseMap(res);
   }
 
+  Future<Map<String, dynamic>> vendorDeleteProduct(String productId) async {
+    final res = await _onlineDelete(
+      _uri(ApiEndpoints.vendorMarketplaceProduct(productId)),
+      headers: await _authHeaders(),
+    );
+    return _parseMap(res);
+  }
+
   Future<List<dynamic>> vendorOrders() async {
     final res = await _cachedGet(
       _uri(ApiEndpoints.vendorMarketplaceOrders),

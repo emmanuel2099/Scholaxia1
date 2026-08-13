@@ -56,6 +56,7 @@ def _product_dict(p: MarketplaceProduct) -> dict:
         "currency": p.currency or "NGN",
         "image_url": _absolute_image_url(p.image_url),
         "is_available": bool(p.is_available),
+        "is_active": bool(getattr(p, "is_active", True)),
         "vendor_id": str(p.vendor_id) if p.vendor_id else None,
         "approval_status": p.approval_status or "approved",
         "source_role": p.source_role or "admin",
@@ -759,9 +760,13 @@ async def vendor_list_products(
     current_user: dict = Depends(require_vendor),
     db: AsyncSession = Depends(get_db),
 ):
+    # Hide soft-deleted products so Remove stays gone after refresh.
     result = await db.execute(
         select(MarketplaceProduct)
-        .where(MarketplaceProduct.vendor_id == current_user["sub"])
+        .where(
+            MarketplaceProduct.vendor_id == current_user["sub"],
+            MarketplaceProduct.is_active == True,  # noqa: E712
+        )
         .order_by(MarketplaceProduct.created_at.desc())
     )
     return [_product_dict(p) | {"is_active": p.is_active} for p in result.scalars().all()]
@@ -803,7 +808,33 @@ async def vendor_update_product(
     if payload.stock_qty is not None:
         product.stock_qty = max(int(payload.stock_qty), 0)
     await db.flush()
+    await db.commit()
+    await db.refresh(product)
     return _product_dict(product) | {"is_active": product.is_active}
+
+
+@vendor_router.delete("/products/{product_id}")
+async def vendor_delete_product(
+    product_id: str,
+    current_user: dict = Depends(require_vendor),
+    db: AsyncSession = Depends(get_db),
+):
+    """Soft-delete: product leaves vendor list and public market immediately."""
+    result = await db.execute(
+        select(MarketplaceProduct).where(
+            MarketplaceProduct.id == product_id,
+            MarketplaceProduct.vendor_id == current_user["sub"],
+        )
+    )
+    product = result.scalar_one_or_none()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    product.is_active = False
+    product.is_available = False
+    product.stock_qty = 0
+    await db.flush()
+    await db.commit()
+    return {"message": "Product removed", "id": str(product.id)}
 
 
 class CartAddRequest(BaseModel):
