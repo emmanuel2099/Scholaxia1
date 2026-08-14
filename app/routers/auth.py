@@ -135,45 +135,49 @@ async def _build_user_info(user: User, db: AsyncSession) -> UserInfo:
         id=str(user.id),
         email=user.email,
         full_name=user.full_name,
-        role=user.role,
+        role=user.role.value if hasattr(user.role, "value") else str(user.role),
         profile_picture=user.profile_picture,
         phone=getattr(user, "phone", None),
     )
-    if user.role == UserRole.student:
-        res = await db.execute(select(StudentProfile).where(StudentProfile.user_id == user.id))
-        profile = res.scalar_one_or_none()
-        if profile:
-            info.exam_type = profile.exam_type
-            info.selected_subjects = profile.selected_subjects or []
-            info.education_level = profile.education_level
-            info.has_active_subscription = profile.has_active_subscription
-    elif user.role == UserRole.teacher:
-        res = await db.execute(select(TeacherProfile).where(TeacherProfile.user_id == user.id))
-        profile = res.scalar_one_or_none()
-        if profile:
-            info.subjects = profile.subjects or []
-            info.bio = profile.bio
-            info.location = profile.location
-            info.is_approved = bool(profile.is_approved)
-    elif user.role == UserRole.vendor:
-        res = await db.execute(select(VendorProfile).where(VendorProfile.user_id == user.id))
-        profile = res.scalar_one_or_none()
-        if profile:
-            info.business_name = profile.business_name
-            info.location = profile.location
-            info.vendor_categories = profile.categories or []
-            info.is_approved = bool(profile.is_approved)
-            info.vendor_whatsapp = profile.whatsapp
-            info.kyc_completed = bool(profile.kyc_completed and (profile.nin or "").strip())
-    elif user.role == UserRole.kind:
-        res = await db.execute(select(KindProfile).where(KindProfile.user_id == user.id))
-        profile = res.scalar_one_or_none()
-        if profile:
-            info.age_group = profile.age_group
-            info.grade_level = profile.grade_level
-            info.parent_email = profile.parent_email
-            info.favorite_subjects = profile.favorite_subjects or []
-            info.learning_goals = profile.learning_goals
+    try:
+        if user.role == UserRole.student:
+            res = await db.execute(select(StudentProfile).where(StudentProfile.user_id == user.id))
+            profile = res.scalar_one_or_none()
+            if profile:
+                et = profile.exam_type
+                info.exam_type = et.value if hasattr(et, "value") else (str(et) if et else None)
+                info.selected_subjects = profile.selected_subjects or []
+                info.education_level = profile.education_level
+                info.has_active_subscription = profile.has_active_subscription
+        elif user.role == UserRole.teacher:
+            res = await db.execute(select(TeacherProfile).where(TeacherProfile.user_id == user.id))
+            profile = res.scalar_one_or_none()
+            if profile:
+                info.subjects = profile.subjects or []
+                info.bio = profile.bio
+                info.location = profile.location
+                info.is_approved = bool(profile.is_approved)
+        elif user.role == UserRole.vendor:
+            res = await db.execute(select(VendorProfile).where(VendorProfile.user_id == user.id))
+            profile = res.scalar_one_or_none()
+            if profile:
+                info.business_name = profile.business_name
+                info.location = profile.location
+                info.vendor_categories = profile.categories or []
+                info.is_approved = bool(profile.is_approved)
+                info.vendor_whatsapp = profile.whatsapp
+                info.kyc_completed = bool(profile.kyc_completed and (profile.nin or "").strip())
+        elif user.role == UserRole.kind:
+            res = await db.execute(select(KindProfile).where(KindProfile.user_id == user.id))
+            profile = res.scalar_one_or_none()
+            if profile:
+                info.age_group = profile.age_group
+                info.grade_level = profile.grade_level
+                info.parent_email = profile.parent_email
+                info.favorite_subjects = profile.favorite_subjects or []
+                info.learning_goals = profile.learning_goals
+    except Exception:
+        pass
     return info
 
 
@@ -618,10 +622,11 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
 
     user_info = await _build_user_info(user, db)
     access_token, refresh_token = await issue_auth_tokens(db, user)
+    role = user.role.value if hasattr(user.role, "value") else str(user.role)
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
-        role=user.role,
+        role=role,
         user=user_info,
     )
 
