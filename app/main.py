@@ -53,8 +53,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
+    # Bearer tokens, not cookies. Wildcard + credentials=true is rejected by browsers
+    # as "Failed to fetch" — that was blocking website login.
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
