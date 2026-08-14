@@ -2,7 +2,6 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, WebSocket, Query, Depends
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,15 +50,59 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    # Bearer tokens, not cookies. Wildcard + credentials=true is rejected by browsers
-    # as "Failed to fetch" — that was blocking website login.
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+
+class ReflectCORS:
+    """Chrome rejects wildcard CORS + credentials. Always echo Origin and never set credentials."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        header_map = {k.decode().lower(): v.decode() for k, v in scope.get("headers", [])}
+        origin = header_map.get("origin") or "*"
+        req_headers = header_map.get("access-control-request-headers") or (
+            "content-type,authorization,accept,x-requested-with"
+        )
+        cors_headers = [
+            (b"access-control-allow-origin", origin.encode()),
+            (b"access-control-allow-methods", b"GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD"),
+            (b"access-control-allow-headers", req_headers.encode()),
+            (b"access-control-max-age", b"1"),
+            (b"vary", b"Origin"),
+        ]
+        if scope.get("method") == "OPTIONS":
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 204,
+                    "headers": cors_headers + [(b"content-length", b"0")],
+                }
+            )
+            await send({"type": "http.response.body", "body": b""})
+            return
+
+        skip = {
+            b"access-control-allow-origin",
+            b"access-control-allow-credentials",
+            b"access-control-allow-methods",
+            b"access-control-allow-headers",
+            b"access-control-max-age",
+        }
+
+        async def send_wrapper(message):
+            if message["type"] == "http.response.start":
+                raw = [(k, v) for k, v in message.get("headers", []) if k.lower() not in skip]
+                message = dict(message)
+                message["headers"] = raw + cors_headers
+            await send(message)
+
+        await self.app(scope, receive, send_wrapper)
+
+
+app.add_middleware(ReflectCORS)
 
 app.include_router(app_meta.router, prefix="/api/v1")
 app.include_router(auth.router, prefix="/api/v1")
