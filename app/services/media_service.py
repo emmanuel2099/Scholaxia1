@@ -92,6 +92,8 @@ def upload_file(file_bytes: bytes, folder: str, filename: str | None = None) -> 
     secure = result.get("secure_url") or result.get("url") or ""
     if secure.startswith("http://"):
         secure = "https://" + secure[len("http://") :]
+    if folder in ("books", "notes"):
+        _invalidate_book_index()
     return {
         "public_id": result["public_id"],
         "resource_type": result["resource_type"],
@@ -169,12 +171,57 @@ def _candidate_ids(public_id: str) -> list[str]:
     return out
 
 
+_BOOK_INDEX: dict = {"at": 0.0, "rows": []}
+
+
+def _invalidate_book_index() -> None:
+    _BOOK_INDEX["at"] = 0.0
+    _BOOK_INDEX["rows"] = []
+
+
+def _all_book_resources() -> list[dict]:
+    import time
+    import cloudinary.api
+
+    now = time.time()
+    if _BOOK_INDEX["rows"] and now - _BOOK_INDEX["at"] < 300:
+        return _BOOK_INDEX["rows"]
+    rows: list[dict] = []
+    for resource_type in ("raw", "image"):
+        for delivery in ("authenticated", "upload", "private"):
+            cursor = None
+            for _ in range(25):
+                kwargs = {
+                    "resource_type": resource_type,
+                    "type": delivery,
+                    "prefix": "scholaxia/books",
+                    "max_results": 100,
+                }
+                if cursor:
+                    kwargs["next_cursor"] = cursor
+                try:
+                    listing = cloudinary.api.resources(**kwargs)
+                except Exception:
+                    break
+                rows.extend(listing.get("resources") or [])
+                cursor = listing.get("next_cursor")
+                if not cursor:
+                    break
+    _BOOK_INDEX["at"] = now
+    _BOOK_INDEX["rows"] = rows
+    return rows
+
+
 def _lookup_cloudinary_resource(public_id: str) -> dict | None:
     import cloudinary.api
 
-    for pid in _candidate_ids(public_id):
+    ids = _candidate_ids(public_id)
+    id_set = set(ids)
+    name = _strip_pdf_ext(_normalize_file_key(public_id)).rsplit("/", 1)[-1]
+
+    for pid in ids:
         for resource_type in ("raw", "image"):
-            for delivery in ("upload", "authenticated", "private"):
+            for delivery in ("authenticated", "upload", "private"):
                 try:
                     info = cloudinary.api.resource(
                         pid, resource_type=resource_type, type=delivery
@@ -183,45 +230,11 @@ def _lookup_cloudinary_resource(public_id: str) -> dict | None:
                         return info
                 except Exception:
                     continue
-    try:
-        from cloudinary import Search
 
-        name = _strip_pdf_ext(_normalize_file_key(public_id)).rsplit("/", 1)[-1]
-        expressions = [
-            f"public_id:scholaxia/books/{name}*",
-            f"folder:scholaxia/books AND public_id:*{name}*",
-            f"public_id:*{name}*",
-        ]
-        for expr in expressions:
-            try:
-                found = Search().expression(expr).max_results(5).execute()
-                rows = found.get("resources") or []
-                if rows:
-                    return rows[0]
-            except Exception:
-                continue
-    except Exception:
-        pass
-    try:
-        name = _strip_pdf_ext(_normalize_file_key(public_id)).rsplit("/", 1)[-1]
-        prefix = f"scholaxia/books/{name[:8]}" if name else "scholaxia/books/"
-        for resource_type in ("raw", "image"):
-            for delivery in ("upload", "authenticated"):
-                try:
-                    listing = cloudinary.api.resources(
-                        resource_type=resource_type,
-                        type=delivery,
-                        prefix=prefix,
-                        max_results=30,
-                    )
-                    for row in listing.get("resources") or []:
-                        rid = str(row.get("public_id") or "")
-                        if name and name in rid:
-                            return row
-                except Exception:
-                    continue
-    except Exception:
-        pass
+    for row in _all_book_resources():
+        rid = str(row.get("public_id") or "")
+        if rid in id_set or (name and name in rid):
+            return row
     return None
 
 
@@ -327,18 +340,23 @@ def fetch_book_bytes(public_id: str) -> tuple[bytes, str]:
 
     last_status = 0
     urls = _candidate_read_urls(public_id)
+    admin_auth = None
+    if settings.CLOUDINARY_API_KEY and settings.CLOUDINARY_API_SECRET:
+        admin_auth = (settings.CLOUDINARY_API_KEY, settings.CLOUDINARY_API_SECRET)
     with httpx.Client(timeout=60.0, follow_redirects=True) as client:
         for url in urls:
             try:
-                res = client.get(url)
+                req_auth = admin_auth if "api.cloudinary.com" in url else None
+                res = client.get(url, auth=req_auth)
             except Exception:
                 continue
             last_status = res.status_code
             body = res.content or b""
             if res.status_code == 200 and body[:5] == b"%PDF-":
                 return body, "application/pdf"
-            if res.status_code == 200 and len(body) > 400 and b"%PDF-" in body[:1024]:
-                return body, "application/pdf"
+            if res.status_code == 200 and len(body) > 400 and b"%PDF-" in body[:2048]:
+                start = body.find(b"%PDF-")
+                return body[start:], "application/pdf"
     raise RuntimeError(f"Could not load library file (HTTP {last_status or 'error'}).")
 
 

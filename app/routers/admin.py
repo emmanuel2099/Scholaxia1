@@ -406,7 +406,7 @@ async def upload_library_pdf(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
     return {
-        "file_key": result["public_id"],
+        "file_key": (result.get("secure_url") or result["public_id"]),
         "secure_url": result.get("secure_url") or "",
         "filename": name,
     }
