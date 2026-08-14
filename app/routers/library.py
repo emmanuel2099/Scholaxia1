@@ -213,7 +213,10 @@ async def stream_book_file(
     try:
         content, content_type = fetch_book_bytes(book.file_key)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Could not open this material: {e}")
+        raise HTTPException(
+            status_code=502,
+            detail="This PDF is missing on storage. In Admin → Library, remove it and upload the PDF again.",
+        )
     filename = "".join(ch if ch.isalnum() or ch in " ._-" else "_" for ch in (book.title or "material"))[:80]
     if not filename.lower().endswith(".pdf") and content_type == "application/pdf":
         filename = filename + ".pdf"

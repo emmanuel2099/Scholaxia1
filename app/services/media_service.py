@@ -63,20 +63,11 @@ def _file_extension(filename: str | None, folder: str) -> str:
 def get_upload_params(folder: str, filename: str | None = None) -> dict:
     """
     Returns Cloudinary upload parameters for a given folder.
-    Books and notes use type='authenticated' so URLs require signing.
-    Other assets use type='upload' (public).
+    Library PDFs are public-raw on Cloudinary but only streamed to students
+    through our /library/{id}/file endpoint (so Android never hits a signed 404).
     """
     resource_type = FOLDER_RESOURCE_TYPE.get(folder, "raw")
     public_id = f"scholaxia/{folder}/{uuid.uuid4().hex}{_file_extension(filename, folder)}"
-
-    if folder in ("books", "notes"):
-        # Private — requires signed URL to access
-        return {
-            "public_id": public_id,
-            "resource_type": resource_type,
-            "type": "authenticated",   # access-controlled
-            "overwrite": False,
-        }
 
     return {
         "public_id": public_id,
@@ -110,28 +101,36 @@ def upload_file(file_bytes: bytes, folder: str, filename: str | None = None) -> 
 
 
 def generate_read_url(public_id: str, expires_in_seconds: int = 1800) -> str:
-    """
-    Generate a short-lived signed URL for reading a book inside the app.
-    """
     urls = _candidate_read_urls(public_id, expires_in_seconds)
     return urls[0] if urls else ""
+
+
+def _strip_pdf_ext(pid: str) -> str:
+    value = pid or ""
+    while value.lower().endswith(".pdf"):
+        value = value[:-4]
+    return value
 
 
 def _normalize_file_key(file_key: str) -> str:
     key = (file_key or "").strip()
     if not key:
         return ""
+    if key.startswith("{") and "public_id" in key:
+        try:
+            import json
+
+            data = json.loads(key)
+            return str(data.get("public_id") or data.get("id") or "").strip()
+        except Exception:
+            pass
     if key.startswith("http://") or key.startswith("https://"):
-        # https://res.cloudinary.com/<cloud>/<resource>/<type>/s--x--/v123/folder/id.pdf
         path = key.split("?", 1)[0]
         parts = path.split("/")
-        # drop scheme + host
-        if "res.cloudinary.com" in path and len(parts) >= 8:
-            # find version segment v123456 or public id after type
+        if "res.cloudinary.com" in path:
             for i, part in enumerate(parts):
                 if part.startswith("v") and part[1:].isdigit():
                     return "/".join(parts[i + 1 :])
-            # after raw/authenticated or raw/upload
             for i, part in enumerate(parts):
                 if part in ("authenticated", "upload", "private") and i + 1 < len(parts):
                     rest = parts[i + 1 :]
@@ -148,17 +147,23 @@ def _candidate_ids(public_id: str) -> list[str]:
     pid = _normalize_file_key(public_id)
     if not pid:
         return []
-    while pid.lower().endswith(".pdf.pdf"):
-        pid = pid[:-4]
-    ids = [pid]
-    if pid.lower().endswith(".pdf"):
-        ids.append(pid[:-4])
-    else:
-        ids.append(pid + ".pdf")
+    pid = pid.replace(".pdf.pdf", ".pdf")
+    base = _strip_pdf_ext(pid)
+    name = base.rsplit("/", 1)[-1]
+    ids = [
+        pid,
+        base,
+        f"{base}.pdf",
+        f"scholaxia/books/{name}",
+        f"scholaxia/books/{name}.pdf",
+        name,
+        f"{name}.pdf",
+    ]
     out = []
     seen = set()
     for item in ids:
-        if item not in seen:
+        item = (item or "").strip().replace(".pdf.pdf", ".pdf")
+        if item and item not in seen:
             seen.add(item)
             out.append(item)
     return out
@@ -169,7 +174,7 @@ def _lookup_cloudinary_resource(public_id: str) -> dict | None:
 
     for pid in _candidate_ids(public_id):
         for resource_type in ("raw", "image"):
-            for delivery in ("authenticated", "upload", "private"):
+            for delivery in ("upload", "authenticated", "private"):
                 try:
                     info = cloudinary.api.resource(
                         pid, resource_type=resource_type, type=delivery
@@ -181,16 +186,15 @@ def _lookup_cloudinary_resource(public_id: str) -> dict | None:
     try:
         from cloudinary import Search
 
-        pid = _normalize_file_key(public_id)
-        name = pid.split("/")[-1]
+        name = _strip_pdf_ext(_normalize_file_key(public_id)).rsplit("/", 1)[-1]
         expressions = [
-            f'public_id:"{pid}"',
-            f"public_id:{pid}*",
-            f"folder:scholaxia/books AND filename:{name}*",
+            f"public_id:scholaxia/books/{name}*",
+            f"folder:scholaxia/books AND public_id:*{name}*",
+            f"public_id:*{name}*",
         ]
         for expr in expressions:
             try:
-                found = Search().expression(expr).max_results(3).execute()
+                found = Search().expression(expr).max_results(5).execute()
                 rows = found.get("resources") or []
                 if rows:
                     return rows[0]
@@ -198,98 +202,118 @@ def _lookup_cloudinary_resource(public_id: str) -> dict | None:
                 continue
     except Exception:
         pass
+    try:
+        name = _strip_pdf_ext(_normalize_file_key(public_id)).rsplit("/", 1)[-1]
+        prefix = f"scholaxia/books/{name[:8]}" if name else "scholaxia/books/"
+        for resource_type in ("raw", "image"):
+            for delivery in ("upload", "authenticated"):
+                try:
+                    listing = cloudinary.api.resources(
+                        resource_type=resource_type,
+                        type=delivery,
+                        prefix=prefix,
+                        max_results=30,
+                    )
+                    for row in listing.get("resources") or []:
+                        rid = str(row.get("public_id") or "")
+                        if name and name in rid:
+                            return row
+                except Exception:
+                    continue
+    except Exception:
+        pass
     return None
 
 
-def _signed_url_for_resource(info: dict, expires_in_seconds: int = 1800) -> str:
-    import time
-
-    expire_at = int(time.time()) + max(int(expires_in_seconds or 1800), 60)
-    pid = info.get("public_id") or ""
-    resource_type = info.get("resource_type") or "raw"
-    delivery = info.get("type") or "authenticated"
-    fmt = (info.get("format") or "pdf").lstrip(".")
-    version = info.get("version")
-    kwargs = {
+def _delivery_url(pid: str, resource_type: str, delivery: str, with_format: bool) -> str:
+    opts = {
         "resource_type": resource_type,
         "type": delivery,
         "secure": True,
+        "sign_url": delivery in ("authenticated", "private"),
     }
-    # public_id already ending in .pdf + format=pdf → …/file.pdf.pdf (404 on Android).
-    if not str(pid).lower().endswith(".pdf"):
-        kwargs["format"] = fmt or "pdf"
-    if version:
-        kwargs["version"] = version
-    if delivery in ("authenticated", "private"):
-        kwargs["sign_url"] = True
-        kwargs["expires_at"] = expire_at
-    url, _ = cloudinary.utils.cloudinary_url(pid, **kwargs)
+    if with_format and not str(pid).lower().endswith(".pdf"):
+        opts["format"] = "pdf"
+    url, _ = cloudinary.utils.cloudinary_url(pid, **opts)
     return url or ""
 
 
-def _candidate_read_urls(public_id: str, expires_in_seconds: int = 1800) -> list[str]:
-    import time
+def _download_url_for_info(info: dict) -> list[str]:
+    urls = []
+    pid = str(info.get("public_id") or "")
+    resource_type = info.get("resource_type") or "raw"
+    delivery = info.get("type") or "upload"
+    fmt = (info.get("format") or "pdf").lstrip(".") or "pdf"
+    for url in (info.get("secure_url"), info.get("url")):
+        if url:
+            urls.append(url)
+    urls.append(_delivery_url(pid, resource_type, delivery, with_format=False))
+    urls.append(_delivery_url(pid, resource_type, delivery, with_format=True))
+    dl_id = _strip_pdf_ext(pid) if pid.lower().endswith(".pdf") else pid
+    try:
+        urls.append(
+            cloudinary.utils.private_download_url(
+                dl_id,
+                fmt if not pid.lower().endswith(".pdf") else "pdf",
+                resource_type=resource_type,
+                type=delivery,
+                attachment=False,
+            )
+        )
+    except Exception:
+        pass
+    return urls
 
-    expire_at = int(time.time()) + max(int(expires_in_seconds or 1800), 60)
+
+def _candidate_read_urls(public_id: str, expires_in_seconds: int = 1800) -> list[str]:
     urls: list[str] = []
     seen = set()
 
     def add(url: str):
-        if url and url not in seen:
-            seen.add(url)
-            urls.append(url)
+        if not url or url in seen:
+            return
+        if ".pdf.pdf" in url.lower():
+            return
+        seen.add(url)
+        urls.append(url)
 
     raw_key = (public_id or "").strip()
     if raw_key.startswith("http://") or raw_key.startswith("https://"):
-        add(raw_key)
+        add(raw_key.replace(".pdf.pdf", ".pdf"))
 
     info = _lookup_cloudinary_resource(public_id)
     if info:
-        add(_signed_url_for_resource(info, expires_in_seconds))
-        add(info.get("secure_url") or "")
-        add(info.get("url") or "")
-        try:
-            dl_id = info.get("public_id") or ""
-            if str(dl_id).lower().endswith(".pdf"):
-                dl_id = dl_id[:-4]
-            add(
-                cloudinary.utils.private_download_url(
-                    dl_id,
-                    "pdf",
-                    resource_type=info.get("resource_type") or "raw",
-                    type=info.get("type") or "authenticated",
-                    attachment=False,
-                    expires_at=expire_at,
-                )
-            )
-        except Exception:
-            pass
-
-    for pid in _candidate_ids(public_id):
-        fmt = "pdf" if not pid.lower().endswith(".pdf") else None
-        combos = (
-            {"resource_type": "raw", "type": "authenticated", "sign_url": True, "expires_at": expire_at, "format": "pdf"},
-            {"resource_type": "raw", "type": "upload", "format": "pdf"},
-            {"resource_type": "raw", "type": "authenticated", "sign_url": True, "expires_at": expire_at},
-            {"resource_type": "raw", "type": "upload"},
-            {"resource_type": "image", "type": "authenticated", "sign_url": True, "expires_at": expire_at},
-            {"resource_type": "image", "type": "upload"},
-        )
-        for extra in combos:
-            opts = dict(extra)
-            if fmt is None:
-                opts.pop("format", None)
-            url, _ = cloudinary.utils.cloudinary_url(pid, secure=True, **opts)
+        for url in _download_url_for_info(info):
             add(url)
+
+    cloud = settings.CLOUDINARY_CLOUD_NAME
+    for pid in _candidate_ids(public_id):
+        for resource_type in ("raw", "image"):
+            for delivery in ("upload", "authenticated"):
+                add(_delivery_url(pid, resource_type, delivery, with_format=False))
+                add(_delivery_url(pid, resource_type, delivery, with_format=True))
+        if cloud:
+            bare = pid if pid.lower().endswith(".pdf") else f"{pid}.pdf"
+            add(f"https://res.cloudinary.com/{cloud}/raw/upload/{pid}")
+            add(f"https://res.cloudinary.com/{cloud}/raw/upload/{bare}")
+            add(f"https://res.cloudinary.com/{cloud}/image/upload/{pid}")
         try:
             add(
                 cloudinary.utils.private_download_url(
-                    pid.rsplit(".pdf", 1)[0] if pid.lower().endswith(".pdf") else pid,
+                    _strip_pdf_ext(pid),
                     "pdf",
                     resource_type="raw",
                     type="authenticated",
                     attachment=False,
-                    expires_at=expire_at,
+                )
+            )
+            add(
+                cloudinary.utils.private_download_url(
+                    _strip_pdf_ext(pid),
+                    "pdf",
+                    resource_type="raw",
+                    type="upload",
+                    attachment=False,
                 )
             )
         except Exception:
@@ -298,29 +322,23 @@ def _candidate_read_urls(public_id: str, expires_in_seconds: int = 1800) -> list
 
 
 def fetch_book_bytes(public_id: str) -> tuple[bytes, str]:
-    """
-    Download a library PDF from Cloudinary using signed/public URL fallbacks.
-    Opening authenticated Cloudinary links in a new browser tab returns HTTP 401.
-    """
+    """Download a library PDF from Cloudinary for streaming through our API."""
     import httpx
 
     last_status = 0
-    for url in _candidate_read_urls(public_id):
-        try:
-            with httpx.Client(timeout=60.0, follow_redirects=True) as client:
+    urls = _candidate_read_urls(public_id)
+    with httpx.Client(timeout=60.0, follow_redirects=True) as client:
+        for url in urls:
+            try:
                 res = client.get(url)
-        except Exception:
-            continue
-        last_status = res.status_code
-        if res.status_code == 200 and res.content and (
-            res.content[:5] == b"%PDF-" or len(res.content) > 200
-        ):
-            content_type = (res.headers.get("content-type") or "").split(";")[0].strip()
-            if res.content[:5] == b"%PDF-":
-                content_type = "application/pdf"
-            elif not content_type or content_type in ("application/octet-stream", "text/html"):
+            except Exception:
                 continue
-            return res.content, content_type or "application/pdf"
+            last_status = res.status_code
+            body = res.content or b""
+            if res.status_code == 200 and body[:5] == b"%PDF-":
+                return body, "application/pdf"
+            if res.status_code == 200 and len(body) > 400 and b"%PDF-" in body[:1024]:
+                return body, "application/pdf"
     raise RuntimeError(f"Could not load library file (HTTP {last_status or 'error'}).")
 
 
