@@ -434,7 +434,11 @@
             </select>
           </label>
           <label id="lib-price-wrap"><span>Price (₦) *</span><input id="lib-price" type="number" min="100" step="50" placeholder="e.g. 1500" /></label>
-          <label><span>PDF file *</span><input id="lib-file" type="file" accept=".pdf,application/pdf" /></label>
+          <label>
+            <span>PDF file *</span>
+            <input id="lib-file" type="file" accept=".pdf,application/pdf,application/x-pdf" onchange="onLibraryPdfPicked(this)" />
+          </label>
+          <p id="lib-file-name" class="cbt-hint small" style="grid-column:1/-1;margin:0;">Choose a .pdf (not a photo).</p>
           <label><span>Description</span><input id="lib-desc" placeholder="Short note for students" /></label>
         </div>
         <div class="cbt-actions">
@@ -613,8 +617,8 @@
   </main>
 </div>
 
-<script src="js/admin-api.js?v=20260805e"></script>
-<script src="js/admin.js?v=20260805e"></script>
+<script src="js/admin-api.js?v=20260814d"></script>
+<script src="js/admin.js?v=20260814d"></script>
 <script src="js/responsive.js?v=20260805e"></script>
 </body>
 </html>

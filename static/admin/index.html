@@ -434,7 +434,11 @@
             </select>
           </label>
           <label id="lib-price-wrap"><span>Price (₦) *</span><input id="lib-price" type="number" min="100" step="50" placeholder="e.g. 1500" /></label>
-          <label><span>PDF file *</span><input id="lib-file" type="file" accept=".pdf,application/pdf" /></label>
+          <label>
+            <span>PDF file *</span>
+            <input id="lib-file" type="file" accept=".pdf,application/pdf,application/x-pdf" onchange="onLibraryPdfPicked(this)" />
+          </label>
+          <p id="lib-file-name" class="cbt-hint small" style="grid-column:1/-1;margin:0;">Choose a .pdf (not a photo).</p>
           <label><span>Description</span><input id="lib-desc" placeholder="Short note for students" /></label>
         </div>
         <div class="cbt-actions">
@@ -566,14 +570,14 @@
         <h2>Marketplace</h2>
         <button class="btn-sm" onclick="loadMarketplace()">Refresh</button>
       </div>
-      <p class="cbt-hint small">Post products (gadgets, flash drives, bags, etc.). Students book with name, WhatsApp, phone &amp; email — then you chat them.</p>
+      <p class="cbt-hint small">Post products (gadgets, flash drives, bags, etc.). For Soft copy / PDF, upload the document itself — cover image is optional. Students book with name, WhatsApp, phone &amp; email — then you chat them.</p>
 
       <div class="panel" style="margin-bottom:1rem;">
         <h3>Add product</h3>
         <div class="form-grid">
           <label><span>Product title *</span><input type="text" id="mp-title" placeholder="Product title" /></label>
           <label><span>Category</span>
-            <select id="mp-category">
+            <select id="mp-category" onchange="syncMarketplaceFileFields()">
               <option value="books">Books</option>
               <option value="soft_copy">Soft copy / PDF</option>
               <option value="software">Software</option>
@@ -591,8 +595,13 @@
           </label>
           <label><span>Price (₦)</span><input type="number" id="mp-price" placeholder="Price" min="0" /></label>
           <label><span>Short description</span><input type="text" id="mp-desc" placeholder="Short description" /></label>
-          <label><span>Product image *</span><input type="file" id="mp-image-file" accept="image/*" onchange="previewMarketplaceImage(this)" /></label>
+          <label id="mp-image-label"><span>Product image *</span><input type="file" id="mp-image-file" accept="image/*" onchange="previewMarketplaceImage(this)" /></label>
           <label><span>Or image URL</span><input type="text" id="mp-image" placeholder="https://… (optional if you upload a file)" oninput="previewMarketplaceImageUrl(this.value)" /></label>
+          <label id="mp-pdf-wrap" class="hidden">
+            <span>PDF / digital file *</span>
+            <input type="file" id="mp-pdf-file" accept=".pdf,.zip,.doc,.docx,application/pdf,application/zip" onchange="previewMarketplacePdf(this)" />
+          </label>
+          <p id="mp-pdf-name" class="cbt-hint small hidden" style="grid-column:1/-1;margin:0;"></p>
         </div>
         <div style="margin:8px 0 12px">
           <img id="mp-image-preview" class="mp-image-preview hidden" alt="Preview" />
@@ -613,8 +622,8 @@
   </main>
 </div>
 
-<script src="js/admin-api.js?v=20260814a"></script>
-<script src="js/admin.js?v=20260814a"></script>
+<script src="js/admin-api.js?v=20260814d"></script>
+<script src="js/admin.js?v=20260814d"></script>
 <script src="js/responsive.js?v=20260805e"></script>
 </body>
 </html>

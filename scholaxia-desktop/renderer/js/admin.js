@@ -2114,6 +2114,27 @@ function toggleLibraryPrice() {
   document.getElementById("lib-price-wrap").style.display = paid ? "" : "none";
 }
 
+function onLibraryPdfPicked(input) {
+  var nameEl = document.getElementById("lib-file-name");
+  var err = document.getElementById("lib-form-error");
+  var file = input && input.files && input.files[0];
+  if (!file) {
+    if (nameEl) nameEl.textContent = "Choose a .pdf (not a photo).";
+    return;
+  }
+  var name = (file.name || "").toLowerCase();
+  var type = (file.type || "").toLowerCase();
+  var isPdf = name.endsWith(".pdf") || type === "application/pdf" || type === "application/x-pdf";
+  if (!isPdf) {
+    input.value = "";
+    if (nameEl) nameEl.textContent = "Choose a .pdf (not a photo).";
+    if (err) err.textContent = "Library needs a PDF file, not an image.";
+    return;
+  }
+  if (err) err.textContent = "";
+  if (nameEl) nameEl.textContent = "Selected: " + file.name;
+}
+
 async function uploadLibraryBook() {
   var err = document.getElementById("lib-form-error");
   var ok = document.getElementById("lib-form-ok");
@@ -2139,6 +2160,12 @@ async function uploadLibraryBook() {
   }
   if (!fileInput.files || !fileInput.files[0]) {
     err.textContent = "Choose a PDF file.";
+    return;
+  }
+  var pdfName = (fileInput.files[0].name || "").toLowerCase();
+  var pdfType = (fileInput.files[0].type || "").toLowerCase();
+  if (!pdfName.endsWith(".pdf") && pdfType !== "application/pdf" && pdfType !== "application/x-pdf") {
+    err.textContent = "Library needs a PDF file, not an image.";
     return;
   }
   if (category === "Past Questions") {

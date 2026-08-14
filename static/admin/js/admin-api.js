@@ -192,7 +192,7 @@ async function uploadAdminFile(url, file) {
     method: "POST",
     headers: { Authorization: "Bearer " + getAdminToken() },
     body: fd,
-    signal: fetchTimeout(120000),
+    signal: fetchTimeout(180000),
   });
   var data = await res.json().catch(function () { return {}; });
   if (res.status === 401) {
@@ -206,6 +206,10 @@ async function uploadAdminFile(url, file) {
 
 async function uploadMarketplaceImage(file) {
   return uploadAdminFile("/api/v1/admin/marketplace/upload-image", file);
+}
+
+async function uploadMarketplaceFile(file) {
+  return uploadAdminFile("/api/v1/admin/marketplace/upload-file", file);
 }
 
 async function uploadInternalNotes(file) {

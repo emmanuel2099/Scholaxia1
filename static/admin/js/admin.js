@@ -12,6 +12,7 @@ document.addEventListener("DOMContentLoaded", function () {
   document.getElementById("tab-register").addEventListener("click", function () { switchAuthTab("register"); });
   document.getElementById("form-login").addEventListener("submit", adminLogin);
   document.getElementById("form-register").addEventListener("submit", adminRegister);
+  syncMarketplaceFileFields();
 });
 
 function showAuth() {
@@ -1650,6 +1651,50 @@ async function loadMarketplaceBookings() {
   }
 }
 
+function isMarketplaceDigitalCategory(category) {
+  return category === "soft_copy" || category === "software";
+}
+
+function syncMarketplaceFileFields() {
+  var sel = document.getElementById("mp-category");
+  var pdfWrap = document.getElementById("mp-pdf-wrap");
+  var imageLabel = document.getElementById("mp-image-label");
+  var digital = sel && isMarketplaceDigitalCategory(sel.value);
+  if (pdfWrap) pdfWrap.classList.toggle("hidden", !digital);
+  if (imageLabel) {
+    var span = imageLabel.querySelector("span");
+    if (span) span.textContent = digital ? "Cover image (optional)" : "Product image *";
+  }
+  if (!digital) {
+    var pdfInput = document.getElementById("mp-pdf-file");
+    var pdfName = document.getElementById("mp-pdf-name");
+    if (pdfInput) pdfInput.value = "";
+    if (pdfName) {
+      pdfName.textContent = "";
+      pdfName.classList.add("hidden");
+    }
+  }
+}
+
+function previewMarketplacePdf(input) {
+  var nameEl = document.getElementById("mp-pdf-name");
+  if (!nameEl) return;
+  var file = input && input.files && input.files[0];
+  if (!file) {
+    nameEl.textContent = "";
+    nameEl.classList.add("hidden");
+    return;
+  }
+  nameEl.textContent = "Selected: " + file.name;
+  nameEl.classList.remove("hidden");
+}
+
+function buildMarketplaceDescription(text, meta) {
+  var clean = String(text || "").trim();
+  if (!meta) return clean || null;
+  return (clean ? clean + "\n\n" : "") + "---\nSIA_META:" + JSON.stringify(meta);
+}
+
 function previewMarketplaceImage(input) {
   var img = document.getElementById("mp-image-preview");
   if (!img) return;
@@ -1704,40 +1749,72 @@ async function createMarketplaceProduct() {
   var image = (document.getElementById("mp-image").value || "").trim();
   var desc = (document.getElementById("mp-desc").value || "").trim();
   var fileInput = document.getElementById("mp-image-file");
+  var pdfInput = document.getElementById("mp-pdf-file");
+  var digital = isMarketplaceDigitalCategory(category);
   if (!title) {
     msg.textContent = "Title is required.";
     return;
   }
   var hasFile = fileInput && fileInput.files && fileInput.files[0];
-  if (!hasFile && !image) {
+  var hasPdf = pdfInput && pdfInput.files && pdfInput.files[0];
+  if (digital && !hasPdf) {
+    msg.textContent = "Upload a PDF (or ZIP) for this soft copy.";
+    return;
+  }
+  if (!digital && !hasFile && !image) {
     msg.textContent = "Add a product image (file or URL).";
     return;
   }
   msg.textContent = "Saving…";
   try {
+    var digitalUrl = "";
+    var digitalName = "";
+    if (hasPdf) {
+      msg.textContent = "Uploading PDF…";
+      var pdfUp = await uploadMarketplaceFile(pdfInput.files[0]);
+      if (!pdfUp) return;
+      digitalUrl = (pdfUp.file_url || pdfUp.image_url || pdfUp.secure_url || "").trim();
+      digitalName = pdfUp.filename || pdfInput.files[0].name || "file.pdf";
+      if (!digitalUrl) {
+        msg.textContent = "PDF upload failed — try again.";
+        return;
+      }
+    }
     if (hasFile) {
       msg.textContent = "Uploading image…";
       var up = await uploadMarketplaceImage(fileInput.files[0]);
       if (!up) return;
       image = (up.image_url || up.secure_url || image || "").trim();
     }
-    if (!image) {
+    if (!digital && !image) {
       msg.textContent = "Image upload failed — try again or paste a URL.";
       return;
     }
+    var meta = digital
+      ? {
+          product_type: "digital",
+          digital_url: digitalUrl,
+          digital_name: digitalName,
+          images: image ? [image] : [],
+        }
+      : null;
     var created = await adminApi("/api/v1/admin/marketplace/products", {
       method: "POST",
       body: JSON.stringify({
         title: title,
         category: category,
         price: price,
-        description: desc || null,
-        image_url: image,
+        description: buildMarketplaceDescription(desc, meta),
+        image_url: image || null,
         currency: "NGN",
         is_available: true,
       }),
     });
-    if (!created || !(created.image_url || image)) {
+    if (!created) {
+      msg.textContent = "Could not save product.";
+      return;
+    }
+    if (!digital && !(created.image_url || image)) {
       msg.textContent = "Product saved but image URL missing — re-upload the photo.";
       loadMarketplaceProducts();
       return;
@@ -1747,6 +1824,12 @@ async function createMarketplaceProduct() {
     document.getElementById("mp-image").value = "";
     document.getElementById("mp-desc").value = "";
     if (fileInput) fileInput.value = "";
+    if (pdfInput) pdfInput.value = "";
+    var pdfName = document.getElementById("mp-pdf-name");
+    if (pdfName) {
+      pdfName.textContent = "";
+      pdfName.classList.add("hidden");
+    }
     var prev = document.getElementById("mp-image-preview");
     if (prev) {
       if (prev._blobUrl) {
@@ -1758,7 +1841,9 @@ async function createMarketplaceProduct() {
       prev.classList.add("hidden");
       prev.removeAttribute("src");
     }
-    msg.textContent = "Product posted with image — it should appear in the student Marketplace now.";
+    msg.textContent = digital
+      ? "Soft copy posted — it should appear in the student Marketplace now."
+      : "Product posted with image — it should appear in the student Marketplace now.";
     loadMarketplaceProducts();
   } catch (e) {
     msg.textContent = e.message || "Failed to post product.";
@@ -2114,6 +2199,27 @@ function toggleLibraryPrice() {
   document.getElementById("lib-price-wrap").style.display = paid ? "" : "none";
 }
 
+function onLibraryPdfPicked(input) {
+  var nameEl = document.getElementById("lib-file-name");
+  var err = document.getElementById("lib-form-error");
+  var file = input && input.files && input.files[0];
+  if (!file) {
+    if (nameEl) nameEl.textContent = "Choose a .pdf (not a photo).";
+    return;
+  }
+  var name = (file.name || "").toLowerCase();
+  var type = (file.type || "").toLowerCase();
+  var isPdf = name.endsWith(".pdf") || type === "application/pdf" || type === "application/x-pdf";
+  if (!isPdf) {
+    input.value = "";
+    if (nameEl) nameEl.textContent = "Choose a .pdf (not a photo).";
+    if (err) err.textContent = "Library needs a PDF file, not an image.";
+    return;
+  }
+  if (err) err.textContent = "";
+  if (nameEl) nameEl.textContent = "Selected: " + file.name;
+}
+
 async function uploadLibraryBook() {
   var err = document.getElementById("lib-form-error");
   var ok = document.getElementById("lib-form-ok");
@@ -2139,6 +2245,12 @@ async function uploadLibraryBook() {
   }
   if (!fileInput.files || !fileInput.files[0]) {
     err.textContent = "Choose a PDF file.";
+    return;
+  }
+  var pdfName = (fileInput.files[0].name || "").toLowerCase();
+  var pdfType = (fileInput.files[0].type || "").toLowerCase();
+  if (!pdfName.endsWith(".pdf") && pdfType !== "application/pdf" && pdfType !== "application/x-pdf") {
+    err.textContent = "Library needs a PDF file, not an image.";
     return;
   }
   if (category === "Past Questions") {

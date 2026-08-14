@@ -384,21 +384,31 @@ async def upload_library_pdf(
     current_user: dict = Depends(require_admin),
 ):
     """Upload a PDF into the authenticated books folder; returns file_key for create."""
-    if file.content_type not in ("application/pdf", "application/x-pdf") and not (
-        (file.filename or "").lower().endswith(".pdf")
-    ):
-        raise HTTPException(status_code=400, detail="Upload a PDF file.")
+    name = (file.filename or "book.pdf").strip() or "book.pdf"
+    content_type = (file.content_type or "").split(";")[0].strip().lower()
     content = await file.read()
+    is_pdf = (
+        content_type in ("application/pdf", "application/x-pdf")
+        or name.lower().endswith(".pdf")
+        or (content[:5] == b"%PDF-")
+    )
+    if not is_pdf:
+        raise HTTPException(
+            status_code=400,
+            detail="Library needs a PDF file, not an image. Choose a .pdf.",
+        )
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty PDF file.")
     if len(content) > 40 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="PDF too large (max 40MB).")
     try:
-        result = upload_file(content, "books")
+        result = upload_file(content, "books", filename=name)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
     return {
         "file_key": result["public_id"],
         "secure_url": result.get("secure_url") or "",
-        "filename": file.filename or "book.pdf",
+        "filename": name,
     }
 
 
@@ -462,9 +472,10 @@ async def add_book(
         )
     except Exception:
         pass
+    target = book.library_target
     return BookResponse(
         id=str(book.id), title=book.title, subject=book.subject,
-        library_target=book.library_target,
+        library_target=target.value if hasattr(target, "value") else str(target),
         is_downloadable=False, allow_copy=False, allow_screenshot=False,
     )
 
@@ -1304,15 +1315,24 @@ async def admin_upload_internal_notes(
     current_user: dict = Depends(require_admin),
 ):
     """Upload PDF/image notes attached to an internal exam."""
-    allowed = CBT_IMAGE_TYPES | {"application/pdf"}
-    if file.content_type not in allowed:
-        raise HTTPException(status_code=400, detail="Upload a PDF, JPEG, PNG, WebP, or GIF.")
+    name = (file.filename or "notes").strip()
+    content_type = (file.content_type or "").split(";")[0].strip().lower()
     content = await file.read()
+    is_pdf = (
+        content_type == "application/pdf"
+        or name.lower().endswith(".pdf")
+        or content[:5] == b"%PDF-"
+    )
+    is_image = content_type in CBT_IMAGE_TYPES or name.lower().endswith(
+        (".jpg", ".jpeg", ".png", ".webp", ".gif")
+    )
+    if not is_pdf and not is_image:
+        raise HTTPException(status_code=400, detail="Upload a PDF, JPEG, PNG, WebP, or GIF.")
     if len(content) > 12 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="File too large (max 12MB).")
-    folder = "assignments" if file.content_type == "application/pdf" else "images"
+    folder = "assignments" if is_pdf else "images"
     try:
-        result = upload_file(content, folder)
+        result = upload_file(content, folder, filename=name)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
     return {

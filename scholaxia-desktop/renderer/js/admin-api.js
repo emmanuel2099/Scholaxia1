@@ -192,7 +192,7 @@ async function uploadAdminFile(url, file) {
     method: "POST",
     headers: { Authorization: "Bearer " + getAdminToken() },
     body: fd,
-    signal: fetchTimeout(120000),
+    signal: fetchTimeout(180000),
   });
   var data = await res.json().catch(function () { return {}; });
   if (res.status === 401) {

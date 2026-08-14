@@ -43,17 +43,29 @@ FOLDER_RESOURCE_TYPE = {
     "snapshots": "image",
     "cbt": "image",
     "marketplace": "image",
+    "marketplace_files": "raw",
 }
 
 
-def get_upload_params(folder: str) -> dict:
+def _file_extension(filename: str | None, folder: str) -> str:
+    name = (filename or "").rsplit("/", 1)[-1].rsplit("\\", 1)[-1].lower()
+    if "." in name:
+        ext = "." + name.rsplit(".", 1)[-1]
+        if 1 < len(ext) <= 8 and ext[1:].isalnum():
+            return ext
+    if folder in ("books", "notes"):
+        return ".pdf"
+    return ""
+
+
+def get_upload_params(folder: str, filename: str | None = None) -> dict:
     """
     Returns Cloudinary upload parameters for a given folder.
     Books and notes use type='authenticated' so URLs require signing.
     Other assets use type='upload' (public).
     """
     resource_type = FOLDER_RESOURCE_TYPE.get(folder, "raw")
-    public_id = f"scholaxia/{folder}/{uuid.uuid4().hex}"
+    public_id = f"scholaxia/{folder}/{uuid.uuid4().hex}{_file_extension(filename, folder)}"
 
     if folder in ("books", "notes"):
         # Private — requires signed URL to access
@@ -72,16 +84,18 @@ def get_upload_params(folder: str) -> dict:
     }
 
 
-def upload_file(file_bytes: bytes, folder: str) -> dict:
+def upload_file(file_bytes: bytes, folder: str, filename: str | None = None) -> dict:
     """
     Upload a file to Cloudinary.
     Returns public_id (stored in DB) and the delivery URL.
     """
     from io import BytesIO
 
-    params = get_upload_params(folder)
-    # BytesIO helps Cloudinary sniff image format for marketplace photos.
-    result = cloudinary.uploader.upload(BytesIO(file_bytes), **params)
+    params = get_upload_params(folder, filename)
+    buffer = BytesIO(file_bytes)
+    # Cloudinary uses .name to detect PDF vs image. A nameless buffer is treated as an image.
+    buffer.name = filename or ("book.pdf" if folder in ("books", "notes") else "upload.bin")
+    result = cloudinary.uploader.upload(buffer, **params)
     secure = result.get("secure_url") or result.get("url") or ""
     if secure.startswith("http://"):
         secure = "https://" + secure[len("http://") :]
