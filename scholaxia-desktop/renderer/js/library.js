@@ -94,6 +94,15 @@ async function openLibraryBookStudent(bookId, item) {
   }
   try {
     var data = await api("/api/v1/library/" + encodeURIComponent(bookId) + "/read");
+    var token = localStorage.getItem("sia_token") || localStorage.getItem("sia_teacher_token") || "";
+    var res = await fetch((window.API_BASE || "") + "/api/v1/library/" + encodeURIComponent(bookId) + "/file", {
+      headers: { Authorization: "Bearer " + token },
+    });
+    if (res.ok) {
+      var blob = await res.blob();
+      window.open(URL.createObjectURL(blob), "_blank", "noopener,noreferrer");
+      return;
+    }
     if (data && data.read_url) {
       window.open(data.read_url, "_blank", "noopener,noreferrer");
     }

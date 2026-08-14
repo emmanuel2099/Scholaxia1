@@ -13,6 +13,7 @@ Rules (same for both):
 """
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import or_, select
 from pydantic import BaseModel
@@ -23,7 +24,7 @@ from app.core.database import get_db
 from app.core.deps import get_current_user, require_student, require_teacher
 from app.models.content import Book, BookPurchase, SavedBook, BookReadProgress, LibraryTarget
 from app.models.user import UserRole
-from app.services.media_service import generate_read_url
+from app.services.media_service import generate_read_url, fetch_book_bytes
 
 router = APIRouter(prefix="/library", tags=["Library"])
 
@@ -74,6 +75,23 @@ async def _student_has_book_access(db: AsyncSession, student_id: str, book: Book
         )
     )
     return result.scalar_one_or_none() is not None
+
+
+async def _book_for_read(book_id: str, current_user: dict, db: AsyncSession) -> Book:
+    result = await db.execute(select(Book).where(Book.id == book_id, Book.is_active == True))
+    book = result.scalar_one_or_none()
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found")
+
+    role = current_user.get("role")
+    if role == UserRole.student and book.library_target != LibraryTarget.student:
+        raise HTTPException(status_code=403, detail="This book is not in your library")
+    if role == UserRole.teacher and book.library_target != LibraryTarget.teacher:
+        raise HTTPException(status_code=403, detail="This book is not in your library")
+    if role == UserRole.student:
+        if not await _student_has_book_access(db, current_user["sub"], book):
+            raise HTTPException(status_code=402, detail="Pay to unlock this Scholaxia material")
+    return book
 
 
 # ── Student Library ───────────────────────────────────────────────────────────
@@ -166,30 +184,11 @@ async def open_book(
 ):
     """
     Returns a short-lived signed URL to render the book inside the app.
-    - URL expires in 30 minutes
-    - ContentDisposition=inline — cannot be used to download
-    - DRM flags tell the frontend to block copy, screenshot, and print
+    Prefer GET /{book_id}/file on the website — Cloudinary authenticated
+    links return HTTP 401 if opened in a new browser tab.
     """
-    result = await db.execute(select(Book).where(Book.id == book_id, Book.is_active == True))
-    book = result.scalar_one_or_none()
-    if not book:
-        raise HTTPException(status_code=404, detail="Book not found")
+    book = await _book_for_read(book_id, current_user, db)
 
-    role = current_user.get("role")
-
-    # Students can only access student library books
-    if role == UserRole.student and book.library_target != LibraryTarget.student:
-        raise HTTPException(status_code=403, detail="This book is not in your library")
-
-    # Teachers can only access teacher library books
-    if role == UserRole.teacher and book.library_target != LibraryTarget.teacher:
-        raise HTTPException(status_code=403, detail="This book is not in your library")
-
-    if role == UserRole.student:
-        if not await _student_has_book_access(db, current_user["sub"], book):
-            raise HTTPException(status_code=402, detail="Pay to unlock this Scholaxia material")
-
-    # Get current reading progress
     progress_result = await db.execute(
         select(BookReadProgress).where(
             BookReadProgress.user_id == current_user["sub"],
@@ -199,10 +198,34 @@ async def open_book(
     progress = progress_result.scalar_one_or_none()
     current_page = progress.current_page if progress else 1
 
-    # Generate signed read URL — 30 min expiry, inline only
     read_url = generate_read_url(book.file_key, expires_in_seconds=1800)
-
     return _book_response(book, read_url=read_url, current_page=current_page, has_access=True)
+
+
+@router.get("/{book_id}/file")
+async def stream_book_file(
+    book_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Stream the PDF through Scholaxia so the student site can show it without a 401 tab."""
+    book = await _book_for_read(book_id, current_user, db)
+    try:
+        content, content_type = fetch_book_bytes(book.file_key)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not open this material: {e}")
+    filename = "".join(ch if ch.isalnum() or ch in " ._-" else "_" for ch in (book.title or "material"))[:80]
+    if not filename.lower().endswith(".pdf") and content_type == "application/pdf":
+        filename = filename + ".pdf"
+    return Response(
+        content=content,
+        media_type=content_type or "application/pdf",
+        headers={
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "Cache-Control": "private, max-age=60",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 # ── Save a book inside the app ────────────────────────────────────────────────

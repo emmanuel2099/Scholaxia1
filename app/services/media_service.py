@@ -110,25 +110,73 @@ def upload_file(file_bytes: bytes, folder: str, filename: str | None = None) -> 
 def generate_read_url(public_id: str, expires_in_seconds: int = 1800) -> str:
     """
     Generate a short-lived signed URL for reading a book inside the app.
-
-    Rules:
-    - Signed URL expires in 30 minutes — useless after that
-    - attachment=False means inline rendering, not a download
-    - The raw public_id is never sent to the client
     """
-    import time
-    expire_at = int(time.time()) + expires_in_seconds
+    return _candidate_read_urls(public_id, expires_in_seconds)[0]
 
-    url, _ = cloudinary.utils.cloudinary_url(
-        public_id,
-        resource_type="raw",
-        type="authenticated",
-        sign_url=True,
-        expires_at=expire_at,
-        attachment=False,   # inline — no download trigger
-        secure=True,
-    )
-    return url
+
+def _candidate_ids(public_id: str) -> list[str]:
+    pid = (public_id or "").strip()
+    if not pid:
+        return []
+    ids = [pid]
+    if pid.lower().endswith(".pdf"):
+        ids.append(pid[:-4])
+    else:
+        ids.append(pid + ".pdf")
+    # unique preserve order
+    out = []
+    seen = set()
+    for item in ids:
+        if item not in seen:
+            seen.add(item)
+            out.append(item)
+    return out
+
+
+def _candidate_read_urls(public_id: str, expires_in_seconds: int = 1800) -> list[str]:
+    import time
+
+    expire_at = int(time.time()) + max(int(expires_in_seconds or 1800), 60)
+    urls: list[str] = []
+    seen = set()
+    for pid in _candidate_ids(public_id):
+        combos = (
+            {"resource_type": "raw", "type": "authenticated", "sign_url": True, "expires_at": expire_at},
+            {"resource_type": "raw", "type": "upload"},
+            {"resource_type": "image", "type": "authenticated", "sign_url": True, "expires_at": expire_at},
+            {"resource_type": "image", "type": "upload"},
+        )
+        for extra in combos:
+            url, _ = cloudinary.utils.cloudinary_url(pid, secure=True, **extra)
+            if url and url not in seen:
+                seen.add(url)
+                urls.append(url)
+    return urls
+
+
+def fetch_book_bytes(public_id: str) -> tuple[bytes, str]:
+    """
+    Download a library PDF from Cloudinary using signed/public URL fallbacks.
+    Opening authenticated Cloudinary links in a new browser tab returns HTTP 401.
+    """
+    import httpx
+
+    last_status = 0
+    for url in _candidate_read_urls(public_id):
+        try:
+            with httpx.Client(timeout=60.0, follow_redirects=True) as client:
+                res = client.get(url)
+        except Exception:
+            continue
+        last_status = res.status_code
+        if res.status_code == 200 and res.content:
+            content_type = (res.headers.get("content-type") or "").split(";")[0].strip()
+            if not content_type or content_type == "application/octet-stream":
+                content_type = (
+                    "application/pdf" if res.content[:5] == b"%PDF-" else "application/octet-stream"
+                )
+            return res.content, content_type
+    raise RuntimeError(f"Could not load library file (HTTP {last_status or 'error'}).")
 
 
 def generate_upload_signature(folder: str) -> dict:
