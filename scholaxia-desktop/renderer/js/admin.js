@@ -2091,7 +2091,9 @@ async function loadLibraryAdmin() {
           "</td><td>" + escHtml(b.subject || "—") +
           "</td><td>" + escHtml(b.exam_type || "—") + "</td><td>" + escHtml(access) +
           "</td><td>" + escHtml(b.library_target || "student") +
-          '</td><td class="actions"><button class="btn-sm danger" onclick="deleteLibraryBook(\'' +
+          '</td><td class="actions"><button class="btn-sm" onclick="replaceLibraryPdf(\'' +
+          b.id +
+          "')\">Replace PDF</button> <button class=\"btn-sm danger\" onclick=\"deleteLibraryBook('" +
           b.id + "')\">Remove</button></td></tr>";
       }).join("") +
       "</tbody></table>";
@@ -2218,6 +2220,29 @@ async function uploadLibraryBook() {
     btn.disabled = false;
     btn.textContent = "Upload material";
   }
+}
+
+async function replaceLibraryPdf(id) {
+  var input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".pdf,application/pdf";
+  input.onchange = async function () {
+    var file = input.files && input.files[0];
+    if (!file) return;
+    var name = (file.name || "").toLowerCase();
+    if (!name.endsWith(".pdf") && file.type !== "application/pdf") {
+      alert("Choose a PDF file.");
+      return;
+    }
+    try {
+      await uploadAdminFile("/api/v1/admin/library/books/" + encodeURIComponent(id) + "/replace-file", file);
+      alert("PDF replaced. Students can tap Read again.");
+      loadLibraryAdmin();
+    } catch (e) {
+      alert(e.message || "Could not replace PDF.");
+    }
+  };
+  input.click();
 }
 
 async function deleteLibraryBook(id) {

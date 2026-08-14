@@ -294,6 +294,26 @@ def _candidate_read_urls(public_id: str, expires_in_seconds: int = 1800) -> list
     if raw_key.startswith("http://") or raw_key.startswith("https://"):
         add(raw_key.replace(".pdf.pdf", ".pdf"))
 
+    # Original delivery formula (this is what used to open on iPhone).
+    import time
+    expire_at = int(time.time()) + 1800
+    raw_pid = _normalize_file_key(raw_key) or raw_key
+    for pid in [raw_key, raw_pid] + _candidate_ids(raw_key):
+        if not pid or pid.startswith("http"):
+            continue
+        for extra in (
+            {"resource_type": "raw", "type": "authenticated", "sign_url": True, "secure": True, "attachment": False},
+            {"resource_type": "raw", "type": "authenticated", "sign_url": True, "secure": True, "expires_at": expire_at, "attachment": False},
+            {"resource_type": "raw", "type": "upload", "secure": True},
+            {"resource_type": "image", "type": "authenticated", "sign_url": True, "secure": True},
+            {"resource_type": "image", "type": "upload", "secure": True},
+        ):
+            try:
+                url, _ = cloudinary.utils.cloudinary_url(pid, **extra)
+                add(url)
+            except Exception:
+                pass
+
     info = _lookup_cloudinary_resource(public_id)
     if info:
         for url in _download_url_for_info(info):
@@ -347,7 +367,14 @@ def fetch_book_bytes(public_id: str) -> tuple[bytes, str]:
         for url in urls:
             try:
                 req_auth = admin_auth if "api.cloudinary.com" in url else None
-                res = client.get(url, auth=req_auth)
+                res = client.get(
+                    url,
+                    auth=req_auth,
+                    headers={
+                        "User-Agent": "Mozilla/5.0 ScholaxiaLibrary/1.0",
+                        "Accept": "application/pdf,application/octet-stream,*/*",
+                    },
+                )
             except Exception:
                 continue
             last_status = res.status_code

@@ -517,6 +517,41 @@ async def remove_book(
     book.is_active = False
 
 
+@router.post("/library/books/{book_id}/replace-file")
+async def replace_library_file(
+    book_id: str,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload a new PDF onto an existing library item (fixes missing Cloudinary files)."""
+    result = await db.execute(select(Book).where(Book.id == book_id))
+    book = result.scalar_one_or_none()
+    if not book or not book.is_active:
+        raise HTTPException(status_code=404, detail="Book not found")
+    name = (file.filename or "book.pdf").strip() or "book.pdf"
+    content_type = (file.content_type or "").split(";")[0].strip().lower()
+    content = await file.read()
+    is_pdf = (
+        content_type in ("application/pdf", "application/x-pdf")
+        or name.lower().endswith(".pdf")
+        or content[:5] == b"%PDF-"
+    )
+    if not is_pdf:
+        raise HTTPException(status_code=400, detail="Choose a .pdf file.")
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty PDF file.")
+    if len(content) > 40 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="PDF too large (max 40MB).")
+    try:
+        uploaded = upload_file(content, "books", filename=name)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
+    book.file_key = uploaded.get("secure_url") or uploaded["public_id"]
+    await db.flush()
+    return {"ok": True, "id": str(book.id), "title": book.title}
+
+
 # ── CBT Management ────────────────────────────────────────────────────────────
 
 class CBTQuestionCreate(BaseModel):
