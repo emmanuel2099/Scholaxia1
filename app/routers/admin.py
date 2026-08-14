@@ -86,7 +86,7 @@ class TeacherResponse(BaseModel):
     id: str
     email: str
     full_name: str
-    subjects: list[str]
+    subjects: list[str] = []
     phone: Optional[str] = None
     location: Optional[str] = None
     is_approved: bool = False
@@ -128,25 +128,41 @@ async def list_teachers(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    """All teacher accounts, including pending signups missing a profile row."""
     result = await db.execute(
         select(User, TeacherProfile)
-        .join(TeacherProfile, TeacherProfile.user_id == User.id)
-        .where(User.role == UserRole.teacher, User.is_active == True)  # noqa: E712
-        .order_by(TeacherProfile.is_approved.asc(), User.created_at.desc())
+        .outerjoin(TeacherProfile, TeacherProfile.user_id == User.id)
+        .where(User.role == UserRole.teacher)
+        .order_by(User.created_at.desc())
     )
     rows = result.all()
-    return [
-        TeacherResponse(
-            id=str(u.id),
-            email=u.email,
-            full_name=u.full_name,
-            subjects=p.subjects,
-            phone=u.phone,
-            location=p.location,
-            is_approved=bool(p.is_approved),
+    out: list[TeacherResponse] = []
+    created = False
+    for u, p in rows:
+        if p is None:
+            p = TeacherProfile(
+                user_id=u.id,
+                subjects=[],
+                bio="",
+                is_approved=False,
+            )
+            db.add(p)
+            created = True
+        out.append(
+            TeacherResponse(
+                id=str(u.id),
+                email=u.email,
+                full_name=u.full_name,
+                subjects=list(p.subjects or []),
+                phone=u.phone,
+                location=p.location,
+                is_approved=bool(p.is_approved),
+            )
         )
-        for u, p in rows
-    ]
+    if created:
+        await db.flush()
+    out.sort(key=lambda t: (t.is_approved, t.full_name.lower()))
+    return out
 
 
 @router.post("/teachers/{teacher_id}/approve")

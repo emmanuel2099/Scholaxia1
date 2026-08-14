@@ -221,8 +221,8 @@ async function loadTeachers() {
   var el = document.getElementById("teachers-table");
   el.innerHTML = '<div class="loading">Loading…</div>';
   try {
-    var rows = await adminApi("/api/v1/admin/teachers");
-    if (!rows) return;
+    var data = await adminApi("/api/v1/admin/teachers");
+    var rows = Array.isArray(data) ? data : (data && (data.teachers || data.items)) || [];
     if (!rows.length) { el.innerHTML = '<div class="empty-state">No teacher signups yet.</div>'; return; }
     el.innerHTML = '<table class="data-table"><thead><tr><th>Name</th><th>Email</th><th>WhatsApp</th><th>Subjects</th><th>Status</th><th></th></tr></thead><tbody>' +
       rows.map(function (t) {
@@ -2080,7 +2080,7 @@ async function loadLibraryAdmin() {
   try {
     var rows = await adminApi("/api/v1/admin/library/books");
     if (!rows || !rows.length) {
-      el.innerHTML = '<div class="empty-state">No library books yet.</div>';
+      el.innerHTML = '<div class="empty-state">No library materials yet.</div>';
       return;
     }
     el.innerHTML =
@@ -2183,18 +2183,18 @@ async function uploadLibraryBook() {
     document.getElementById("lib-week").value = "";
     document.getElementById("lib-topic").value = "";
     fileInput.value = "";
-    ok.textContent = "Book uploaded to the student library.";
+    ok.textContent = "Material uploaded to the student library.";
     loadLibraryAdmin();
   } catch (e) {
     err.textContent = e.message || "Upload failed.";
   } finally {
     btn.disabled = false;
-    btn.textContent = "Upload to library";
+    btn.textContent = "Upload material";
   }
 }
 
 async function deleteLibraryBook(id) {
-  if (!confirm("Remove this book from the library?")) return;
+  if (!confirm("Remove this material from the library?")) return;
   try {
     await adminApi("/api/v1/admin/library/books/" + id, { method: "DELETE" });
     loadLibraryAdmin();
