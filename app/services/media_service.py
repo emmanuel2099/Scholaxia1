@@ -48,13 +48,15 @@ FOLDER_RESOURCE_TYPE = {
 
 
 def _file_extension(filename: str | None, folder: str) -> str:
+    # Do not put .pdf in the public_id for books/notes. Cloudinary already
+    # treats raw PDFs as format=pdf; embedding .pdf in the id creates .pdf.pdf URLs.
+    if folder in ("books", "notes"):
+        return ""
     name = (filename or "").rsplit("/", 1)[-1].rsplit("\\", 1)[-1].lower()
     if "." in name:
         ext = "." + name.rsplit(".", 1)[-1]
         if 1 < len(ext) <= 8 and ext[1:].isalnum():
             return ext
-    if folder in ("books", "notes"):
-        return ".pdf"
     return ""
 
 
@@ -146,6 +148,8 @@ def _candidate_ids(public_id: str) -> list[str]:
     pid = _normalize_file_key(public_id)
     if not pid:
         return []
+    while pid.lower().endswith(".pdf.pdf"):
+        pid = pid[:-4]
     ids = [pid]
     if pid.lower().endswith(".pdf"):
         ids.append(pid[:-4])
@@ -210,8 +214,10 @@ def _signed_url_for_resource(info: dict, expires_in_seconds: int = 1800) -> str:
         "resource_type": resource_type,
         "type": delivery,
         "secure": True,
-        "format": fmt,
     }
+    # public_id already ending in .pdf + format=pdf → …/file.pdf.pdf (404 on Android).
+    if not str(pid).lower().endswith(".pdf"):
+        kwargs["format"] = fmt or "pdf"
     if version:
         kwargs["version"] = version
     if delivery in ("authenticated", "private"):
@@ -243,11 +249,13 @@ def _candidate_read_urls(public_id: str, expires_in_seconds: int = 1800) -> list
         add(info.get("secure_url") or "")
         add(info.get("url") or "")
         try:
-            fmt = info.get("format") or "pdf"
+            dl_id = info.get("public_id") or ""
+            if str(dl_id).lower().endswith(".pdf"):
+                dl_id = dl_id[:-4]
             add(
                 cloudinary.utils.private_download_url(
-                    info.get("public_id"),
-                    fmt,
+                    dl_id,
+                    "pdf",
                     resource_type=info.get("resource_type") or "raw",
                     type=info.get("type") or "authenticated",
                     attachment=False,
