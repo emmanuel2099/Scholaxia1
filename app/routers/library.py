@@ -212,10 +212,10 @@ async def stream_book_file(
     book = await _book_for_read(book_id, current_user, db)
     try:
         content, content_type = fetch_book_bytes(book.file_key)
-    except Exception as e:
+    except Exception:
         raise HTTPException(
             status_code=502,
-            detail="This PDF is missing on storage. In Admin → Library, remove it and upload the PDF again.",
+            detail="This PDF could not be opened. Wait one minute after a server update, then try Read again. If it still fails, Admin → Library → Replace PDF.",
         )
     filename = "".join(ch if ch.isalnum() or ch in " ._-" else "_" for ch in (book.title or "material"))[:80]
     if not filename.lower().endswith(".pdf") and content_type == "application/pdf":

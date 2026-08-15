@@ -131,16 +131,24 @@ def _normalize_file_key(file_key: str) -> str:
         parts = path.split("/")
         if "res.cloudinary.com" in path:
             for i, part in enumerate(parts):
-                if part.startswith("v") and part[1:].isdigit():
-                    return "/".join(parts[i + 1 :])
-            for i, part in enumerate(parts):
                 if part in ("authenticated", "upload", "private") and i + 1 < len(parts):
                     rest = parts[i + 1 :]
                     if rest and rest[0].startswith("s--"):
                         rest = rest[1:]
+                    # skip transformations like fl_attachment / q_auto
+                    while rest and (
+                        rest[0].startswith("fl_")
+                        or rest[0].startswith("q_")
+                        or "," in rest[0]
+                        or rest[0] in ("fl_attachment",)
+                    ):
+                        rest = rest[1:]
                     if rest and rest[0].startswith("v") and rest[0][1:].isdigit():
                         rest = rest[1:]
                     return "/".join(rest)
+            for i, part in enumerate(parts):
+                if part.startswith("v") and part[1:].isdigit():
+                    return "/".join(parts[i + 1 :])
         return key
     return key
 
@@ -158,6 +166,8 @@ def _candidate_ids(public_id: str) -> list[str]:
         f"{base}.pdf",
         f"scholaxia/books/{name}",
         f"scholaxia/books/{name}.pdf",
+        f"scholaxia/notes/{name}",
+        f"scholaxia/notes/{name}.pdf",
         name,
         f"{name}.pdf",
     ]
@@ -187,94 +197,127 @@ def _all_book_resources() -> list[dict]:
     if _BOOK_INDEX["rows"] and now - _BOOK_INDEX["at"] < 300:
         return _BOOK_INDEX["rows"]
     rows: list[dict] = []
-    for resource_type in ("raw", "image"):
-        for delivery in ("authenticated", "upload", "private"):
-            cursor = None
-            for _ in range(25):
-                kwargs = {
-                    "resource_type": resource_type,
-                    "type": delivery,
-                    "prefix": "scholaxia/books",
-                    "max_results": 100,
-                }
-                if cursor:
-                    kwargs["next_cursor"] = cursor
-                try:
-                    listing = cloudinary.api.resources(**kwargs)
-                except Exception:
-                    break
-                rows.extend(listing.get("resources") or [])
-                cursor = listing.get("next_cursor")
-                if not cursor:
-                    break
+    for prefix in ("scholaxia/books", "scholaxia/notes"):
+        for resource_type in ("raw", "image"):
+            for delivery in ("authenticated", "upload", "private"):
+                cursor = None
+                for _ in range(10):
+                    kwargs = {
+                        "resource_type": resource_type,
+                        "type": delivery,
+                        "prefix": prefix,
+                        "max_results": 100,
+                    }
+                    if cursor:
+                        kwargs["next_cursor"] = cursor
+                    try:
+                        listing = cloudinary.api.resources(**kwargs)
+                    except Exception:
+                        break
+                    rows.extend(listing.get("resources") or [])
+                    cursor = listing.get("next_cursor")
+                    if not cursor:
+                        break
     _BOOK_INDEX["at"] = now
     _BOOK_INDEX["rows"] = rows
     return rows
 
 
 def _lookup_cloudinary_resource(public_id: str) -> dict | None:
+    """Find the Cloudinary object without hammering resource() 40+ times."""
     import cloudinary.api
 
     ids = _candidate_ids(public_id)
     id_set = set(ids)
     name = _strip_pdf_ext(_normalize_file_key(public_id)).rsplit("/", 1)[-1]
 
-    for pid in ids:
-        for resource_type in ("raw", "image"):
-            for delivery in ("authenticated", "upload", "private"):
-                try:
-                    info = cloudinary.api.resource(
-                        pid, resource_type=resource_type, type=delivery
-                    )
-                    if info:
-                        return info
-                except Exception:
-                    continue
-
     for row in _all_book_resources():
         rid = str(row.get("public_id") or "")
         if rid in id_set or (name and name in rid):
             return row
+
+    # One exact lookup for the most likely ids only.
+    for pid in ids[:4]:
+        for resource_type, delivery in (
+            ("raw", "authenticated"),
+            ("raw", "upload"),
+            ("raw", "private"),
+            ("image", "upload"),
+        ):
+            try:
+                info = cloudinary.api.resource(
+                    pid, resource_type=resource_type, type=delivery
+                )
+                if info:
+                    return info
+            except Exception:
+                continue
     return None
 
 
-def _delivery_url(pid: str, resource_type: str, delivery: str, with_format: bool) -> str:
+def _delivery_url(
+    pid: str,
+    resource_type: str,
+    delivery: str,
+    with_format: bool,
+    expires_at: int | None = None,
+) -> str:
     opts = {
         "resource_type": resource_type,
         "type": delivery,
         "secure": True,
         "sign_url": delivery in ("authenticated", "private"),
     }
+    if expires_at and opts["sign_url"]:
+        opts["expires_at"] = expires_at
     if with_format and not str(pid).lower().endswith(".pdf"):
         opts["format"] = "pdf"
-    url, _ = cloudinary.utils.cloudinary_url(pid, **opts)
-    return url or ""
+    try:
+        url, _ = cloudinary.utils.cloudinary_url(pid, **opts)
+        return url or ""
+    except Exception:
+        return ""
+
+
+def _private_downloads(pid: str, resource_type: str, delivery: str) -> list[str]:
+    import time
+
+    urls = []
+    expire_at = int(time.time()) + 1800
+    stripped = _strip_pdf_ext(pid)
+    attempts = [(stripped, "pdf"), (pid, "")]
+    if not str(pid).lower().endswith(".pdf"):
+        attempts.append((pid, "pdf"))
+    for dl_id, fmt in attempts:
+        try:
+            urls.append(
+                cloudinary.utils.private_download_url(
+                    dl_id,
+                    fmt,
+                    resource_type=resource_type,
+                    type=delivery,
+                    expires_at=expire_at,
+                )
+            )
+        except Exception:
+            continue
+    return urls
 
 
 def _download_url_for_info(info: dict) -> list[str]:
+    import time
+
     urls = []
     pid = str(info.get("public_id") or "")
     resource_type = info.get("resource_type") or "raw"
     delivery = info.get("type") or "upload"
-    fmt = (info.get("format") or "pdf").lstrip(".") or "pdf"
+    expire_at = int(time.time()) + 1800
     for url in (info.get("secure_url"), info.get("url")):
         if url:
             urls.append(url)
-    urls.append(_delivery_url(pid, resource_type, delivery, with_format=False))
-    urls.append(_delivery_url(pid, resource_type, delivery, with_format=True))
-    dl_id = _strip_pdf_ext(pid) if pid.lower().endswith(".pdf") else pid
-    try:
-        urls.append(
-            cloudinary.utils.private_download_url(
-                dl_id,
-                fmt if not pid.lower().endswith(".pdf") else "pdf",
-                resource_type=resource_type,
-                type=delivery,
-                attachment=False,
-            )
-        )
-    except Exception:
-        pass
+    urls.append(_delivery_url(pid, resource_type, delivery, False, expire_at))
+    urls.append(_delivery_url(pid, resource_type, delivery, True, expire_at))
+    urls.extend(_private_downloads(pid, resource_type, delivery))
     return urls
 
 
@@ -290,68 +333,45 @@ def _candidate_read_urls(public_id: str, expires_in_seconds: int = 1800) -> list
         seen.add(url)
         urls.append(url)
 
+    import time
+
+    expire_at = int(time.time()) + max(expires_in_seconds or 1800, 300)
     raw_key = (public_id or "").strip()
     if raw_key.startswith("http://") or raw_key.startswith("https://"):
         add(raw_key.replace(".pdf.pdf", ".pdf"))
 
-    # Original delivery formula (this is what used to open on iPhone).
-    import time
-    expire_at = int(time.time()) + 1800
-    raw_pid = _normalize_file_key(raw_key) or raw_key
-    for pid in [raw_key, raw_pid] + _candidate_ids(raw_key):
+    ids = _candidate_ids(raw_key)[:6]
+    for pid in ids:
         if not pid or pid.startswith("http"):
             continue
-        for extra in (
-            {"resource_type": "raw", "type": "authenticated", "sign_url": True, "secure": True, "attachment": False},
-            {"resource_type": "raw", "type": "authenticated", "sign_url": True, "secure": True, "expires_at": expire_at, "attachment": False},
-            {"resource_type": "raw", "type": "upload", "secure": True},
-            {"resource_type": "image", "type": "authenticated", "sign_url": True, "secure": True},
-            {"resource_type": "image", "type": "upload", "secure": True},
-        ):
-            try:
-                url, _ = cloudinary.utils.cloudinary_url(pid, **extra)
-                add(url)
-            except Exception:
-                pass
-
-    info = _lookup_cloudinary_resource(public_id)
-    if info:
-        for url in _download_url_for_info(info):
+        add(_delivery_url(pid, "raw", "authenticated", False, expire_at))
+        add(_delivery_url(pid, "raw", "authenticated", True, expire_at))
+        add(_delivery_url(pid, "raw", "upload", False, expire_at))
+        add(_delivery_url(pid, "raw", "upload", True, expire_at))
+        add(_delivery_url(pid, "raw", "private", False, expire_at))
+        for url in _private_downloads(pid, "raw", "authenticated"):
+            add(url)
+        for url in _private_downloads(pid, "raw", "upload"):
             add(url)
 
     cloud = settings.CLOUDINARY_CLOUD_NAME
-    for pid in _candidate_ids(public_id):
-        for resource_type in ("raw", "image"):
-            for delivery in ("upload", "authenticated"):
-                add(_delivery_url(pid, resource_type, delivery, with_format=False))
-                add(_delivery_url(pid, resource_type, delivery, with_format=True))
-        if cloud:
-            bare = pid if pid.lower().endswith(".pdf") else f"{pid}.pdf"
-            add(f"https://res.cloudinary.com/{cloud}/raw/upload/{pid}")
-            add(f"https://res.cloudinary.com/{cloud}/raw/upload/{bare}")
-            add(f"https://res.cloudinary.com/{cloud}/image/upload/{pid}")
-        try:
-            add(
-                cloudinary.utils.private_download_url(
-                    _strip_pdf_ext(pid),
-                    "pdf",
-                    resource_type="raw",
-                    type="authenticated",
-                    attachment=False,
-                )
-            )
-            add(
-                cloudinary.utils.private_download_url(
-                    _strip_pdf_ext(pid),
-                    "pdf",
-                    resource_type="raw",
-                    type="upload",
-                    attachment=False,
-                )
-            )
-        except Exception:
-            pass
+    for pid in ids:
+        if not cloud or not pid or pid.startswith("http"):
+            continue
+        add(f"https://res.cloudinary.com/{cloud}/raw/upload/{pid}")
+        if not pid.lower().endswith(".pdf"):
+            add(f"https://res.cloudinary.com/{cloud}/raw/upload/{pid}.pdf")
     return urls
+
+
+def _pdf_from_response(status: int, body: bytes) -> bytes | None:
+    if status != 200 or not body:
+        return None
+    if body[:5] == b"%PDF-":
+        return body
+    if len(body) > 400 and b"%PDF-" in body[:4096]:
+        return body[body.find(b"%PDF-") :]
+    return None
 
 
 def fetch_book_bytes(public_id: str) -> tuple[bytes, str]:
@@ -363,27 +383,40 @@ def fetch_book_bytes(public_id: str) -> tuple[bytes, str]:
     admin_auth = None
     if settings.CLOUDINARY_API_KEY and settings.CLOUDINARY_API_SECRET:
         admin_auth = (settings.CLOUDINARY_API_KEY, settings.CLOUDINARY_API_SECRET)
-    with httpx.Client(timeout=60.0, follow_redirects=True) as client:
-        for url in urls:
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/pdf,application/octet-stream,*/*",
+    }
+
+    def try_urls(client: httpx.Client, batch: list[str]) -> bytes | None:
+        nonlocal last_status
+        for url in batch:
             try:
                 req_auth = admin_auth if "api.cloudinary.com" in url else None
-                res = client.get(
-                    url,
-                    auth=req_auth,
-                    headers={
-                        "User-Agent": "Mozilla/5.0 ScholaxiaLibrary/1.0",
-                        "Accept": "application/pdf,application/octet-stream,*/*",
-                    },
-                )
+                res = client.get(url, auth=req_auth, headers=headers)
             except Exception:
                 continue
             last_status = res.status_code
-            body = res.content or b""
-            if res.status_code == 200 and body[:5] == b"%PDF-":
-                return body, "application/pdf"
-            if res.status_code == 200 and len(body) > 400 and b"%PDF-" in body[:2048]:
-                start = body.find(b"%PDF-")
-                return body[start:], "application/pdf"
+            pdf = _pdf_from_response(res.status_code, res.content or b"")
+            if pdf:
+                return pdf
+        return None
+
+    with httpx.Client(timeout=20.0, follow_redirects=True) as client:
+        found = try_urls(client, urls)
+        if found:
+            return found, "application/pdf"
+        info = _lookup_cloudinary_resource(public_id)
+        extra = []
+        if info:
+            seen = set(urls)
+            for url in _download_url_for_info(info):
+                if url and url not in seen and ".pdf.pdf" not in url.lower():
+                    extra.append(url)
+                    seen.add(url)
+        found = try_urls(client, extra)
+        if found:
+            return found, "application/pdf"
     raise RuntimeError(f"Could not load library file (HTTP {last_status or 'error'}).")
 
 
