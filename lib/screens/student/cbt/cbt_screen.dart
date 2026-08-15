@@ -11,7 +11,10 @@ import 'cbt_sessions_screen.dart';
 
 /// CBT hub: JAMB = available profile subjects combined into one exam.
 class CbtScreen extends StatefulWidget {
-  const CbtScreen({super.key});
+  const CbtScreen({super.key, this.asPastQuestions = false});
+
+  /// Home → Past Questions opens the same CBT engine with past-paper wording.
+  final bool asPastQuestions;
 
   @override
   State<CbtScreen> createState() => _CbtScreenState();
@@ -63,7 +66,9 @@ class _CbtScreenState extends State<CbtScreen> {
             : profile.subjects;
       } catch (_) {}
 
-      final data = await _api.cbtExamsForMe();
+      final data = await _api.cbtExamsForMe(
+        paperKind: widget.asPastQuestions ? 'past_questions' : 'cbt_practice',
+      );
       Map<String, dynamic> access = const {};
       try {
         access = await _api.cbtPackageAccess();
@@ -234,7 +239,9 @@ class _CbtScreenState extends State<CbtScreen> {
           Text(
             _subjectChangeRequiresPayment
                 ? 'Subjects changed — activate them'
-                : 'Browse exams below — pay to download or start',
+                : widget.asPastQuestions
+                    ? 'Browse past papers — pay to start as timed CBT'
+                    : 'Browse exams below — pay to download or start',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: context.textColor,
@@ -246,7 +253,9 @@ class _CbtScreenState extends State<CbtScreen> {
           Text(
             _subjectChangeRequiresPayment
                 ? 'Your paid package covered the subjects previously registered. Pay for a package to activate the new subject selection.'
-                : 'You can see all CBT exams. When you tap Download or Start, Paystack opens if you have not paid yet.',
+                : widget.asPastQuestions
+                    ? 'These are past-question papers admin uploaded separately. You sit them as timed CBT — they are not the CBT Practice set.'
+                    : 'You can see all CBT exams. When you tap Download or Start, Paystack opens if you have not paid yet.',
             textAlign: TextAlign.center,
             style: TextStyle(color: context.greyColor, height: 1.45),
           ),
@@ -934,7 +943,9 @@ class _CbtScreenState extends State<CbtScreen> {
             Icon(Icons.inbox_outlined, color: context.greyColor, size: 48),
             const SizedBox(height: 12),
             Text(
-              'No CBT exams available',
+              widget.asPastQuestions
+                  ? 'No past-question papers yet'
+                  : 'No CBT exams available',
               style: TextStyle(
                 color: context.textColor,
                 fontSize: 15,
@@ -944,7 +955,9 @@ class _CbtScreenState extends State<CbtScreen> {
             const SizedBox(height: 6),
             Text(
               message ??
-                  'Admin will upload $_boardLabel packs for your subjects.',
+                  (widget.asPastQuestions
+                      ? 'Admin posts Past Questions under CBT → Past Questions. They will appear here to sit as timed CBT.'
+                      : 'Admin will upload $_boardLabel packs for your subjects.'),
               textAlign: TextAlign.center,
               style: TextStyle(color: context.greyColor, fontSize: 13),
             ),
@@ -976,16 +989,18 @@ class _CbtScreenState extends State<CbtScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'CBT Practice',
-                  style: TextStyle(
+                Text(
+                  widget.asPastQuestions ? 'Past Questions' : 'CBT Practice',
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 22,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
                 Text(
-                  '$_boardLabel · download then use offline',
+                  widget.asPastQuestions
+                      ? 'Timed CBT papers uploaded as Past Questions — not CBT Practice'
+                      : '$_boardLabel · download then use offline',
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.88),
                     fontSize: 13,

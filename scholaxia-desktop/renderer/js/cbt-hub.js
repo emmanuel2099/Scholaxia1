@@ -258,7 +258,7 @@ async function loadCbtHubPage() {
   cbtRefreshDownloadedSet();
   if (typeof syncStudentProfile === "function") await syncStudentProfile();
   try {
-    var data = await api("/api/v1/cbt/exams/for-me");
+    var data = await api("/api/v1/cbt/exams/for-me?paper_kind=cbt_practice");
     if (!data) return;
     var practice = (data.practice_exams || []).filter(function (e) {
       return !e.is_school_exam && !e.is_portal && !e.is_aloc;

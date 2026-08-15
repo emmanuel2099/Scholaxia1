@@ -6,6 +6,13 @@ from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
 
 
+def normalize_paper_kind(raw: str | None) -> str:
+    value = (raw or "cbt_practice").strip().lower().replace("-", "_").replace(" ", "_")
+    if value in ("past", "past_question", "past_questions", "pq"):
+        return "past_questions"
+    return "cbt_practice"
+
+
 class CBTExam(Base):
     __tablename__ = "cbt_exams"
 
@@ -13,6 +20,8 @@ class CBTExam(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     subject: Mapped[str] = mapped_column(String(100), nullable=False)
     exam_type: Mapped[str] = mapped_column(String(30), nullable=False)  # JAMB, WAEC, NECO, SCHOOL, COMMON_ENTRANCE
+    # cbt_practice = student CBT tab; past_questions = student Past Questions tab (same timed engine)
+    paper_kind: Mapped[str] = mapped_column(String(32), default="cbt_practice", nullable=False)
     year: Mapped[int | None] = mapped_column(Integer, nullable=True)  # e.g. 2019 — used for student year filter
     duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
     total_questions: Mapped[int] = mapped_column(Integer, nullable=False)

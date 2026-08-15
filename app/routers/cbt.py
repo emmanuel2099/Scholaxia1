@@ -14,7 +14,7 @@ from app.core.deps import (
     get_current_user,
     require_teacher,
 )
-from app.models.cbt import CBTExam, CBTQuestion, CBTSession, ExamProctorLog
+from app.models.cbt import CBTExam, CBTQuestion, CBTSession, ExamProctorLog, normalize_paper_kind
 from app.models.user import StudentProfile, User
 from app.core.subjects import subject_matches
 from app.services.cbt_access import has_board_access, normalize_board
@@ -264,6 +264,7 @@ class ExamSummary(BaseModel):
     total_questions: int
     is_published: bool
     is_school_exam: bool = False
+    paper_kind: str = "cbt_practice"
     camera_required: bool = False
     scheduled_start: Optional[datetime] = None
     scheduled_end: Optional[datetime] = None
@@ -276,6 +277,7 @@ def _exam_summary(e: CBTExam) -> ExamSummary:
         duration_minutes=e.duration_minutes,
         total_questions=e.total_questions, is_published=e.is_published,
         is_school_exam=e.is_school_exam,
+        paper_kind=normalize_paper_kind(getattr(e, "paper_kind", None)),
         camera_required=e.camera_required,
         scheduled_start=e.scheduled_start,
         scheduled_end=e.scheduled_end,
@@ -357,6 +359,7 @@ async def list_exams(
 
 @router.get("/exams/for-me")
 async def exams_for_student(
+    paper_kind: Optional[str] = Query("cbt_practice"),
     current_user: dict = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ):
@@ -394,10 +397,14 @@ async def exams_for_student(
     is_common_entrance = ssce_board == "COMMON_ENTRANCE"
     now = datetime.utcnow()
 
+    wanted_kind = normalize_paper_kind(paper_kind)
     result = await db.execute(
         select(CBTExam).where(CBTExam.is_published == True)  # noqa: E712
     )
-    all_exams = result.scalars().all()
+    all_exams = [
+        exam for exam in result.scalars().all()
+        if normalize_paper_kind(getattr(exam, "paper_kind", None)) == wanted_kind
+    ]
 
     def _is_jamb(et: str) -> bool:
         t = (et or "").upper().replace(" ", "_")

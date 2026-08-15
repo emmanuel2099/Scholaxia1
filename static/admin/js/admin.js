@@ -849,17 +849,27 @@ function initCbtBuilder() {
 function switchCbtMode(mode, skipReset) {
   cbtMode = mode;
   var isPractice = mode === "practice";
+  var isPast = mode === "past";
+  var isSchool = mode === "school";
   document.getElementById("cbt-tab-practice").classList.toggle("active", isPractice);
-  document.getElementById("cbt-tab-school").classList.toggle("active", !isPractice);
-  document.getElementById("cbt-tab-school").classList.toggle("school-tab", !isPractice);
-  document.getElementById("school-fields").classList.toggle("hidden", isPractice);
-  document.getElementById("cbt-form-title").textContent = isPractice ? "New Practice CBT" : "New School Exam";
+  var pastTab = document.getElementById("cbt-tab-past");
+  if (pastTab) pastTab.classList.toggle("active", isPast);
+  document.getElementById("cbt-tab-school").classList.toggle("active", isSchool);
+  document.getElementById("cbt-tab-school").classList.toggle("school-tab", isSchool);
+  document.getElementById("school-fields").classList.toggle("hidden", !isSchool);
+  document.getElementById("cbt-form-title").textContent = isSchool
+    ? "New School Exam"
+    : (isPast ? "New Past Questions paper" : "New Practice CBT");
   var hint = document.getElementById("cbt-mode-hint");
-  hint.className = "cbt-hint " + (isPractice ? "practice-hint" : "school-hint");
-  hint.textContent = isPractice
-    ? "Practice exams for JAMB / WAEC / NECO, or Primary 6 Common Entrance for the Kids app."
-    : "Scheduled school exam — set open/close times. Camera proctoring is recommended.";
-  document.getElementById("btn-create-cbt").textContent = isPractice ? "Create practice exam" : "Create school exam";
+  hint.className = "cbt-hint " + (isSchool ? "school-hint" : "practice-hint");
+  hint.textContent = isSchool
+    ? "Scheduled school exam — set open/close times. Camera proctoring is recommended."
+    : (isPast
+      ? "This paper shows under student Past Questions. Students sit it as timed CBT — it will not appear in CBT Practice."
+      : "Practice exams for JAMB / WAEC / NECO, or Primary 6 Common Entrance for the Kids app.");
+  document.getElementById("btn-create-cbt").textContent = isSchool
+    ? "Create school exam"
+    : (isPast ? "Create past questions paper" : "Create practice exam");
   if (!skipReset) {
     cbtQuestions = [emptyQuestion()];
     renderCbtQuestions();
@@ -971,7 +981,9 @@ async function loadCbt() {
       rows.map(function (e) {
         var typeBadge = e.is_school_exam
           ? '<span class="badge school">School</span>'
-          : '<span class="badge ok">' + escHtml(e.exam_type) + '</span>';
+          : (e.paper_kind === "past_questions"
+            ? '<span class="badge ok">Past Questions</span>'
+            : '<span class="badge ok">' + escHtml(e.exam_type) + '</span>');
         var pub = e.is_published ? '<span class="badge ok">Published</span>' : '<span class="badge muted">Draft</span>';
         return '<tr><td>' + escHtml(e.title) + '</td><td>' + escHtml(e.subject) + '</td>' +
           '<td>' + typeBadge + '</td><td>' + e.total_questions + '</td><td>' + pub + '</td>' +
@@ -1052,6 +1064,7 @@ async function createCbt() {
     exam_type: document.getElementById("cbt-type").value,
     duration_minutes: parseInt(document.getElementById("cbt-duration").value, 10) || 30,
     is_school_exam: isSchool,
+    paper_kind: cbtMode === "past" ? "past_questions" : "cbt_practice",
     camera_required: isSchool && document.getElementById("cbt-camera").checked,
     block_minimize: isSchool && document.getElementById("cbt-block-min").checked,
     is_published: document.getElementById("cbt-publish").checked,
@@ -1143,6 +1156,7 @@ async function importCbtFile() {
     duration_minutes: parseInt(document.getElementById("cbt-import-duration").value, 10) || 60,
     is_published: document.getElementById("cbt-import-publish").checked,
     skip_duplicates: document.getElementById("cbt-import-skip-dup").checked,
+    paper_kind: cbtMode === "past" ? "past_questions" : "cbt_practice",
   };
 
   if (!fields.subject) {
@@ -1328,6 +1342,7 @@ async function confirmCbtPreviewUi() {
     duration_minutes: parseInt(document.getElementById("cbt-import-duration").value, 10) || 60,
     is_published: document.getElementById("cbt-import-publish").checked,
     skip_duplicates: document.getElementById("cbt-import-skip-dup").checked,
+    paper_kind: cbtMode === "past" ? "past_questions" : "cbt_practice",
     questions: questions,
   };
 

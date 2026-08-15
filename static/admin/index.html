@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/admin.css?v=20260815a" />
+  <link rel="stylesheet" href="css/admin.css?v=20260815d" />
   <link rel="stylesheet" href="css/responsive.css?v=20260805e" />
 </head>
 <body>
@@ -223,19 +223,21 @@
 
       <div class="cbt-type-tabs">
         <button type="button" id="cbt-tab-practice" class="cbt-type-tab active" onclick="switchCbtMode('practice')">
-          &#128218; Practice CBT
+          Practice CBT
+        </button>
+        <button type="button" id="cbt-tab-past" class="cbt-type-tab" onclick="switchCbtMode('past')">
+          Past Questions
         </button>
         <button type="button" id="cbt-tab-school" class="cbt-type-tab" onclick="switchCbtMode('school')">
-          &#127979; School Exam
+          School Exam
         </button>
       </div>
 
       <div class="panel" style="margin-bottom:16px">
         <h3>Upload CBT file</h3>
         <p class="cbt-hint small">
-          Upload a <strong>.json</strong>, <strong>.csv</strong>, <strong>.pdf</strong>, or <strong>.docx</strong> past-question paper.
-          You <strong>must pick the subject and year</strong> — students will practise it as a timed CBT on the website and desktop.
-          PDF/Word files with selectable text are extracted into questions (scanned photo PDFs are not supported).
+          Upload a <strong>.json</strong>, <strong>.csv</strong>, <strong>.pdf</strong>, or <strong>.docx</strong> paper.
+          Pick subject and year. Use the tabs above so the paper lands in <strong>CBT Practice</strong> or <strong>Past Questions</strong> — students sit both as timed CBT, not as library PDFs.
         </p>
         <div class="form-grid">
           <label><span>JSON / CSV / PDF / DOCX file</span>
@@ -383,7 +385,7 @@
       <div class="panel">
         <h3>Upload material</h3>
         <div class="form-grid">
-          <label><span>Title *</span><input id="lib-title" placeholder="e.g. WAEC Maths past questions" /></label>
+          <label><span>Title *</span><input id="lib-title" placeholder="e.g. SS2 Mathematics notes" /></label>
           <label><span>Author</span><input id="lib-author" placeholder="Optional" /></label>
           <label><span>Subject *</span>
             <input id="lib-subject" type="text" placeholder="Type subject, e.g. Mathematics" autocomplete="off" />
@@ -403,7 +405,6 @@
               <option>Books</option>
               <option>Study Materials</option>
               <option>Scheme of Work</option>
-              <option>Past Questions</option>
               <option>Notes</option>
             </select>
           </label>
@@ -628,8 +629,8 @@
   </main>
 </div>
 
-<script src="js/admin-api.js?v=20260814n"></script>
-<script src="js/admin.js?v=20260815a"></script>
+<script src="js/admin-api.js?v=20260815d"></script>
+<script src="js/admin.js?v=20260815d"></script>
 <script src="js/responsive.js?v=20260805e"></script>
 </body>
 </html>

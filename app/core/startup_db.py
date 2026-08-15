@@ -32,6 +32,9 @@ async def _run_schema_migrations(conn) -> None:
         "ALTER TABLE cbt_exams ALTER COLUMN created_by DROP NOT NULL"
     ))
     await conn.execute(text(
+        "ALTER TABLE cbt_exams ADD COLUMN IF NOT EXISTS paper_kind VARCHAR(32) NOT NULL DEFAULT 'cbt_practice'"
+    ))
+    await conn.execute(text(
         "ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS is_anonymous BOOLEAN NOT NULL DEFAULT FALSE"
     ))
     await conn.execute(text(

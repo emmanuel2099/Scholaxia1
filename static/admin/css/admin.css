@@ -296,7 +296,7 @@ body {
 .admin-nav {
   flex: 1;
   padding: 14px 10px;
-  overflow-y: auto;
+  overflow-y: visible;
   scrollbar-width: thin;
   scrollbar-color: var(--ad-elevated) transparent;
 }
@@ -375,7 +375,7 @@ body {
 
 .admin-main {
   flex: 1;
-  overflow-y: auto;
+  overflow: visible;
   padding: 28px 32px 48px;
   min-width: 0;
 }
@@ -1139,6 +1139,34 @@ body {
 .auth-mark {
   position: relative;
   overflow: hidden;
+}
+
+@media (min-width: 1101px) {
+  html, body {
+    height: auto;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  .admin-shell {
+    align-items: stretch;
+    min-height: 100vh;
+    height: auto;
+    overflow: visible;
+  }
+  .admin-sidebar {
+    position: relative;
+    height: auto;
+    min-height: 100%;
+    overflow: visible;
+  }
+  .admin-nav {
+    overflow: visible;
+    flex: 1 0 auto;
+  }
+  .admin-main {
+    overflow: visible;
+    min-height: 100vh;
+  }
 }
 
 .admin-main {

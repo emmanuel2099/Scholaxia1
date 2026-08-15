@@ -13,6 +13,7 @@ import '../notifications/notifications_screen.dart';
 import '../cbt/internal_exams_screen.dart';
 import '../games/games_screen.dart';
 import '../library/library_screen.dart';
+import '../cbt/cbt_screen.dart';
 import '../marketplace/marketplace_screen.dart';
 import '../assignments/assignment_screen.dart';
 
@@ -757,9 +758,9 @@ class _HomeScreenState extends State<HomeScreen> {
       (
         Icons.quiz_rounded,
         'Past Questions',
-        'Paid past papers — unlock with Paystack.',
+        'Take JAMB, WAEC & NECO as timed CBT.',
         const [Color(0xFF7C3AED), Color(0xFFA78BFA)],
-        const LibraryScreen(initialCategory: 'Past Questions'),
+        const CbtScreen(asPastQuestions: true),
       ),
       (
         Icons.sports_esports_rounded,

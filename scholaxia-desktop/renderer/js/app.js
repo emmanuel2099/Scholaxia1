@@ -966,6 +966,7 @@ function showPage(page, opts) {
     alert("You are in an exam. Submit the exam to leave — other tabs (Sia, Community, etc.) are locked until then.");
     return;
   }
+  if (page === "access-code") page = "live";
   if (!opts.replace && currentPage && currentPage !== page) {
     appPageHistory.push(currentPage);
     if (appPageHistory.length > 40) appPageHistory.shift();

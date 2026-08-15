@@ -13,7 +13,7 @@ from app.core.deps import require_admin
 from app.core.security import hash_password, create_access_token, create_refresh_token, issue_auth_tokens
 from app.models.user import User, UserRole, TeacherProfile, StudentProfile, KindProfile, VendorProfile
 from app.models.content import Book, LibraryTarget
-from app.models.cbt import CBTExam, CBTQuestion, CBTSession, ExamProctorLog
+from app.models.cbt import CBTExam, CBTQuestion, CBTSession, ExamProctorLog, normalize_paper_kind
 from app.models.community import CommunityPost, CommunityChannel
 from app.models.student_group import StudentGroup, StudentGroupMember
 from app.services.group_community import ensure_group_feed_post
@@ -615,6 +615,7 @@ class CBTExamCreate(BaseModel):
     questions: list[CBTQuestionCreate]
     is_published: bool = True
     is_school_exam: bool = False
+    paper_kind: str = "cbt_practice"
     ai_locked: bool = False
     camera_required: bool = False
     block_minimize: bool = False
@@ -632,6 +633,7 @@ class CBTExamResponse(BaseModel):
     total_questions: int
     is_published: bool
     is_school_exam: bool = False
+    paper_kind: str = "cbt_practice"
     scheduled_start: Optional[datetime] = None
     scheduled_end: Optional[datetime] = None
 
@@ -656,6 +658,7 @@ async def _persist_cbt_exam(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    kind = "cbt_practice" if payload.is_school_exam else normalize_paper_kind(payload.paper_kind)
     exam = CBTExam(
         title=payload.title,
         subject=subject,
@@ -666,6 +669,7 @@ async def _persist_cbt_exam(
         created_by=created_by,
         is_published=payload.is_published,
         is_school_exam=payload.is_school_exam,
+        paper_kind=kind,
         ai_locked=payload.ai_locked,
         camera_required=payload.camera_required,
         block_minimize=payload.block_minimize,
@@ -711,6 +715,7 @@ def _exam_to_response(exam: CBTExam) -> CBTExamResponse:
         total_questions=exam.total_questions,
         is_published=exam.is_published,
         is_school_exam=exam.is_school_exam,
+        paper_kind=normalize_paper_kind(getattr(exam, "paper_kind", None)),
         scheduled_start=exam.scheduled_start,
         scheduled_end=exam.scheduled_end,
     )
@@ -866,6 +871,7 @@ async def import_cbt_file(
     duration_minutes: Optional[int] = Form(30),
     is_published: str = Form("true"),
     skip_duplicates: str = Form("true"),
+    paper_kind: Optional[str] = Form("cbt_practice"),
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -923,6 +929,7 @@ async def import_cbt_file(
             duration_minutes=raw["duration_minutes"],
             is_published=raw.get("is_published", True),
             is_school_exam=raw.get("is_school_exam", False),
+            paper_kind=normalize_paper_kind(paper_kind),
             questions=[CBTQuestionCreate(**q) for q in raw["questions"]],
         )
         exam = await _persist_cbt_exam(db, payload, current_user["sub"])
@@ -1042,6 +1049,7 @@ class CBTImportConfirmRequest(BaseModel):
     duration_minutes: int = 60
     is_published: bool = True
     skip_duplicates: bool = True
+    paper_kind: str = "cbt_practice"
     questions: list[CBTImportConfirmQuestion]
 
 
@@ -1091,6 +1099,7 @@ async def confirm_cbt_import(
         exam_type=payload.exam_type,
         duration_minutes=payload.duration_minutes,
         is_published=publish,
+        paper_kind=normalize_paper_kind(payload.paper_kind),
         questions=[
             CBTQuestionCreate(
                 question_text=q.question_text,

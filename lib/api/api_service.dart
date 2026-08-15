@@ -1691,9 +1691,11 @@ class ApiService {
     return _parseList(res);
   }
 
-  Future<Map<String, dynamic>> cbtExamsForMe() async {
+  Future<Map<String, dynamic>> cbtExamsForMe({
+    String paperKind = 'cbt_practice',
+  }) async {
     final res = await _cachedGet(
-      _uri(ApiEndpoints.cbtExamsForMe),
+      _uri(ApiEndpoints.cbtExamsForMe, {'paper_kind': paperKind}),
       headers: await _authHeaders(),
     );
     return _parseMap(res);

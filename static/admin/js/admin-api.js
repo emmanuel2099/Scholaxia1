@@ -142,6 +142,7 @@ async function uploadCbtExamFile(file, fields) {
   if (fields.duration_minutes != null) fd.append("duration_minutes", String(fields.duration_minutes));
   fd.append("is_published", fields.is_published ? "true" : "false");
   fd.append("skip_duplicates", fields.skip_duplicates ? "true" : "false");
+  fd.append("paper_kind", fields.paper_kind || "cbt_practice");
   var res = await fetch(API_BASE + "/api/v1/admin/cbt/import", {
     method: "POST",
     headers: { Authorization: "Bearer " + getAdminToken() },

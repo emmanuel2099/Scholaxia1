@@ -11,7 +11,6 @@ var LIBRARY_TABS = [
   { id: "books", label: "Books" },
   { id: "study", label: "Study Materials" },
   { id: "scheme", label: "Scheme of Work" },
-  { id: "past", label: "Past Questions" },
   { id: "notes", label: "Notes" },
 ];
 
@@ -27,7 +26,6 @@ function libraryPriceTag(item) {
 function libraryCategory(book) {
   var hay = ((book.category || "") + " " + (book.subject || "") + " " + (book.title || "")).toLowerCase();
   if (/scheme|syllabus/.test(hay)) return "scheme";
-  if (/past\s*question|pq\b/.test(hay)) return "past";
   if (/note|handout|summary/.test(hay)) return "notes";
   if (/study\s*material|material/.test(hay)) return "study";
   return "books";

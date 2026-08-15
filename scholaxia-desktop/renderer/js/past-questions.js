@@ -1,4 +1,4 @@
-/** Past Questions — paid library PDFs uploaded by admin (Paystack). */
+/** Past Questions — timed CBT papers uploaded separately from CBT Practice. */
 
 function pqEsc(s) {
   var d = document.createElement("div");
@@ -6,103 +6,63 @@ function pqEsc(s) {
   return d.innerHTML;
 }
 
-function pqIsPastQuestion(book) {
-  var cat = String((book && book.category) || "").toLowerCase();
-  return cat.indexOf("past") >= 0;
-}
-
-async function openPastQuestionBook(bookId, btn) {
-  if (!bookId) return;
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = "Please wait…";
-  }
-  try {
-    var books = await api("/api/v1/library/student") || [];
-    var book = (books || []).find(function (b) { return String(b.id) === String(bookId); });
-    if (!book) throw new Error("Past question not found.");
-
-    if (!book.is_free && !book.has_access) {
-      if (typeof payForBook !== "function") {
-        throw new Error("Payment is not available. Refresh and try again.");
-      }
-      await payForBook(bookId);
-    }
-
-    if (typeof openLibraryBook === "function") {
-      await openLibraryBook(bookId);
-    } else {
-      var data = await api("/api/v1/library/" + encodeURIComponent(bookId) + "/read");
-      var url = (data && (data.file_url || data.url)) || "";
-      if (url) window.open(url, "_blank");
-      else alert("Opened. If the PDF did not appear, refresh Library.");
-    }
-    loadPastQuestionsPage();
-  } catch (e) {
-    alert(e.message || "Could not open past question.");
-  } finally {
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = btn.dataset.label || "Open / Pay";
-    }
-  }
-}
-
 async function loadPastQuestionsPage() {
   var root = document.getElementById("past-questions-root");
   if (!root) return;
-  root.innerHTML = '<div class="loading">Loading past questions…</div>';
+  root.innerHTML = '<div class="loading">Loading past question papers…</div>';
 
   if (!getToken || !getToken()) {
     root.innerHTML =
-      '<div class="as-empty"><h3>Sign in required</h3><p>Log in to buy and open past questions.</p></div>';
+      '<div class="as-empty"><h3>Sign in required</h3><p>Log in to sit past questions as timed CBT.</p></div>';
     return;
   }
 
   try {
-    var books = await api("/api/v1/library/student") || [];
-    var list = (books || []).filter(pqIsPastQuestion);
+    var data = await api("/api/v1/cbt/exams/for-me?paper_kind=past_questions") || {};
+    var seen = {};
+    var list = []
+      .concat(data.practice_exams || [])
+      .concat(data.jamb_exams || [])
+      .concat(data.ssce_exams || [])
+      .filter(function (exam) {
+        var id = exam && exam.id;
+        if (!id || seen[id]) return false;
+        seen[id] = true;
+        return true;
+      });
     if (!list.length) {
       root.innerHTML =
         '<div class="as-empty">' +
-        '<div class="as-empty-icon">&#128218;</div>' +
-        "<h3>No past questions yet</h3>" +
-        "<p>When admin uploads Past Questions (paid), they show here. You can also practise in CBT.</p>" +
-        '<button type="button" class="btn-secondary" onclick="showPage(\'cbt\')">Open CBT Practice</button>' +
+        '<div class="as-empty-icon">&#128196;</div>' +
+        "<h3>No past-question papers yet</h3>" +
+        "<p>Admin uploads these under CBT → Past Questions. You sit them here as timed CBT. They are not mixed with CBT Practice.</p>" +
         "</div>";
       return;
     }
 
     root.innerHTML =
       '<div class="pq-intro">' +
-      "<p>Past questions uploaded by Scholaxia admin are <strong>paid</strong>. Tap Pay to unlock with Paystack, then open the PDF.</p>" +
+      "<p>These are past-question papers. Tap Start to sit the paper as a timed CBT — not as a PDF.</p>" +
       "</div>" +
       '<div class="pq-grid">' +
       list
-        .map(function (b) {
-          var paid = !!(b.is_free || b.has_access);
-          var price = Number(b.price || 0);
-          var label = paid ? "Open PDF" : "Pay ₦" + price.toLocaleString("en-NG");
+        .map(function (e) {
+          var id = String(e.id);
           return (
             '<article class="pq-card">' +
-            '<div class="pq-card-icon">&#128196;</div>' +
+            '<div class="pq-card-icon">&#128221;</div>' +
             '<div class="pq-card-body">' +
-            "<h3>" + pqEsc(b.title || "Past questions") + "</h3>" +
+            "<h3>" + pqEsc(e.title || "Past questions") + "</h3>" +
             "<p>" +
-            pqEsc(b.subject || "") +
-            (b.exam_type ? " · " + pqEsc(b.exam_type) : "") +
+            pqEsc(e.subject || "") +
+            (e.exam_type ? " · " + pqEsc(e.exam_type) : "") +
+            (e.year ? " · " + pqEsc(e.year) : "") +
+            (e.total_questions ? " · " + pqEsc(e.total_questions) + " Qs" : "") +
             "</p>" +
-            '<span class="pq-price">' +
-            (paid ? (b.is_free ? "Free" : "Unlocked") : "₦" + price.toLocaleString("en-NG")) +
-            "</span>" +
             "</div>" +
-            '<button type="button" class="btn-action pq-pay-btn" data-label="' +
-            pqEsc(label) +
-            '" onclick="openPastQuestionBook(\'' +
-            pqEsc(b.id) +
-            "', this)\">" +
-            pqEsc(label) +
-            "</button>" +
+            '<button type="button" class="btn-action pq-pay-btn" onclick="startPastQuestionExam(\'' +
+            pqEsc(id) +
+            "')\">Start CBT</button>" +
             "</article>"
           );
         })
@@ -113,5 +73,13 @@ async function loadPastQuestionsPage() {
   }
 }
 
+async function startPastQuestionExam(examId) {
+  if (typeof cbtHubStart === "function") {
+    await cbtHubStart(examId);
+    return;
+  }
+  if (typeof showPage === "function") showPage("cbt");
+}
+
 window.loadPastQuestionsPage = loadPastQuestionsPage;
-window.openPastQuestionBook = openPastQuestionBook;
+window.startPastQuestionExam = startPastQuestionExam;
