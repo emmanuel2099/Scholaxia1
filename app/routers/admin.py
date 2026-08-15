@@ -366,6 +366,11 @@ class AddBookRequest(BaseModel):
     library_target: LibraryTarget = LibraryTarget.student
     is_free: bool = True
     price: float = 0.0
+    is_downloadable: bool = False
+
+
+class PatchBookRequest(BaseModel):
+    is_downloadable: Optional[bool] = None
 
 
 class BookResponse(BaseModel):
@@ -453,7 +458,8 @@ async def add_book(
         is_free=is_free,
         price=0.0 if is_free else max(price, 0),
         uploaded_by=current_user["sub"],
-        is_downloadable=False, allow_copy=False, allow_screenshot=False, allow_print=False,
+        is_downloadable=bool(payload.is_downloadable),
+        allow_copy=False, allow_screenshot=False, allow_print=False,
     )
     db.add(book)
     await db.flush()
@@ -476,7 +482,8 @@ async def add_book(
     return BookResponse(
         id=str(book.id), title=book.title, subject=book.subject,
         library_target=target.value if hasattr(target, "value") else str(target),
-        is_downloadable=False, allow_copy=False, allow_screenshot=False,
+        is_downloadable=bool(book.is_downloadable),
+        allow_copy=False, allow_screenshot=False,
     )
 
 
@@ -500,8 +507,29 @@ async def list_all_books(
              "library_target": b.library_target, "exam_type": b.exam_type,
              "is_free": getattr(b, "is_free", True),
              "price": float(getattr(b, "price", 0) or 0),
+             "is_downloadable": bool(getattr(b, "is_downloadable", False)),
              "created_at": b.created_at}
             for b in books]
+
+
+@router.patch("/library/books/{book_id}")
+async def patch_library_book(
+    book_id: str,
+    payload: PatchBookRequest,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Book).where(Book.id == book_id))
+    book = result.scalar_one_or_none()
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found")
+    if payload.is_downloadable is not None:
+        book.is_downloadable = bool(payload.is_downloadable)
+    await db.flush()
+    return {
+        "id": str(book.id),
+        "is_downloadable": bool(book.is_downloadable),
+    }
 
 
 @router.delete("/library/books/{book_id}", status_code=204)

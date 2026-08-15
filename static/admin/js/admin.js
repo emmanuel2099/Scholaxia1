@@ -2169,14 +2169,18 @@ async function loadLibraryAdmin() {
       return;
     }
     el.innerHTML =
-      '<table class="data-table"><thead><tr><th>Title</th><th>Type</th><th>Subject</th><th>Board</th><th>Access</th><th>Target</th><th></th></tr></thead><tbody>' +
+      '<table class="data-table"><thead><tr><th>Title</th><th>Type</th><th>Subject</th><th>Board</th><th>Access</th><th>Download</th><th></th></tr></thead><tbody>' +
       rows.map(function (b) {
         var access = b.is_free ? "Free" : "₦" + Number(b.price || 0).toLocaleString();
+        var dl = !!b.is_downloadable;
         return "<tr><td>" + escHtml(b.title) + "</td><td>" + escHtml(b.category || "Books") +
           "</td><td>" + escHtml(b.subject || "—") +
           "</td><td>" + escHtml(b.exam_type || "—") + "</td><td>" + escHtml(access) +
-          "</td><td>" + escHtml(b.library_target || "student") +
-          '</td><td class="actions"><button class="btn-sm" onclick="replaceLibraryPdf(\'' +
+          '</td><td><span class="badge ' + (dl ? "ok" : "muted") + '">' + (dl ? "Downloadable" : "Read only") +
+          '</span></td><td class="actions"><button class="btn-sm" onclick="toggleLibraryDownloadable(\'' +
+          b.id + "', " + (dl ? "true" : "false") + ')">' +
+          (dl ? "Make read-only" : "Allow download") +
+          '</button> <button class="btn-sm" onclick="replaceLibraryPdf(\'' +
           b.id +
           "')\">Replace PDF</button> <button class=\"btn-sm danger\" onclick=\"deleteLibraryBook('" +
           b.id + "')\">Remove</button></td></tr>";
@@ -2240,6 +2244,7 @@ async function uploadLibraryBook() {
   var topic = document.getElementById("lib-topic").value.trim();
   var isFree = document.getElementById("lib-access").value === "free";
   var price = Number(document.getElementById("lib-price").value || 0);
+  var isDownloadable = (document.getElementById("lib-downloadable") || {}).value === "yes";
   var fileInput = document.getElementById("lib-file");
   if (!title || !subject) {
     err.textContent = "Title and subject are required.";
@@ -2288,6 +2293,7 @@ async function uploadLibraryBook() {
         library_target: "student",
         is_free: isFree,
         price: isFree ? 0 : price,
+        is_downloadable: isDownloadable,
       }),
     });
     document.getElementById("lib-title").value = "";
@@ -2297,6 +2303,8 @@ async function uploadLibraryBook() {
     document.getElementById("lib-week").value = "";
     document.getElementById("lib-topic").value = "";
     fileInput.value = "";
+    var dlSel = document.getElementById("lib-downloadable");
+    if (dlSel) dlSel.value = "no";
     ok.textContent = "Material uploaded to the student library.";
     loadLibraryAdmin();
   } catch (e) {
@@ -2328,6 +2336,18 @@ async function replaceLibraryPdf(id) {
     }
   };
   input.click();
+}
+
+async function toggleLibraryDownloadable(id, currentlyDownloadable) {
+  try {
+    await adminApi("/api/v1/admin/library/books/" + encodeURIComponent(id), {
+      method: "PATCH",
+      body: JSON.stringify({ is_downloadable: !currentlyDownloadable }),
+    });
+    loadLibraryAdmin();
+  } catch (e) {
+    alert(e.message || "Could not update download setting.");
+  }
 }
 
 async function deleteLibraryBook(id) {

@@ -36,7 +36,7 @@ class Book(Base):
     )
 
     # DRM / protection rules — same rules apply to both students and teachers
-    is_downloadable: Mapped[bool] = mapped_column(Boolean, default=False)   # always False
+    is_downloadable: Mapped[bool] = mapped_column(Boolean, default=False)  # admin can allow device download
     allow_copy: Mapped[bool] = mapped_column(Boolean, default=False)        # no text selection/copy
     allow_screenshot: Mapped[bool] = mapped_column(Boolean, default=False)  # frontend enforces this
     allow_print: Mapped[bool] = mapped_column(Boolean, default=False)

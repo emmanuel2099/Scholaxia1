@@ -4,11 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; script-src-attr 'unsafe-inline'; connect-src 'self' https://scholaxia1.onrender.com http://127.0.0.1:* http://localhost:*; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https:" />
-  <title>Scholaxia Admin</title>
+  <title>Scholaxia Academy — Admin</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/admin.css?v=20260805e" />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/admin.css?v=20260815a" />
   <link rel="stylesheet" href="css/responsive.css?v=20260805e" />
 </head>
 <body>
@@ -19,10 +19,10 @@
     <div class="auth-brand">
       <div class="auth-mark" aria-hidden="true">S</div>
       <div>
-        <h1>Scholaxia Admin</h1>
+        <h1>Scholaxia Academy</h1>
       </div>
     </div>
-    <p class="sub">Web admin for Scholaxia — students, teachers, vendors, CBT, marketplace &amp; more. Works on phone and desktop.</p>
+    <p class="sub">School control centre — students, teachers, library, CBT, marketplace and live classes. Built for a high-school campus team.</p>
     <div class="auth-tabs">
       <button type="button" id="tab-login" class="auth-tab active">Log in</button>
       <button type="button" id="tab-register" class="auth-tab">Register</button>
@@ -51,7 +51,7 @@
         <div class="sidebar-mark" aria-hidden="true">S</div>
         <div>
           <strong>Scholaxia</strong>
-          <span>Admin Console</span>
+          <span>Academy Control</span>
         </div>
       </div>
     </div>
@@ -88,7 +88,7 @@
   <main class="admin-main">
     <div class="admin-mobile-bar">
       <button type="button" class="shell-menu-btn" onclick="toggleAdminSidebar()" aria-label="Open menu">&#9776;</button>
-      <span>Scholaxia Admin</span>
+      <span>Scholaxia Academy</span>
     </div>
     <section id="page-dashboard" class="admin-page active">
       <div class="page-head"><h2>Dashboard</h2><button class="btn-sm" onclick="loadDashboard()">Refresh</button></div>
@@ -379,7 +379,7 @@
         <h2>Library</h2>
         <button class="btn-sm" onclick="loadLibraryAdmin()">Refresh</button>
       </div>
-      <p class="page-desc">Upload PDF materials / notes for students. Type the subject and pick exam board so the right learners see them.</p>
+      <p class="page-desc">Upload PDF materials for students. Choose whether they may download the file to their device.</p>
       <div class="panel">
         <h3>Upload material</h3>
         <div class="form-grid">
@@ -434,6 +434,12 @@
             </select>
           </label>
           <label id="lib-price-wrap"><span>Price (₦) *</span><input id="lib-price" type="number" min="100" step="50" placeholder="e.g. 1500" /></label>
+          <label><span>Student download *</span>
+            <select id="lib-downloadable">
+              <option value="no" selected>Read only — not downloadable</option>
+              <option value="yes">Downloadable on site and app</option>
+            </select>
+          </label>
           <label>
             <span>PDF file *</span>
             <input id="lib-file" type="file" accept=".pdf,application/pdf,application/x-pdf" onchange="onLibraryPdfPicked(this)" />
@@ -618,7 +624,7 @@
 </div>
 
 <script src="js/admin-api.js?v=20260814d"></script>
-<script src="js/admin.js?v=20260814d"></script>
+<script src="js/admin.js?v=20260815a"></script>
 <script src="js/responsive.js?v=20260805e"></script>
 </body>
 </html>

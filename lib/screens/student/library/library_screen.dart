@@ -21,7 +21,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
     'Books',
     'Study Materials',
     'Scheme of Work',
-    'Past Questions',
     'Notes',
   ];
 
@@ -30,6 +29,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
   bool _loading = true;
   List<Map<String, dynamic>> _books = [];
   String? _openingId;
+  String? _downloadingId;
   late String _category;
 
   @override
@@ -83,6 +83,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
         .toList();
   }
 
+  bool _bookDownloadable(Map<String, dynamic> book) {
+    if (book['is_downloadable'] == true) return true;
+    final drm = book['drm'];
+    return drm is Map && drm['is_downloadable'] == true;
+  }
+
   int _countFor(String category) {
     return _searchMatched
         .where((book) => _bookCategory(book) == category)
@@ -127,17 +133,19 @@ class _LibraryScreenState extends State<LibraryScreen> {
               title: book['title']?.toString() ?? 'Book',
               signedUrl: '',
               initialPage: 1,
+              isDownloadable: _bookDownloadable(book),
             ),
           ),
         );
         return;
       }
 
-      final detail = await _api.libraryReadBook(id);
-      final url = detail['read_url']?.toString() ?? '';
-      if (url.isEmpty) {
-        throw ApiException.message('This book is not available to read yet.');
-      }
+      // Metadata only — reader downloads PDF with login token via /file
+      // (Cloudinary signed URLs return 401 on Android).
+      Map<String, dynamic> detail = {};
+      try {
+        detail = await _api.libraryReadBook(id);
+      } catch (_) {}
       if (!mounted) return;
       await Navigator.push(
         context,
@@ -147,8 +155,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
             title: detail['title']?.toString() ??
                 book['title']?.toString() ??
                 'Book',
-            signedUrl: url,
             initialPage: (detail['current_page'] as num?)?.toInt() ?? 1,
+            isDownloadable: _bookDownloadable(detail.isEmpty ? book : detail) ||
+                _bookDownloadable(book),
           ),
         ),
       );
@@ -169,6 +178,40 @@ class _LibraryScreenState extends State<LibraryScreen> {
       }
     } finally {
       if (mounted) setState(() => _openingId = null);
+    }
+  }
+
+  Future<void> _saveDeviceCopy(Map<String, dynamic> book) async {
+    final id = book['id']?.toString() ?? '';
+    if (id.isEmpty || _downloadingId != null) return;
+    setState(() => _downloadingId = id);
+    try {
+      final bytes = await _api.libraryDownloadBook(id, asAttachment: true);
+      final path = await BookOfflineStore.instance.saveUserDownload(
+        title: book['title']?.toString() ?? 'Scholaxia',
+        bytes: bytes,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Downloaded to $path')),
+      );
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message), backgroundColor: Colors.red),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not download this file.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _downloadingId = null);
     }
   }
 
@@ -261,8 +304,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
         return Icons.description_rounded;
       case 'Scheme of Work':
         return Icons.calendar_view_week_rounded;
-      case 'Past Questions':
-        return Icons.quiz_rounded;
       case 'Notes':
         return Icons.sticky_note_2_rounded;
       default:
@@ -281,12 +322,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
         return 'No study materials yet. Admin will upload notes and materials here.';
       case 'Scheme of Work':
         return 'No scheme of work yet. Admin will upload weekly schemes here.';
-      case 'Past Questions':
-        return 'No past questions yet. Admin uploads are paid — unlock with Paystack.';
       case 'Notes':
         return 'No notes yet.';
       default:
-        return 'Admin will add books, past questions and materials soon.';
+        return 'Admin will add books and study materials soon.';
     }
   }
 
@@ -495,6 +534,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
     final price = (b['price'] as num?)?.toDouble() ?? 0;
     final category = _bookCategory(b);
     final opening = _openingId == b['id']?.toString();
+    final downloading = _downloadingId == b['id']?.toString();
+    final taggedDownloadable = _bookDownloadable(b);
+    final downloadable = taggedDownloadable && (free || hasAccess);
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -542,13 +584,42 @@ class _LibraryScreenState extends State<LibraryScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          color: context.textColor,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 15,
-                        ),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            title,
+                            style: TextStyle(
+                              color: context.textColor,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 15,
+                            ),
+                          ),
+                          if (taggedDownloadable)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFDCFCE7),
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(
+                                  color: const Color(0xFF86EFAC),
+                                ),
+                              ),
+                              child: const Text(
+                                'Downloadable',
+                                style: TextStyle(
+                                  color: Color(0xFF166534),
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                       if (author.isNotEmpty)
                         Text(
@@ -585,13 +656,39 @@ class _LibraryScreenState extends State<LibraryScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
                 else
-                  Icon(
-                    free || hasAccess
-                        ? Icons.chevron_right_rounded
-                        : Icons.lock_rounded,
-                    color: free || hasAccess
-                        ? context.greyColor
-                        : context.accentColor,
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (downloadable)
+                        downloading
+                            ? const Padding(
+                                padding: EdgeInsets.only(right: 6),
+                                child: SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                              )
+                            : IconButton(
+                                tooltip: 'Download PDF',
+                                visualDensity: VisualDensity.compact,
+                                onPressed: () => _saveDeviceCopy(b),
+                                icon: Icon(
+                                  Icons.download_rounded,
+                                  color: context.accentColor,
+                                ),
+                              ),
+                      Icon(
+                        free || hasAccess
+                            ? Icons.chevron_right_rounded
+                            : Icons.lock_rounded,
+                        color: free || hasAccess
+                            ? context.greyColor
+                            : context.accentColor,
+                      ),
+                    ],
                   ),
               ],
             ),

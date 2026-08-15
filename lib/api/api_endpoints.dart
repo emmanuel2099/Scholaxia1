@@ -190,6 +190,10 @@ class ApiEndpoints {
   // Library
   static const String libraryStudent = '$_v1/library/student';
   static String libraryRead(String bookId) => '$_v1/library/$bookId/read';
+  static String libraryFile(String bookId, {bool download = false}) =>
+      download
+          ? '$_v1/library/$bookId/file?download=1'
+          : '$_v1/library/$bookId/file';
 
   // Marketplace
   static const String marketplaceCategories = '$_v1/marketplace/categories';

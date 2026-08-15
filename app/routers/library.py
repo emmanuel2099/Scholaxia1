@@ -5,14 +5,14 @@ Student Library  — books uploaded by admin for students
 Teacher Library  — books uploaded by admin specifically for teachers
 
 Rules (same for both):
-  - No download (signed URL with inline disposition, expires in 30 min)
+  - Download is off unless admin marks the item downloadable
   - No copy / text selection (DRM flag sent to frontend)
-  - No screenshot (DRM flag sent to frontend — frontend enforces)
+  - No screenshot unless flagged otherwise (frontend enforces)
   - Books can be saved inside the app (SavedBook)
   - Reading progress is tracked (BookReadProgress)
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import or_, select
@@ -52,9 +52,10 @@ def _book_response(book: Book, read_url: str = None, current_page: int = 1,
         "is_free": getattr(book, "is_free", True),
         "price": float(getattr(book, "price", 0) or 0),
         "has_access": has_access,
+        "is_downloadable": bool(getattr(book, "is_downloadable", False)),
         # DRM flags — frontend must respect these
         "drm": {
-            "is_downloadable": False,       # always False — no exceptions
+            "is_downloadable": bool(getattr(book, "is_downloadable", False)),
             "allow_copy": False,            # no text selection or highlight copy
             "allow_screenshot": False,      # frontend blocks screenshot
             "allow_print": False,
@@ -205,11 +206,14 @@ async def open_book(
 @router.get("/{book_id}/file")
 async def stream_book_file(
     book_id: str,
+    download: bool = Query(False),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Stream the PDF through Scholaxia so the student site can show it without a 401 tab."""
     book = await _book_for_read(book_id, current_user, db)
+    if download and not bool(getattr(book, "is_downloadable", False)):
+        raise HTTPException(status_code=403, detail="This material is not downloadable.")
     try:
         content, content_type = fetch_book_bytes(book.file_key)
     except Exception:
@@ -220,11 +224,12 @@ async def stream_book_file(
     filename = "".join(ch if ch.isalnum() or ch in " ._-" else "_" for ch in (book.title or "material"))[:80]
     if not filename.lower().endswith(".pdf") and content_type == "application/pdf":
         filename = filename + ".pdf"
+    disposition = "attachment" if download else "inline"
     return Response(
         content=content,
         media_type=content_type or "application/pdf",
         headers={
-            "Content-Disposition": f'inline; filename="{filename}"',
+            "Content-Disposition": f'{disposition}; filename="{filename}"',
             "Cache-Control": "private, max-age=60",
             "X-Content-Type-Options": "nosniff",
         },

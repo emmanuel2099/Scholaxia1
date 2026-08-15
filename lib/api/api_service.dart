@@ -1144,6 +1144,56 @@ class ApiService {
     return _parseMap(res);
   }
 
+  /// Download library PDF bytes through Scholaxia (Bearer auth).
+  /// Do not open Cloudinary URLs in the PDF viewer — Android gets HTTP 401.
+  Future<Uint8List> libraryDownloadBook(
+    String bookId, {
+    bool asAttachment = false,
+  }) async {
+    final token = await getToken();
+    if (token == null || token.isEmpty) {
+      throw const ApiException.message('Please sign in again to read this PDF.');
+    }
+    late http.Response res;
+    try {
+      res = await http
+          .get(
+            _uri(ApiEndpoints.libraryFile(bookId, download: asAttachment)),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Accept': 'application/pdf,application/octet-stream,*/*',
+            },
+          )
+          .timeout(const Duration(seconds: 120));
+      OfflineStatusService.instance.markOnline();
+    } catch (_) {
+      OfflineStatusService.instance.markOffline();
+      throw const ApiException.message(
+        'Could not download this PDF. Check your internet and try again.',
+      );
+    }
+    if (res.statusCode >= 200 &&
+        res.statusCode < 300 &&
+        res.bodyBytes.isNotEmpty) {
+      final bytes = res.bodyBytes;
+      if (bytes.length >= 5 &&
+          String.fromCharCodes(bytes.take(5)) == '%PDF-') {
+        return bytes;
+      }
+      // Some gateways prepend junk; still accept if %PDF- appears early.
+      final start = bytes.indexOf(0x25); // '%'
+      if (start >= 0 &&
+          start < 2048 &&
+          start + 5 <= bytes.length &&
+          String.fromCharCodes(bytes.sublist(start, start + 5)) == '%PDF-') {
+        return Uint8List.fromList(bytes.sublist(start));
+      }
+      throw const ApiException.message('Server did not return a valid PDF.');
+    }
+    _parse(res); // throws ApiException with detail (e.g. missing on storage)
+    throw const ApiException.message('Could not download this PDF.');
+  }
+
   Future<void> libraryUpdateProgress(String bookId, int page) async {
     final res = await _onlinePost(
       _uri('/api/v1/library/$bookId/progress'),
@@ -1216,6 +1266,14 @@ class ApiService {
       headers: await _authHeaders(),
     );
     return _parseList(res);
+  }
+
+  Future<Map<String, dynamic>> marketplaceProduct(String productId) async {
+    final res = await _cachedGet(
+      _uri(ApiEndpoints.marketplaceProduct(productId)),
+      headers: await _authHeaders(),
+    );
+    return _parseMap(res);
   }
 
   Future<Map<String, dynamic>> bookMarketplaceProduct({
