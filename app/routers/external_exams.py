@@ -106,6 +106,29 @@ class ReviewIn(BaseModel):
     questions: list[QuestionFix]
 
 
+class UpdateExamIn(BaseModel):
+    title: Optional[str] = None
+    subject: Optional[str] = None
+    class_name: Optional[str] = None
+    extra_classes: Optional[list[str]] = None
+    instructions: Optional[str] = None
+    duration_minutes: Optional[int] = None
+    total_marks: Optional[int] = None
+    pass_mark: Optional[int] = None
+    scheduled_start: Optional[datetime] = None
+    scheduled_end: Optional[datetime] = None
+
+
+async def _staff_exam(db: AsyncSession, exam_id: str, current_user: dict) -> ExternalExam:
+    exam = (await db.execute(select(ExternalExam).where(ExternalExam.id == exam_id))).scalar_one_or_none()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    campus = await _campus(db, current_user, str(exam.school_id))
+    if exam.school_id != campus.id and current_user.get("role") == "school_admin":
+        raise HTTPException(status_code=403, detail="Not your exam")
+    return exam
+
+
 class IdentifyIn(BaseModel):
     rec_number: Optional[str] = None
     candidate_id: Optional[str] = None
@@ -207,6 +230,44 @@ async def create_exam(
     db.add(exam)
     await db.flush()
     return _exam_public(exam, campus.name)
+
+
+@staff_router.patch("/{exam_id}")
+async def update_exam(
+    exam_id: str,
+    payload: UpdateExamIn,
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    exam = await _staff_exam(db, exam_id, current_user)
+    if payload.title is not None:
+        exam.title = payload.title.strip() or exam.title
+    if payload.subject is not None:
+        exam.subject = payload.subject.strip() or exam.subject
+    if payload.instructions is not None:
+        exam.instructions = payload.instructions.strip() or None
+    if payload.duration_minutes is not None:
+        exam.duration_minutes = max(15, min(int(payload.duration_minutes), 300))
+    if payload.total_marks is not None and payload.total_marks in (50, 100):
+        exam.total_marks = payload.total_marks
+    if payload.pass_mark is not None:
+        exam.pass_mark = max(0, min(int(payload.pass_mark), exam.total_marks or 100))
+    if payload.scheduled_start is not None:
+        exam.scheduled_start = payload.scheduled_start
+    if payload.scheduled_end is not None:
+        exam.scheduled_end = payload.scheduled_end
+    if payload.class_name is not None or payload.extra_classes is not None:
+        primary = (payload.class_name or exam.class_name or "JSS1").strip().upper()
+        extra = payload.extra_classes if payload.extra_classes is not None else []
+        classes = [primary] + [c.strip().upper() for c in extra if str(c).strip()]
+        if "ALL" in classes:
+            classes = ["ALL"]
+        exam.class_name = classes[0]
+        exam.allowed_classes = list(dict.fromkeys(classes))
+    if exam.is_published:
+        exam.status = "active" if _window_ok(exam) else "scheduled"
+    await db.flush()
+    return _exam_public(exam)
 
 
 @staff_router.post("/{exam_id}/upload")
