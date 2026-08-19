@@ -17,6 +17,19 @@ def database_ready() -> bool:
     return _db_initialized
 
 
+async def probe_database() -> bool:
+    """Live ping. Startup may have failed while Postgres later became reachable."""
+    global _db_initialized
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        _db_initialized = True
+        return True
+    except Exception as exc:
+        logger.warning("Database probe failed for host %r: %s", settings.database_host, exc)
+        return False
+
+
 async def _run_schema_migrations(conn) -> None:
     await conn.run_sync(Base.metadata.create_all)
     await conn.execute(text(

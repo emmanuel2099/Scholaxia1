@@ -9,7 +9,7 @@ import app.models  # noqa: F401 — register models with Base.metadata
 from app.core.config import settings
 from app.core.database import engine, get_db
 from app.core.redis import init_redis, close_redis
-from app.core.startup_db import database_ready, initialize_database
+from app.core.startup_db import database_ready, initialize_database, probe_database
 
 ADMIN_STATIC_DIR = Path(__file__).resolve().parent.parent / "static" / "admin"
 
@@ -159,7 +159,7 @@ async def live_class_ws(
 
 @app.get("/health")
 async def health():
-    ready = database_ready()
+    ready = database_ready() or await probe_database()
     return {
         "status": "ok" if ready else "degraded",
         "app": settings.APP_NAME,
