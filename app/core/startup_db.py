@@ -1,4 +1,5 @@
 """Database schema bootstrap — runs on app startup when DATABASE_URL is reachable."""
+import asyncio
 import logging
 import socket
 
@@ -22,7 +23,7 @@ async def probe_database() -> bool:
     global _db_initialized
     try:
         async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
+            await asyncio.wait_for(conn.execute(text("SELECT 1")), timeout=5)
         _db_initialized = True
         return True
     except Exception as exc:
@@ -441,11 +442,7 @@ async def initialize_database() -> bool:
     try:
         async with engine.begin() as conn:
             await _run_schema_migrations(conn)
-        async with AsyncSessionLocal() as db:
-            await seed_database(db)
         _db_initialized = True
-        logger.info("Database ready (host=%s)", settings.database_host)
-        return True
     except (socket.gaierror, OSError, ConnectionRefusedError) as exc:
         logger.error(
             "DATABASE_URL host %r cannot be resolved (%s). "
@@ -462,3 +459,10 @@ async def initialize_database() -> bool:
             exc,
         )
         return False
+    try:
+        async with AsyncSessionLocal() as db:
+            await seed_database(db)
+    except Exception as exc:
+        logger.error("Database seed failed (login can still work): %s", exc)
+    logger.info("Database ready (host=%s)", settings.database_host)
+    return True
