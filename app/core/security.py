@@ -8,11 +8,19 @@ from app.core.config import settings
 
 
 def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    raw = (password or "").encode("utf-8")[:72]
+    return bcrypt.hashpw(raw, bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
+    if not plain or not hashed:
+        return False
+    try:
+        raw = plain.encode("utf-8")[:72]
+        stored = hashed.encode("utf-8") if isinstance(hashed, str) else hashed
+        return bcrypt.checkpw(raw, stored)
+    except Exception:
+        return False
 
 
 def _role_str(role: Union[str, object]) -> str:
@@ -58,10 +66,16 @@ def decode_token(token: str) -> dict:
 
 async def issue_auth_tokens(db: AsyncSession, user) -> tuple[str, str]:
     """Invalidate other sessions by bumping token_version, then mint new JWTs."""
-    user.token_version = int(getattr(user, "token_version", 0) or 0) + 1
-    await db.flush()
-    sv = int(user.token_version or 0)
+    current = int(getattr(user, "token_version", 0) or 0)
+    sv = current
+    if hasattr(user, "_sa_instance_state"):
+        try:
+            user.token_version = current + 1
+            await db.flush()
+            sv = int(user.token_version or 0)
+        except Exception:
+            sv = current
     return (
-        create_access_token(str(user.id), user.role, session_version=sv),
+        create_access_token(str(user.id), getattr(user, "role", "student"), session_version=sv),
         create_refresh_token(str(user.id), session_version=sv),
     )

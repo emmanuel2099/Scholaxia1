@@ -1,6 +1,8 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, text
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 from app.core.database import get_db
@@ -21,6 +23,7 @@ from app.services.firebase_auth_service import (
 )
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+logger = logging.getLogger(__name__)
 
 
 class StudentSignupRequest(BaseModel):
@@ -135,15 +138,25 @@ class TokenResponse(BaseModel):
 
 
 async def _build_user_info(user: User, db: AsyncSession) -> UserInfo:
-    info = UserInfo(
-        id=str(user.id),
-        email=user.email,
-        full_name=user.full_name,
-        role=user.role.value if hasattr(user.role, "value") else str(user.role),
-        profile_picture=user.profile_picture,
-        phone=getattr(user, "phone", None),
-        school_id=str(user.school_id) if getattr(user, "school_id", None) else None,
-    )
+    role = user.role.value if hasattr(user.role, "value") else str(user.role or "student")
+    try:
+        info = UserInfo(
+            id=str(user.id),
+            email=str(getattr(user, "email", "") or ""),
+            full_name=str(getattr(user, "full_name", "") or "Student"),
+            role=role,
+            profile_picture=getattr(user, "profile_picture", None),
+            phone=getattr(user, "phone", None),
+            school_id=str(user.school_id) if getattr(user, "school_id", None) else None,
+        )
+    except Exception:
+        logger.exception("Minimal user info failed for %s", getattr(user, "email", None))
+        return UserInfo(
+            id=str(getattr(user, "id", "") or ""),
+            email=str(getattr(user, "email", "") or "student@scholaxia.local"),
+            full_name=str(getattr(user, "full_name", "") or "Student"),
+            role=role or "student",
+        )
     if getattr(user, "school_id", None):
         try:
             from app.models.school_campus import SchoolCampus
@@ -198,9 +211,50 @@ async def _build_user_info(user: User, db: AsyncSession) -> UserInfo:
     return info
 
 
+async def _user_from_sql(db: AsyncSession, email: str):
+    row = (
+        await db.execute(
+            text(
+                """
+                SELECT id, email, full_name, hashed_password, role::text AS role,
+                       COALESCE(is_active, true) AS is_active, school_id, phone,
+                       profile_picture, COALESCE(token_version, 0) AS token_version
+                FROM users
+                WHERE lower(email) = lower(:e)
+                LIMIT 1
+                """
+            ),
+            {"e": email},
+        )
+    ).mappings().first()
+    if not row:
+        return None
+
+    class SqlUser:
+        pass
+
+    user = SqlUser()
+    user.id = row["id"]
+    user.email = row["email"]
+    user.full_name = row["full_name"]
+    user.hashed_password = row["hashed_password"]
+    user.role = (row["role"] or "student").replace("UserRole.", "")
+    user.is_active = bool(row["is_active"])
+    user.school_id = row["school_id"]
+    user.phone = row["phone"]
+    user.profile_picture = row["profile_picture"]
+    user.token_version = int(row["token_version"] or 0)
+    return user
+
+
 async def _find_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
-    res = await db.execute(select(User).where(User.email == email.lower()))
-    return res.scalar_one_or_none()
+    email = email.lower().strip()
+    try:
+        res = await db.execute(select(User).where(User.email == email))
+        return res.scalar_one_or_none()
+    except Exception:
+        logger.exception("ORM login lookup failed for %s", email)
+        return await _user_from_sql(db, email)
 
 
 async def _find_user_by_phone(db: AsyncSession, phone_e164: str) -> Optional[User]:
@@ -637,10 +691,11 @@ async def login(request: Request, db: AsyncSession = Depends(get_db)):
         return await _login_user(payload, db)
     except HTTPException:
         raise
-    except Exception:
+    except Exception as exc:
+        logger.exception("Student login failed")
         raise HTTPException(
             status_code=503,
-            detail="Could not read accounts just now. Wait 20 seconds and try again.",
+            detail="Could not sign in (%s). Try again in 20 seconds." % type(exc).__name__,
         )
 
 
@@ -673,13 +728,28 @@ async def _login_user(payload: LoginRequest, db: AsyncSession):
 
     user_info = await _build_user_info(user, db)
     access_token, refresh_token = await issue_auth_tokens(db, user)
-    role = user.role.value if hasattr(user.role, "value") else str(user.role)
-    return TokenResponse(
-        access_token=access_token,
-        refresh_token=refresh_token,
-        role=role,
-        user=user_info,
-    )
+    role = user.role.value if hasattr(user.role, "value") else str(user.role or "student")
+    role = role.replace("UserRole.", "").lower()
+    try:
+        return TokenResponse(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            role=role,
+            user=user_info,
+        )
+    except Exception:
+        logger.exception("Token payload failed")
+        return TokenResponse(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            role=role or "student",
+            user=UserInfo(
+                id=str(user.id),
+                email=str(getattr(user, "email", "") or "student@scholaxia.local"),
+                full_name=str(getattr(user, "full_name", "") or "Student"),
+                role=role or "student",
+            ),
+        )
 
 
 @router.post("/oauth", response_model=TokenResponse)
