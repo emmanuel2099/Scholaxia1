@@ -7,7 +7,7 @@ from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
+from app.core.database import AsyncSessionLocal, get_db
 from app.core.deps import require_admin
 from app.core.security import hash_password
 from app.models.school_campus import SchoolCampus
@@ -33,7 +33,7 @@ class CreateSchoolRequest(BaseModel):
     name: str = Field(..., min_length=2, max_length=255)
     city: Optional[str] = None
     state: Optional[str] = None
-    admin_full_name: str = Field(..., min_length=2, max_length=255)
+    admin_full_name: str = ""
     admin_email: EmailStr
     admin_password: str = Field(..., min_length=8)
 
@@ -96,62 +96,96 @@ async def list_schools(
 async def create_school(
     payload: CreateSchoolRequest,
     current_user: dict = Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
 ):
+    """Use a fresh DB session after enum migrate. Auth's open transaction cannot see a new enum value."""
     from app.core.startup_db import ensure_postgres_enums
 
     await ensure_postgres_enums()
     email = payload.admin_email.lower().strip()
-    existing = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
-    if existing:
-        raise HTTPException(status_code=400, detail="That admin email is already in use")
+    admin_name = (payload.admin_full_name or "").strip() or email.split("@")[0]
     try:
         created_by = UUID(str(current_user.get("sub")))
     except Exception:
         created_by = None
-    campus = SchoolCampus(
-        name=payload.name.strip(),
-        city=(payload.city or "").strip() or None,
-        state=(payload.state or "").strip() or None,
-        code="SCH-" + secrets.token_hex(3).upper(),
-        created_by=created_by,
-    )
-    db.add(campus)
-    await db.flush()
-    admin_id = uuid4()
-    params = {
-        "id": admin_id,
-        "email": email,
-        "hp": hash_password(payload.admin_password),
-        "name": payload.admin_full_name.strip(),
-        "role": "school_admin",
-        "sid": campus.id,
-    }
-    insert_sql = """
-        INSERT INTO users (
-            id, email, hashed_password, full_name, role,
-            is_verified, is_active, school_id, token_version, created_at, updated_at
-        )
-        VALUES (
-            :id, :email, :hp, :name, {role_sql},
-            true, true, :sid, 0, NOW(), NOW()
-        )
-    """
-    try:
-        async with db.begin_nested():
-            await db.execute(text(insert_sql.format(role_sql="CAST(:role AS userrole)")), params)
-    except Exception:
+
+    async with AsyncSessionLocal() as db:
         try:
-            async with db.begin_nested():
-                await db.execute(text(insert_sql.format(role_sql=":role")), params)
+            existing = (
+                await db.execute(text("SELECT id FROM users WHERE lower(email) = lower(:e) LIMIT 1"), {"e": email})
+            ).first()
+            if existing:
+                raise HTTPException(status_code=400, detail="That admin email is already in use")
+            campus = SchoolCampus(
+                name=payload.name.strip(),
+                city=(payload.city or "").strip() or None,
+                state=(payload.state or "").strip() or None,
+                code="SCH-" + secrets.token_hex(3).upper(),
+                created_by=created_by,
+            )
+            db.add(campus)
+            await db.flush()
+            params = {
+                "id": uuid4(),
+                "email": email,
+                "hp": hash_password(payload.admin_password),
+                "name": admin_name,
+                "role": "school_admin",
+                "sid": campus.id,
+            }
+            last_exc = None
+            for sql in (
+                """
+                INSERT INTO users (
+                    id, email, hashed_password, full_name, role,
+                    is_verified, is_active, school_id, token_version, created_at, updated_at
+                ) VALUES (
+                    :id, :email, :hp, :name, CAST(:role AS userrole),
+                    true, true, :sid, 0, NOW(), NOW()
+                )
+                """,
+                """
+                INSERT INTO users (
+                    id, email, hashed_password, full_name, role,
+                    is_verified, is_active, school_id, created_at, updated_at
+                ) VALUES (
+                    :id, :email, :hp, :name, CAST(:role AS userrole),
+                    true, true, :sid, NOW(), NOW()
+                )
+                """,
+                """
+                INSERT INTO users (
+                    id, email, hashed_password, full_name, role,
+                    is_verified, is_active, school_id, token_version
+                ) VALUES (
+                    :id, :email, :hp, :name, :role, true, true, :sid, 0
+                )
+                """,
+                """
+                INSERT INTO users (id, email, hashed_password, full_name, role, is_verified, is_active, school_id)
+                VALUES (:id, :email, :hp, :name, :role, true, true, :sid)
+                """,
+            ):
+                try:
+                    async with db.begin_nested():
+                        await db.execute(text(sql), params)
+                    last_exc = None
+                    break
+                except Exception as exc:
+                    last_exc = exc
+            if last_exc:
+                raise last_exc
+            await db.commit()
+            admins = await _admins_for(db, campus.id)
+            return _school_dict(campus, admins)
+        except HTTPException:
+            await db.rollback()
+            raise
         except Exception as exc:
+            await db.rollback()
             raise HTTPException(
                 status_code=500,
-                detail="Could not create the school admin (%s). Deploy the latest backend and try again."
-                % type(exc).__name__,
+                detail="Could not create school: %s" % (str(exc).split("\n")[0][:240],),
             ) from exc
-    await db.flush()
-    return _school_dict(campus, await _admins_for(db, campus.id))
 
 
 @router.post("/{school_id}/admins", status_code=201)
