@@ -297,7 +297,8 @@ async function cbtHubDownload(examId) {
   } catch (e) {
     var msg = e.message || "Download failed.";
     if (/402|cbt_package|package|paid|required/i.test(msg)) {
-      if (typeof showPage === "function") showPage("cbt-packages");
+      if (typeof openCbtUnlockModal === "function") openCbtUnlockModal(function () { cbtHubDownload(examId); });
+      else if (typeof showPage === "function") showPage("cbt-packages");
       else alert(msg);
     } else {
       alert(msg);
@@ -329,7 +330,8 @@ async function cbtHubDownloadJamb(year) {
   } catch (e) {
     var msg = e.message || "Download failed.";
     if (/402|cbt_package|package|paid|required/i.test(msg)) {
-      if (typeof showPage === "function") showPage("cbt-packages");
+      if (typeof openCbtUnlockModal === "function") openCbtUnlockModal(function () { cbtHubDownloadJamb(year); });
+      else if (typeof showPage === "function") showPage("cbt-packages");
       else alert(msg);
     } else {
       alert(msg);
@@ -351,31 +353,35 @@ async function cbtHubStart(examId) {
     alert("Exam pack not found. Download again while online.");
     return;
   }
-  var session = null;
-  try {
-    session = await api("/api/v1/cbt/sessions/" + examId + "/start", { method: "POST" });
-  } catch (e) {
-    var msg = (e && e.message) || "";
-    if (/402|cbt_package|package|paid|required/i.test(msg)) {
-      if (typeof showPage === "function") showPage("cbt-packages");
-      return;
+  async function proceed() {
+    var session = null;
+    try {
+      session = await api("/api/v1/cbt/sessions/" + examId + "/start", { method: "POST" });
+    } catch (e) {
+      var msg = (e && e.message) || "";
+      if (/402|cbt_package|package|paid|required/i.test(msg)) {
+        if (typeof openCbtUnlockModal === "function") openCbtUnlockModal(proceed);
+        else if (typeof showPage === "function") showPage("cbt-packages");
+        return;
+      }
     }
-    /* offline ok for already-downloaded packs */
+    currentExam = pack;
+    currentSession = session
+      ? { session_id: session.session_id || session.id, is_school_exam: false }
+      : { session_id: null };
+    answers = {};
+    currentQ = 0;
+    secondsLeft = (pack.duration_minutes || 60) * 60;
+    if (typeof showCbtExamView === "function") showCbtExamView();
+    document.getElementById("exam-title").textContent = pack.title || "CBT Practice";
+    document.getElementById("exam-meta").textContent =
+      (pack.subject || "Exam") + " · " + pack.questions.length + " questions · Practice";
+    if (typeof buildQNav === "function") buildQNav();
+    if (typeof renderQuestion === "function") renderQuestion();
+    if (typeof startTimer === "function") startTimer();
   }
-  currentExam = pack;
-  currentSession = session
-    ? { session_id: session.session_id || session.id, is_school_exam: false }
-    : { session_id: null };
-  answers = {};
-  currentQ = 0;
-  secondsLeft = (pack.duration_minutes || 60) * 60;
-  if (typeof showCbtExamView === "function") showCbtExamView();
-  document.getElementById("exam-title").textContent = pack.title || "CBT Practice";
-  document.getElementById("exam-meta").textContent =
-    (pack.subject || "Exam") + " · " + pack.questions.length + " questions · Practice";
-  if (typeof buildQNav === "function") buildQNav();
-  if (typeof renderQuestion === "function") renderQuestion();
-  if (typeof startTimer === "function") startTimer();
+  if (typeof ensureCbtAccessThen === "function") await ensureCbtAccessThen(proceed);
+  else await proceed();
 }
 
 async function cbtHubStartJamb(year) {
@@ -388,6 +394,18 @@ async function cbtHubStartJamb(year) {
     var id = String(members[i].id);
     if (!cbtPackDownloaded(id)) {
       alert("Download this exam first, then tap Start.");
+      return;
+    }
+  }
+  if (typeof ensureCbtAccessThen === "function") {
+    try {
+      var access = await api("/api/v1/payments/paystack/cbt-access");
+      if (!(access && access.has_access)) {
+        openCbtUnlockModal(function () { cbtHubStartJamb(year); });
+        return;
+      }
+    } catch (e) {
+      openCbtUnlockModal(function () { cbtHubStartJamb(year); });
       return;
     }
   }

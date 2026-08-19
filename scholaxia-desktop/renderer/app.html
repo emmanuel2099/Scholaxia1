@@ -1004,6 +1004,31 @@
 
 
 
+<div id="cbt-unlock-modal" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="modal-box" style="text-align:left">
+    <h3>Start this exam</h3>
+    <p>Do you have a coupon code, or do you want to pay?</p>
+    <div id="cbt-unlock-choice" class="modal-actions" style="justify-content:flex-start;flex-wrap:wrap">
+      <button type="button" class="btn-secondary" onclick="cbtUnlockPick('coupon')">I have a coupon</button>
+      <button type="button" class="btn-action" onclick="cbtUnlockPick('pay')">I want to pay</button>
+    </div>
+    <div id="cbt-unlock-coupon" class="hidden">
+      <input type="text" id="cbt-unlock-code" placeholder="SX-XXXX" style="width:100%;margin:8px 0;padding:10px;border-radius:8px" />
+      <div class="modal-actions" style="justify-content:flex-start">
+        <button type="button" class="btn-action" onclick="cbtUnlockRedeem()">Redeem &amp; continue</button>
+      </div>
+    </div>
+    <div id="cbt-unlock-pay" class="hidden">
+      <p>Choose a CBT package and pay with Paystack.</p>
+      <div id="cbt-unlock-pay-list"></div>
+    </div>
+    <p id="cbt-unlock-msg" class="cbt-hint"></p>
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary" onclick="closeCbtUnlockModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div id="skill-enroll-modal" class="modal hidden" role="dialog" aria-labelledby="skill-enroll-title" aria-modal="true">
   <div class="modal-box skill-enroll-box">
     <h3 id="skill-enroll-title">Enroll in program</h3>

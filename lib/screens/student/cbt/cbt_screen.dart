@@ -414,8 +414,10 @@ class _CbtScreenState extends State<CbtScreen> {
     List<Map<String, dynamic>> members,
   ) async {
     if (!_hasActiveTabAccess) {
-      await _openPackages();
-      return;
+      final unlocked = await showCbtUnlockChoice(context);
+      if (!mounted) return;
+      if (unlocked) await _loadExams();
+      if (!_hasActiveTabAccess) return;
     }
     if (members.isEmpty) return;
     if (_busyExamId != null) return;
@@ -455,8 +457,10 @@ class _CbtScreenState extends State<CbtScreen> {
     List<Map<String, dynamic>> members,
   ) async {
     if (!_hasActiveTabAccess) {
-      await _openPackages();
-      return;
+      final unlocked = await showCbtUnlockChoice(context);
+      if (!mounted) return;
+      if (unlocked) await _loadExams();
+      if (!_hasActiveTabAccess) return;
     }
     if (members.isEmpty) return;
     for (final exam in members) {
@@ -550,8 +554,10 @@ class _CbtScreenState extends State<CbtScreen> {
 
   Future<void> _downloadExam(String examId) async {
     if (!_hasActiveTabAccess) {
-      await _openPackages();
-      return;
+      final unlocked = await showCbtUnlockChoice(context);
+      if (!mounted) return;
+      if (unlocked) await _loadExams();
+      if (!_hasActiveTabAccess) return;
     }
     if (_busyExamId != null) return;
     setState(() => _busyExamId = examId);
@@ -588,8 +594,10 @@ class _CbtScreenState extends State<CbtScreen> {
     int? durMins,
   }) async {
     if (!_hasActiveTabAccess) {
-      await _openPackages();
-      return;
+      final unlocked = await showCbtUnlockChoice(context);
+      if (!mounted) return;
+      if (unlocked) await _loadExams();
+      if (!_hasActiveTabAccess) return;
     }
     // Start never auto-downloads — user must tap Download first.
     if (!_downloaded.contains(examId)) {

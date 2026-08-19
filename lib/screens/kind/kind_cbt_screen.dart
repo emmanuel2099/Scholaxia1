@@ -65,8 +65,10 @@ class _KindCbtScreenState extends State<KindCbtScreen> {
 
   Future<void> _startExam(Map<String, dynamic> exam) async {
     if (!_hasPaidAccess) {
-      await _openPackage();
-      return;
+      final unlocked = await showCbtUnlockChoice(context, kidsOnly: true);
+      if (!mounted) return;
+      if (unlocked) await _load();
+      if (!_hasPaidAccess) return;
     }
     final examId = exam['id']?.toString() ?? '';
     final title = exam['title']?.toString() ?? 'Common Entrance';

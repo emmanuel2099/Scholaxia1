@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.deps import require_school_staff
 from app.core.security import hash_password
-from app.models.cbt import CBTExam, CBTSession, ExamProctorLog
+from app.models.cbt import CBTExam, CBTQuestion, CBTSession, ExamProctorLog
 from app.models.school_campus import SchoolCampus
 from app.models.school_office import SchoolExamCandidate
 from app.models.user import TeacherProfile, User, UserRole
@@ -213,18 +213,53 @@ async def add_school_teacher(
     }
 
 
+@router.get("/teachers")
+async def list_school_teachers(
+    school_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    campus = await _campus(db, current_user, school_id)
+    rows = (
+        await db.execute(
+            select(User, TeacherProfile)
+            .outerjoin(TeacherProfile, TeacherProfile.user_id == User.id)
+            .where(User.role == UserRole.teacher, User.school_id == campus.id)
+            .order_by(User.full_name)
+        )
+    ).all()
+    return {
+        "teachers": [
+            {
+                "id": str(u.id),
+                "full_name": u.full_name,
+                "email": u.email,
+                "subjects": (p.subjects if p else []) or [],
+                "academic_classes": (p.academic_classes if p else []) or [],
+            }
+            for u, p in rows
+        ]
+    }
+
+
 @router.get("/results")
 async def print_results(
     class_name: Optional[str] = Query(None),
     subject: Optional[str] = Query(None),
+    school_id: Optional[str] = Query(None),
     current_user: dict = Depends(require_school_staff),
     db: AsyncSession = Depends(get_db),
 ):
+    campus = await _campus(db, current_user, school_id)
     query = (
         select(CBTSession, CBTExam, User)
         .join(CBTExam, CBTExam.id == CBTSession.exam_id)
         .join(User, User.id == CBTSession.student_id)
-        .where(CBTSession.submitted_at.isnot(None), CBTExam.is_school_exam == True)  # noqa: E712
+        .where(
+            CBTSession.submitted_at.isnot(None),
+            CBTExam.is_school_exam == True,  # noqa: E712
+            CBTExam.school_id == campus.id,
+        )
         .order_by(CBTSession.submitted_at.desc())
     )
     if subject:
@@ -347,6 +382,100 @@ async def exam_counts(
             }
         )
     return {"exams": out}
+
+
+class SchoolExamQuestionIn(BaseModel):
+    question_text: str
+    option_a: str
+    option_b: str
+    option_c: str
+    option_d: str
+    correct_option: str = "A"
+
+
+class SchoolExamCreate(BaseModel):
+    school_id: Optional[str] = None
+    title: str
+    subject: str
+    duration_minutes: int = 45
+    scheduled_start: Optional[datetime] = None
+    scheduled_end: Optional[datetime] = None
+    questions: list[SchoolExamQuestionIn] = []
+    is_published: bool = True
+
+
+class SchoolExamSchedule(BaseModel):
+    scheduled_start: Optional[datetime] = None
+    scheduled_end: Optional[datetime] = None
+    is_published: Optional[bool] = None
+
+
+@router.post("/exams", status_code=201)
+async def create_school_exam(
+    payload: SchoolExamCreate,
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    campus = await _campus(db, current_user, payload.school_id)
+    if not payload.questions:
+        raise HTTPException(status_code=400, detail="Add at least one question")
+    exam = CBTExam(
+        title=payload.title.strip(),
+        subject=payload.subject.strip(),
+        exam_type="SCHOOL",
+        duration_minutes=max(5, min(int(payload.duration_minutes or 45), 300)),
+        total_questions=len(payload.questions),
+        created_by=current_user["sub"],
+        is_published=payload.is_published,
+        is_school_exam=True,
+        school_id=campus.id,
+        scheduled_start=payload.scheduled_start,
+        scheduled_end=payload.scheduled_end,
+        ai_locked=True,
+        camera_required=False,
+        block_minimize=True,
+    )
+    db.add(exam)
+    await db.flush()
+    for q in payload.questions:
+        opt = (q.correct_option or "A").upper()
+        if opt not in ("A", "B", "C", "D"):
+            raise HTTPException(status_code=400, detail="correct_option must be A/B/C/D")
+        db.add(
+            CBTQuestion(
+                exam_id=exam.id,
+                question_text=q.question_text,
+                option_a=q.option_a,
+                option_b=q.option_b,
+                option_c=q.option_c,
+                option_d=q.option_d,
+                correct_option=opt,
+            )
+        )
+    await db.flush()
+    return {"id": str(exam.id), "title": exam.title, "subject": exam.subject, "total_questions": exam.total_questions}
+
+
+@router.patch("/exams/{exam_id}")
+async def schedule_school_exam(
+    exam_id: str,
+    payload: SchoolExamSchedule,
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    exam = (await db.execute(select(CBTExam).where(CBTExam.id == exam_id))).scalar_one_or_none()
+    if not exam or not exam.is_school_exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    if current_user.get("role") == "school_admin" and str(exam.school_id) != str(current_user.get("school_id")):
+        raise HTTPException(status_code=403, detail="This exam is not in your school")
+    if payload.scheduled_start is not None:
+        exam.scheduled_start = payload.scheduled_start
+    if payload.scheduled_end is not None:
+        exam.scheduled_end = payload.scheduled_end
+    if payload.is_published is not None:
+        exam.is_published = payload.is_published
+    await db.flush()
+    return {"ok": True, "id": str(exam.id)}
 
 
 @router.post("/live-classes", status_code=201)

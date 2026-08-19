@@ -1,10 +1,12 @@
 var currentAdminPage = "dashboard";
 
 document.addEventListener("DOMContentLoaded", function () {
+  if (localStorage.getItem("sia_admin_role") === "school_admin") {
+    clearAdminSession();
+  }
   if (getAdminToken()) {
     showApp();
-    if (localStorage.getItem("sia_admin_role") === "school_admin") showAdminPage("school-office");
-    else loadDashboard();
+    loadDashboard();
   } else {
     showAuth();
   }
@@ -58,16 +60,17 @@ async function adminLogin(e) {
     });
     var data = await res.json();
     if (!res.ok) { err.textContent = formatApiError(data.detail) || "Login failed."; return; }
-    if (data.role !== "admin" && data.role !== "school_admin") {
-      err.textContent = "This email is a " + data.role + " account, not an admin or school admin.";
+    if (data.role === "school_admin") {
+      err.textContent = "School admins log in on the Schools website tab, not this main admin.";
+      return;
+    }
+    if (data.role !== "admin") {
+      err.textContent = "This email is a " + data.role + " account, not an admin.";
       return;
     }
     saveAdminSession(data, email, data.user && data.user.full_name);
-    if (data.user && data.user.school_id) localStorage.setItem("sia_school_id", data.user.school_id);
-    if (data.user && data.user.school_name) localStorage.setItem("sia_school_name", data.user.school_name);
     showApp();
-    if (data.role === "school_admin") showAdminPage("school-office");
-    else loadDashboard();
+    loadDashboard();
   } catch (ex) {
     err.textContent = "Network error. Check your connection.";
   } finally {
@@ -2545,7 +2548,7 @@ async function createSchoolCampus() {
         admin_password: document.getElementById("sch-admin-pass").value,
       }),
     });
-    if (msg) msg.textContent = "School created. Give that email and password to the school admin.";
+    if (msg) msg.textContent = "School created. Send that email and password. They log in on the website Schools tab.";
     document.getElementById("sch-admin-pass").value = "";
     loadSchoolsAdmin();
   } catch (e) {

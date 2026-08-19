@@ -4,6 +4,50 @@ import '../../../api/api_service.dart';
 import '../../../services/paystack_checkout_service.dart';
 import '../../../theme/app_theme.dart';
 
+Future<bool> showCbtUnlockChoice(
+  BuildContext context, {
+  bool kidsOnly = false,
+}) async {
+  final choice = await showDialog<String>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Start this exam'),
+      content: const Text(
+        'Do you have a coupon code, or do you want to pay?',
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, 'coupon'),
+          child: const Text('I have a coupon'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(ctx, 'pay'),
+          child: const Text('I want to pay'),
+        ),
+      ],
+    ),
+  );
+  if (!context.mounted || choice == null) return false;
+  if (choice == 'pay') {
+    final paid = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => CbtPackagesScreen(kidsOnly: kidsOnly)),
+    );
+    return paid == true;
+  }
+  if (choice == 'coupon') {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Coupon code'),
+        content: const _CouponBox(),
+      ),
+    );
+    return ok == true;
+  }
+  return false;
+}
+
 class CbtPackagesScreen extends StatelessWidget {
   const CbtPackagesScreen({super.key, this.kidsOnly = false});
 
@@ -61,8 +105,6 @@ class CbtPackagesScreen extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 18),
-          const _CouponBox(),
           const SizedBox(height: 18),
           ...packages.map(
             (package) => Card(
