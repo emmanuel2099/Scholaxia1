@@ -2543,7 +2543,7 @@ async function createSchoolCampus() {
         name: document.getElementById("sch-name").value.trim(),
         city: document.getElementById("sch-city").value.trim() || null,
         state: document.getElementById("sch-state").value.trim() || null,
-        admin_full_name: document.getElementById("sch-admin-name").value.trim(),
+        admin_full_name: (document.getElementById("sch-admin-name") && document.getElementById("sch-admin-name").value.trim()) || document.getElementById("sch-admin-email").value.trim().split("@")[0],
         admin_email: document.getElementById("sch-admin-email").value.trim(),
         admin_password: document.getElementById("sch-admin-pass").value,
       }),
