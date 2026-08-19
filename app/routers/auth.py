@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Form, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, EmailStr, Field
@@ -145,13 +145,16 @@ async def _build_user_info(user: User, db: AsyncSession) -> UserInfo:
         school_id=str(user.school_id) if getattr(user, "school_id", None) else None,
     )
     if getattr(user, "school_id", None):
-        from app.models.school_campus import SchoolCampus
-        campus = (
-            await db.execute(select(SchoolCampus).where(SchoolCampus.id == user.school_id))
-        ).scalar_one_or_none()
-        if campus:
-            info.school_name = campus.name
-            info.school_subscription_active = bool(getattr(campus, "subscription_active", False))
+        try:
+            from app.models.school_campus import SchoolCampus
+            campus = (
+                await db.execute(select(SchoolCampus).where(SchoolCampus.id == user.school_id))
+            ).scalar_one_or_none()
+            if campus:
+                info.school_name = campus.name
+                info.school_subscription_active = bool(getattr(campus, "subscription_active", False))
+        except Exception:
+            pass
     try:
         if user.role == UserRole.student:
             res = await db.execute(select(StudentProfile).where(StudentProfile.user_id == user.id))
@@ -611,8 +614,25 @@ async def kind_signup(payload: KindSignupRequest, db: AsyncSession = Depends(get
     )
 
 
+async def _payload_from_request(request: Request) -> LoginRequest:
+    ctype = (request.headers.get("content-type") or "").lower()
+    if "application/x-www-form-urlencoded" in ctype or "multipart/form-data" in ctype:
+        form = await request.form()
+        email = (str(form.get("email") or "")).strip() or None
+        phone = (str(form.get("phone") or "")).strip() or None
+        return LoginRequest(email=email, password=str(form.get("password") or ""), phone=phone)
+    try:
+        data = await request.json()
+    except Exception:
+        raise HTTPException(status_code=422, detail="Send email and password")
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=422, detail="Send email and password")
+    return LoginRequest(**data)
+
+
 @router.post("/login")
-async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(request: Request, db: AsyncSession = Depends(get_db)):
+    payload = await _payload_from_request(request)
     try:
         return await _login_user(payload, db)
     except HTTPException:
@@ -625,13 +645,8 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/login-form")
-async def login_form(
-    email: str = Form(""),
-    password: str = Form(""),
-    db: AsyncSession = Depends(get_db),
-):
-    cleaned = (email or "").strip() or None
-    return await login(LoginRequest(email=cleaned, password=password or ""), db)
+async def login_form(request: Request, db: AsyncSession = Depends(get_db)):
+    return await login(request, db)
 
 
 async def _login_user(payload: LoginRequest, db: AsyncSession):
