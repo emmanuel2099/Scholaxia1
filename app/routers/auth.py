@@ -137,6 +137,13 @@ class TokenResponse(BaseModel):
     user: UserInfo
 
 
+async def _safe_rollback(db: AsyncSession) -> None:
+    try:
+        await db.rollback()
+    except Exception:
+        pass
+
+
 async def _build_user_info(user: User, db: AsyncSession) -> UserInfo:
     role = user.role.value if hasattr(user.role, "value") else str(user.role or "student")
     try:
@@ -167,7 +174,7 @@ async def _build_user_info(user: User, db: AsyncSession) -> UserInfo:
                 info.school_name = campus.name
                 info.school_subscription_active = bool(getattr(campus, "subscription_active", False))
         except Exception:
-            pass
+            await _safe_rollback(db)
     try:
         if user.role == UserRole.student:
             res = await db.execute(select(StudentProfile).where(StudentProfile.user_id == user.id))
@@ -207,26 +214,32 @@ async def _build_user_info(user: User, db: AsyncSession) -> UserInfo:
                 info.favorite_subjects = profile.favorite_subjects or []
                 info.learning_goals = profile.learning_goals
     except Exception:
-        pass
+        await _safe_rollback(db)
     return info
 
 
 async def _user_from_sql(db: AsyncSession, email: str):
-    row = (
-        await db.execute(
-            text(
-                """
-                SELECT id, email, full_name, hashed_password, role::text AS role,
-                       COALESCE(is_active, true) AS is_active, school_id, phone,
-                       profile_picture, COALESCE(token_version, 0) AS token_version
-                FROM users
-                WHERE lower(email) = lower(:e)
-                LIMIT 1
-                """
-            ),
-            {"e": email},
-        )
-    ).mappings().first()
+    await _safe_rollback(db)
+    try:
+        row = (
+            await db.execute(
+                text(
+                    """
+                    SELECT id, email, full_name, hashed_password, role::text AS role,
+                           COALESCE(is_active, true) AS is_active, school_id, phone,
+                           profile_picture, COALESCE(token_version, 0) AS token_version
+                    FROM users
+                    WHERE lower(email) = lower(:e)
+                    LIMIT 1
+                    """
+                ),
+                {"e": email},
+            )
+        ).mappings().first()
+    except Exception:
+        logger.exception("SQL login lookup failed for %s", email)
+        await _safe_rollback(db)
+        return None
     if not row:
         return None
 
@@ -254,6 +267,7 @@ async def _find_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
         return res.scalar_one_or_none()
     except Exception:
         logger.exception("ORM login lookup failed for %s", email)
+        await _safe_rollback(db)
         return await _user_from_sql(db, email)
 
 
@@ -705,14 +719,10 @@ async def login_form(request: Request, db: AsyncSession = Depends(get_db)):
 
 
 async def _login_user(payload: LoginRequest, db: AsyncSession):
-    user = None
     email_raw = (payload.email or "").strip()
     phone_raw = (payload.phone or "").strip()
+    user = await _user_from_sql(db, email_raw) if email_raw else None
 
-    if email_raw:
-        user = await _find_user_by_email(db, email_raw)
-
-    # Legacy clients that registered with a phone number
     if user is None and phone_raw:
         try:
             phone = normalize_phone(phone_raw)
@@ -726,30 +736,98 @@ async def _login_user(payload: LoginRequest, db: AsyncSession):
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account disabled")
 
-    user_info = await _build_user_info(user, db)
-    access_token, refresh_token = await issue_auth_tokens(db, user)
-    role = user.role.value if hasattr(user.role, "value") else str(user.role or "student")
-    role = role.replace("UserRole.", "").lower()
+    role = str(getattr(user, "role", "student") or "student").replace("UserRole.", "").lower()
+    school_name = None
+    school_sub = False
+    if getattr(user, "school_id", None):
+        try:
+            campus = (
+                await db.execute(
+                    text(
+                        """
+                        SELECT name, COALESCE(subscription_active, false) AS subscription_active
+                        FROM school_campuses WHERE id = :id LIMIT 1
+                        """
+                    ),
+                    {"id": user.school_id},
+                )
+            ).mappings().first()
+            if campus:
+                school_name = campus["name"]
+                school_sub = bool(campus["subscription_active"])
+        except Exception:
+            await _safe_rollback(db)
+
+    education_level = None
+    school_student_id = None
+    has_sub = school_sub
+    exam_type = None
     try:
-        return TokenResponse(
-            access_token=access_token,
-            refresh_token=refresh_token,
-            role=role,
-            user=user_info,
-        )
+        profile = (
+            await db.execute(
+                text(
+                    """
+                    SELECT education_level, school_student_id,
+                           COALESCE(has_active_subscription, false) AS has_active_subscription,
+                           exam_type::text AS exam_type
+                    FROM student_profiles WHERE user_id = :id LIMIT 1
+                    """
+                ),
+                {"id": user.id},
+            )
+        ).mappings().first()
+        if profile:
+            education_level = profile["education_level"]
+            school_student_id = profile["school_student_id"]
+            has_sub = bool(profile["has_active_subscription"]) or school_sub
+            exam_type = profile["exam_type"]
     except Exception:
-        logger.exception("Token payload failed")
-        return TokenResponse(
-            access_token=access_token,
-            refresh_token=refresh_token,
-            role=role or "student",
-            user=UserInfo(
-                id=str(user.id),
-                email=str(getattr(user, "email", "") or "student@scholaxia.local"),
-                full_name=str(getattr(user, "full_name", "") or "Student"),
-                role=role or "student",
-            ),
-        )
+        await _safe_rollback(db)
+
+    user_info = UserInfo(
+        id=str(user.id),
+        email=str(user.email or ""),
+        full_name=str(user.full_name or "Student"),
+        role=role,
+        phone=getattr(user, "phone", None),
+        profile_picture=getattr(user, "profile_picture", None),
+        school_id=str(user.school_id) if getattr(user, "school_id", None) else None,
+        school_name=school_name,
+        school_subscription_active=school_sub,
+        education_level=education_level,
+        school_student_id=school_student_id,
+        has_active_subscription=has_sub,
+        exam_type=exam_type,
+    )
+
+    sv = int(getattr(user, "token_version", 0) or 0)
+    try:
+        bumped = (
+            await db.execute(
+                text(
+                    """
+                    UPDATE users
+                    SET token_version = COALESCE(token_version, 0) + 1
+                    WHERE id = :id
+                    RETURNING token_version
+                    """
+                ),
+                {"id": user.id},
+            )
+        ).first()
+        if bumped:
+            sv = int(bumped[0])
+    except Exception:
+        await _safe_rollback(db)
+
+    access_token = create_access_token(str(user.id), role, session_version=sv)
+    refresh_token = create_refresh_token(str(user.id), session_version=sv)
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        role=role,
+        user=user_info,
+    )
 
 
 @router.post("/oauth", response_model=TokenResponse)
