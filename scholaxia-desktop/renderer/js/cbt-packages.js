@@ -19,7 +19,8 @@ async function loadCbtPackagesPage() {
         (access.expires_at ? " until " + escHtml(String(access.expires_at).slice(0, 10)) : "") +
         ".</div>";
     }
-    html += '<div class="sx-page-hero"><h2>CBT Packages</h2><p>Annual access — same packages as the mobile app. Pay with Paystack.</p></div>';
+    html += '<div class="sx-page-hero"><h2>CBT Packages</h2><p>Annual access — pay with Paystack, or redeem an admin coupon to skip payment.</p></div>';
+    html += '<div class="sx-card" style="margin-bottom:16px"><h3>Coupon code</h3><p>Paste the code admin sent you.</p><input id="cbt-coupon-input" placeholder="SX-XXXX" style="width:100%;margin:8px 0;padding:10px;border-radius:8px" /><button type="button" class="btn-action" onclick="redeemCbtCoupon()">Redeem coupon</button><p id="cbt-coupon-msg" class="cbt-hint"></p></div>';
     if (!packages.length) {
       html += '<div class="empty-state">No packages available.</div>';
     } else {
@@ -76,3 +77,18 @@ function escHtml(s) {
 
 window.loadCbtPackagesPage = loadCbtPackagesPage;
 window.buyCbtPackage = buyCbtPackage;
+
+async function redeemCbtCoupon() {
+  var input = document.getElementById("cbt-coupon-input");
+  var msg = document.getElementById("cbt-coupon-msg");
+  var code = (input && input.value || "").trim();
+  if (!code) return;
+  try {
+    var data = await api("/api/v1/cbt/coupons/redeem", { method: "POST", body: { code: code } });
+    if (msg) msg.textContent = (data && data.message) || "Unlocked.";
+    loadCbtPackagesPage();
+  } catch (e) {
+    if (msg) msg.textContent = e.message || "Invalid coupon";
+  }
+}
+window.redeemCbtCoupon = redeemCbtCoupon;

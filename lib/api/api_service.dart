@@ -1230,6 +1230,24 @@ class ApiService {
     return _parseMap(res);
   }
 
+  Future<Map<String, dynamic>> redeemCbtCoupon(String code) async {
+    final res = await _onlinePost(
+      _uri('/api/v1/cbt/coupons/redeem'),
+      headers: await _authHeaders(),
+      body: jsonEncode({'code': code}),
+    );
+    return _parseMap(res);
+  }
+
+  Future<List<dynamic>> videoTutorials() async {
+    final res = await _cachedGet(
+      _uri('/api/v1/videos'),
+      headers: await _authHeaders(),
+    );
+    final data = _parseMap(res);
+    return (data['videos'] as List?) ?? const [];
+  }
+
   Future<Map<String, dynamic>> cbtPackageAccess() async {
     final res = await _cachedGet(
       _uri('/api/v1/payments/paystack/cbt-access'),

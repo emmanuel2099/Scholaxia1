@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/admin.css?v=20260815d" />
+  <link rel="stylesheet" href="css/admin.css?v=20260819b" />
   <link rel="stylesheet" href="css/responsive.css?v=20260805e" />
 </head>
 <body>
@@ -22,7 +22,7 @@
         <h1>Scholaxia Academy</h1>
       </div>
     </div>
-    <p class="sub">School control centre — students, teachers, library, CBT, marketplace and live classes. Built for a high-school campus team.</p>
+    <p class="sub">Main Scholaxia admin adds schools. Each school then logs in with its own admin to run exams, slips, results and live classes.</p>
     <div class="auth-tabs">
       <button type="button" id="tab-login" class="auth-tab active">Log in</button>
       <button type="button" id="tab-register" class="auth-tab">Register</button>
@@ -57,7 +57,8 @@
     </div>
     <nav class="admin-nav">
       <div class="nav-section">Overview</div>
-      <button class="nav-btn active" data-page="dashboard" onclick="showAdminPage('dashboard')">Dashboard</button>
+      <button class="nav-btn" data-page="dashboard" onclick="showAdminPage('dashboard')">Dashboard</button>
+      <button class="nav-btn main-admin-only" data-page="schools" onclick="showAdminPage('schools')">Schools</button>
       <div class="nav-section">People</div>
       <button class="nav-btn" data-page="students" onclick="showAdminPage('students')">Students</button>
       <button class="nav-btn" data-page="teachers" onclick="showAdminPage('teachers')">Teachers</button>
@@ -69,6 +70,8 @@
       <button class="nav-btn" data-page="live-subs" onclick="showAdminPage('live-subs')">Live Subscriptions</button>
       <button class="nav-btn" data-page="skills-enroll" onclick="showAdminPage('skills-enroll')">Skills Enrollments</button>
       <button class="nav-btn" data-page="cbt" onclick="showAdminPage('cbt')">CBT Exams</button>
+      <button class="nav-btn" data-page="school-office" onclick="showAdminPage('school-office')">School office</button>
+      <button class="nav-btn" data-page="videos" onclick="showAdminPage('videos')">Video Tutorials</button>
       <button class="nav-btn" data-page="library" onclick="showAdminPage('library')">Library</button>
       <button class="nav-btn" data-page="internal-exams" onclick="showAdminPage('internal-exams')">Internal Exams</button>
       <button class="nav-btn" data-page="recommendations" onclick="showAdminPage('recommendations')">Recommendations</button>
@@ -98,10 +101,33 @@
       <div id="stats-grid" class="stats-grid"><div class="loading">Loading…</div></div>
     </section>
 
+    <section id="page-schools" class="admin-page">
+      <div class="page-head">
+        <h2>Schools</h2>
+        <button class="btn-sm" onclick="loadSchoolsAdmin()">Refresh</button>
+      </div>
+      <p class="page-desc">Only the main Scholaxia admin can add a school. Each school gets its own admin login for the school office (exams, slips, results, teachers, live class).</p>
+      <div class="panel" style="margin-bottom:1rem">
+        <h3>Add school + school admin</h3>
+        <div class="form-grid">
+          <label><span>School name *</span><input id="sch-name" placeholder="e.g. Hope Academy, Uyo" /></label>
+          <label><span>City</span><input id="sch-city" /></label>
+          <label><span>State</span><input id="sch-state" /></label>
+          <label><span>School admin name *</span><input id="sch-admin-name" /></label>
+          <label><span>School admin email *</span><input id="sch-admin-email" type="email" /></label>
+          <label><span>School admin password *</span><input id="sch-admin-pass" type="password" minlength="8" /></label>
+        </div>
+        <button class="btn-primary" style="width:auto;padding:12px 22px;margin-top:8px" onclick="createSchoolCampus()">Create school</button>
+        <p id="sch-msg" class="cbt-hint small"></p>
+      </div>
+      <div id="schools-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+    </section>
+
     <section id="page-students" class="admin-page">
       <div class="page-head">
         <h2>Students &amp; Subjects</h2>
         <div class="form-row">
+          <input type="search" id="students-search" class="admin-search" placeholder="Search by email or name to find &amp; remove…" autocomplete="off" oninput="filterStudentsTable()" />
           <button class="btn-sm danger" onclick="removeAllStudents()">Remove all</button>
           <button class="btn-sm" onclick="loadStudents()">Refresh</button>
         </div>
@@ -231,6 +257,32 @@
         <button type="button" id="cbt-tab-school" class="cbt-type-tab" onclick="switchCbtMode('school')">
           School Exam
         </button>
+      </div>
+
+      <div class="panel" style="margin-bottom:16px">
+        <h3>Practice coupon codes</h3>
+        <p class="cbt-hint small">Generate a code so a student can unlock CBT without Paystack.</p>
+        <div class="form-grid">
+          <label><span>Package</span>
+            <select id="coupon-package">
+              <option value="jamb">JAMB Only</option>
+              <option value="waec">WAEC Only</option>
+              <option value="neco">NECO Only</option>
+              <option value="jamb_waec">JAMB &amp; WAEC</option>
+              <option value="jamb_waec_neco">JAMB, WAEC &amp; NECO</option>
+              <option value="junior_waec">Junior WAEC</option>
+              <option value="common_entrance">Common Entrance</option>
+            </select>
+          </label>
+          <label><span>How many codes</span><input id="coupon-count" type="number" min="1" max="50" value="1" /></label>
+          <label><span>Max uses each</span><input id="coupon-uses" type="number" min="1" value="1" /></label>
+        </div>
+        <div class="form-row" style="margin:8px 0">
+          <button type="button" class="btn-primary" style="width:auto;padding:12px 22px" onclick="generateCbtCoupons()">Generate coupon</button>
+          <button type="button" class="btn-sm" onclick="loadCbtCoupons()">Refresh list</button>
+        </div>
+        <p id="coupon-msg" class="cbt-hint small"></p>
+        <div id="coupon-table" class="data-table-wrap"></div>
       </div>
 
       <div class="panel" style="margin-bottom:16px">
@@ -600,7 +652,8 @@
               <option value="other">Other</option>
             </select>
           </label>
-          <label><span>Price (₦)</span><input type="number" id="mp-price" placeholder="Price" min="0" /></label>
+          <label><span>Price (₦)</span><input type="number" id="mp-price" placeholder="0 = free" min="0" /></label>
+          <label class="chk-label" style="align-self:end"><input type="checkbox" id="mp-free" /> List as free (students get it without payment)</label>
           <label><span>Short description</span><input type="text" id="mp-desc" placeholder="Short description" /></label>
           <label id="mp-image-label"><span>Product image *</span><input type="file" id="mp-image-file" accept="image/*" onchange="previewMarketplaceImage(this)" /></label>
           <label><span>Or image URL</span><input type="text" id="mp-image" placeholder="https://… (optional if you upload a file)" oninput="previewMarketplaceImageUrl(this.value)" /></label>
@@ -626,11 +679,133 @@
       <p class="cbt-hint small">When a student books, contact them on WhatsApp using the number below.</p>
       <div id="marketplace-bookings" class="data-table-wrap"><div class="loading">Loading…</div></div>
     </section>
+
+    <section id="page-videos" class="admin-page">
+      <div class="page-head">
+        <h2>Video Tutorials</h2>
+        <button class="btn-sm" onclick="loadAdminVideos()">Refresh</button>
+      </div>
+      <p class="cbt-hint small">Paste a YouTube (or other https) link. It appears as <strong>Video Tutorials</strong> on the website, app, and desktop.</p>
+      <div class="panel" style="margin-bottom:1rem">
+        <div class="form-grid">
+          <label><span>Title *</span><input id="vid-title" placeholder="e.g. Mole concept — SS2 Chemistry" /></label>
+          <label><span>Subject</span><input id="vid-subject" placeholder="Chemistry" /></label>
+          <label><span>Video URL *</span><input id="vid-url" placeholder="https://www.youtube.com/watch?v=…" /></label>
+        </div>
+        <div class="form-row" style="margin-top:8px">
+          <button class="btn-primary" style="width:auto;padding:12px 22px" onclick="createAdminVideo()">Publish video</button>
+        </div>
+        <p id="vid-msg" class="cbt-hint small"></p>
+      </div>
+      <div id="videos-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+    </section>
+
+    <section id="page-school-office" class="admin-page">
+      <div class="page-head">
+        <h2>School office</h2>
+        <button class="btn-sm" onclick="loadSchoolOffice()">Refresh</button>
+      </div>
+      <p class="page-desc">Register students for <strong>this school’s</strong> exams, print slips (access code + rec number), print results, grant retakes, add teachers, and host class-based live lessons.</p>
+      <div class="panel" id="so-school-pick" style="margin-bottom:1rem">
+        <label><span>Working as school</span>
+          <select id="so-school-id" onchange="loadSchoolOffice()"></select>
+        </label>
+        <p id="so-school-label" class="cbt-hint small"></p>
+      </div>
+
+      <div class="panel" style="margin-bottom:1rem">
+        <h3>Register student for exam</h3>
+        <div class="form-grid">
+          <label id="so-school-name-wrap" class="hidden"><span>School name</span><input id="so-school" /></label>
+          <label><span>Class *</span>
+            <select id="so-class">
+              <option>JSS1</option><option>JSS2</option><option>JSS3</option>
+              <option>SS1</option><option>SS2</option><option>SS3</option>
+            </select>
+          </label>
+          <label><span>Full name *</span><input id="so-name" /></label>
+          <label><span>Email</span><input id="so-email" type="email" placeholder="needed to retake / match account" /></label>
+          <label><span>Phone</span><input id="so-phone" /></label>
+          <label><span>Subjects (comma)</span><input id="so-subjects" placeholder="English, Mathematics, Biology" /></label>
+        </div>
+        <div class="form-row" style="margin-top:8px">
+          <button class="btn-primary" style="width:auto;padding:12px 22px" onclick="registerSchoolCandidate()">Register &amp; generate slip</button>
+        </div>
+        <p id="so-reg-msg" class="cbt-hint small"></p>
+      </div>
+
+      <div class="panel" style="margin-bottom:1rem">
+        <h3>Find registered students</h3>
+        <div class="form-row">
+          <input type="search" id="so-search" class="admin-search" placeholder="Email, name, rec number, access code…" oninput="loadSchoolCandidates()" />
+        </div>
+        <div id="so-candidates" class="data-table-wrap"><div class="loading">Loading…</div></div>
+      </div>
+
+      <div class="panel" style="margin-bottom:1rem">
+        <h3>Results &amp; retake</h3>
+        <div class="form-grid">
+          <label><span>Class filter</span><input id="so-res-class" placeholder="JSS1" /></label>
+          <label><span>Subject filter</span><input id="so-res-subject" placeholder="Mathematics" /></label>
+        </div>
+        <div class="form-row" style="margin-top:8px">
+          <button class="btn-sm" onclick="loadSchoolResults()">Load &amp; print results</button>
+        </div>
+        <div id="so-results" class="data-table-wrap"></div>
+        <div class="form-grid" style="margin-top:12px">
+          <label><span>Student email</span><input id="so-retake-email" /></label>
+          <label><span>Exam ID</span><input id="so-retake-exam" placeholder="from exam counts below" /></label>
+        </div>
+        <button class="btn-sm" style="margin-top:8px" onclick="grantSchoolRetake()">Allow retake</button>
+        <p id="so-retake-msg" class="cbt-hint small"></p>
+        <div id="so-exam-counts" class="data-table-wrap" style="margin-top:12px"></div>
+      </div>
+
+      <div class="panel" style="margin-bottom:1rem">
+        <h3>Add teacher</h3>
+        <div class="form-grid">
+          <label><span>Full name *</span><input id="so-t-name" /></label>
+          <label><span>Email *</span><input id="so-t-email" type="email" /></label>
+          <label><span>Password *</span><input id="so-t-pass" type="password" minlength="8" /></label>
+          <label><span>Subjects (comma)</span><input id="so-t-subjects" /></label>
+          <label><span>Classes they teach (comma)</span><input id="so-t-classes" placeholder="JSS1, JSS2" /></label>
+        </div>
+        <button class="btn-primary" style="width:auto;padding:12px 22px;margin-top:8px" onclick="addSchoolTeacher()">Create teacher</button>
+        <p id="so-t-msg" class="cbt-hint small"></p>
+      </div>
+
+      <div class="panel">
+        <h3>School live class</h3>
+        <p class="cbt-hint small">Class-based (JSS1, SS2, …) or private (invite only). Teachers you add above can also host from the teacher portal.</p>
+        <div class="form-grid">
+          <label><span>Title *</span><input id="so-live-title" /></label>
+          <label><span>Subject *</span><input id="so-live-subject" /></label>
+          <label><span>Audience</span>
+            <select id="so-live-vis">
+              <option value="class_level">One class (JSS1 / SS1…)</option>
+              <option value="private">Private (invite only)</option>
+              <option value="public">All students</option>
+            </select>
+          </label>
+          <label><span>Class (if class-based)</span>
+            <select id="so-live-class">
+              <option>JSS1</option><option>JSS2</option><option>JSS3</option>
+              <option>SS1</option><option>SS2</option><option>SS3</option>
+            </select>
+          </label>
+        </div>
+        <div class="form-row" style="margin-top:8px">
+          <button class="btn-sm" onclick="hostSchoolLiveClass(false)">Schedule now</button>
+          <button class="btn-sm primary" onclick="hostSchoolLiveClass(true)">Go live now</button>
+        </div>
+        <p id="so-live-msg" class="cbt-hint small"></p>
+      </div>
+    </section>
   </main>
 </div>
 
-<script src="js/admin-api.js?v=20260815d"></script>
-<script src="js/admin.js?v=20260815d"></script>
+<script src="js/admin-api.js?v=20260819b"></script>
+<script src="js/admin.js?v=20260819b"></script>
 <script src="js/responsive.js?v=20260805e"></script>
 </body>
 </html>

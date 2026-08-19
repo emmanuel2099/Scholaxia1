@@ -12,7 +12,7 @@ const PAGE_TITLES = {
   skills: "Skills Training",
   subscription: "Subscription",
   cbt: "CBT Practice",
-  "study-materials": "Study Materials",
+  "study-materials": "Video Tutorials",
   "past-questions": "Past Questions",
   about: "About Scholaxia",
   contact: "Contact",
@@ -863,30 +863,26 @@ async function loadStudyMaterials() {
   var el = document.getElementById("study-materials-list");
   if (!el) return;
   if (!isStudentLoggedIn()) {
-    el.innerHTML = '<div class="empty">Sign in to see study materials posted by admin.</div>';
+    el.innerHTML = '<div class="empty">Sign in to watch video tutorials.</div>';
     return;
   }
-  el.innerHTML = '<div class="loading">Loading materials…</div>';
+  el.innerHTML = '<div class="loading">Loading video tutorials…</div>';
   try {
-    var rows = await api("/api/v1/recommendations/feed");
-    if (!rows || !rows.length) {
-      el.innerHTML = '<div class="empty">No study materials yet. Admin will post materials here soon.</div>';
+    var data = await api("/api/v1/videos");
+    var rows = (data && data.videos) || data || [];
+    if (!rows.length) {
+      el.innerHTML = '<div class="empty">No video tutorials yet. Admin will post lessons here.</div>';
       return;
     }
     el.innerHTML = rows.map(function (r) {
-      var cover = r.cover_image_url
-        ? '<img class="study-mat-cover" src="' + escHtml(r.cover_image_url) + '" alt="" />'
-        : '<div class="study-mat-cover study-mat-cover-ph">&#128218;</div>';
-      var action = "";
-      if (r.book_id) {
-        action = '<button type="button" class="btn-action btn-sm" onclick="showPage(\'library\')">Read in Library</button>';
-      }
+      var url = String(r.video_url || "");
+      var m = url.match(/(?:youtu\.be\/|v=)([A-Za-z0-9_-]{6,})/);
+      var embed = m ? "https://www.youtube.com/embed/" + m[1] : url;
       return (
-        '<article class="study-mat-card">' + cover +
-        '<div class="study-mat-body"><h4>' + escHtml(r.title || "Material") + '</h4>' +
-        (r.author ? '<p class="study-mat-meta">' + escHtml(r.author) + "</p>" : "") +
-        (r.description ? '<p class="study-mat-desc">' + escHtml(r.description) + "</p>" : "") +
-        (action ? '<div class="study-mat-actions">' + action + "</div>" : "") +
+        '<article class="study-mat-card">' +
+        '<div class="study-mat-body"><h4>' + escHtml(r.title || "Video") + '</h4>' +
+        '<p class="study-mat-meta">' + escHtml(r.subject || "Tutorial") + "</p>" +
+        '<iframe src="' + mpAttrSafe(embed) + '" title="' + escHtml(r.title || "Video") + '" allowfullscreen style="width:100%;min-height:220px;border:0;border-radius:12px"></iframe>' +
         "</div></article>"
       );
     }).join("");
@@ -894,6 +890,9 @@ async function loadStudyMaterials() {
     var msg = typeof networkErrorMessage === "function" ? networkErrorMessage(e) : e.message;
     el.innerHTML = '<div class="empty">' + escHtml(msg) + "</div>";
   }
+}
+function mpAttrSafe(s) {
+  return String(s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 }
 
 function dedupeLiveSessions(sessions) {

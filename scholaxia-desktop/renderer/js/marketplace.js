@@ -2,6 +2,7 @@
 
 var mpProducts = [];
 var mpCategory = "all";
+var mpSearchQ = "";
 
 var MP_TABS = [
   { id: "all", label: "All" },
@@ -35,9 +36,17 @@ function mpAttr(s) {
 }
 
 function mpPrice(p) {
-  var n = Number(p.price || 0);
-  if (n <= 0) return "Ask price";
-  return "₦" + n.toLocaleString("en-NG");
+  if (p.is_free || Number(p.price || 0) <= 0) return "Free";
+  return "₦" + Number(p.price || 0).toLocaleString("en-NG");
+}
+
+function mpPublicDesc(p) {
+  var d = String(p.description || "");
+  var cut = d.indexOf("SIA_META:");
+  if (cut >= 0) d = d.slice(0, cut);
+  cut = d.indexOf("---");
+  if (cut >= 0 && d.indexOf("{") > cut) d = d.slice(0, cut);
+  return d.replace(/\{"condition".*$/, "").trim();
 }
 
 function mpImageUrl(url) {
@@ -56,6 +65,14 @@ async function loadMarketplacePage() {
   if (!grid) return;
   grid.innerHTML = '<div class="loading">Loading marketplace…</div>';
   renderMarketplaceTabs();
+  var searchEl = document.getElementById("marketplace-search");
+  if (searchEl && !searchEl._bound) {
+    searchEl._bound = true;
+    searchEl.addEventListener("input", function () {
+      mpSearchQ = (searchEl.value || "").trim().toLowerCase();
+      renderMarketplaceGrid();
+    });
+  }
   try {
     var url = "/api/v1/marketplace/products";
     if (mpCategory && mpCategory !== "all") url += "?category=" + encodeURIComponent(mpCategory);
@@ -83,12 +100,18 @@ function setMarketplaceCategory(cat) {
 function renderMarketplaceGrid() {
   var grid = document.getElementById("marketplace-grid");
   if (!grid) return;
-  if (!mpProducts.length) {
-    grid.innerHTML = '<div class="empty-state-premium"><div class="empty-icon">&#128722;</div><h3>No products yet</h3><p>Admin will add gadgets, laptops, phones and books here.</p></div>';
+  var rows = mpProducts.filter(function (p) {
+    if (!mpSearchQ) return true;
+    var hay = ((p.title || "") + " " + mpPublicDesc(p) + " " + (p.category || "")).toLowerCase();
+    return hay.indexOf(mpSearchQ) >= 0;
+  });
+  if (!rows.length) {
+    grid.innerHTML = '<div class="empty-state-premium"><div class="empty-icon">&#128722;</div><h3>No products yet</h3><p>Admin will add gadgets, laptops, phones and books here. Free items show as Free.</p></div>';
     return;
   }
-  grid.innerHTML = mpProducts.map(function (p) {
+  grid.innerHTML = rows.map(function (p) {
     var img = mpImageUrl(p.image_url || p.secure_url || p.image || "");
+    var bookLabel = p.is_free || Number(p.price || 0) <= 0 ? "Get free" : "Book item";
     return (
       '<div class="mp-product-card sx-card">' +
       (img
@@ -101,10 +124,10 @@ function renderMarketplaceGrid() {
       '<div class="mp-product-body">' +
       '<span class="mp-product-cat">' + mpEsc(p.category || "item") + "</span>" +
       "<h3>" + mpEsc(p.title) + "</h3>" +
-      '<p class="mp-product-desc">' + mpEsc((p.description || "").slice(0, 100)) + "</p>" +
+      '<p class="mp-product-desc">' + mpEsc(mpPublicDesc(p).slice(0, 100)) + "</p>" +
       '<div class="mp-product-footer">' +
       '<strong class="mp-price">' + mpPrice(p) + "</strong>" +
-      '<button type="button" class="btn-action btn-sm" onclick="openMarketplaceBook(\'' + mpEsc(String(p.id)) + '\')">Book item</button>' +
+      '<button type="button" class="btn-action btn-sm" onclick="openMarketplaceBook(\'' + mpEsc(String(p.id)) + '\')">' + bookLabel + "</button>" +
       "</div></div></div>"
     );
   }).join("");

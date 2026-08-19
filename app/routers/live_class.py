@@ -496,6 +496,13 @@ async def _student_can_access_class(
         if student_id in invited:
             return True, ""
         return False, "This is a private class. You were not invited."
+    if vis == LiveClassVisibility.class_level.value:
+        want = (live_class.academic_class or "").replace(" ", "").upper()
+        have = (profile.education_level if profile else "") or ""
+        have = have.replace(" ", "").upper()
+        if want and have and (want == have or have.startswith(want) or want.startswith(have)):
+            return True, ""
+        return False, "This live class is only for " + (live_class.academic_class or "that class") + "."
     if vis == LiveClassVisibility.school_group.value:
         if not live_class.school_group_id:
             return False, "School group not configured for this class."
@@ -655,6 +662,7 @@ class CreateClassRequest(BaseModel):
     invited_student_ids: Optional[list[str]] = None
     invited_student_emails: Optional[list[str]] = None
     school_group_id: Optional[str] = None
+    academic_class: Optional[str] = None
 
 
 class ClassResponse(BaseModel):
@@ -747,6 +755,7 @@ async def create_class(
         visibility=vis,
         invited_student_ids=json.dumps(invited_ids) if vis == LiveClassVisibility.private.value else None,
         school_group_id=school_group_uuid,
+        academic_class=(payload.academic_class or "").strip().upper() or None,
         is_live=is_live,
     )
     db.add(live_class)

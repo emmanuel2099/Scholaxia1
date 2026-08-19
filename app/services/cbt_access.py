@@ -6,6 +6,8 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from datetime import timedelta
+
 from app.core.cbt_packages import get_cbt_package
 from app.core.datetime_utils import naive_utc_now
 from app.models.payment import StudentEntitlement
@@ -126,6 +128,48 @@ async def active_cbt_access(
         "active_packages": active,
         "current_subjects": current,
     }
+
+
+async def grant_cbt_package(
+    db: AsyncSession,
+    user_id: str,
+    package_id: str,
+    *,
+    payment_id=None,
+) -> StudentEntitlement:
+    """Grant or extend a CBT package without requiring a live Paystack payment."""
+    package = get_cbt_package(package_id)
+    if not package:
+        raise ValueError("Unknown CBT package")
+    now = naive_utc_now()
+    active_res = await db.execute(
+        select(StudentEntitlement)
+        .where(
+            StudentEntitlement.student_id == user_id,
+            StudentEntitlement.entitlement_type == ENTITLEMENT_TYPE,
+            StudentEntitlement.entitlement_key == package_id,
+            StudentEntitlement.expires_at > now,
+        )
+        .order_by(StudentEntitlement.expires_at.desc())
+        .limit(1)
+    )
+    active = active_res.scalar_one_or_none()
+    start = active.expires_at if active else now
+    profile = (
+        await db.execute(select(StudentProfile).where(StudentProfile.user_id == user_id))
+    ).scalar_one_or_none()
+    row = StudentEntitlement(
+        student_id=user_id,
+        entitlement_type=ENTITLEMENT_TYPE,
+        entitlement_key=package_id,
+        payment_id=payment_id,
+        granted_at=now,
+        expires_at=start + timedelta(days=package.duration_days),
+        details=subject_snapshot(profile),
+    )
+    db.add(row)
+    await db.flush()
+    return row
 
 
 async def has_board_access(

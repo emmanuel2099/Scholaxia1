@@ -752,6 +752,20 @@ body {
 
 .form-grid textarea { min-height: 64px; resize: vertical; }
 .form-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.school-admin-mode .nav-section,
+.school-admin-mode .nav-btn:not([data-page="school-office"]) {
+  display: none !important;
+}
+.school-admin-mode .nav-btn[data-page="school-office"] { display: flex !important; }
+.admin-search {
+  min-width: 260px;
+  flex: 1;
+  background: #0b1c2a;
+  border: 1px solid #2a4a62;
+  color: #e8f1f7;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
 
 .chk-label {
   display: flex;

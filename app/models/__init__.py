@@ -23,6 +23,9 @@ from app.models.api_key import ApiKey, ApiUsageLog, ApiDailyUsage
 from app.models.review_report import Report, TeacherReview
 from app.models.wallet import TeacherWallet, WalletTransaction, WithdrawalRequest
 from app.models.student_analytics import StudentLearningProfile, LessonSession
+from app.models.school_campus import SchoolCampus
+from app.models.cbt_coupon import CbtCoupon, CbtCouponRedemption
+from app.models.school_office import SchoolExamCandidate
 from app.models.sil import (
     SilLeagueProfile,
     SilCoinTransaction,

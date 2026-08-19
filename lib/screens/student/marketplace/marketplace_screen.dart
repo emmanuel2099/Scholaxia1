@@ -1,10 +1,12 @@
-﻿import 'package:flutter/gestures.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import '../../../api/api_service.dart';
 import '../../../theme/app_theme.dart';
 import '../../../widgets/student_ui.dart';
 import 'marketplace_cart_screen.dart';
+import 'marketplace_format.dart';
 import 'marketplace_orders_screen.dart';
+import 'marketplace_product_screen.dart';
 
 class MarketplaceScreen extends StatefulWidget {
   const MarketplaceScreen({super.key});
@@ -18,6 +20,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
   bool _loading = true;
   String _category = 'all';
   List<Map<String, dynamic>> _products = [];
+  int _cartQty = 0;
 
   static const _tabs = [
     ('all', 'All'),
@@ -40,6 +43,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
   void initState() {
     super.initState();
     _load();
+    _refreshCartCount();
   }
 
   Future<void> _load() async {
@@ -76,23 +80,44 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
   }
 
   String _price(Map<String, dynamic> p) {
-    final n = (p['price'] as num?)?.toDouble() ?? 0;
-    if (n <= 0) return 'Ask price';
-    final s = n.toStringAsFixed(0);
-    final buf = StringBuffer('â‚¦');
-    for (var i = 0; i < s.length; i++) {
-      final fromEnd = s.length - i;
-      buf.write(s[i]);
-      if (fromEnd > 1 && fromEnd % 3 == 1) buf.write(',');
-    }
-    return buf.toString();
+    return formatMarketplaceNaira((p['price'] as num?) ?? 0);
+  }
+
+  Future<void> _refreshCartCount() async {
+    try {
+      final cart = await _api.marketplaceCart();
+      final raw = cart['items'];
+      var qty = 0;
+      if (raw is List) {
+        for (final e in raw) {
+          if (e is Map) {
+            qty += (e['quantity'] as num?)?.toInt() ?? 1;
+          }
+        }
+      }
+      if (!mounted) return;
+      setState(() => _cartQty = qty);
+    } catch (_) {}
   }
 
   void _openCart() {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => MarketplaceCartScreen(api: _api)),
-    );
+    ).then((_) => _refreshCartCount());
+  }
+
+  void _openDetails(Map<String, dynamic> product) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MarketplaceProductScreen(
+          api: _api,
+          product: product,
+          onCartChanged: _refreshCartCount,
+        ),
+      ),
+    ).then((_) => _refreshCartCount());
   }
 
   Future<void> _addToCart(Map<String, dynamic> product) async {
@@ -107,6 +132,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
     }
     try {
       await _api.addToMarketplaceCart(productId: id);
+      await _refreshCartCount();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -165,7 +191,14 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                   IconButton(
                     tooltip: 'Cart',
                     onPressed: _openCart,
-                    icon: Icon(Icons.shopping_cart_outlined, color: context.accentColor),
+                    icon: Badge(
+                      isLabelVisible: _cartQty > 0,
+                      label: Text(_cartQty > 99 ? '99+' : '$_cartQty'),
+                      child: Icon(
+                        Icons.shopping_cart_outlined,
+                        color: context.accentColor,
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -293,13 +326,17 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                                 final p = _products[i];
                                 final title = p['title']?.toString() ?? 'Item';
                                 final image = p['image_url']?.toString();
-                                final desc = p['description']?.toString() ?? '';
+                                final desc = parseMarketplaceMeta(
+                                      p['description']?.toString(),
+                                    )['description']
+                                        ?.toString() ??
+                                    '';
                                 return Material(
                                   color: context.cardColor,
                                   borderRadius: BorderRadius.circular(16),
                                   child: InkWell(
                                     borderRadius: BorderRadius.circular(16),
-                                    onTap: () => _addToCart(p),
+                                    onTap: () => _openDetails(p),
                                     child: Container(
                                       decoration: BoxDecoration(
                                         borderRadius: BorderRadius.circular(16),

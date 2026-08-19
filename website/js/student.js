@@ -230,6 +230,7 @@
   function showPage(id, opts) {
     opts = opts || {};
     if (id === "access-code") id = "live";
+    if (id === "past-questions") id = "cbt";
     if (!PAGE_TITLES.hasOwnProperty(id)) id = "home";
 
     if (!opts.replace && currentPageId && currentPageId !== id) {

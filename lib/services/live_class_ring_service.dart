@@ -2,22 +2,29 @@ import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/services.dart';
 import '../api/api_service.dart';
+import 'app_prefs.dart';
 
 /// Plays the Scholaxia ringtone for live class & group voice calls.
 ///
 /// Rings in short bursts with a hard time limit so it never loops forever
-/// while a class stays live.
+/// while a class stays live. The same invite is not rung again on later
+/// app opens.
 class LiveClassRingService {
   LiveClassRingService._();
   static final LiveClassRingService instance = LiveClassRingService._();
 
   static const assetPath = 'asset/sounds/live_class_ringtone.mp3';
+  static const _doneKeysPref = 'live_ring_done_keys';
 
   /// Max time the ringtone may keep playing for one invite wave.
   static const Duration maxRingDuration = Duration(seconds: 45);
 
   /// How often each burst plays while ringing.
   static const Duration burstInterval = Duration(seconds: 4);
+
+  /// Only new invites should ring — leftover live classes / unread
+  /// notifications must not sound every time the student opens the app.
+  static const Duration maxInviteAge = Duration(minutes: 2);
 
   Timer? _ringTimer;
   Timer? _limitTimer;
@@ -76,6 +83,7 @@ class LiveClassRingService {
       if (shouldRing && !_ringing && !_limitReached) {
         _lastInviteKey = invite;
         _startRinging();
+        await _markInviteRung(invite);
       } else if (!shouldRing && _ringing) {
         _softStop();
       } else if (!shouldRing) {
@@ -95,32 +103,71 @@ class LiveClassRingService {
 
   /// Only unread invites / live notifications — not "any class is live forever".
   Future<String?> _activeInviteKey(ApiService api) async {
+    final alreadyRung = await _rungInviteKeys();
     final codesData = await api.myAccessCodes();
     final codes = (codesData['codes'] as List?) ?? [];
     for (final raw in codes) {
       if (raw is! Map) continue;
-      if (raw['is_class_live'] == false) continue;
+      if (raw['is_class_live'] != true) continue;
       if (raw['is_read'] == true || raw['is_used'] == true) continue;
+      if (!_isRecent(raw['created_at'])) continue;
       final id = raw['id']?.toString() ??
           raw['code']?.toString() ??
           raw['access_code']?.toString() ??
           '';
-      if (id.isNotEmpty) return 'code:$id';
+      if (id.isEmpty) continue;
+      final key = 'code:$id';
+      if (alreadyRung.contains(key)) continue;
+      return key;
     }
 
     final notifs = await api.notifications();
     for (final n in notifs) {
       if (n is! Map || n['is_read'] == true) continue;
       final t = (n['type']?.toString() ?? '').toLowerCase();
-      if (!t.contains('live') && !t.contains('group_call')) continue;
+      if (t != 'live_class' && t != 'group_call' && !t.contains('group_call')) {
+        continue;
+      }
       final title = (n['title']?.toString() ?? '').toLowerCase();
       final body = (n['body']?.toString() ?? '').toLowerCase();
       if (title.contains('ended') || body.contains('has ended')) continue;
+      if (!_isRecent(n['created_at'])) continue;
       final id = n['id']?.toString() ?? '';
-      if (id.isNotEmpty) return 'notif:$id';
-      return 'notif:${title.hashCode}';
+      final key = id.isNotEmpty ? 'notif:$id' : 'notif:${title.hashCode}';
+      if (alreadyRung.contains(key)) continue;
+      return key;
     }
     return null;
+  }
+
+  bool _isRecent(dynamic raw) {
+    final value = raw?.toString().trim() ?? '';
+    if (value.isEmpty) return false;
+    final dt = DateTime.tryParse(value);
+    if (dt == null) return false;
+    return DateTime.now().toUtc().difference(dt.toUtc()).abs() <= maxInviteAge;
+  }
+
+  Future<Set<String>> _rungInviteKeys() async {
+    try {
+      final prefs = await AppPrefs.instance();
+      return (prefs.getStringList(_doneKeysPref) ?? const <String>[]).toSet();
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> _markInviteRung(String key) async {
+    try {
+      final prefs = await AppPrefs.instance();
+      final keys = List<String>.from(prefs.getStringList(_doneKeysPref) ?? const []);
+      if (keys.contains(key)) return;
+      keys.add(key);
+      if (keys.length > 40) {
+        keys.removeRange(0, keys.length - 40);
+      }
+      await prefs.setStringList(_doneKeysPref, keys);
+    } catch (_) {}
   }
 
   void _startRinging() {

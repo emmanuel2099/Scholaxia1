@@ -46,13 +46,30 @@ def _absolute_image_url(url: Optional[str]) -> Optional[str]:
     return value
 
 
+def _public_description(raw: Optional[str]) -> Optional[str]:
+    if not raw:
+        return None
+    text = str(raw)
+    cut = text.find("---\nSIA_META:")
+    if cut >= 0:
+        text = text[:cut]
+    cut = text.find("SIA_META:")
+    if cut >= 0:
+        text = text[:cut]
+    text = text.strip()
+    return text or None
+
+
 def _product_dict(p: MarketplaceProduct) -> dict:
+    price = float(p.price or 0)
+    is_free = bool(getattr(p, "is_free", False) or price <= 0)
     return {
         "id": str(p.id),
         "title": p.title,
-        "description": p.description,
+        "description": _public_description(p.description),
         "category": p.category,
-        "price": float(p.price or 0),
+        "price": 0.0 if is_free else price,
+        "is_free": is_free,
         "currency": p.currency or "NGN",
         "image_url": _absolute_image_url(p.image_url),
         "is_available": bool(p.is_available),
@@ -306,6 +323,7 @@ class ProductCreate(BaseModel):
     currency: str = "NGN"
     image_url: Optional[str] = None
     is_available: bool = True
+    is_free: bool = False
     stock_qty: int = 0
 
 
@@ -317,12 +335,84 @@ class ProductUpdate(BaseModel):
     image_url: Optional[str] = None
     is_available: Optional[bool] = None
     is_active: Optional[bool] = None
+    is_free: Optional[bool] = None
     stock_qty: Optional[int] = None
 
 
 admin_router = APIRouter(prefix="/admin/marketplace", tags=["Admin — Marketplace"])
 
 _MP_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+_MP_IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp", ".gif")
+_MP_DOC_TYPES = {
+    "application/pdf",
+    "application/zip",
+    "application/x-zip-compressed",
+    "application/x-rar-compressed",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/msword",
+}
+_MP_DOC_EXTS = (
+    ".pdf",
+    ".zip",
+    ".rar",
+    ".7z",
+    ".doc",
+    ".docx",
+    ".ppt",
+    ".pptx",
+    ".xls",
+    ".xlsx",
+    ".txt",
+    ".apk",
+)
+_DIGITAL_CATEGORIES = {"soft_copy", "software"}
+
+
+def _is_image_upload(name: str, content_type: str) -> bool:
+    return content_type in _MP_IMAGE_TYPES or name.endswith(_MP_IMAGE_EXTS)
+
+
+def _is_doc_upload(name: str, content_type: str) -> bool:
+    return content_type in _MP_DOC_TYPES or name.endswith(_MP_DOC_EXTS)
+
+
+async def _upload_marketplace_asset(file: UploadFile, *, allow_docs: bool = False) -> dict:
+    content_type = (file.content_type or "").split(";")[0].strip().lower()
+    name = (file.filename or "").lower()
+    is_image = _is_image_upload(name, content_type)
+    is_doc = _is_doc_upload(name, content_type)
+    if is_image:
+        folder = "marketplace"
+        max_bytes = 6 * 1024 * 1024
+        too_large = "Image too large (max 6MB)."
+    elif allow_docs and is_doc:
+        folder = "marketplace_files"
+        max_bytes = 40 * 1024 * 1024
+        too_large = "File too large (max 40MB)."
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="Use JPEG, PNG, WebP, GIF, or a PDF/ZIP document.",
+        )
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file.")
+    if len(content) > max_bytes:
+        raise HTTPException(status_code=400, detail=too_large)
+    try:
+        result = upload_file(content, folder, filename=file.filename or name)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
+    file_url = _absolute_image_url(result.get("secure_url") or result.get("url"))
+    if not file_url:
+        raise HTTPException(status_code=500, detail="Upload succeeded but no file URL returned.")
+    return {
+        "image_url": file_url,
+        "secure_url": file_url,
+        "file_url": file_url,
+        "filename": file.filename or name,
+        "kind": "document" if is_doc and not is_image else "image",
+    }
 
 
 @admin_router.post("/upload-image")
@@ -330,26 +420,17 @@ async def admin_upload_product_image(
     file: UploadFile = File(...),
     current_user: dict = Depends(require_admin),
 ):
-    """Upload a product photo for the marketplace."""
-    content_type = (file.content_type or "").split(";")[0].strip().lower()
-    name = (file.filename or "").lower()
-    if content_type not in _MP_IMAGE_TYPES and not name.endswith(
-        (".jpg", ".jpeg", ".png", ".webp", ".gif")
-    ):
-        raise HTTPException(status_code=400, detail="Use JPEG, PNG, WebP, or GIF.")
-    content = await file.read()
-    if not content:
-        raise HTTPException(status_code=400, detail="Empty image file.")
-    if len(content) > 6 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Image too large (max 6MB).")
-    try:
-        result = upload_file(content, "marketplace")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
-    image_url = _absolute_image_url(result.get("secure_url") or result.get("url"))
-    if not image_url:
-        raise HTTPException(status_code=500, detail="Upload succeeded but no image URL returned.")
-    return {"image_url": image_url, "secure_url": image_url}
+    """Upload a product photo (or PDF for soft-copy listings)."""
+    return await _upload_marketplace_asset(file, allow_docs=True)
+
+
+@admin_router.post("/upload-file")
+async def admin_upload_product_file(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(require_admin),
+):
+    """Upload a marketplace PDF / document."""
+    return await _upload_marketplace_asset(file, allow_docs=True)
 
 
 @admin_router.post("/products", status_code=201)
@@ -365,9 +446,10 @@ async def admin_create_product(
             detail=f"category must be one of {', '.join(MARKETPLACE_CATEGORIES)}",
         )
     image_url = _absolute_image_url(payload.image_url)
-    if not image_url:
+    digital = cat in _DIGITAL_CATEGORIES
+    if not image_url and not digital:
         raise HTTPException(status_code=400, detail="Product image is required.")
-    if not (
+    if image_url and not (
         image_url.startswith("https://")
         or image_url.startswith("http://")
         or image_url.startswith("/")
@@ -376,14 +458,16 @@ async def admin_create_product(
             status_code=400,
             detail="image_url must be an http(s) URL or uploaded media path.",
         )
+    is_free = bool(payload.is_free or (payload.price or 0) <= 0)
     product = MarketplaceProduct(
         title=payload.title.strip(),
         description=(payload.description or "").strip() or None,
         category=cat,
-        price=max(float(payload.price or 0), 0),
+        price=0.0 if is_free else max(float(payload.price or 0), 0),
         currency=(payload.currency or "NGN").upper(),
         image_url=image_url,
         is_available=payload.is_available,
+        is_free=is_free,
         stock_qty=max(int(payload.stock_qty or 0), 0),
         approval_status="approved",
         source_role="admin",
@@ -438,6 +522,10 @@ async def admin_update_product(
         product.is_available = payload.is_available
     if payload.is_active is not None:
         product.is_active = payload.is_active
+    if payload.is_free is not None:
+        product.is_free = payload.is_free
+        if payload.is_free:
+            product.price = 0.0
     if payload.stock_qty is not None:
         product.stock_qty = max(int(payload.stock_qty), 0)
     await db.flush()
@@ -701,26 +789,16 @@ async def vendor_upload_product_image(
     file: UploadFile = File(...),
     current_user: dict = Depends(require_vendor),
 ):
-    """Upload a product photo for the vendor marketplace listing."""
-    content_type = (file.content_type or "").split(";")[0].strip().lower()
-    name = (file.filename or "").lower()
-    if content_type not in _MP_IMAGE_TYPES and not name.endswith(
-        (".jpg", ".jpeg", ".png", ".webp", ".gif")
-    ):
-        raise HTTPException(status_code=400, detail="Use JPEG, PNG, WebP, or GIF.")
-    content = await file.read()
-    if not content:
-        raise HTTPException(status_code=400, detail="Empty image file.")
-    if len(content) > 6 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Image too large (max 6MB).")
-    try:
-        result = upload_file(content, "marketplace")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
-    image_url = _absolute_image_url(result.get("secure_url") or result.get("url"))
-    if not image_url:
-        raise HTTPException(status_code=500, detail="Upload succeeded but no image URL returned.")
-    return {"image_url": image_url, "secure_url": image_url}
+    """Upload a product photo or digital file (PDF/ZIP) for a listing."""
+    return await _upload_marketplace_asset(file, allow_docs=True)
+
+
+@vendor_router.post("/upload-file")
+async def vendor_upload_product_file(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(require_vendor),
+):
+    return await _upload_marketplace_asset(file, allow_docs=True)
 
 
 @vendor_router.post("/products", status_code=201)
@@ -734,16 +812,18 @@ async def vendor_create_product(
     if cat not in MARKETPLACE_CATEGORIES:
         raise HTTPException(status_code=400, detail="Invalid category")
     image_url = _absolute_image_url(payload.image_url)
-    if not image_url:
+    digital = cat in _DIGITAL_CATEGORIES
+    if not image_url and not digital:
         raise HTTPException(status_code=400, detail="Product image is required.")
     product = MarketplaceProduct(
         title=payload.title.strip(),
         description=(payload.description or "").strip() or None,
         category=cat,
-        price=max(float(payload.price or 0), 0),
+        price=0.0 if payload.is_free else max(float(payload.price or 0), 0),
         currency=(payload.currency or "NGN").upper(),
         image_url=image_url,
         is_available=payload.is_available,
+        is_free=bool(payload.is_free or (payload.price or 0) <= 0),
         stock_qty=max(int(payload.stock_qty or 0), 0),
         approval_status="approved",
         source_role="vendor",
@@ -805,6 +885,10 @@ async def vendor_update_product(
         product.is_available = payload.is_available
     if payload.is_active is not None:
         product.is_active = payload.is_active
+    if payload.is_free is not None:
+        product.is_free = payload.is_free
+        if payload.is_free:
+            product.price = 0.0
     if payload.stock_qty is not None:
         product.stock_qty = max(int(payload.stock_qty), 0)
     await db.flush()

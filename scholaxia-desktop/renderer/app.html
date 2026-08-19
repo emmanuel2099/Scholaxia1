@@ -8,7 +8,7 @@
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://checkout.flutterwave.com; script-src-attr 'unsafe-inline'; connect-src https://scholaxia1.onrender.com https://api.flutterwave.com https://api.paystack.co https://*.paystack.co https://checkout.flutterwave.com https://*.flutterwave.com https://www.scholaxiacbtexam.blog https://scholaxiacbtexam.blog https://store.scholaxia.com http://127.0.0.1:*; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://checkout.flutterwave.com https://www.scholaxiacbtexam.blog https://scholaxiacbtexam.blog https://store.scholaxia.com; font-src https://fonts.gstatic.com https://www.scholaxiacbtexam.blog https://scholaxiacbtexam.blog https://store.scholaxia.com; img-src 'self' data: https:; media-src 'self' blob: https:; frame-src 'self' http://127.0.0.1:* https://www.scholaxiacbtexam.blog https://scholaxiacbtexam.blog https://store.scholaxia.com https://checkout.flutterwave.com https://*.flutterwave.com https://checkout.paystack.com https://*.paystack.co https://*.paystack.com; form-action https://checkout.flutterwave.com https://*.flutterwave.com https://checkout.paystack.com https://*.paystack.co https://*.paystack.com" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://checkout.flutterwave.com; script-src-attr 'unsafe-inline'; connect-src https://scholaxia1.onrender.com https://api.flutterwave.com https://api.paystack.co https://*.paystack.co https://checkout.flutterwave.com https://*.flutterwave.com https://www.scholaxiacbtexam.blog https://scholaxiacbtexam.blog https://store.scholaxia.com http://127.0.0.1:*; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://checkout.flutterwave.com https://www.scholaxiacbtexam.blog https://scholaxiacbtexam.blog https://store.scholaxia.com; font-src https://fonts.gstatic.com https://www.scholaxiacbtexam.blog https://scholaxiacbtexam.blog https://store.scholaxia.com; img-src 'self' data: https:; media-src 'self' blob: https:; frame-src 'self' blob: http://127.0.0.1:* https://www.youtube.com https://www.youtube-nocookie.com https://www.scholaxiacbtexam.blog https://scholaxiacbtexam.blog https://store.scholaxia.com https://checkout.flutterwave.com https://*.flutterwave.com https://checkout.paystack.com https://*.paystack.co https://*.paystack.com; form-action https://checkout.flutterwave.com https://*.flutterwave.com https://checkout.paystack.com https://*.paystack.co https://*.paystack.com" />
 
   <title>Scholaxia Student</title>
   <meta name="scholaxia-app-mode" content="student" />
@@ -53,7 +53,7 @@
         </button>
         <button type="button" class="nav-item topnav-btn" data-page="study-materials" onclick="showPage('study-materials')">
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15z"/></svg></span>
-          <span class="nav-label">Study Materials</span>
+          <span class="nav-label">Video Tutorials</span>
         </button>
         <button type="button" class="nav-item topnav-btn" data-page="past-questions" onclick="showPage('past-questions')">
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"/></svg></span>
@@ -478,8 +478,9 @@
     <section id="page-marketplace" class="page">
       <div class="sx-page-hero">
         <h2>&#128722; Scholaxia Marketplace</h2>
-        <p>Shop gadgets, laptops, phones, books and more. Book an item and Scholaxia will chat with you.</p>
+        <p>Shop gadgets, laptops, phones, books and more. Book an item and Scholaxia will chat with you. Free items can be claimed without payment.</p>
       </div>
+      <input type="search" id="marketplace-search" class="library-search" placeholder="Search products…" autocomplete="off" />
       <div id="marketplace-tabs" class="mp-tabs"></div>
       <div id="marketplace-grid" class="mp-grid"><div class="loading">Loading…</div></div>
     </section>
@@ -680,8 +681,8 @@
     <section id="page-study-materials" class="page">
       <div class="study-materials-page">
         <div class="portal-embed-head portal-embed-head-slim">
-          <span class="portal-pill">Study Materials</span>
-          <p>Materials posted by Scholaxia admin — read in your Library.</p>
+          <span class="portal-pill">Video Tutorials</span>
+          <p>Watch lessons posted by Scholaxia admin.</p>
         </div>
         <div id="study-materials-list" class="study-materials-list"><div class="loading">Loading materials…</div></div>
       </div>
@@ -809,6 +810,16 @@
       <div id="library-stats" class="materials-stats"></div>
       <div id="library-list" class="materials-grid"><div class="loading">Loading library…</div></div>
     </section>
+
+    <div id="library-reader-modal" class="teacher-modal hidden">
+      <div class="teacher-modal-box wide">
+        <div class="teacher-modal-head">
+          <h3 id="library-reader-title">Library</h3>
+          <button type="button" class="modal-close" onclick="closeLibraryReader()" aria-label="Close">&times;</button>
+        </div>
+        <iframe id="library-reader-frame" title="Library PDF" style="width:100%;height:75vh;border:0;background:#111"></iframe>
+      </div>
+    </div>
 
     <section id="page-saved-lives" class="page">
       <div class="page-intro">

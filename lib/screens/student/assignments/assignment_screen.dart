@@ -4,7 +4,6 @@ import 'package:pdfrx/pdfrx.dart';
 
 import '../../../api/api_service.dart';
 import '../../../theme/app_theme.dart';
-import '../../../widgets/student_ui.dart';
 
 class AssignmentScreen extends StatefulWidget {
   const AssignmentScreen({super.key});
@@ -161,8 +160,11 @@ class _AssignmentScreenState extends State<AssignmentScreen>
         title: const Text('Assignments'),
         bottom: TabBar(
           controller: _tabs,
+          indicatorSize: TabBarIndicatorSize.label,
+          labelStyle: const TextStyle(fontWeight: FontWeight.w800),
+          unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600),
           tabs: const [
-            Tab(text: 'Submit Assignment'),
+            Tab(text: 'Submit'),
             Tab(text: 'Notice Board'),
           ],
         ),
@@ -176,86 +178,263 @@ class _AssignmentScreenState extends State<AssignmentScreen>
     );
   }
 
+  InputDecoration _field(String hint, {Widget? prefix}) {
+    return InputDecoration(
+      hintText: hint,
+      prefixIcon: prefix,
+      filled: true,
+      fillColor: context.cardColor,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: context.borderColor),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: context.borderColor),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: context.accentColor, width: 1.4),
+      ),
+    );
+  }
+
+  Widget _section(String title, {String? subtitle}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 4,
+                height: 18,
+                decoration: BoxDecoration(
+                  color: context.accentColor,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    color: context.textColor,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (subtitle != null) ...[
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.only(left: 14),
+              child: Text(
+                subtitle,
+                style: TextStyle(color: context.greyColor, fontSize: 13, height: 1.35),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _panel({required Widget child}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: context.cardColor,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: context.borderColor),
+      ),
+      child: child,
+    );
+  }
+
   Widget _submitTab() {
+    final teacherItems = _teachers
+        .map(
+          (t) => DropdownMenuItem(
+            value: t['user_id']?.toString(),
+            child: Text(t['full_name']?.toString() ?? 'Teacher'),
+          ),
+        )
+        .toList();
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 18, 20, 36),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
         children: [
-          const StudentSectionTitle(title: 'Teacher assignments'),
+          _section(
+            'From your teacher',
+            subtitle: 'Open a posted PDF, complete it, then send it back below.',
+          ),
           if (_announcements.isEmpty)
-            const Card(
-              child: Padding(
-                padding: EdgeInsets.all(18),
-                child: Text('No PDF assignments have been posted yet.'),
+            _panel(
+              child: Column(
+                children: [
+                  Icon(Icons.assignment_outlined, size: 36, color: context.accentColor),
+                  const SizedBox(height: 10),
+                  Text(
+                    'No PDF assignments yet',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: context.textColor,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'When a teacher posts work, it will show here.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: context.greyColor, fontSize: 13),
+                  ),
+                ],
               ),
             )
           else
             ..._announcements.map((item) {
               final title =
-                  item['content']?.toString().trim() ?? 'PDF assignment';
+                  item['content']?.toString().trim().isNotEmpty == true
+                      ? item['content'].toString().trim()
+                      : 'PDF assignment';
               final url = item['media_url']?.toString() ?? '';
-              return Card(
-                child: ListTile(
-                  leading: const Icon(Icons.picture_as_pdf_rounded,
-                      color: Colors.red),
-                  title: Text(title, maxLines: 2),
-                  subtitle: Text(
-                    item['author_name']?.toString() ?? 'Teacher',
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: _panel(
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: CircleAvatar(
+                      backgroundColor: context.accentColor.withValues(alpha: 0.12),
+                      child: Icon(Icons.picture_as_pdf_rounded, color: context.accentColor),
+                    ),
+                    title: Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: context.textColor,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    subtitle: Text(
+                      item['author_name']?.toString() ?? 'Teacher',
+                      style: TextStyle(color: context.greyColor),
+                    ),
+                    trailing: Icon(Icons.chevron_right_rounded, color: context.greyColor),
+                    onTap: () => _openPdf(url, title),
                   ),
-                  trailing: const Icon(Icons.open_in_new_rounded),
-                  onTap: () => _openPdf(url, title),
                 ),
               );
             }),
-          const StudentSectionTitle(title: 'Submit your completed PDF'),
-          DropdownButtonFormField<String>(
-            initialValue: _teacherId,
-            decoration: const InputDecoration(
-              labelText: 'Tag teacher',
-              border: OutlineInputBorder(),
-            ),
-            items: _teachers
-                .map(
-                  (t) => DropdownMenuItem(
-                    value: t['user_id']?.toString(),
-                    child: Text(t['full_name']?.toString() ?? 'Teacher'),
+          const SizedBox(height: 28),
+          _section(
+            'Submit your work',
+            subtitle: 'Choose the teacher, add a title, then attach your PDF.',
+          ),
+          _panel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: _teacherId,
+                  isExpanded: true,
+                  decoration: _field(
+                    'Select teacher',
+                    prefix: const Icon(Icons.person_outline_rounded),
                   ),
-                )
-                .toList(),
-            onChanged: (value) => setState(() => _teacherId = value),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _caption,
-            decoration: const InputDecoration(
-              labelText: 'Assignment title or note',
-              border: OutlineInputBorder(),
+                  items: teacherItems,
+                  onChanged: (value) => setState(() => _teacherId = value),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _caption,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: _field(
+                    'Assignment title or note',
+                    prefix: const Icon(Icons.notes_rounded),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Material(
+                  color: context.bgColor,
+                  borderRadius: BorderRadius.circular(14),
+                  child: InkWell(
+                    onTap: _submitting ? null : _pickPdf,
+                    borderRadius: BorderRadius.circular(14),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: context.borderColor),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.upload_file_rounded,
+                            color: context.accentColor,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              _pdf?.name ?? 'Choose completed PDF',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: _pdf == null
+                                    ? context.greyColor
+                                    : context.textColor,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          Icon(Icons.attach_file_rounded, color: context.greyColor, size: 18),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                SizedBox(
+                  height: 50,
+                  child: FilledButton.icon(
+                    onPressed: _submitting ? null : _submit,
+                    icon: _submitting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.send_rounded),
+                    label: Text(_submitting ? 'Submitting…' : 'Submit to teacher'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: context.accentColor,
+                      foregroundColor: Colors.white,
+                      textStyle: const TextStyle(fontWeight: FontWeight.w800),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Only you and the teacher you tag can see this submission.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: context.greyColor, fontSize: 12, height: 1.4),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: _submitting ? null : _pickPdf,
-            icon: const Icon(Icons.upload_file_rounded),
-            label: Text(_pdf?.name ?? 'Choose completed PDF'),
-          ),
-          const SizedBox(height: 12),
-          FilledButton.icon(
-            onPressed: _submitting ? null : _submit,
-            icon: _submitting
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.send_rounded),
-            label: const Text('Submit to teacher'),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Only you and the teacher you tag can see this submission.',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: context.greyColor, fontSize: 12),
           ),
         ],
       ),
@@ -266,53 +445,74 @@ class _AssignmentScreenState extends State<AssignmentScreen>
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 18, 20, 36),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 40),
         children: [
-          Text(
+          _section(
             'Your private results',
-            style: TextStyle(
-              color: context.textColor,
-              fontSize: 21,
-              fontWeight: FontWeight.w800,
-            ),
+            subtitle: 'Other students cannot see your submissions, scores, or feedback.',
           ),
-          const SizedBox(height: 6),
-          Text(
-            'Other students cannot see your submissions, scores, or feedback.',
-            style: TextStyle(color: context.greyColor),
-          ),
-          const SizedBox(height: 14),
           if (_results.isEmpty)
-            const Card(
-              child: Padding(
-                padding: EdgeInsets.all(18),
-                child: Text('No assignment submissions yet.'),
+            _panel(
+              child: Column(
+                children: [
+                  Icon(Icons.inbox_outlined, size: 36, color: context.accentColor),
+                  const SizedBox(height: 10),
+                  Text(
+                    'No submissions yet',
+                    style: TextStyle(
+                      color: context.textColor,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Your scores and teacher comments will appear here.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: context.greyColor, fontSize: 13),
+                  ),
+                ],
               ),
             )
           else
-            ..._results.map((item) {
+            ..._results.asMap().entries.map((entry) {
+              final item = entry.value;
               final score = item['result_score']?.toString();
               final feedback = item['result_feedback']?.toString();
               final status = item['status']?.toString() ?? 'submitted';
-              return Card(
-                child: ListTile(
-                  leading: Icon(
-                    score == null
-                        ? Icons.hourglass_top_rounded
-                        : Icons.verified_rounded,
-                    color: score == null ? Colors.orange : Colors.green,
+              final graded = score != null && score.isNotEmpty;
+              return Padding(
+                padding: EdgeInsets.only(bottom: entry.key == _results.length - 1 ? 0 : 10),
+                child: _panel(
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: CircleAvatar(
+                      backgroundColor: (graded ? Colors.green : Colors.orange)
+                          .withValues(alpha: 0.15),
+                      child: Icon(
+                        graded ? Icons.verified_rounded : Icons.hourglass_top_rounded,
+                        color: graded ? Colors.green : Colors.orange,
+                      ),
+                    ),
+                    title: Text(
+                      item['caption']?.toString().trim().isNotEmpty == true
+                          ? item['caption'].toString()
+                          : 'Assignment submission',
+                      style: TextStyle(
+                        color: context.textColor,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        graded
+                            ? 'Score: $score${feedback?.isNotEmpty == true ? '\n$feedback' : ''}'
+                            : 'Status: $status',
+                        style: TextStyle(color: context.greyColor, height: 1.35),
+                      ),
+                    ),
+                    isThreeLine: feedback?.isNotEmpty == true,
                   ),
-                  title: Text(
-                    item['caption']?.toString().trim().isNotEmpty == true
-                        ? item['caption'].toString()
-                        : 'Assignment submission',
-                  ),
-                  subtitle: Text(
-                    score == null
-                        ? 'Status: $status'
-                        : 'Score: $score${feedback?.isNotEmpty == true ? '\n$feedback' : ''}',
-                  ),
-                  isThreeLine: feedback?.isNotEmpty == true,
                 ),
               );
             }),

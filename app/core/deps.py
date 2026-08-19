@@ -48,6 +48,7 @@ async def get_current_user(
         )
 
     payload["sub"] = str(user.id)
+    payload["school_id"] = str(user.school_id) if getattr(user, "school_id", None) else None
     payload["_db"] = db
     return payload
 
@@ -119,7 +120,25 @@ async def require_vendor_or_admin(current_user: dict = Depends(get_current_user)
 
 async def require_admin(current_user: dict = Depends(get_current_user)):
     if current_user.get("role") != "admin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admins only")
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Main Scholaxia admin only")
+    return current_user
+
+
+async def require_school_staff(current_user: dict = Depends(get_current_user)):
+    """Main admin (all schools) or a school admin (their campus only)."""
+    role = current_user.get("role")
+    if role == "admin":
+        return current_user
+    if role != "school_admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="School admin or main admin only",
+        )
+    if not current_user.get("school_id"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This school admin is not assigned to a school yet",
+        )
     return current_user
 
 

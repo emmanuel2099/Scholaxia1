@@ -13,6 +13,7 @@ class UserRole(str, enum.Enum):
     vendor = "vendor"
     kind = "kind"           # young learners (kids / primary)
     admin = "admin"
+    school_admin = "school_admin"
     developer = "developer"   # external API developers
 
 
@@ -41,6 +42,9 @@ class User(Base):
     profile_picture: Mapped[str] = mapped_column(String(1000), nullable=True)
     # Bumped on each login so older JWTs on other devices stop working.
     token_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    school_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("school_campuses.id"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -78,9 +82,13 @@ class TeacherProfile(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), unique=True)
     subjects: Mapped[list] = mapped_column(ARRAY(String), default=[])
+    academic_classes: Mapped[list | None] = mapped_column(ARRAY(String), nullable=True)
     bio: Mapped[str] = mapped_column(String(1000), nullable=True)
     location: Mapped[str] = mapped_column(String(255), nullable=True)
     is_approved: Mapped[bool] = mapped_column(Boolean, default=False)
+    school_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("school_campuses.id"), nullable=True, index=True
+    )
 
     user: Mapped["User"] = relationship("User", back_populates="teacher_profile")
 

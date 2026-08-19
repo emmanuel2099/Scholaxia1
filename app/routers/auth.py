@@ -120,6 +120,8 @@ class UserInfo(BaseModel):
     parent_email: Optional[str] = None
     favorite_subjects: Optional[list] = None
     learning_goals: Optional[str] = None
+    school_id: Optional[str] = None
+    school_name: Optional[str] = None
 
 
 class TokenResponse(BaseModel):
@@ -138,7 +140,15 @@ async def _build_user_info(user: User, db: AsyncSession) -> UserInfo:
         role=user.role.value if hasattr(user.role, "value") else str(user.role),
         profile_picture=user.profile_picture,
         phone=getattr(user, "phone", None),
+        school_id=str(user.school_id) if getattr(user, "school_id", None) else None,
     )
+    if getattr(user, "school_id", None):
+        from app.models.school_campus import SchoolCampus
+        campus = (
+            await db.execute(select(SchoolCampus).where(SchoolCampus.id == user.school_id))
+        ).scalar_one_or_none()
+        if campus:
+            info.school_name = campus.name
     try:
         if user.role == UserRole.student:
             res = await db.execute(select(StudentProfile).where(StudentProfile.user_id == user.id))

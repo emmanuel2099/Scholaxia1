@@ -69,7 +69,7 @@ class _MarketplaceOrdersScreenState extends State<MarketplaceOrdersScreen> {
 
   String _money(num n) {
     final s = n.toStringAsFixed(0);
-    final buf = StringBuffer('₦');
+    final buf = StringBuffer('\u20A6');
     for (var i = 0; i < s.length; i++) {
       final fromEnd = s.length - i;
       buf.write(s[i]);

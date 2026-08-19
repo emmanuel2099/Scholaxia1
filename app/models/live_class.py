@@ -20,6 +20,7 @@ class LiveClassVisibility(str, enum.Enum):
     public = "public"            # platform-wide — all students
     private = "private"          # invited students only
     school_group = "school_group"  # members of a school group only
+    class_level = "class_level"  # JSS1 / JSS2 / SS1 etc.
 
 
 class LiveClass(Base):
@@ -40,6 +41,10 @@ class LiveClass(Base):
     join_code: Mapped[str] = mapped_column(String(32), unique=True, nullable=True, index=True)
     invited_student_ids: Mapped[str] = mapped_column(Text, nullable=True)
     school_group_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("school_groups.id"), nullable=True)
+    academic_class: Mapped[str] = mapped_column(String(40), nullable=True, index=True)
+    school_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("school_campuses.id"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     attendances: Mapped[list["ClassAttendance"]] = relationship("ClassAttendance", back_populates="live_class")

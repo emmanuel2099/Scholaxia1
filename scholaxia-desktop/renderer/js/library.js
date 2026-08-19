@@ -91,18 +91,30 @@ async function openLibraryBookStudent(bookId, item) {
     if (pay && pay.redirecting) return;
   }
   try {
-    var data = await api("/api/v1/library/" + encodeURIComponent(bookId) + "/read");
     var token = localStorage.getItem("sia_token") || localStorage.getItem("sia_teacher_token") || "";
     var res = await fetch((window.API_BASE || "") + "/api/v1/library/" + encodeURIComponent(bookId) + "/file", {
       headers: { Authorization: "Bearer " + token },
     });
     if (res.ok) {
       var blob = await res.blob();
-      window.open(URL.createObjectURL(blob), "_blank", "noopener,noreferrer");
+      var url = URL.createObjectURL(blob);
+      var modal = document.getElementById("library-reader-modal");
+      var frame = document.getElementById("library-reader-frame");
+      var title = document.getElementById("library-reader-title");
+      if (modal && frame) {
+        if (title) title.textContent = item.title || "Library";
+        frame.src = url;
+        modal.classList.remove("hidden");
+        return;
+      }
+      window.open(url, "_blank", "noopener,noreferrer");
       return;
     }
+    var data = await api("/api/v1/library/" + encodeURIComponent(bookId) + "/read");
     if (data && data.read_url) {
       window.open(data.read_url, "_blank", "noopener,noreferrer");
+    } else {
+      throw new Error("Could not open this PDF.");
     }
   } catch (e) {
     if (e.message && e.message.indexOf("402") >= 0) {
@@ -111,6 +123,13 @@ async function openLibraryBookStudent(bookId, item) {
     }
     alert(e.message || "Could not open book.");
   }
+}
+
+function closeLibraryReader() {
+  var modal = document.getElementById("library-reader-modal");
+  var frame = document.getElementById("library-reader-frame");
+  if (frame) frame.src = "about:blank";
+  if (modal) modal.classList.add("hidden");
 }
 
 function renderLibraryList() {

@@ -60,7 +60,6 @@ class AccessCodeService {
           continue;
         }
         if (!ctx.mounted) return;
-        LiveClassRingService.instance.resetStopFlag();
         await LiveClassRingService.instance.syncWithLiveStatus(api);
         await _showPopup(ctx, api, map);
         onCodeReceived?.call();

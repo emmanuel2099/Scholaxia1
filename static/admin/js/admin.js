@@ -3,7 +3,8 @@ var currentAdminPage = "dashboard";
 document.addEventListener("DOMContentLoaded", function () {
   if (getAdminToken()) {
     showApp();
-    loadDashboard();
+    if (localStorage.getItem("sia_admin_role") === "school_admin") showAdminPage("school-office");
+    else loadDashboard();
   } else {
     showAuth();
   }
@@ -24,7 +25,10 @@ function showApp() {
   document.getElementById("auth-screen").classList.add("hidden");
   document.getElementById("app-screen").classList.remove("hidden");
   var u = getAdminUser();
-  document.getElementById("admin-user-label").textContent = u.name + " · " + u.email;
+  var role = localStorage.getItem("sia_admin_role") || "admin";
+  var school = localStorage.getItem("sia_school_name") || "";
+  document.getElementById("admin-user-label").textContent = (role === "school_admin" ? (school || "School admin") + " · " : "") + u.name + " · " + u.email;
+  document.body.classList.toggle("school-admin-mode", role === "school_admin");
 }
 
 function switchAuthTab(tab) {
@@ -54,13 +58,16 @@ async function adminLogin(e) {
     });
     var data = await res.json();
     if (!res.ok) { err.textContent = formatApiError(data.detail) || "Login failed."; return; }
-    if (data.role !== "admin") {
-      err.textContent = "This email is a " + data.role + " account, not an admin. Open the Register tab to create an admin account (use a different email if this one is already taken).";
+    if (data.role !== "admin" && data.role !== "school_admin") {
+      err.textContent = "This email is a " + data.role + " account, not an admin or school admin.";
       return;
     }
     saveAdminSession(data, email, data.user && data.user.full_name);
+    if (data.user && data.user.school_id) localStorage.setItem("sia_school_id", data.user.school_id);
+    if (data.user && data.user.school_name) localStorage.setItem("sia_school_name", data.user.school_name);
     showApp();
-    loadDashboard();
+    if (data.role === "school_admin") showAdminPage("school-office");
+    else loadDashboard();
   } catch (ex) {
     err.textContent = "Network error. Check your connection.";
   } finally {
@@ -116,8 +123,11 @@ function showAdminPage(page) {
   else if (page === "requests") loadRequests();
   else if (page === "live-subs") loadLiveSubscriptions();
   else if (page === "skills-enroll") loadSkillsEnrollments();
-  else if (page === "cbt") { initCbtBuilder(); loadCbt(); }
+  else if (page === "cbt") { initCbtBuilder(); loadCbt(); loadCbtCoupons(); }
   else if (page === "library") loadLibraryAdmin();
+  else if (page === "videos") loadAdminVideos();
+  else if (page === "schools") loadSchoolsAdmin();
+  else if (page === "school-office") loadSchoolOffice();
   else if (page === "internal-exams") loadInternalExamsAdmin();
   else if (page === "recommendations") loadRecommendations();
   else if (page === "student-groups") loadPendingStudentGroups();
@@ -150,29 +160,53 @@ async function loadDashboard() {
 }
 
 /* ── Students ── */
+var _studentsCache = [];
+
 async function loadStudents() {
   var el = document.getElementById("students-table");
   el.innerHTML = '<div class="loading">Loading…</div>';
   try {
-    var rows = await adminApi("/api/v1/admin/students?active_only=true");
+    var q = ((document.getElementById("students-search") || {}).value || "").trim();
+    var url = "/api/v1/admin/students?active_only=true";
+    if (q) url += "&q=" + encodeURIComponent(q);
+    var rows = await adminApi(url);
     if (!rows) return;
     rows = rows.filter(function (s) { return s.is_active; });
-    if (!rows.length) { el.innerHTML = '<div class="empty-state">No students yet.</div>'; return; }
-    el.innerHTML = '<table class="data-table"><thead><tr><th>Name</th><th>Email</th><th>Exam</th><th>Level</th><th>Subjects</th><th>Status</th><th></th></tr></thead><tbody>' +
-      rows.map(function (s) {
-        var subs = (s.selected_subjects || []).map(function (x) {
-          return '<span class="subj-tag">' + escHtml(x) + '</span>';
-        }).join("");
-        var exam = (s.exam_type || "—").replace(/^ExamType\./, "");
-        return '<tr><td>' + escHtml(s.full_name) + '</td><td>' + escHtml(s.email) + '</td>' +
-          '<td>' + escHtml(exam) + '</td><td>' + escHtml(s.education_level || "—") + '</td>' +
-          '<td><div class="subj-tags">' + (subs || "—") + '</div></td>' +
-          '<td><span class="badge ' + (s.is_active ? "ok" : "muted") + '">' + (s.is_active ? "Active" : "Disabled") + '</span></td>' +
-          '<td class="actions">' + (s.is_active ? '<button class="btn-sm danger" onclick="deleteStudent(\'' + s.id + '\')">Remove</button>' : '') + '</td></tr>';
-      }).join("") + '</tbody></table>';
+    _studentsCache = rows;
+    renderStudentsTable(rows);
   } catch (e) {
     el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + '</div>';
   }
+}
+
+function filterStudentsTable() {
+  var q = ((document.getElementById("students-search") || {}).value || "").trim().toLowerCase();
+  if (!q) {
+    renderStudentsTable(_studentsCache);
+    return;
+  }
+  renderStudentsTable(_studentsCache.filter(function (s) {
+    return String(s.email || "").toLowerCase().indexOf(q) >= 0 ||
+      String(s.full_name || "").toLowerCase().indexOf(q) >= 0;
+  }));
+}
+
+function renderStudentsTable(rows) {
+  var el = document.getElementById("students-table");
+  if (!el) return;
+  if (!rows.length) { el.innerHTML = '<div class="empty-state">No matching students.</div>'; return; }
+  el.innerHTML = '<table class="data-table"><thead><tr><th>Name</th><th>Email</th><th>Exam</th><th>Level</th><th>Subjects</th><th>Status</th><th></th></tr></thead><tbody>' +
+    rows.map(function (s) {
+      var subs = (s.selected_subjects || []).map(function (x) {
+        return '<span class="subj-tag">' + escHtml(x) + '</span>';
+      }).join("");
+      var exam = (s.exam_type || "—").replace(/^ExamType\./, "");
+      return '<tr><td>' + escHtml(s.full_name) + '</td><td>' + escHtml(s.email) + '</td>' +
+        '<td>' + escHtml(exam) + '</td><td>' + escHtml(s.education_level || "—") + '</td>' +
+        '<td><div class="subj-tags">' + (subs || "—") + '</div></td>' +
+        '<td><span class="badge ' + (s.is_active ? "ok" : "muted") + '">' + (s.is_active ? "Active" : "Disabled") + '</span></td>' +
+        '<td class="actions">' + (s.is_active ? '<button class="btn-sm danger" onclick="deleteStudent(\'' + s.id + '\')">Remove</button>' : '') + '</td></tr>';
+    }).join("") + '</tbody></table>';
 }
 
 async function refreshDashboardStats() {
@@ -1823,6 +1857,7 @@ async function createMarketplaceProduct() {
         image_url: image || null,
         currency: "NGN",
         is_available: true,
+        is_free: !!(document.getElementById("mp-free") && document.getElementById("mp-free").checked) || price <= 0,
       }),
     });
     if (!created) {
@@ -2374,4 +2409,331 @@ async function deleteLibraryBook(id) {
     alert(e.message);
   }
 }
+
+async function generateCbtCoupons() {
+  var msg = document.getElementById("coupon-msg");
+  try {
+    var data = await adminApi("/api/v1/admin/cbt-coupons", {
+      method: "POST",
+      body: JSON.stringify({
+        package_id: document.getElementById("coupon-package").value,
+        count: parseInt(document.getElementById("coupon-count").value || "1", 10),
+        max_uses: parseInt(document.getElementById("coupon-uses").value || "1", 10),
+      }),
+    });
+    var codes = ((data && data.coupons) || []).map(function (c) { return c.code; }).join(", ");
+    if (msg) msg.textContent = "Created: " + codes;
+    loadCbtCoupons();
+  } catch (e) {
+    if (msg) msg.textContent = e.message;
+  }
+}
+
+async function loadCbtCoupons() {
+  var el = document.getElementById("coupon-table");
+  if (!el) return;
+  try {
+    var data = await adminApi("/api/v1/admin/cbt-coupons");
+    var rows = (data && data.coupons) || [];
+    if (!rows.length) { el.innerHTML = '<div class="empty-state">No coupons yet.</div>'; return; }
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Code</th><th>Package</th><th>Used</th><th>Active</th><th></th></tr></thead><tbody>' +
+      rows.map(function (c) {
+        return '<tr><td><strong>' + escHtml(c.code) + '</strong></td><td>' + escHtml(c.package_id) + '</td><td>' +
+          escHtml(c.used_count + " / " + c.max_uses) + '</td><td>' + (c.is_active ? "Yes" : "No") +
+          '</td><td>' + (c.is_active ? '<button class="btn-sm danger" onclick="deactivateCbtCoupon(\'' + c.id + '\')">Disable</button>' : "") + "</td></tr>";
+      }).join("") + "</tbody></table>";
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
+  }
+}
+
+async function deactivateCbtCoupon(id) {
+  try {
+    await adminApi("/api/v1/admin/cbt-coupons/" + id + "/deactivate", { method: "POST" });
+    loadCbtCoupons();
+  } catch (e) { alert(e.message); }
+}
+
+async function loadAdminVideos() {
+  var el = document.getElementById("videos-table");
+  if (!el) return;
+  el.innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    var data = await adminApi("/api/v1/admin/videos");
+    var rows = (data && data.videos) || [];
+    if (!rows.length) { el.innerHTML = '<div class="empty-state">No video tutorials yet.</div>'; return; }
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Title</th><th>Subject</th><th>URL</th><th></th></tr></thead><tbody>' +
+      rows.map(function (v) {
+        return '<tr><td>' + escHtml(v.title) + '</td><td>' + escHtml(v.subject) + '</td><td>' + escHtml(v.video_url) +
+          '</td><td><button class="btn-sm danger" onclick="deleteAdminVideo(\'' + v.id + '\')">Remove</button></td></tr>';
+      }).join("") + "</tbody></table>";
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
+  }
+}
+
+async function createAdminVideo() {
+  var msg = document.getElementById("vid-msg");
+  try {
+    await adminApi("/api/v1/admin/videos", {
+      method: "POST",
+      body: JSON.stringify({
+        title: (document.getElementById("vid-title").value || "").trim(),
+        subject: (document.getElementById("vid-subject").value || "General").trim(),
+        video_url: (document.getElementById("vid-url").value || "").trim(),
+      }),
+    });
+    document.getElementById("vid-title").value = "";
+    document.getElementById("vid-url").value = "";
+    if (msg) msg.textContent = "Published.";
+    loadAdminVideos();
+  } catch (e) {
+    if (msg) msg.textContent = e.message;
+  }
+}
+
+async function deleteAdminVideo(id) {
+  if (!confirm("Remove this video tutorial?")) return;
+  try {
+    await adminApi("/api/v1/admin/videos/" + id, { method: "DELETE" });
+    loadAdminVideos();
+  } catch (e) { alert(e.message); }
+}
+
+function selectedSchoolId() {
+  var el = document.getElementById("so-school-id");
+  return (el && el.value) || localStorage.getItem("sia_school_id") || "";
+}
+
+function schoolOfficeQuery(extra) {
+  var parts = [];
+  var sid = selectedSchoolId();
+  if (sid) parts.push("school_id=" + encodeURIComponent(sid));
+  if (extra) parts.push(extra);
+  return parts.length ? "?" + parts.join("&") : "";
+}
+
+async function loadSchoolsAdmin() {
+  var el = document.getElementById("schools-table");
+  if (!el) return;
+  el.innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    var data = await adminApi("/api/v1/admin/schools");
+    var rows = (data && data.schools) || [];
+    if (!rows.length) { el.innerHTML = '<div class="empty-state">No schools yet. Add the first school above.</div>'; return; }
+    el.innerHTML = '<table class="data-table"><thead><tr><th>School</th><th>Code</th><th>City</th><th>School admins</th></tr></thead><tbody>' +
+      rows.map(function (s) {
+        var ads = (s.admins || []).map(function (a) { return escHtml(a.full_name) + " (" + escHtml(a.email) + ")"; }).join("<br>");
+        return "<tr><td>" + escHtml(s.name) + "</td><td>" + escHtml(s.code || "—") + "</td><td>" + escHtml(s.city || "—") + "</td><td>" + (ads || "—") + "</td></tr>";
+      }).join("") + "</tbody></table>";
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
+  }
+}
+
+async function createSchoolCampus() {
+  var msg = document.getElementById("sch-msg");
+  try {
+    await adminApi("/api/v1/admin/schools", {
+      method: "POST",
+      body: JSON.stringify({
+        name: document.getElementById("sch-name").value.trim(),
+        city: document.getElementById("sch-city").value.trim() || null,
+        state: document.getElementById("sch-state").value.trim() || null,
+        admin_full_name: document.getElementById("sch-admin-name").value.trim(),
+        admin_email: document.getElementById("sch-admin-email").value.trim(),
+        admin_password: document.getElementById("sch-admin-pass").value,
+      }),
+    });
+    if (msg) msg.textContent = "School created. Give that email and password to the school admin.";
+    document.getElementById("sch-admin-pass").value = "";
+    loadSchoolsAdmin();
+  } catch (e) {
+    if (msg) msg.textContent = e.message;
+  }
+}
+
+async function loadSchoolOffice() {
+  try {
+    var me = await adminApi("/api/v1/admin/school-office/me");
+    var sel = document.getElementById("so-school-id");
+    var lab = document.getElementById("so-school-label");
+    var pick = document.getElementById("so-school-pick");
+    if (me && me.role === "school_admin") {
+      if (pick) pick.style.display = "none";
+      if (lab) lab.textContent = me.school_name || "";
+      if (me.school_id) localStorage.setItem("sia_school_id", me.school_id);
+      if (me.school_name) localStorage.setItem("sia_school_name", me.school_name);
+    } else if (sel) {
+      if (pick) pick.style.display = "";
+      var cur = sel.value;
+      sel.innerHTML = '<option value="">Select a school…</option>' + ((me && me.schools) || []).map(function (s) {
+        return '<option value="' + escHtml(s.id) + '">' + escHtml(s.name) + "</option>";
+      }).join("");
+      if (cur) sel.value = cur;
+    }
+  } catch (e) {
+    var lab2 = document.getElementById("so-school-label");
+    if (lab2) lab2.textContent = e.message || "";
+  }
+  loadSchoolCandidates();
+  loadSchoolResults();
+  loadSchoolExamCounts();
+}
+
+async function registerSchoolCandidate() {
+  var msg = document.getElementById("so-reg-msg");
+  var subjects = (document.getElementById("so-subjects").value || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+  try {
+    var row = await adminApi("/api/v1/admin/school-office/candidates", {
+      method: "POST",
+      body: JSON.stringify({
+        school_id: selectedSchoolId() || null,
+        class_name: document.getElementById("so-class").value,
+        full_name: document.getElementById("so-name").value.trim(),
+        email: document.getElementById("so-email").value.trim() || null,
+        phone: document.getElementById("so-phone").value.trim() || null,
+        subjects: subjects,
+      }),
+    });
+    if (msg) msg.textContent = "Registered. Rec: " + row.rec_number + " · Access: " + row.access_code;
+    printSchoolSlip(row);
+    loadSchoolCandidates();
+  } catch (e) {
+    if (msg) msg.textContent = e.message;
+  }
+}
+
+async function loadSchoolCandidates() {
+  var el = document.getElementById("so-candidates");
+  if (!el) return;
+  var q = (document.getElementById("so-search") && document.getElementById("so-search").value) || "";
+  try {
+    var data = await adminApi("/api/v1/admin/school-office/candidates" + schoolOfficeQuery(q ? "q=" + encodeURIComponent(q) : ""));
+    var rows = (data && data.candidates) || [];
+    if (!rows.length) { el.innerHTML = '<div class="empty-state">No registered exam students yet.</div>'; return; }
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Name</th><th>Class</th><th>Email</th><th>Rec</th><th>Access</th><th></th></tr></thead><tbody>' +
+      rows.map(function (r) {
+        return '<tr><td>' + escHtml(r.full_name) + '</td><td>' + escHtml(r.class_name) + '</td><td>' + escHtml(r.email || "—") +
+          '</td><td>' + escHtml(r.rec_number) + '</td><td>' + escHtml(r.access_code) +
+          '</td><td><button class="btn-sm" onclick="printSchoolSlipById(\'' + r.id + '\')">Print slip</button></td></tr>';
+      }).join("") + "</tbody></table>";
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
+  }
+}
+
+function printSchoolSlip(row) {
+  var w = window.open("", "_blank");
+  if (!w) { alert("Allow pop-ups to print the slip."); return; }
+  w.document.write("<html><head><title>Registration slip</title><style>body{font-family:Georgia,serif;padding:32px}h1{font-size:20px}table{border-collapse:collapse;width:100%}td{padding:8px;border-bottom:1px solid #ddd}</style></head><body>");
+  w.document.write("<h1>" + (row.print_title || (row.school_name || "Scholaxia") + " — Exam registration slip") + "</h1>");
+  w.document.write("<table><tr><td>Name</td><td>" + (row.full_name || "") + "</td></tr><tr><td>Class</td><td>" + (row.class_name || "") + "</td></tr><tr><td>Rec number</td><td><strong>" + (row.rec_number || "") + "</strong></td></tr><tr><td>Access code</td><td><strong>" + (row.access_code || "") + "</strong></td></tr><tr><td>Subjects</td><td>" + ((row.subjects || []).join(", ")) + "</td></tr></table><p>Keep this slip. You need the access code and rec number on exam day.</p><script>window.print()<\/script></body></html>");
+  w.document.close();
+}
+
+async function printSchoolSlipById(id) {
+  try {
+    var row = await adminApi("/api/v1/admin/school-office/candidates/" + id + "/slip");
+    printSchoolSlip(row);
+  } catch (e) { alert(e.message); }
+}
+
+async function loadSchoolResults() {
+  var el = document.getElementById("so-results");
+  if (!el) return;
+  var cls = (document.getElementById("so-res-class") || {}).value || "";
+  var sub = (document.getElementById("so-res-subject") || {}).value || "";
+  var qs = [];
+  var sid = selectedSchoolId();
+  if (sid) qs.push("school_id=" + encodeURIComponent(sid));
+  if (cls) qs.push("class_name=" + encodeURIComponent(cls));
+  if (sub) qs.push("subject=" + encodeURIComponent(sub));
+  try {
+    var data = await adminApi("/api/v1/admin/school-office/results" + (qs.length ? "?" + qs.join("&") : ""));
+    var rows = (data && data.results) || [];
+    if (!rows.length) { el.innerHTML = '<div class="empty-state">No submitted school-exam results yet.</div>'; return; }
+    el.innerHTML = '<p class="cbt-hint small">' + rows.length + ' result(s). Use your browser Print.</p><table class="data-table"><thead><tr><th>Student</th><th>Email</th><th>Exam</th><th>Subject</th><th>%</th></tr></thead><tbody>' +
+      rows.map(function (r) {
+        return '<tr><td>' + escHtml(r.student_name) + '</td><td>' + escHtml(r.email) + '</td><td>' + escHtml(r.exam_title) + '</td><td>' + escHtml(r.subject) + '</td><td>' + escHtml(r.percentage) + "</td></tr>";
+      }).join("") + "</tbody></table>";
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
+  }
+}
+
+async function loadSchoolExamCounts() {
+  var el = document.getElementById("so-exam-counts");
+  if (!el) return;
+  try {
+    var data = await adminApi("/api/v1/admin/school-office/exam-counts" + schoolOfficeQuery());
+    var rows = (data && data.exams) || [];
+    if (!rows.length) { el.innerHTML = ""; return; }
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Exam ID</th><th>Title</th><th>Subject</th><th>Taken</th></tr></thead><tbody>' +
+      rows.map(function (r) {
+        return '<tr><td><code>' + escHtml(r.id) + '</code></td><td>' + escHtml(r.title) + '</td><td>' + escHtml(r.subject) + '</td><td>' + escHtml(r.taken_count) + "</td></tr>";
+      }).join("") + "</tbody></table>";
+  } catch (_) {}
+}
+
+async function grantSchoolRetake() {
+  var msg = document.getElementById("so-retake-msg");
+  try {
+    var data = await adminApi("/api/v1/admin/school-office/retake", {
+      method: "POST",
+      body: JSON.stringify({
+        student_email: document.getElementById("so-retake-email").value.trim(),
+        exam_id: document.getElementById("so-retake-exam").value.trim(),
+      }),
+    });
+    if (msg) msg.textContent = data.message || "Retake granted.";
+  } catch (e) {
+    if (msg) msg.textContent = e.message;
+  }
+}
+
+async function addSchoolTeacher() {
+  var msg = document.getElementById("so-t-msg");
+  try {
+    await adminApi("/api/v1/admin/school-office/teachers", {
+      method: "POST",
+      body: JSON.stringify({
+        school_id: selectedSchoolId() || null,
+        full_name: document.getElementById("so-t-name").value.trim(),
+        email: document.getElementById("so-t-email").value.trim(),
+        password: document.getElementById("so-t-pass").value,
+        subjects: (document.getElementById("so-t-subjects").value || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean),
+        academic_classes: (document.getElementById("so-t-classes").value || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean),
+      }),
+    });
+    if (msg) msg.textContent = "Teacher created and approved.";
+    document.getElementById("so-t-pass").value = "";
+  } catch (e) {
+    if (msg) msg.textContent = e.message;
+  }
+}
+
+async function hostSchoolLiveClass(startNow) {
+  var msg = document.getElementById("so-live-msg");
+  try {
+    var created = await adminApi("/api/v1/admin/school-office/live-classes", {
+      method: "POST",
+      body: JSON.stringify({
+        school_id: selectedSchoolId() || null,
+        title: document.getElementById("so-live-title").value.trim(),
+        subject: document.getElementById("so-live-subject").value.trim(),
+        start_now: startNow,
+        visibility: document.getElementById("so-live-vis").value,
+        academic_class: document.getElementById("so-live-class").value,
+      }),
+    });
+    if (msg) msg.textContent = startNow ? "Class is live." : "Class created.";
+    if (startNow && created && created.id && confirm("Open classroom now?")) {
+      adminEnterClassroom(created.id, document.getElementById("so-live-title").value.trim(), document.getElementById("so-live-subject").value.trim());
+    }
+  } catch (e) {
+    if (msg) msg.textContent = e.message;
+  }
+}
+
 

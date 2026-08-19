@@ -62,6 +62,8 @@ class CbtPackagesScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 18),
+          const _CouponBox(),
+          const SizedBox(height: 18),
           ...packages.map(
             (package) => Card(
               margin: const EdgeInsets.only(bottom: 12),
@@ -122,6 +124,78 @@ class CbtPackagesScreen extends StatelessWidget {
     return text.replaceAllMapped(
       RegExp(r'(?<=\d)(?=(\d{3})+(?!\d))'),
       (_) => ',',
+    );
+  }
+}
+
+class _CouponBox extends StatefulWidget {
+  const _CouponBox();
+
+  @override
+  State<_CouponBox> createState() => _CouponBoxState();
+}
+
+class _CouponBoxState extends State<_CouponBox> {
+  final _code = TextEditingController();
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _code.dispose();
+    super.dispose();
+  }
+
+  Future<void> _redeem() async {
+    final code = _code.text.trim();
+    if (code.isEmpty) return;
+    setState(() => _busy = true);
+    try {
+      final data = await ApiService().redeemCbtCoupon(code);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${data['message'] ?? 'CBT access unlocked.'}')),
+      );
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$e'), backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Have a coupon?',
+              style: TextStyle(fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 4),
+            const Text('Redeem an admin code to skip Paystack.'),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _code,
+              decoration: const InputDecoration(
+                hintText: 'SX-XXXX',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 10),
+            FilledButton(
+              onPressed: _busy ? null : _redeem,
+              child: Text(_busy ? 'Redeeming…' : 'Redeem coupon'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

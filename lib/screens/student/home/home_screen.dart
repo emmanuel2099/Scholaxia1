@@ -13,6 +13,7 @@ import '../notifications/notifications_screen.dart';
 import '../cbt/internal_exams_screen.dart';
 import '../games/games_screen.dart';
 import '../library/library_screen.dart';
+import '../video_tutorials_screen.dart';
 import '../cbt/cbt_screen.dart';
 import '../marketplace/marketplace_screen.dart';
 import '../assignments/assignment_screen.dart';
@@ -754,6 +755,13 @@ class _HomeScreenState extends State<HomeScreen> {
         'Read study books & materials.',
         const [Color(0xFF0EA5E9), Color(0xFF38BDF8)],
         const LibraryScreen(),
+      ),
+      (
+        Icons.play_circle_fill_rounded,
+        'Video Tutorials',
+        'Watch lessons posted by admin.',
+        const [Color(0xFFDC2626), Color(0xFFF87171)],
+        const VideoTutorialsScreen(),
       ),
       (
         Icons.quiz_rounded,

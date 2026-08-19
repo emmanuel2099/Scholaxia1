@@ -31,6 +31,9 @@ class CBTExam(Base):
 
     # School exam security flags
     is_school_exam: Mapped[bool] = mapped_column(Boolean, default=False)
+    school_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("school_campuses.id"), nullable=True, index=True
+    )
     # When True: AI is locked, camera required, minimize/screenshot blocked
     ai_locked: Mapped[bool] = mapped_column(Boolean, default=False)
     camera_required: Mapped[bool] = mapped_column(Boolean, default=False)

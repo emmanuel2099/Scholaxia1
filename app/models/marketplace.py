@@ -36,6 +36,7 @@ class MarketplaceProduct(Base):
     currency: Mapped[str] = mapped_column(String(10), default="NGN")
     image_url: Mapped[str] = mapped_column(String(1000), nullable=True)
     is_available: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_free: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     vendor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)

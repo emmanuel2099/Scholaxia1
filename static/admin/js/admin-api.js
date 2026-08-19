@@ -41,7 +41,7 @@ function saveAdminSession(data, email, name) {
 }
 
 function clearAdminSession() {
-  ["sia_admin_token", "sia_admin_role", "sia_admin_name", "sia_admin_email"].forEach(function (k) {
+  ["sia_admin_token", "sia_admin_role", "sia_admin_name", "sia_admin_email", "sia_school_id", "sia_school_name"].forEach(function (k) {
     localStorage.removeItem(k);
   });
 }

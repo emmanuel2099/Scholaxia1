@@ -77,6 +77,30 @@ async def _run_schema_migrations(conn) -> None:
         "ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS ssce_exam_type VARCHAR(20) NULL"
     ))
     await conn.execute(text(
+        "ALTER TABLE live_classes ADD COLUMN IF NOT EXISTS academic_class VARCHAR(40) NULL"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE live_classes ADD COLUMN IF NOT EXISTS school_id UUID NULL"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE marketplace_products ADD COLUMN IF NOT EXISTS is_free BOOLEAN NOT NULL DEFAULT FALSE"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE teacher_profiles ADD COLUMN IF NOT EXISTS academic_classes VARCHAR[] NULL"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE teacher_profiles ADD COLUMN IF NOT EXISTS school_id UUID NULL"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS school_id UUID NULL"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE school_exam_candidates ADD COLUMN IF NOT EXISTS school_id UUID NULL"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE cbt_exams ADD COLUMN IF NOT EXISTS school_id UUID NULL"
+    ))
+    await conn.execute(text(
         "ALTER TABLE payments ADD COLUMN IF NOT EXISTS flutterwave_tx_ref VARCHAR(255) NULL"
     ))
     await conn.execute(text(
@@ -327,6 +351,10 @@ async def _run_schema_migrations(conn) -> None:
         pass
     try:
         await conn.execute(text("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'vendor'"))
+    except Exception:
+        pass
+    try:
+        await conn.execute(text("ALTER TYPE userrole ADD VALUE IF NOT EXISTS 'school_admin'"))
     except Exception:
         pass
     try:

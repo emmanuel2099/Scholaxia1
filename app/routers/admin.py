@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
 from typing import Optional
@@ -1532,6 +1532,7 @@ class StudentAdminResponse(BaseModel):
 @router.get("/students", response_model=list[StudentAdminResponse])
 async def list_students(
     active_only: bool = True,
+    q: Optional[str] = None,
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1540,6 +1541,14 @@ async def list_students(
         .outerjoin(StudentProfile, StudentProfile.user_id == User.id)
         .where(User.role == UserRole.student)
     )
+    if q and q.strip():
+        like = f"%{q.strip().lower()}%"
+        query = query.where(
+            or_(
+                func.lower(User.email).like(like),
+                func.lower(User.full_name).like(like),
+            )
+        )
     if active_only:
         query = query.where(User.is_active == True)  # noqa: E712
     query = query.order_by(User.created_at.desc())
@@ -1964,6 +1973,8 @@ class AdminHostLiveClassRequest(BaseModel):
     subject: str
     description: Optional[str] = None
     start_now: bool = False
+    visibility: Optional[str] = None
+    academic_class: Optional[str] = None
 
 
 @router.post("/live-classes", status_code=status.HTTP_201_CREATED)
@@ -1978,6 +1989,9 @@ async def admin_host_live_class(
     if not title or not subject:
         raise HTTPException(status_code=400, detail="Title and subject are required")
 
+    vis = (payload.visibility or "public").strip().lower()
+    if vis not in ("public", "private", "subject", "school_group", "class_level"):
+        vis = "public"
     room_id = f"room-{uuid_lib.uuid4().hex[:12]}"
     live_class = LiveClass(
         teacher_id=current_user["sub"],
@@ -1987,6 +2001,9 @@ async def admin_host_live_class(
         start_time=naive_utc_now(),
         room_id=room_id,
         is_live=payload.start_now,
+        visibility=vis,
+        academic_class=(payload.academic_class or "").strip().upper() or None,
+        join_code=f"SX-{uuid_lib.uuid4().hex[:8].upper()}",
     )
     db.add(live_class)
     await db.flush()
