@@ -9,7 +9,7 @@ import app.models  # noqa: F401 — register models with Base.metadata
 from app.core.config import settings
 from app.core.database import engine, get_db
 from app.core.redis import init_redis, close_redis
-from app.core.startup_db import database_ready, initialize_database, probe_database
+from app.core.startup_db import database_ready, ensure_postgres_enums, initialize_database, probe_database
 
 ADMIN_STATIC_DIR = Path(__file__).resolve().parent.parent / "static" / "admin"
 
@@ -32,6 +32,10 @@ from app.websockets.live_class_ws import live_class_endpoint
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db_ok = await initialize_database()
+    try:
+        await ensure_postgres_enums()
+    except Exception:
+        pass
     try:
         await init_redis()
     except Exception:

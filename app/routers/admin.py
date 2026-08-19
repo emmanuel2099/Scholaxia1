@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_
+from sqlalchemy import select, func, or_, text
 from pydantic import BaseModel, EmailStr
 from datetime import datetime
 from typing import Optional
@@ -1552,21 +1552,59 @@ async def list_students(
     if active_only:
         query = query.where(User.is_active == True)  # noqa: E712
     query = query.order_by(User.created_at.desc())
-    result = await db.execute(query)
-    rows = result.all()
+    try:
+        result = await db.execute(query)
+        rows = result.all()
+    except Exception:
+        await db.rollback()
+        sql_rows = (
+            await db.execute(
+                text(
+                    """
+                    SELECT u.id, u.email, u.full_name, COALESCE(u.is_active, true) AS is_active,
+                           u.created_at, sp.education_level, sp.exam_type::text AS exam_type,
+                           sp.selected_subjects, COALESCE(sp.has_active_subscription, false) AS has_active_subscription
+                    FROM users u
+                    LEFT JOIN student_profiles sp ON sp.user_id = u.id
+                    WHERE u.role::text = 'student'
+                    ORDER BY u.created_at DESC
+                    """
+                )
+            )
+        ).mappings().all()
+        return [
+            StudentAdminResponse(
+                id=str(r["id"]),
+                email=r["email"],
+                full_name=r["full_name"],
+                is_active=bool(r["is_active"]),
+                exam_type=r["exam_type"],
+                education_level=r["education_level"],
+                selected_subjects=list(r["selected_subjects"] or []),
+                has_active_subscription=bool(r["has_active_subscription"]),
+                created_at=r["created_at"],
+            )
+            for r in sql_rows
+        ]
     out = []
     for user, profile in rows:
-        out.append(StudentAdminResponse(
-            id=str(user.id),
-            email=user.email,
-            full_name=user.full_name,
-            is_active=user.is_active,
-            exam_type=profile.exam_type.value if profile and profile.exam_type else None,
-            education_level=profile.education_level if profile else None,
-            selected_subjects=profile.selected_subjects if profile and profile.selected_subjects else [],
-            has_active_subscription=bool(profile and profile.has_active_subscription),
-            created_at=user.created_at,
-        ))
+        try:
+            et = None
+            if profile and profile.exam_type:
+                et = profile.exam_type.value if hasattr(profile.exam_type, "value") else str(profile.exam_type)
+            out.append(StudentAdminResponse(
+                id=str(user.id),
+                email=user.email,
+                full_name=user.full_name,
+                is_active=user.is_active,
+                exam_type=et,
+                education_level=profile.education_level if profile else None,
+                selected_subjects=profile.selected_subjects if profile and profile.selected_subjects else [],
+                has_active_subscription=bool(profile and profile.has_active_subscription),
+                created_at=user.created_at,
+            ))
+        except Exception:
+            continue
     return out
 
 
@@ -1609,54 +1647,68 @@ async def list_live_subscriptions(
     from app.models.payment import Payment, PaymentStatus
     from app.core.skills_programs import is_skill_plan_key
 
-    result = await db.execute(
-        select(User, StudentProfile)
-        .outerjoin(StudentProfile, StudentProfile.user_id == User.id)
-        .where(User.role == UserRole.student, User.is_active == True)  # noqa: E712
-        .order_by(User.created_at.desc())
-    )
-    rows = result.all()
+    try:
+        result = await db.execute(
+            select(User, StudentProfile)
+            .outerjoin(StudentProfile, StudentProfile.user_id == User.id)
+            .where(User.role == UserRole.student, User.is_active == True)  # noqa: E712
+            .order_by(User.created_at.desc())
+        )
+        rows = result.all()
+    except Exception:
+        await db.rollback()
+        return []
     out = []
     for user, profile in rows:
-        plan_id = profile.live_plan_id if profile else None
-        if plan_id and is_skill_plan_key(plan_id):
-            continue
-        access = await get_live_access_info(db, str(user.id))
-        active = access.get("active_plan") or {}
-        last_pay_at = None
-        last_pay_amt = None
-        pay_res = await db.execute(
-            select(Payment)
-            .where(
-                Payment.student_id == user.id,
-                Payment.status == PaymentStatus.success,
-                Payment.live_plan_id.isnot(None),
-            )
-            .order_by(Payment.created_at.desc())
-            .limit(1)
-        )
-        last_pay = pay_res.scalar_one_or_none()
-        if last_pay and last_pay.live_plan_id and not is_skill_plan_key(last_pay.live_plan_id):
-            last_pay_at = last_pay.created_at
-            last_pay_amt = float(last_pay.amount) if last_pay.amount is not None else None
+        try:
+            plan_id = profile.live_plan_id if profile else None
+            if plan_id and is_skill_plan_key(plan_id):
+                continue
+            access = await get_live_access_info(db, str(user.id))
+            active = access.get("active_plan") or {}
+            last_pay_at = None
+            last_pay_amt = None
+            try:
+                pay_res = await db.execute(
+                    select(Payment)
+                    .where(
+                        Payment.student_id == user.id,
+                        Payment.status == PaymentStatus.success,
+                        Payment.live_plan_id.isnot(None),
+                    )
+                    .order_by(Payment.created_at.desc())
+                    .limit(1)
+                )
+                last_pay = pay_res.scalar_one_or_none()
+                if last_pay and last_pay.live_plan_id and not is_skill_plan_key(last_pay.live_plan_id):
+                    last_pay_at = last_pay.created_at
+                    last_pay_amt = float(last_pay.amount) if last_pay.amount is not None else None
+            except Exception:
+                await db.rollback()
 
-        if not access.get("paid") and not (profile and profile.live_plan_id and not is_skill_plan_key(profile.live_plan_id)):
-            continue
+            if not access.get("paid") and not (profile and profile.live_plan_id and not is_skill_plan_key(profile.live_plan_id)):
+                continue
 
-        out.append(LiveSubscriptionAdminResponse(
-            id=str(user.id),
-            email=user.email,
-            full_name=user.full_name,
-            plan_id=active.get("plan_id") or (profile.live_plan_id if profile else None),
-            plan_name=active.get("plan_name"),
-            paid=bool(access.get("paid")),
-            sessions_left=int(access.get("sessions_left") or 0),
-            sessions_used=int(active.get("sessions_used") or 0),
-            sessions_total=int(active.get("sessions_total") or 0),
-            expires_at=access.get("valid_until"),
-            last_payment_at=last_pay_at,
-            last_payment_amount=last_pay_amt,
-        ))
+            out.append(LiveSubscriptionAdminResponse(
+                id=str(user.id),
+                email=user.email,
+                full_name=user.full_name,
+                plan_id=active.get("plan_id") or (profile.live_plan_id if profile else None),
+                plan_name=active.get("plan_name"),
+                paid=bool(access.get("paid")),
+                sessions_left=int(access.get("sessions_left") or 0),
+                sessions_used=int(active.get("sessions_used") or 0),
+                sessions_total=int(active.get("sessions_total") or 0),
+                expires_at=access.get("valid_until"),
+                last_payment_at=last_pay_at,
+                last_payment_amount=last_pay_amt,
+            ))
+        except Exception:
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+            continue
     return out
 
 

@@ -18,6 +18,20 @@ def database_ready() -> bool:
     return _db_initialized
 
 
+async def ensure_postgres_enums() -> None:
+    """Commit each new enum label in its own transaction so it can be used immediately."""
+    from app.models.user import ExamType, UserRole
+
+    labels = [f"ALTER TYPE userrole ADD VALUE IF NOT EXISTS '{e.value}'" for e in UserRole]
+    labels += [f"ALTER TYPE examtype ADD VALUE IF NOT EXISTS '{e.value}'" for e in ExamType]
+    for stmt in labels:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text(stmt))
+        except Exception as exc:
+            logger.warning("enum migrate skipped: %s (%s)", stmt, exc)
+
+
 async def probe_database() -> bool:
     """Live ping. Startup may have failed while Postgres later became reachable."""
     global _db_initialized
@@ -442,6 +456,7 @@ async def initialize_database() -> bool:
     try:
         async with engine.begin() as conn:
             await _run_schema_migrations(conn)
+        await ensure_postgres_enums()
         _db_initialized = True
     except (socket.gaierror, OSError, ConnectionRefusedError) as exc:
         logger.error(
