@@ -25,7 +25,7 @@ from app.routers import app_meta
 from app.routers import marketplace
 from app.routers import kid_games
 from app.routers import sil
-from app.routers import cbt_coupons, videos, school_office, schools
+from app.routers import cbt_coupons, videos, school_office, schools, external_exams
 from app.websockets.live_class_ws import live_class_endpoint
 
 
@@ -131,6 +131,8 @@ app.include_router(sil.router, prefix="/api/v1")
 app.include_router(cbt_coupons.router, prefix="/api/v1")
 app.include_router(videos.router, prefix="/api/v1")
 app.include_router(school_office.router, prefix="/api/v1")
+app.include_router(external_exams.staff_router, prefix="/api/v1")
+app.include_router(external_exams.public_router, prefix="/api/v1")
 app.include_router(schools.router, prefix="/api/v1")
 app.include_router(materials.router, prefix="/api/v1")
 app.include_router(wallet.router, prefix="/api/v1")

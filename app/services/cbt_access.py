@@ -77,6 +77,31 @@ async def active_cbt_access(
         await db.execute(select(StudentProfile).where(StudentProfile.user_id == user_id))
     ).scalar_one_or_none()
     current = subject_snapshot(profile)
+    from app.models.user import User
+    from app.models.school_campus import SchoolCampus
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if user and getattr(user, "school_id", None):
+        campus = (
+            await db.execute(select(SchoolCampus).where(SchoolCampus.id == user.school_id))
+        ).scalar_one_or_none()
+        if campus and getattr(campus, "subscription_active", False):
+            boards = {"JAMB", "WAEC", "NECO", "JUNIOR_WAEC", "COMMON_ENTRANCE"}
+            return {
+                "has_access": True,
+                "boards": sorted(boards),
+                "subject_change_boards": [],
+                "subject_change_requires_payment": False,
+                "active_packages": [{
+                    "package_id": "school_subscription",
+                    "name": campus.subscription_plan or "School plan",
+                    "boards": sorted(boards),
+                    "valid_boards": sorted(boards),
+                    "changed_boards": [],
+                    "expires_at": None,
+                }],
+                "current_subjects": current,
+                "via_school": True,
+            }
     entitlements = (
         await db.execute(
             select(StudentEntitlement)

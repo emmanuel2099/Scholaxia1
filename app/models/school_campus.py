@@ -16,5 +16,7 @@ class SchoolCampus(Base):
     city: Mapped[str] = mapped_column(String(120), nullable=True)
     state: Mapped[str] = mapped_column(String(120), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    subscription_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    subscription_plan: Mapped[str | None] = mapped_column(String(80), nullable=True)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

@@ -26,6 +26,13 @@ from app.models.student_analytics import StudentLearningProfile, LessonSession
 from app.models.school_campus import SchoolCampus
 from app.models.cbt_coupon import CbtCoupon, CbtCouponRedemption
 from app.models.school_office import SchoolExamCandidate
+from app.models.external_exam import (
+    ExternalExam,
+    ExternalExamQuestion,
+    ExternalExamAttempt,
+    ExternalExamAnswer,
+    ExternalExamResultAudit,
+)
 from app.models.sil import (
     SilLeagueProfile,
     SilCoinTransaction,

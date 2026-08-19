@@ -98,6 +98,30 @@ async def _run_schema_migrations(conn) -> None:
         "ALTER TABLE school_exam_candidates ADD COLUMN IF NOT EXISTS school_id UUID NULL"
     ))
     await conn.execute(text(
+        "ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS school_student_id VARCHAR(40) NULL"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE school_campuses ADD COLUMN IF NOT EXISTS subscription_active BOOLEAN NOT NULL DEFAULT FALSE"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE school_campuses ADD COLUMN IF NOT EXISTS subscription_plan VARCHAR(80) NULL"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE external_exams ADD COLUMN IF NOT EXISTS allowed_classes JSON NULL"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE external_exam_attempts ADD COLUMN IF NOT EXISTS student_user_id UUID NULL"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE external_exam_attempts ALTER COLUMN candidate_id DROP NOT NULL"
+    ))
+    try:
+        await conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ix_school_exam_candidates_candidate_id ON school_exam_candidates (candidate_id)"
+        ))
+    except Exception:
+        pass
+    await conn.execute(text(
         "ALTER TABLE cbt_exams ADD COLUMN IF NOT EXISTS school_id UUID NULL"
     ))
     await conn.execute(text(

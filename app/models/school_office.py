@@ -17,6 +17,7 @@ class SchoolExamCandidate(Base):
     email: Mapped[str] = mapped_column(String(255), nullable=True, index=True)
     phone: Mapped[str] = mapped_column(String(40), nullable=True)
     rec_number: Mapped[str] = mapped_column(String(40), unique=True, index=True, nullable=False)
+    candidate_id: Mapped[str] = mapped_column(String(40), unique=True, index=True, nullable=True)
     access_code: Mapped[str] = mapped_column(String(40), unique=True, index=True, nullable=False)
     subjects: Mapped[list] = mapped_column(ARRAY(String), default=[])
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)

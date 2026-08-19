@@ -2,7 +2,7 @@ import secrets
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,7 +13,7 @@ from app.core.security import hash_password
 from app.models.cbt import CBTExam, CBTQuestion, CBTSession, ExamProctorLog
 from app.models.school_campus import SchoolCampus
 from app.models.school_office import SchoolExamCandidate
-from app.models.user import TeacherProfile, User, UserRole
+from app.models.user import StudentProfile, TeacherProfile, User, UserRole
 from app.models.live_class import LiveClass
 from app.core.datetime_utils import naive_utc_now
 
@@ -34,6 +34,10 @@ def _gen_rec() -> str:
     return "REC-" + datetime.utcnow().strftime("%Y") + "-" + secrets.token_hex(3).upper()
 
 
+def _gen_candidate_id() -> str:
+    return "SCH-" + datetime.utcnow().strftime("%Y") + "-" + secrets.token_hex(3).upper()
+
+
 def _gen_access() -> str:
     return secrets.token_hex(4).upper()
 
@@ -47,6 +51,7 @@ def _candidate_dict(row: SchoolExamCandidate) -> dict:
         "email": row.email,
         "phone": row.phone,
         "rec_number": row.rec_number,
+        "candidate_id": getattr(row, "candidate_id", None),
         "access_code": row.access_code,
         "subjects": list(row.subjects or []),
         "school_id": str(row.school_id) if getattr(row, "school_id", None) else None,
@@ -119,6 +124,7 @@ async def register_candidate(
         email=str(payload.email).lower() if payload.email else None,
         phone=payload.phone,
         rec_number=_gen_rec(),
+        candidate_id=_gen_candidate_id(),
         access_code=_gen_access(),
         subjects=[s.strip() for s in payload.subjects if str(s).strip()],
         created_by=current_user["sub"],
@@ -169,6 +175,180 @@ async def candidate_slip(
         raise HTTPException(status_code=404, detail="Student not found")
     data = _candidate_dict(row)
     data["print_title"] = f"{row.school_name} — Exam registration slip"
+    return data
+
+
+class SchoolStudentIn(BaseModel):
+    school_id: Optional[str] = None
+    full_name: str
+    email: EmailStr
+    class_name: str
+    student_id: Optional[str] = None
+    password: Optional[str] = None
+
+
+def _student_row(user: User, profile: StudentProfile | None, campus: SchoolCampus) -> dict:
+    return {
+        "id": str(user.id),
+        "full_name": user.full_name,
+        "email": user.email,
+        "class_name": profile.education_level if profile else None,
+        "student_id": getattr(profile, "school_student_id", None) if profile else None,
+        "is_active": user.is_active,
+        "school_name": campus.name,
+    }
+
+
+async def _create_school_student(db: AsyncSession, campus: SchoolCampus, payload: SchoolStudentIn) -> tuple[User, str]:
+    email = str(payload.email).lower()
+    existing = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
+    if existing:
+        raise HTTPException(status_code=400, detail=f"Email already in use: {email}")
+    password = (payload.password or "").strip() or secrets.token_urlsafe(8)
+    sid = (payload.student_id or "").strip().upper() or (
+        (campus.code or "STU").upper()[:8] + "-" + secrets.token_hex(2).upper()
+    )
+    user = User(
+        email=email,
+        hashed_password=hash_password(password),
+        full_name=payload.full_name.strip(),
+        role=UserRole.student,
+        is_verified=True,
+        is_active=True,
+        school_id=campus.id,
+    )
+    db.add(user)
+    await db.flush()
+    db.add(
+        StudentProfile(
+            user_id=user.id,
+            education_level=payload.class_name.strip().upper(),
+            school_student_id=sid,
+            has_active_subscription=bool(getattr(campus, "subscription_active", False)),
+        )
+    )
+    await db.flush()
+    return user, password
+
+
+@router.get("/students")
+async def list_school_students(
+    q: Optional[str] = Query(None),
+    class_name: Optional[str] = Query(None),
+    school_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    campus = await _campus(db, current_user, school_id)
+    rows = (
+        await db.execute(
+            select(User, StudentProfile)
+            .outerjoin(StudentProfile, StudentProfile.user_id == User.id)
+            .where(User.role == UserRole.student, User.school_id == campus.id)
+            .order_by(User.full_name)
+        )
+    ).all()
+    needle = (q or "").strip().lower()
+    cls = (class_name or "").strip().upper()
+    out = []
+    for user, profile in rows:
+        if cls and (profile.education_level if profile else "") != cls:
+            continue
+        blob = " ".join([user.full_name, user.email, getattr(profile, "school_student_id", None) or ""]).lower()
+        if needle and needle not in blob:
+            continue
+        out.append(_student_row(user, profile, campus))
+    return {"students": out, "subscription_active": bool(campus.subscription_active), "subscription_plan": campus.subscription_plan}
+
+
+@router.post("/students", status_code=201)
+async def add_school_student(
+    payload: SchoolStudentIn,
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    campus = await _campus(db, current_user, payload.school_id)
+    user, password = await _create_school_student(db, campus, payload)
+    profile = (await db.execute(select(StudentProfile).where(StudentProfile.user_id == user.id))).scalar_one_or_none()
+    data = _student_row(user, profile, campus)
+    data["password"] = password
+    return data
+
+
+@router.post("/students/import")
+async def import_school_students(
+    file: UploadFile = File(...),
+    school_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    import csv
+    import io
+
+    campus = await _campus(db, current_user, school_id)
+    raw = (await file.read()).decode("utf-8-sig", errors="replace")
+    reader = csv.DictReader(io.StringIO(raw))
+    created = []
+    errors = []
+    for i, row in enumerate(reader, start=2):
+        name = (row.get("name") or row.get("full_name") or "").strip()
+        email = (row.get("email") or "").strip()
+        klass = (row.get("class") or row.get("class_name") or "").strip()
+        sid = (row.get("student_id") or row.get("id") or "").strip()
+        password = (row.get("password") or "").strip() or None
+        if not name or not email or not klass:
+            errors.append(f"Row {i}: name, email and class are required")
+            continue
+        try:
+            user, pw = await _create_school_student(
+                db,
+                campus,
+                SchoolStudentIn(full_name=name, email=email, class_name=klass, student_id=sid or None, password=password),
+            )
+            profile = (await db.execute(select(StudentProfile).where(StudentProfile.user_id == user.id))).scalar_one()
+            item = _student_row(user, profile, campus)
+            item["password"] = pw
+            created.append(item)
+        except HTTPException as exc:
+            errors.append(f"Row {i}: {exc.detail}")
+    await db.flush()
+    return {"created": created, "created_count": len(created), "errors": errors}
+
+
+class StudentPatchIn(BaseModel):
+    class_name: Optional[str] = None
+    student_id: Optional[str] = None
+    is_active: Optional[bool] = None
+    password: Optional[str] = None
+
+
+@router.patch("/students/{user_id}")
+async def update_school_student(
+    user_id: str,
+    payload: StudentPatchIn,
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    campus = await _campus(db, current_user, None if current_user.get("role") == "school_admin" else None)
+    user = (await db.execute(select(User).where(User.id == user_id, User.school_id == campus.id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Student not found")
+    profile = (await db.execute(select(StudentProfile).where(StudentProfile.user_id == user.id))).scalar_one_or_none()
+    if payload.class_name and profile:
+        profile.education_level = payload.class_name.strip().upper()
+    if payload.student_id and profile:
+        profile.school_student_id = payload.student_id.strip().upper()
+    if payload.is_active is not None:
+        user.is_active = payload.is_active
+    new_password = None
+    if payload.password:
+        new_password = payload.password.strip()
+        user.hashed_password = hash_password(new_password)
+        user.token_version = int(user.token_version or 0) + 1
+    await db.flush()
+    data = _student_row(user, profile, campus)
+    if new_password:
+        data["password"] = new_password
     return data
 
 

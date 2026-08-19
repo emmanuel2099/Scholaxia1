@@ -122,6 +122,8 @@ class UserInfo(BaseModel):
     learning_goals: Optional[str] = None
     school_id: Optional[str] = None
     school_name: Optional[str] = None
+    school_student_id: Optional[str] = None
+    school_subscription_active: Optional[bool] = None
 
 
 class TokenResponse(BaseModel):
@@ -149,6 +151,7 @@ async def _build_user_info(user: User, db: AsyncSession) -> UserInfo:
         ).scalar_one_or_none()
         if campus:
             info.school_name = campus.name
+            info.school_subscription_active = bool(getattr(campus, "subscription_active", False))
     try:
         if user.role == UserRole.student:
             res = await db.execute(select(StudentProfile).where(StudentProfile.user_id == user.id))
@@ -158,7 +161,8 @@ async def _build_user_info(user: User, db: AsyncSession) -> UserInfo:
                 info.exam_type = et.value if hasattr(et, "value") else (str(et) if et else None)
                 info.selected_subjects = profile.selected_subjects or []
                 info.education_level = profile.education_level
-                info.has_active_subscription = profile.has_active_subscription
+                info.school_student_id = getattr(profile, "school_student_id", None)
+                info.has_active_subscription = profile.has_active_subscription or bool(info.school_subscription_active)
         elif user.role == UserRole.teacher:
             res = await db.execute(select(TeacherProfile).where(TeacherProfile.user_id == user.id))
             profile = res.scalar_one_or_none()
