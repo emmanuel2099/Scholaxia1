@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Form, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, EmailStr, Field
@@ -613,6 +613,28 @@ async def kind_signup(payload: KindSignupRequest, db: AsyncSession = Depends(get
 
 @router.post("/login")
 async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
+    try:
+        return await _login_user(payload, db)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="Could not read accounts just now. Wait 20 seconds and try again.",
+        )
+
+
+@router.post("/login-form")
+async def login_form(
+    email: str = Form(""),
+    password: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+):
+    cleaned = (email or "").strip() or None
+    return await login(LoginRequest(email=cleaned, password=password or ""), db)
+
+
+async def _login_user(payload: LoginRequest, db: AsyncSession):
     user = None
     email_raw = (payload.email or "").strip()
     phone_raw = (payload.phone or "").strip()
