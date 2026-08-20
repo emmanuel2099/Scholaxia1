@@ -18,6 +18,23 @@ def database_ready() -> bool:
     return _db_initialized
 
 
+async def ensure_school_campus_schema() -> None:
+    """Add school_campuses columns that create_all skips on existing tables.
+
+    Runs in its own transaction so a failed bulk migration does not block this.
+    """
+    stmts = (
+        "ALTER TABLE school_campuses ADD COLUMN IF NOT EXISTS subscription_active BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE school_campuses ADD COLUMN IF NOT EXISTS subscription_plan VARCHAR(80) NULL",
+    )
+    for stmt in stmts:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text(stmt))
+        except Exception as exc:
+            logger.warning("school_campus schema skipped: %s (%s)", stmt, exc)
+
+
 async def ensure_postgres_enums() -> None:
     """Commit each new enum label in its own transaction so it can be used immediately."""
     from app.models.user import ExamType, UserRole
@@ -456,8 +473,6 @@ async def initialize_database() -> bool:
     try:
         async with engine.begin() as conn:
             await _run_schema_migrations(conn)
-        await ensure_postgres_enums()
-        _db_initialized = True
     except (socket.gaierror, OSError, ConnectionRefusedError) as exc:
         logger.error(
             "DATABASE_URL host %r cannot be resolved (%s). "
@@ -467,6 +482,19 @@ async def initialize_database() -> bool:
             exc,
         )
         return False
+    except Exception as exc:
+        logger.error(
+            "Database schema migration failed for host %r: %s",
+            settings.database_host,
+            exc,
+        )
+    try:
+        await ensure_school_campus_schema()
+    except Exception as exc:
+        logger.warning("ensure_school_campus_schema: %s", exc)
+    try:
+        await ensure_postgres_enums()
+        _db_initialized = True
     except Exception as exc:
         logger.error(
             "Database startup failed for host %r: %s",

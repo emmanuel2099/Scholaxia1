@@ -650,8 +650,6 @@ async def _persist_cbt_exam(
     if not subject:
         raise HTTPException(status_code=400, detail="Subject is required")
     year = _normalize_cbt_year(payload.year)
-    if year is None:
-        raise HTTPException(status_code=400, detail="Exam year is required")
 
     try:
         exam_type = normalize_exam_type(payload.exam_type)
@@ -878,7 +876,7 @@ async def import_cbt_file(
     """
     Upload a .json or .csv CBT file. Questions are saved as normal exams in the database
     and appear in the student app like any other CBT (not as a downloadable file).
-    Subject and year from the form are required and applied to every imported exam.
+    Subject from the form is required and applied to every imported exam.
     """
     content = await file.read()
     if len(content) > 10 * 1024 * 1024:
@@ -888,8 +886,6 @@ async def import_cbt_file(
     form_year = _normalize_cbt_year(year)
     if not form_subject:
         raise HTTPException(status_code=400, detail="Pick a subject before uploading")
-    if form_year is None:
-        raise HTTPException(status_code=400, detail="Pick the exam year before uploading")
 
     defaults = {
         "title": (title or "").strip() or None,
@@ -910,9 +906,10 @@ async def import_cbt_file(
     skipped: list[str] = []
 
     for raw in exam_payloads:
-        # Form subject/year always win so the exam slots correctly on the platform.
+        # Form subject always wins; year from the form only if provided.
         raw["subject"] = form_subject
-        raw["year"] = form_year
+        if form_year is not None:
+            raw["year"] = form_year
         if skip_dup:
             existing = await db.execute(
                 select(CBTExam).where(CBTExam.title == raw["title"])
@@ -924,7 +921,7 @@ async def import_cbt_file(
         payload = CBTExamCreate(
             title=raw["title"],
             subject=form_subject,
-            year=form_year,
+            year=form_year if form_year is not None else raw.get("year"),
             exam_type=raw["exam_type"],
             duration_minutes=raw["duration_minutes"],
             is_published=raw.get("is_published", True),
@@ -1073,8 +1070,6 @@ async def confirm_cbt_import(
     if not subject:
         raise HTTPException(status_code=400, detail="Pick a subject before saving")
     year = _normalize_cbt_year(payload.year)
-    if year is None:
-        raise HTTPException(status_code=400, detail="Pick the exam year before saving")
 
     if payload.skip_duplicates:
         existing = await db.execute(

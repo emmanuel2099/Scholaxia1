@@ -241,8 +241,6 @@
       <div class="page-head">
         <h2>CBT Exams</h2>
         <div class="form-row">
-          <button class="btn-sm" onclick="seedCbt()">Seed sample exams</button>
-          <button class="btn-sm danger" onclick="deleteAllCbt()">Delete all exams</button>
           <button class="btn-sm" onclick="loadCbt()">Refresh list</button>
         </div>
       </div>
@@ -254,48 +252,25 @@
         <button type="button" id="cbt-tab-past" class="cbt-type-tab" onclick="switchCbtMode('past')">
           Past Questions
         </button>
-        <button type="button" id="cbt-tab-school" class="cbt-type-tab" onclick="switchCbtMode('school')">
-          School Exam
-        </button>
       </div>
 
       <div class="panel" style="margin-bottom:16px">
-        <h3>Practice coupon codes</h3>
-        <p class="cbt-hint small">Generate a code so a student can unlock CBT without Paystack.</p>
-        <div class="form-grid">
-          <label><span>Package</span>
-            <select id="coupon-package">
-              <option value="jamb">JAMB Only</option>
-              <option value="waec">WAEC Only</option>
-              <option value="neco">NECO Only</option>
-              <option value="jamb_waec">JAMB &amp; WAEC</option>
-              <option value="jamb_waec_neco">JAMB, WAEC &amp; NECO</option>
-              <option value="junior_waec">Junior WAEC</option>
-              <option value="common_entrance">Common Entrance</option>
-            </select>
-          </label>
-          <label><span>How many codes</span><input id="coupon-count" type="number" min="1" max="50" value="1" /></label>
-          <label><span>Max uses each</span><input id="coupon-uses" type="number" min="1" value="1" /></label>
+        <h3>Upload questions</h3>
+        <div class="cbt-hint" id="cbt-upload-hint" style="margin-bottom:14px">
+          This file will appear under CBT Practice. Students sit it as a timed CBT.
         </div>
-        <div class="form-row" style="margin:8px 0">
-          <button type="button" class="btn-primary" style="width:auto;padding:12px 22px" onclick="generateCbtCoupons()">Generate coupon</button>
-          <button type="button" class="btn-sm" onclick="loadCbtCoupons()">Refresh list</button>
-        </div>
-        <p id="coupon-msg" class="cbt-hint small"></p>
-        <div id="coupon-table" class="data-table-wrap"></div>
-      </div>
-
-      <div class="panel" style="margin-bottom:16px">
-        <h3>Upload CBT file</h3>
-        <p class="cbt-hint small">
-          Upload a <strong>.json</strong>, <strong>.csv</strong>, <strong>.pdf</strong>, or <strong>.docx</strong> paper.
-          Pick subject and year. Use the tabs above so the paper lands in <strong>CBT Practice</strong> or <strong>Past Questions</strong> — students sit both as timed CBT, not as library PDFs.
-        </p>
+        <ol class="cbt-hint small" style="margin:0 0 16px 18px;line-height:1.55">
+          <li>Choose <strong>Practice CBT</strong> or <strong>Past Questions</strong> above.</li>
+          <li>Pick a <strong>.json</strong>, <strong>.csv</strong>, <strong>.pdf</strong>, or <strong>.docx</strong> file of questions.</li>
+          <li>Select the <strong>subject</strong> and <strong>exam board</strong>.</li>
+          <li>Click <strong>Upload &amp; create exam(s)</strong>. For PDF/Word, review the questions, then confirm.</li>
+          <li>Optional: download the JSON template to see the exact question format.</li>
+        </ol>
         <div class="form-grid">
-          <label><span>JSON / CSV / PDF / DOCX file</span>
+          <label><span>Question file *</span>
             <input id="cbt-import-file" type="file" accept=".json,.csv,.pdf,.docx,application/json,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
           </label>
-          <label><span>Title (optional)</span><input id="cbt-import-title" placeholder="e.g. WAEC Physics 2022" /></label>
+          <label><span>Title (optional)</span><input id="cbt-import-title" placeholder="e.g. WAEC Physics practice" /></label>
           <label><span>Subject *</span>
             <select id="cbt-import-subject">
               <option value="">Select subject</option>
@@ -318,9 +293,6 @@
               <option>Basic Technology</option>
               <option>Social Studies</option>
             </select>
-          </label>
-          <label><span>Year *</span>
-            <select id="cbt-import-year"></select>
           </label>
           <label><span>Exam board</span>
             <select id="cbt-import-type"><option>JAMB</option><option>WAEC</option><option>NECO</option><option>JUNIOR_WAEC</option><option>COMMON_ENTRANCE</option></select>
@@ -354,75 +326,6 @@
           <button type="button" class="btn-sm" onclick="cancelCbtPreview()">Cancel</button>
         </div>
         <p id="cbt-preview-error" class="error-msg"></p>
-      </div>
-
-      <div class="panel cbt-builder">
-        <div id="cbt-mode-hint" class="cbt-hint practice-hint">
-          Practice exams for JAMB / WAEC / NECO, or Primary 6 Common Entrance for the Kids app — learners can take these anytime to prepare.
-        </div>
-
-        <h3 id="cbt-form-title">New Practice CBT</h3>
-
-        <div class="form-grid">
-          <label><span>Exam title</span><input id="cbt-title" placeholder="e.g. JAMB Mathematics Practice" /></label>
-          <label><span>Subject *</span>
-            <select id="cbt-subject">
-              <option value="">Select subject</option>
-              <option>Mathematics</option>
-              <option>English Language</option>
-              <option>Biology</option>
-              <option>Chemistry</option>
-              <option>Physics</option>
-              <option>Economics</option>
-              <option>Government</option>
-              <option>Geography</option>
-              <option>Literature</option>
-              <option>Agricultural Science</option>
-              <option>Commerce</option>
-              <option>CRS</option>
-              <option>IRS</option>
-              <option>Further Mathematics</option>
-              <option>Civic Education</option>
-              <option>Basic Science</option>
-              <option>Basic Technology</option>
-              <option>Social Studies</option>
-            </select>
-          </label>
-          <label><span>Year *</span>
-            <select id="cbt-year"></select>
-          </label>
-          <label><span>Exam board</span>
-            <select id="cbt-type"><option>JAMB</option><option>WAEC</option><option>NECO</option><option>JUNIOR_WAEC</option><option>COMMON_ENTRANCE</option></select>
-          </label>
-          <label><span>Duration (minutes)</span><input id="cbt-duration" type="number" value="30" min="5" max="180" /></label>
-        </div>
-
-        <div id="school-fields" class="school-fields hidden">
-          <div class="form-grid">
-            <label><span>Opens (date &amp; time)</span><input id="cbt-start" type="datetime-local" /></label>
-            <label><span>Closes (date &amp; time)</span><input id="cbt-end" type="datetime-local" /></label>
-          </div>
-          <div class="form-row" style="margin-bottom:8px">
-            <label class="chk-label"><input type="checkbox" id="cbt-camera" checked /> Require camera (proctoring)</label>
-            <label class="chk-label"><input type="checkbox" id="cbt-block-min" checked /> Block minimize during exam</label>
-          </div>
-        </div>
-
-        <div class="form-row" style="margin-bottom:16px">
-          <label class="chk-label"><input type="checkbox" id="cbt-publish" checked /> Publish so students can see it</label>
-        </div>
-
-        <div class="questions-header">
-          <h3>Questions</h3>
-          <button type="button" class="btn-sm" onclick="addCbtQuestion()">+ Add question</button>
-        </div>
-        <p class="cbt-hint small">Add as many questions as you need. Use a diagram for graphs, figures, or passages.</p>
-        <div id="cbt-questions-list"></div>
-
-        <div class="cbt-actions">
-          <button type="button" class="btn-primary" id="btn-create-cbt" onclick="createCbt()">Create exam</button>
-          <p id="cbt-form-error" class="error-msg"></p>
-        </div>
       </div>
 
       <div id="cbt-table" class="data-table-wrap" style="margin-top:20px"><div class="loading">Loading…</div></div>

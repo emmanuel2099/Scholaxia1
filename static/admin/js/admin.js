@@ -126,7 +126,7 @@ function showAdminPage(page) {
   else if (page === "requests") loadRequests();
   else if (page === "live-subs") loadLiveSubscriptions();
   else if (page === "skills-enroll") loadSkillsEnrollments();
-  else if (page === "cbt") { initCbtBuilder(); loadCbt(); loadCbtCoupons(); }
+  else if (page === "cbt") { initCbtBuilder(); loadCbt(); }
   else if (page === "library") loadLibraryAdmin();
   else if (page === "videos") loadAdminVideos();
   else if (page === "schools") loadSchoolsAdmin();
@@ -878,36 +878,37 @@ function fillCbtYearSelects() {
 
 function initCbtBuilder() {
   fillCbtYearSelects();
-  if (!cbtQuestions.length) cbtQuestions = [emptyQuestion()];
   switchCbtMode(cbtMode, true);
-  renderCbtQuestions();
 }
 
 function switchCbtMode(mode, skipReset) {
-  cbtMode = mode;
-  var isPractice = mode === "practice";
-  var isPast = mode === "past";
-  var isSchool = mode === "school";
-  document.getElementById("cbt-tab-practice").classList.toggle("active", isPractice);
+  cbtMode = mode === "past" ? "past" : "practice";
+  var practiceTab = document.getElementById("cbt-tab-practice");
   var pastTab = document.getElementById("cbt-tab-past");
-  if (pastTab) pastTab.classList.toggle("active", isPast);
-  document.getElementById("cbt-tab-school").classList.toggle("active", isSchool);
-  document.getElementById("cbt-tab-school").classList.toggle("school-tab", isSchool);
-  document.getElementById("school-fields").classList.toggle("hidden", !isSchool);
-  document.getElementById("cbt-form-title").textContent = isSchool
-    ? "New School Exam"
-    : (isPast ? "New Past Questions paper" : "New Practice CBT");
-  var hint = document.getElementById("cbt-mode-hint");
-  hint.className = "cbt-hint " + (isSchool ? "school-hint" : "practice-hint");
-  hint.textContent = isSchool
-    ? "Scheduled school exam — set open/close times. Camera proctoring is recommended."
-    : (isPast
-      ? "This paper shows under student Past Questions. Students sit it as timed CBT — it will not appear in CBT Practice."
-      : "Practice exams for JAMB / WAEC / NECO, or Primary 6 Common Entrance for the Kids app.");
-  document.getElementById("btn-create-cbt").textContent = isSchool
-    ? "Create school exam"
-    : (isPast ? "Create past questions paper" : "Create practice exam");
-  if (!skipReset) {
+  if (practiceTab) practiceTab.classList.toggle("active", cbtMode === "practice");
+  if (pastTab) pastTab.classList.toggle("active", cbtMode === "past");
+  var hint = document.getElementById("cbt-upload-hint");
+  if (hint) {
+    hint.textContent = cbtMode === "past"
+      ? "This file will appear under Past Questions. Students sit it as a timed CBT."
+      : "This file will appear under CBT Practice. Students sit it as a timed CBT.";
+  }
+  var schoolTab = document.getElementById("cbt-tab-school");
+  if (schoolTab) schoolTab.classList.remove("active");
+  var schoolFields = document.getElementById("school-fields");
+  if (schoolFields) schoolFields.classList.add("hidden");
+  var formTitle = document.getElementById("cbt-form-title");
+  if (formTitle) {
+    formTitle.textContent = cbtMode === "past" ? "New Past Questions paper" : "New Practice CBT";
+  }
+  var modeHint = document.getElementById("cbt-mode-hint");
+  if (modeHint) {
+    modeHint.className = "cbt-hint practice-hint";
+    modeHint.textContent = cbtMode === "past"
+      ? "This paper shows under student Past Questions. Students sit it as timed CBT."
+      : "Practice exams for JAMB / WAEC / NECO, or Primary 6 Common Entrance for the Kids app.";
+  }
+  if (!skipReset && document.getElementById("cbt-questions-list")) {
     cbtQuestions = [emptyQuestion()];
     renderCbtQuestions();
   }
@@ -949,6 +950,7 @@ function syncAllQuestions() {
 
 function renderCbtQuestions() {
   var list = document.getElementById("cbt-questions-list");
+  if (!list) return;
   list.innerHTML = cbtQuestions.map(function (q, idx) {
     var prefix = "q-" + idx + "-";
     var opts = ["A", "B", "C", "D"].map(function (letter) {
@@ -1200,12 +1202,8 @@ async function importCbtFile() {
     err.textContent = "Pick a subject so students can find this exam.";
     return;
   }
-  if (!fields.year) {
-    err.textContent = "Pick the exam year (required for past questions).";
-    return;
-  }
   if (!fields.title) {
-    fields.title = fields.exam_type + " " + fields.subject + " " + fields.year;
+    fields.title = fields.exam_type + " " + fields.subject + (fields.year ? " " + fields.year : "");
   }
 
   var needsPreview = /\.(pdf|docx)$/i.test(file.name || "");
@@ -1235,7 +1233,7 @@ async function importCbtFile() {
     if (!r) return;
     var lines = [];
     if (r.created_count) {
-      lines.push("Created " + r.created_count + " exam(s) for " + fields.subject + " " + fields.year + ":");
+      lines.push("Created " + r.created_count + " exam(s) for " + fields.subject + (fields.year ? " " + fields.year : "") + ":");
       (r.created || []).forEach(function (e) {
         lines.push("• " + e.title + " (" + e.total_questions + " questions)");
       });
@@ -1334,9 +1332,8 @@ async function confirmCbtPreviewUi() {
   year = String(year).trim();
   var examType = document.getElementById("cbt-import-type").value;
   var title = document.getElementById("cbt-import-title").value.trim() ||
-    (examType + " " + subject + " " + year);
+    (examType + " " + subject + (year ? " " + year : ""));
   if (!subject) { err.textContent = "Pick a subject in the upload form above."; return; }
-  if (!year) { err.textContent = "Pick the exam year in the upload form above."; return; }
 
   var threshold = cbtPreviewData.low_confidence_threshold || 0;
   var questions = [];
@@ -1374,7 +1371,7 @@ async function confirmCbtPreviewUi() {
   var payload = {
     title: title,
     subject: subject,
-    year: parseInt(year, 10),
+    year: year ? parseInt(year, 10) : null,
     exam_type: examType,
     duration_minutes: parseInt(document.getElementById("cbt-import-duration").value, 10) || 60,
     is_published: document.getElementById("cbt-import-publish").checked,

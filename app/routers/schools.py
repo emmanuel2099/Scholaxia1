@@ -81,6 +81,9 @@ async def list_schools(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.core.startup_db import ensure_school_campus_schema
+
+    await ensure_school_campus_schema()
     try:
         rows = (await db.execute(select(SchoolCampus).order_by(SchoolCampus.created_at.desc()))).scalars().all()
     except Exception:
@@ -98,9 +101,10 @@ async def create_school(
     current_user: dict = Depends(require_admin),
 ):
     """Use a fresh DB session after enum migrate. Auth's open transaction cannot see a new enum value."""
-    from app.core.startup_db import ensure_postgres_enums
+    from app.core.startup_db import ensure_postgres_enums, ensure_school_campus_schema
 
     await ensure_postgres_enums()
+    await ensure_school_campus_schema()
     email = payload.admin_email.lower().strip()
     admin_name = (payload.admin_full_name or "").strip() or email.split("@")[0]
     try:

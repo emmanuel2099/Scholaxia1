@@ -4,7 +4,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import delete, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -24,10 +24,43 @@ async def _campus(db: AsyncSession, current_user: dict, school_id: str | None = 
     sid = current_user.get("school_id") if current_user.get("role") == "school_admin" else school_id
     if not sid:
         raise HTTPException(status_code=400, detail="Main admin must add a school first, then pick it here")
-    row = (await db.execute(select(SchoolCampus).where(SchoolCampus.id == sid))).scalar_one_or_none()
-    if not row or not row.is_active:
-        raise HTTPException(status_code=404, detail="School not found")
-    return row
+    try:
+        from app.core.startup_db import ensure_school_campus_schema
+        await ensure_school_campus_schema()
+    except Exception:
+        pass
+    try:
+        row = (await db.execute(select(SchoolCampus).where(SchoolCampus.id == sid))).scalar_one_or_none()
+        if not row or not row.is_active:
+            raise HTTPException(status_code=404, detail="School not found")
+        return row
+    except HTTPException:
+        raise
+    except Exception:
+        await db.rollback()
+        raw = (
+            await db.execute(
+                text(
+                    """
+                    SELECT id, name, code, city, state, COALESCE(is_active, true) AS is_active
+                    FROM school_campuses
+                    WHERE id = :id
+                    """
+                ),
+                {"id": sid},
+            )
+        ).mappings().first()
+        if not raw or not raw["is_active"]:
+            raise HTTPException(status_code=404, detail="School not found")
+        campus = SchoolCampus(
+            id=raw["id"],
+            name=raw["name"],
+            code=raw["code"],
+            city=raw["city"],
+            state=raw["state"],
+            is_active=bool(raw["is_active"]),
+        )
+        return campus
 
 
 def _gen_rec() -> str:
@@ -258,7 +291,11 @@ async def list_school_students(
         if needle and needle not in blob:
             continue
         out.append(_student_row(user, profile, campus))
-    return {"students": out, "subscription_active": bool(campus.subscription_active), "subscription_plan": campus.subscription_plan}
+    return {
+        "students": out,
+        "subscription_active": bool(getattr(campus, "subscription_active", False)),
+        "subscription_plan": getattr(campus, "subscription_plan", None),
+    }
 
 
 @router.post("/students", status_code=201)
