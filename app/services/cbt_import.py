@@ -15,6 +15,12 @@ VALID_EXAM_TYPES = {
     "POST_UTME",
     "JUNIOR_WAEC",
     "COMMON_ENTRANCE",
+    "JSS1",
+    "JSS2",
+    "JSS3",
+    "SS1",
+    "SS2",
+    "SS3",
 }
 # Aliases admins commonly type → canonical exam type
 EXAM_TYPE_ALIASES = {
@@ -26,6 +32,12 @@ EXAM_TYPE_ALIASES = {
     "JSS_WAEC": "JUNIOR_WAEC",
     "BECE": "JUNIOR_WAEC",
     "POSTUTME": "POST_UTME",
+    "JSS_1": "JSS1",
+    "JSS_2": "JSS2",
+    "JSS_3": "JSS3",
+    "SS_1": "SS1",
+    "SS_2": "SS2",
+    "SS_3": "SS3",
 }
 VALID_OPTIONS = {"A", "B", "C", "D"}
 

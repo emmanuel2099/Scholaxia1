@@ -423,8 +423,19 @@ async def exams_for_student(
         # Both / unknown SSCE — show WAEC and NECO packs
         return (("WAEC" in t or "WASSCE" in t or "NECO" in t) and "JUNIOR" not in t)
 
+    def _is_class_level(et: str) -> bool:
+        t = (et or "").upper().replace(" ", "").replace("_", "")
+        return t in {"JSS1", "JSS2", "JSS3", "SS1", "SS2", "SS3"}
+
+    def _matches_student_class(et: str) -> bool:
+        if not level:
+            return False
+        t = (et or "").upper().replace(" ", "").replace("_", "")
+        return t == level.replace(" ", "").replace("_", "")
+
     jamb_practice = []
     ssce_practice = []
+    class_practice = []
     school = []
     for e in all_exams:
         if e.is_school_exam:
@@ -435,6 +446,11 @@ async def exams_for_student(
                 school.append(_exam_summary(e))
             continue
 
+        if _is_class_level(e.exam_type):
+            if _matches_student_class(e.exam_type):
+                class_practice.append(_exam_summary(e))
+            continue
+
         if jamb_subjects and _is_jamb(e.exam_type) and subject_matches(e.subject, jamb_subjects):
             jamb_practice.append(_exam_summary(e))
         if ssce_subjects and _is_ssce(e.exam_type) and subject_matches(e.subject, ssce_subjects):
@@ -443,7 +459,7 @@ async def exams_for_student(
     # Deduplicate practice_exams list while keeping board buckets
     seen = set()
     practice = []
-    for item in [*jamb_practice, *ssce_practice]:
+    for item in [*jamb_practice, *ssce_practice, *class_practice]:
         if item.id in seen:
             continue
         seen.add(item.id)
