@@ -70,6 +70,7 @@
       <button class="nav-btn" data-page="live-subs" onclick="showAdminPage('live-subs')">Live Subscriptions</button>
       <button class="nav-btn" data-page="skills-enroll" onclick="showAdminPage('skills-enroll')">Skills Enrollments</button>
       <button class="nav-btn" data-page="cbt" onclick="showAdminPage('cbt')">CBT Exams</button>
+      <button class="nav-btn" data-page="past-questions" onclick="showAdminPage('past-questions')">Past Questions</button>
       <button class="nav-btn" data-page="school-office" onclick="showAdminPage('school-office')">School office</button>
       <button class="nav-btn" data-page="videos" onclick="showAdminPage('videos')">Video Tutorials</button>
       <button class="nav-btn" data-page="library" onclick="showAdminPage('library')">Library</button>
@@ -245,22 +246,12 @@
         </div>
       </div>
 
-      <div class="cbt-type-tabs">
-        <button type="button" id="cbt-tab-practice" class="cbt-type-tab active" onclick="switchCbtMode('practice')">
-          Practice CBT
-        </button>
-        <button type="button" id="cbt-tab-past" class="cbt-type-tab" onclick="switchCbtMode('past')">
-          Past Questions
-        </button>
-      </div>
-
       <div class="panel" style="margin-bottom:16px">
-        <h3>Upload questions</h3>
-        <div class="cbt-hint" id="cbt-upload-hint" style="margin-bottom:14px">
-          This file will appear under CBT Practice. Students sit it as a timed CBT.
+        <h3>Upload CBT practice questions</h3>
+        <div class="cbt-hint" style="margin-bottom:14px">
+          Papers uploaded here appear under <strong>CBT Practice</strong> for students. Past papers have their own <strong>Past Questions</strong> tab.
         </div>
         <ol class="cbt-hint small" style="margin:0 0 16px 18px;line-height:1.55">
-          <li>Choose <strong>Practice CBT</strong> or <strong>Past Questions</strong> above.</li>
           <li>Pick a <strong>.json</strong>, <strong>.csv</strong>, <strong>.pdf</strong>, or <strong>.docx</strong> file of questions.</li>
           <li>Select the <strong>subject</strong> and <strong>exam board</strong>.</li>
           <li>Click <strong>Upload &amp; create exam(s)</strong>. For PDF/Word, review the questions, then confirm.</li>
@@ -270,7 +261,7 @@
           <label><span>Question file *</span>
             <input id="cbt-import-file" type="file" accept=".json,.csv,.pdf,.docx,application/json,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
           </label>
-          <label><span>Title (optional)</span><input id="cbt-import-title" placeholder="e.g. WAEC Physics practice" /></label>
+          <label><span>Title (optional)</span><input id="cbt-import-title" placeholder="e.g. JAMB Mathematics practice" /></label>
           <label><span>Subject *</span>
             <select id="cbt-import-subject">
               <option value="">Select subject</option>
@@ -328,7 +319,140 @@
         <p id="cbt-preview-error" class="error-msg"></p>
       </div>
 
+      <div class="panel cbt-builder" style="margin-bottom:16px">
+        <h3>Create CBT manually</h3>
+        <p class="cbt-hint small" style="margin-bottom:14px">
+          Type questions one by one. Add a diagram (graph, figure, or passage image) on any question.
+        </p>
+        <div class="form-grid">
+          <label><span>Exam title *</span><input id="cbt-title" placeholder="e.g. JAMB Mathematics Practice" /></label>
+          <label><span>Subject *</span>
+            <select id="cbt-subject">
+              <option value="">Select subject</option>
+              <option>Mathematics</option>
+              <option>English Language</option>
+              <option>Biology</option>
+              <option>Chemistry</option>
+              <option>Physics</option>
+              <option>Economics</option>
+              <option>Government</option>
+              <option>Geography</option>
+              <option>Literature</option>
+              <option>Agricultural Science</option>
+              <option>Commerce</option>
+              <option>CRS</option>
+              <option>IRS</option>
+              <option>Further Mathematics</option>
+              <option>Civic Education</option>
+              <option>Basic Science</option>
+              <option>Basic Technology</option>
+              <option>Social Studies</option>
+            </select>
+          </label>
+          <label><span>Exam board</span>
+            <select id="cbt-type"><option>JAMB</option><option>WAEC</option><option>NECO</option><option>JUNIOR_WAEC</option><option>COMMON_ENTRANCE</option></select>
+          </label>
+          <label><span>Duration (minutes)</span><input id="cbt-duration" type="number" value="30" min="5" max="180" /></label>
+        </div>
+        <div class="form-row" style="margin:10px 0 16px">
+          <label class="chk-label"><input type="checkbox" id="cbt-publish" checked /> Publish so students can see it</label>
+        </div>
+        <div class="questions-header">
+          <h3>Questions</h3>
+          <button type="button" class="btn-sm" onclick="addCbtQuestion()">+ Add question</button>
+        </div>
+        <p class="cbt-hint small">Add as many questions as you need. Use <strong>Diagram / figure</strong> for graphs, maps, or passages.</p>
+        <div id="cbt-questions-list"></div>
+        <div class="cbt-actions" style="margin-top:14px">
+          <button type="button" class="btn-primary" id="btn-create-cbt" onclick="createCbt()">Create practice exam</button>
+          <p id="cbt-form-error" class="error-msg"></p>
+        </div>
+      </div>
+
       <div id="cbt-table" class="data-table-wrap" style="margin-top:20px"><div class="loading">Loading…</div></div>
+    </section>
+
+    <section id="page-past-questions" class="admin-page">
+      <div class="page-head">
+        <h2>Past Questions</h2>
+        <div class="form-row">
+          <button class="btn-sm" onclick="loadPastQuestionsAdmin()">Refresh list</button>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-bottom:16px">
+        <h3>Upload past question papers</h3>
+        <div class="cbt-hint" style="margin-bottom:14px">
+          Papers uploaded here appear under the student <strong>Past Questions</strong> tab — separate from CBT Practice.
+        </div>
+        <ol class="cbt-hint small" style="margin:0 0 16px 18px;line-height:1.55">
+          <li>Pick a <strong>.json</strong>, <strong>.csv</strong>, <strong>.pdf</strong>, or <strong>.docx</strong> past paper.</li>
+          <li>Select the <strong>subject</strong> and <strong>exam board</strong>.</li>
+          <li>Click <strong>Upload &amp; create paper(s)</strong>. For PDF/Word, review the questions, then confirm.</li>
+          <li>Optional: download the JSON template to see the exact question format.</li>
+        </ol>
+        <div class="form-grid">
+          <label><span>Question file *</span>
+            <input id="pq-import-file" type="file" accept=".json,.csv,.pdf,.docx,application/json,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+          </label>
+          <label><span>Title (optional)</span><input id="pq-import-title" placeholder="e.g. WAEC Physics 2022" /></label>
+          <label><span>Subject *</span>
+            <select id="pq-import-subject">
+              <option value="">Select subject</option>
+              <option>Mathematics</option>
+              <option>English Language</option>
+              <option>Biology</option>
+              <option>Chemistry</option>
+              <option>Physics</option>
+              <option>Economics</option>
+              <option>Government</option>
+              <option>Geography</option>
+              <option>Literature</option>
+              <option>Agricultural Science</option>
+              <option>Commerce</option>
+              <option>CRS</option>
+              <option>IRS</option>
+              <option>Further Mathematics</option>
+              <option>Civic Education</option>
+              <option>Basic Science</option>
+              <option>Basic Technology</option>
+              <option>Social Studies</option>
+            </select>
+          </label>
+          <label><span>Exam board</span>
+            <select id="pq-import-type"><option>JAMB</option><option>WAEC</option><option>NECO</option><option>JUNIOR_WAEC</option><option>COMMON_ENTRANCE</option></select>
+          </label>
+          <label><span>Duration (minutes)</span><input id="pq-import-duration" type="number" value="60" min="5" max="300" /></label>
+        </div>
+        <div class="form-row" style="margin:8px 0">
+          <label class="chk-label"><input type="checkbox" id="pq-import-publish" checked /> Publish immediately</label>
+          <label class="chk-label"><input type="checkbox" id="pq-import-skip-dup" checked /> Skip if title already exists</label>
+        </div>
+        <div class="cbt-actions">
+          <button type="button" class="btn-primary" id="btn-import-pq" onclick="importPastQuestionsFile()">Upload &amp; create paper(s)</button>
+          <button type="button" class="btn-sm" onclick="downloadCbtTemplate()">Download JSON template</button>
+        </div>
+        <p id="pq-import-error" class="error-msg"></p>
+        <p id="pq-import-success" class="cbt-hint small" style="color:#2d8a5e"></p>
+      </div>
+
+      <div class="panel" id="pq-preview-panel" style="display:none;margin-bottom:16px">
+        <h3>Review extracted questions</h3>
+        <p class="cbt-hint small">
+          Check every question, fix any mistakes, and set the correct option where it is missing.
+          Untick a question to leave it out.
+        </p>
+        <p id="pq-preview-summary" class="cbt-hint small" style="font-weight:600"></p>
+        <div id="pq-preview-warnings"></div>
+        <div id="pq-preview-list"></div>
+        <div class="cbt-actions">
+          <button type="button" class="btn-primary" id="btn-confirm-pq-preview" onclick="confirmPastPreviewUi()">Confirm &amp; save paper</button>
+          <button type="button" class="btn-sm" onclick="cancelPastPreview()">Cancel</button>
+        </div>
+        <p id="pq-preview-error" class="error-msg"></p>
+      </div>
+
+      <div id="pq-table" class="data-table-wrap" style="margin-top:20px"><div class="loading">Loading…</div></div>
     </section>
 
     <section id="page-library" class="admin-page">

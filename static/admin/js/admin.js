@@ -126,7 +126,8 @@ function showAdminPage(page) {
   else if (page === "requests") loadRequests();
   else if (page === "live-subs") loadLiveSubscriptions();
   else if (page === "skills-enroll") loadSkillsEnrollments();
-  else if (page === "cbt") { initCbtBuilder(); loadCbt(); }
+  else if (page === "cbt") { cbtMode = "practice"; initCbtBuilder(); loadCbt(); }
+  else if (page === "past-questions") { cbtMode = "past"; loadPastQuestionsAdmin(); }
   else if (page === "library") loadLibraryAdmin();
   else if (page === "videos") loadAdminVideos();
   else if (page === "schools") loadSchoolsAdmin();
@@ -878,46 +879,21 @@ function fillCbtYearSelects() {
 
 function initCbtBuilder() {
   fillCbtYearSelects();
-  switchCbtMode(cbtMode, true);
+  cbtMode = "practice";
+  if (!cbtQuestions.length) cbtQuestions = [emptyQuestion()];
+  renderCbtQuestions();
 }
 
 function switchCbtMode(mode, skipReset) {
   cbtMode = mode === "past" ? "past" : "practice";
-  var practiceTab = document.getElementById("cbt-tab-practice");
-  var pastTab = document.getElementById("cbt-tab-past");
-  if (practiceTab) practiceTab.classList.toggle("active", cbtMode === "practice");
-  if (pastTab) pastTab.classList.toggle("active", cbtMode === "past");
-  var hint = document.getElementById("cbt-upload-hint");
-  if (hint) {
-    hint.textContent = cbtMode === "past"
-      ? "This file will appear under Past Questions. Students sit it as a timed CBT."
-      : "This file will appear under CBT Practice. Students sit it as a timed CBT.";
-  }
-  var schoolTab = document.getElementById("cbt-tab-school");
-  if (schoolTab) schoolTab.classList.remove("active");
-  var schoolFields = document.getElementById("school-fields");
-  if (schoolFields) schoolFields.classList.add("hidden");
-  var formTitle = document.getElementById("cbt-form-title");
-  if (formTitle) {
-    formTitle.textContent = cbtMode === "past" ? "New Past Questions paper" : "New Practice CBT";
-  }
-  var modeHint = document.getElementById("cbt-mode-hint");
-  if (modeHint) {
-    modeHint.className = "cbt-hint practice-hint";
-    modeHint.textContent = cbtMode === "past"
-      ? "This paper shows under student Past Questions. Students sit it as timed CBT."
-      : "Practice exams for JAMB / WAEC / NECO, or Primary 6 Common Entrance for the Kids app.";
-  }
-  if (!skipReset && document.getElementById("cbt-questions-list")) {
-    cbtQuestions = [emptyQuestion()];
-    renderCbtQuestions();
-  }
 }
 
 function addCbtQuestion() {
+  syncAllQuestions();
   cbtQuestions.push(emptyQuestion());
   renderCbtQuestions();
   var list = document.getElementById("cbt-questions-list");
+  if (!list) return;
   var cards = list.querySelectorAll(".q-card");
   if (cards.length) cards[cards.length - 1].scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
@@ -963,7 +939,8 @@ function renderCbtQuestions() {
         '</div>';
     }).join("");
     var imgBlock = q.image_url || q.image_preview
-      ? '<img src="' + escHtml(q.image_preview || q.image_url) + '" alt="Diagram" />'
+      ? '<img src="' + escHtml(q.image_preview || q.image_url) + '" alt="Diagram" />' +
+        '<button type="button" class="btn-sm" style="margin-top:6px" onclick="clearQuestionImage(' + idx + ')">Remove diagram</button>'
       : "";
     var uploading = q.uploading ? '<div class="uploading">Uploading diagram…</div>' : "";
     return '<div class="q-card" data-idx="' + idx + '">' +
@@ -1009,20 +986,29 @@ async function onQuestionImage(idx, input) {
   }
 }
 
+function clearQuestionImage(idx) {
+  syncAllQuestions();
+  if (!cbtQuestions[idx]) return;
+  cbtQuestions[idx].image_url = "";
+  cbtQuestions[idx].image_preview = "";
+  cbtQuestions[idx].uploading = false;
+  renderCbtQuestions();
+}
+
 async function loadCbt() {
   var el = document.getElementById("cbt-table");
+  if (!el) return;
   el.innerHTML = '<div class="loading">Loading…</div>';
   try {
     var rows = await adminApi("/api/v1/admin/cbt/exams");
     if (!rows) return;
-    if (!rows.length) { el.innerHTML = '<div class="empty-state">No CBT exams. Create one or click Seed Exams.</div>'; return; }
+    rows = rows.filter(function (e) {
+      return !e.is_school_exam && e.paper_kind !== "past_questions";
+    });
+    if (!rows.length) { el.innerHTML = '<div class="empty-state">No CBT practice exams yet. Upload questions above.</div>'; return; }
     el.innerHTML = '<table class="data-table"><thead><tr><th>Title</th><th>Subject</th><th>Type</th><th>Questions</th><th>Status</th><th></th></tr></thead><tbody>' +
       rows.map(function (e) {
-        var typeBadge = e.is_school_exam
-          ? '<span class="badge school">School</span>'
-          : (e.paper_kind === "past_questions"
-            ? '<span class="badge ok">Past Questions</span>'
-            : '<span class="badge ok">' + escHtml(e.exam_type) + '</span>');
+        var typeBadge = '<span class="badge ok">' + escHtml(e.exam_type) + '</span>';
         var pub = e.is_published ? '<span class="badge ok">Published</span>' : '<span class="badge muted">Draft</span>';
         return '<tr><td>' + escHtml(e.title) + '</td><td>' + escHtml(e.subject) + '</td>' +
           '<td>' + typeBadge + '</td><td>' + e.total_questions + '</td><td>' + pub + '</td>' +
@@ -1036,15 +1022,41 @@ async function loadCbt() {
   }
 }
 
+async function loadPastQuestionsAdmin() {
+  var el = document.getElementById("pq-table");
+  if (!el) return;
+  el.innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    var rows = await adminApi("/api/v1/admin/cbt/exams");
+    if (!rows) return;
+    rows = rows.filter(function (e) { return e.paper_kind === "past_questions"; });
+    if (!rows.length) { el.innerHTML = '<div class="empty-state">No past question papers yet. Upload one above.</div>'; return; }
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Title</th><th>Subject</th><th>Board</th><th>Questions</th><th>Status</th><th></th></tr></thead><tbody>' +
+      rows.map(function (e) {
+        var pub = e.is_published ? '<span class="badge ok">Published</span>' : '<span class="badge muted">Draft</span>';
+        return '<tr><td>' + escHtml(e.title) + '</td><td>' + escHtml(e.subject) + '</td>' +
+          '<td><span class="badge ok">' + escHtml(e.exam_type) + '</span></td><td>' + e.total_questions + '</td><td>' + pub + '</td>' +
+          '<td class="actions">' +
+          '<button class="btn-sm" onclick="toggleCbtPublish(\'' + e.id + '\')">Toggle publish</button>' +
+          '<button class="btn-sm danger" onclick="deleteCbt(\'' + e.id + '\')">Delete</button>' +
+          '</td></tr>';
+      }).join("") + '</tbody></table>';
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + '</div>';
+  }
+}
+
 async function createCbt() {
   var err = document.getElementById("cbt-form-error");
   var btn = document.getElementById("btn-create-cbt");
+  if (!err || !btn) return;
   err.textContent = "";
   syncAllQuestions();
 
-  var title = document.getElementById("cbt-title").value.trim();
-  var subject = document.getElementById("cbt-subject").value.trim();
-  var yearRaw = document.getElementById("cbt-year").value.trim();
+  var title = (document.getElementById("cbt-title") || {}).value || "";
+  var subject = (document.getElementById("cbt-subject") || {}).value || "";
+  title = String(title).trim();
+  subject = String(subject).trim();
   if (!title) {
     err.textContent = "Enter an exam title.";
     return;
@@ -1052,19 +1064,6 @@ async function createCbt() {
   if (!subject) {
     err.textContent = "Pick a subject.";
     return;
-  }
-  if (!yearRaw) {
-    err.textContent = "Pick the exam year.";
-    return;
-  }
-  var year = parseInt(yearRaw, 10);
-
-  var isSchool = cbtMode === "school";
-  if (isSchool) {
-    if (!document.getElementById("cbt-start").value || !document.getElementById("cbt-end").value) {
-      err.textContent = "School exams need an open and close date/time.";
-      return;
-    }
   }
 
   var questions = [];
@@ -1099,21 +1098,13 @@ async function createCbt() {
   var body = {
     title: title,
     subject: subject,
-    year: year,
-    exam_type: document.getElementById("cbt-type").value,
-    duration_minutes: parseInt(document.getElementById("cbt-duration").value, 10) || 30,
-    is_school_exam: isSchool,
-    paper_kind: cbtMode === "past" ? "past_questions" : "cbt_practice",
-    camera_required: isSchool && document.getElementById("cbt-camera").checked,
-    block_minimize: isSchool && document.getElementById("cbt-block-min").checked,
-    is_published: document.getElementById("cbt-publish").checked,
+    exam_type: (document.getElementById("cbt-type") || {}).value || "JAMB",
+    duration_minutes: parseInt((document.getElementById("cbt-duration") || {}).value, 10) || 30,
+    is_school_exam: false,
+    paper_kind: "cbt_practice",
+    is_published: !!(document.getElementById("cbt-publish") || {}).checked,
     questions: questions,
   };
-
-  if (isSchool) {
-    body.scheduled_start = new Date(document.getElementById("cbt-start").value).toISOString();
-    body.scheduled_end = new Date(document.getElementById("cbt-end").value).toISOString();
-  }
 
   btn.disabled = true;
   btn.textContent = "Creating…";
@@ -1121,26 +1112,24 @@ async function createCbt() {
     await adminApi("/api/v1/admin/cbt/exams", { method: "POST", body: JSON.stringify(body) });
     document.getElementById("cbt-title").value = "";
     document.getElementById("cbt-subject").value = "";
-    document.getElementById("cbt-year").value = "";
-    document.getElementById("cbt-start").value = "";
-    document.getElementById("cbt-end").value = "";
     cbtQuestions = [emptyQuestion()];
     renderCbtQuestions();
     err.textContent = "";
-    alert(isSchool ? "School exam created!" : "Practice CBT created!");
+    alert("Practice CBT created!");
     loadCbt();
   } catch (e) {
     err.textContent = e.message;
   } finally {
     btn.disabled = false;
-    btn.textContent = isSchool ? "Create school exam" : "Create practice exam";
+    btn.textContent = "Create practice exam";
   }
 }
 
 async function toggleCbtPublish(id) {
   try {
     await adminApi("/api/v1/admin/cbt/exams/" + id + "/publish", { method: "PATCH" });
-    loadCbt();
+    if (currentAdminPage === "past-questions") loadPastQuestionsAdmin();
+    else loadCbt();
   } catch (e) { alert(e.message); }
 }
 
@@ -1148,7 +1137,8 @@ async function deleteCbt(id) {
   if (!confirm("Delete this exam permanently?")) return;
   try {
     await adminApi("/api/v1/admin/cbt/exams/" + id, { method: "DELETE" });
-    loadCbt();
+    if (currentAdminPage === "past-questions") loadPastQuestionsAdmin();
+    else loadCbt();
   } catch (e) { alert(e.message); }
 }
 
@@ -1172,68 +1162,84 @@ async function seedCbt() {
 }
 
 async function importCbtFile() {
-  var err = document.getElementById("cbt-import-error");
-  var ok = document.getElementById("cbt-import-success");
-  var btn = document.getElementById("btn-import-cbt");
-  var input = document.getElementById("cbt-import-file");
-  err.textContent = "";
-  ok.textContent = "";
+  cbtMode = "practice";
+  return importPaperFile({
+    prefix: "cbt",
+    paperKind: "cbt_practice",
+    btnLabel: "Upload & create exam(s)",
+    afterSave: loadCbt,
+  });
+}
+
+async function importPastQuestionsFile() {
+  cbtMode = "past";
+  return importPaperFile({
+    prefix: "pq",
+    paperKind: "past_questions",
+    btnLabel: "Upload & create paper(s)",
+    afterSave: loadPastQuestionsAdmin,
+  });
+}
+
+async function importPaperFile(opts) {
+  var prefix = opts.prefix;
+  var err = document.getElementById(prefix + "-import-error");
+  var ok = document.getElementById(prefix + "-import-success");
+  var btn = document.getElementById(prefix === "pq" ? "btn-import-pq" : "btn-import-cbt");
+  var input = document.getElementById(prefix + "-import-file");
+  if (err) err.textContent = "";
+  if (ok) ok.textContent = "";
 
   if (!input || !input.files || !input.files[0]) {
-    err.textContent = "Choose a .json, .csv, .pdf, or .docx file first.";
+    if (err) err.textContent = "Choose a .json, .csv, .pdf, or .docx file first.";
     return;
   }
 
   var file = input.files[0];
-  var yearRaw = (document.getElementById("cbt-import-year") || {}).value || "";
-  yearRaw = String(yearRaw).trim();
   var fields = {
-    title: document.getElementById("cbt-import-title").value.trim(),
-    subject: document.getElementById("cbt-import-subject").value.trim(),
-    year: yearRaw,
-    exam_type: document.getElementById("cbt-import-type").value,
-    duration_minutes: parseInt(document.getElementById("cbt-import-duration").value, 10) || 60,
-    is_published: document.getElementById("cbt-import-publish").checked,
-    skip_duplicates: document.getElementById("cbt-import-skip-dup").checked,
-    paper_kind: cbtMode === "past" ? "past_questions" : "cbt_practice",
+    title: (document.getElementById(prefix + "-import-title") || {}).value || "",
+    subject: (document.getElementById(prefix + "-import-subject") || {}).value || "",
+    year: "",
+    exam_type: (document.getElementById(prefix + "-import-type") || {}).value || "JAMB",
+    duration_minutes: parseInt((document.getElementById(prefix + "-import-duration") || {}).value, 10) || 60,
+    is_published: !!(document.getElementById(prefix + "-import-publish") || {}).checked,
+    skip_duplicates: !!(document.getElementById(prefix + "-import-skip-dup") || {}).checked,
+    paper_kind: opts.paperKind,
   };
+  fields.title = String(fields.title).trim();
+  fields.subject = String(fields.subject).trim();
 
   if (!fields.subject) {
-    err.textContent = "Pick a subject so students can find this exam.";
+    if (err) err.textContent = "Pick a subject so students can find this exam.";
     return;
   }
   if (!fields.title) {
-    fields.title = fields.exam_type + " " + fields.subject + (fields.year ? " " + fields.year : "");
+    fields.title = fields.exam_type + " " + fields.subject;
   }
 
   var needsPreview = /\.(pdf|docx)$/i.test(file.name || "");
   if (needsPreview) {
-    btn.disabled = true;
-    btn.textContent = "Extracting questions…";
+    if (btn) { btn.disabled = true; btn.textContent = "Extracting questions…"; }
     try {
       var preview = await previewCbtFile(file);
       if (!preview) return;
-      // Show review panel so admin can fix answers before it becomes student CBT.
-      renderCbtPreview(preview);
-      ok.textContent = "Review the extracted questions below, then click Confirm & save exam.";
-      btn.disabled = false;
-      btn.textContent = "Upload & create exam(s)";
+      renderPaperPreview(prefix, preview);
+      if (ok) ok.textContent = "Review the extracted questions below, then click Confirm & save.";
     } catch (e) {
-      err.textContent = e.message;
-      btn.disabled = false;
-      btn.textContent = "Upload & create exam(s)";
+      if (err) err.textContent = e.message;
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = opts.btnLabel; }
     }
     return;
   }
 
-  btn.disabled = true;
-  btn.textContent = "Uploading…";
+  if (btn) { btn.disabled = true; btn.textContent = "Uploading…"; }
   try {
     var r = await uploadCbtExamFile(file, fields);
     if (!r) return;
     var lines = [];
     if (r.created_count) {
-      lines.push("Created " + r.created_count + " exam(s) for " + fields.subject + (fields.year ? " " + fields.year : "") + ":");
+      lines.push("Created " + r.created_count + " exam(s) for " + fields.subject + ":");
       (r.created || []).forEach(function (e) {
         lines.push("• " + e.title + " (" + e.total_questions + " questions)");
       });
@@ -1241,14 +1247,13 @@ async function importCbtFile() {
     if (r.skipped_count) {
       lines.push("Skipped " + r.skipped_count + " duplicate title(s).");
     }
-    ok.textContent = lines.join(" ");
+    if (ok) ok.textContent = lines.join(" ");
     input.value = "";
-    loadCbt();
+    if (opts.afterSave) opts.afterSave();
   } catch (e) {
-    err.textContent = e.message;
+    if (err) err.textContent = e.message;
   } finally {
-    btn.disabled = false;
-    btn.textContent = "Upload & create exam(s)";
+    if (btn) { btn.disabled = false; btn.textContent = opts.btnLabel; }
   }
 }
 
@@ -1262,100 +1267,136 @@ async function downloadCbtTemplate() {
 
 /* ── PDF import preview / confirm ── */
 var cbtPreviewData = null;
+var cbtPreviewPrefix = "cbt";
 
 function renderCbtPreview(preview) {
+  renderPaperPreview("cbt", preview);
+}
+
+function renderPaperPreview(prefix, preview) {
   cbtPreviewData = preview;
-  var panel = document.getElementById("cbt-preview-panel");
-  var list = document.getElementById("cbt-preview-list");
-  var summary = document.getElementById("cbt-preview-summary");
-  var warnBox = document.getElementById("cbt-preview-warnings");
-  document.getElementById("cbt-preview-error").textContent = "";
+  cbtPreviewPrefix = prefix || "cbt";
+  var panel = document.getElementById(prefix + "-preview-panel");
+  var list = document.getElementById(prefix + "-preview-list");
+  var summary = document.getElementById(prefix + "-preview-summary");
+  var warnBox = document.getElementById(prefix + "-preview-warnings");
+  var errEl = document.getElementById(prefix + "-preview-error");
+  if (errEl) errEl.textContent = "";
 
   var lowConf = preview.low_confidence_count || 0;
-  summary.textContent = preview.total_questions + " question(s) extracted" +
-    (preview.answer_key_found ? " (answer key found)" : " (no answer key found)") +
-    (lowConf ? " — " + lowConf + " need review" : "");
+  if (summary) {
+    summary.textContent = preview.total_questions + " question(s) extracted" +
+      (preview.answer_key_found ? " (answer key found)" : " (no answer key found)") +
+      (lowConf ? " — " + lowConf + " need review" : "");
+  }
 
-  warnBox.innerHTML = (preview.warnings || []).map(function (w) {
-    return '<p class="cbt-hint small" style="color:#c47f17">&#9888; ' + escHtml(w) + '</p>';
-  }).join("");
+  if (warnBox) {
+    warnBox.innerHTML = (preview.warnings || []).map(function (w) {
+      return '<p class="cbt-hint small" style="color:#c47f17">&#9888; ' + escHtml(w) + '</p>';
+    }).join("");
+  }
 
   var threshold = preview.low_confidence_threshold || 0;
-  list.innerHTML = (preview.questions || []).map(function (q, i) {
-    var flagged = (q.confidence != null && q.confidence < threshold) || (q.issues || []).length > 0;
-    var issues = (q.issues || []).map(function (s) {
-      return '<p class="cbt-hint small" style="color:#c47f17;margin:2px 0">&#9888; ' + escHtml(s) + '</p>';
+  var idPrefix = prefix + "-pv";
+  if (list) {
+    list.innerHTML = (preview.questions || []).map(function (q, i) {
+      var flagged = (q.confidence != null && q.confidence < threshold) || (q.issues || []).length > 0;
+      var issues = (q.issues || []).map(function (s) {
+        return '<p class="cbt-hint small" style="color:#c47f17;margin:2px 0">&#9888; ' + escHtml(s) + '</p>';
+      }).join("");
+      var optSel = ["", "A", "B", "C", "D"].map(function (o) {
+        var label = o || "— pick answer —";
+        var sel = (q.correct_option || "") === o ? " selected" : "";
+        return '<option value="' + o + '"' + sel + ">" + label + "</option>";
+      }).join("");
+      return '<div class="panel" style="margin:10px 0;padding:12px;' +
+        (flagged ? "border:1px solid #e8a33d" : "") + '" id="' + idPrefix + '-q-' + i + '">' +
+        '<div class="form-row" style="justify-content:space-between;align-items:center">' +
+          '<label class="chk-label"><input type="checkbox" id="' + idPrefix + '-inc-' + i + '" checked /> ' +
+          "Question " + escHtml(String(q.number || i + 1)) +
+          (q.confidence != null ? ' <span class="cbt-hint small">(confidence ' + Math.round(q.confidence * 100) + "%)</span>" : "") +
+          "</label>" +
+        "</div>" +
+        issues +
+        '<label><span>Question</span><textarea id="' + idPrefix + '-text-' + i + '" rows="2" style="width:100%">' + escHtml(q.question_text) + "</textarea></label>" +
+        '<div class="form-grid">' +
+          '<label><span>Option A</span><input id="' + idPrefix + '-a-' + i + '" value="' + escHtml(q.option_a) + '" /></label>' +
+          '<label><span>Option B</span><input id="' + idPrefix + '-b-' + i + '" value="' + escHtml(q.option_b) + '" /></label>' +
+          '<label><span>Option C</span><input id="' + idPrefix + '-c-' + i + '" value="' + escHtml(q.option_c) + '" /></label>' +
+          '<label><span>Option D</span><input id="' + idPrefix + '-d-' + i + '" value="' + escHtml(q.option_d) + '" /></label>' +
+          '<label><span>Correct option</span><select id="' + idPrefix + '-ans-' + i + '">' + optSel + "</select></label>" +
+        "</div>" +
+      "</div>";
     }).join("");
-    var optSel = ["", "A", "B", "C", "D"].map(function (o) {
-      var label = o || "— pick answer —";
-      var sel = (q.correct_option || "") === o ? " selected" : "";
-      return '<option value="' + o + '"' + sel + ">" + label + "</option>";
-    }).join("");
-    return '<div class="panel" style="margin:10px 0;padding:12px;' +
-      (flagged ? "border:1px solid #e8a33d" : "") + '" id="pv-q-' + i + '">' +
-      '<div class="form-row" style="justify-content:space-between;align-items:center">' +
-        '<label class="chk-label"><input type="checkbox" id="pv-inc-' + i + '" checked /> ' +
-        "Question " + escHtml(String(q.number || i + 1)) +
-        (q.confidence != null ? ' <span class="cbt-hint small">(confidence ' + Math.round(q.confidence * 100) + "%)</span>" : "") +
-        "</label>" +
-      "</div>" +
-      issues +
-      '<label><span>Question</span><textarea id="pv-text-' + i + '" rows="2" style="width:100%">' + escHtml(q.question_text) + "</textarea></label>" +
-      '<div class="form-grid">' +
-        '<label><span>Option A</span><input id="pv-a-' + i + '" value="' + escHtml(q.option_a) + '" /></label>' +
-        '<label><span>Option B</span><input id="pv-b-' + i + '" value="' + escHtml(q.option_b) + '" /></label>' +
-        '<label><span>Option C</span><input id="pv-c-' + i + '" value="' + escHtml(q.option_c) + '" /></label>' +
-        '<label><span>Option D</span><input id="pv-d-' + i + '" value="' + escHtml(q.option_d) + '" /></label>' +
-        '<label><span>Correct option</span><select id="pv-ans-' + i + '">' + optSel + "</select></label>" +
-      "</div>" +
-    "</div>";
-  }).join("");
+  }
 
-  panel.style.display = "";
-  panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (panel) {
+    panel.style.display = "";
+    panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 }
 
 function cancelCbtPreview() {
+  cancelPaperPreview("cbt");
+}
+
+function cancelPastPreview() {
+  cancelPaperPreview("pq");
+}
+
+function cancelPaperPreview(prefix) {
   cbtPreviewData = null;
-  document.getElementById("cbt-preview-panel").style.display = "none";
-  document.getElementById("cbt-preview-list").innerHTML = "";
+  var panel = document.getElementById(prefix + "-preview-panel");
+  var list = document.getElementById(prefix + "-preview-list");
+  if (panel) panel.style.display = "none";
+  if (list) list.innerHTML = "";
 }
 
 async function confirmCbtPreviewUi() {
-  if (!cbtPreviewData) return;
-  var err = document.getElementById("cbt-preview-error");
-  var btn = document.getElementById("btn-confirm-cbt-preview");
-  err.textContent = "";
+  return confirmPaperPreviewUi("cbt", "cbt_practice", loadCbt);
+}
 
-  var subject = document.getElementById("cbt-import-subject").value.trim();
-  var year = (document.getElementById("cbt-import-year") || {}).value || "";
-  year = String(year).trim();
-  var examType = document.getElementById("cbt-import-type").value;
-  var title = document.getElementById("cbt-import-title").value.trim() ||
-    (examType + " " + subject + (year ? " " + year : ""));
-  if (!subject) { err.textContent = "Pick a subject in the upload form above."; return; }
+async function confirmPastPreviewUi() {
+  return confirmPaperPreviewUi("pq", "past_questions", loadPastQuestionsAdmin);
+}
+
+async function confirmPaperPreviewUi(prefix, paperKind, afterSave) {
+  if (!cbtPreviewData) return;
+  var err = document.getElementById(prefix + "-preview-error");
+  var btn = document.getElementById(prefix === "pq" ? "btn-confirm-pq-preview" : "btn-confirm-cbt-preview");
+  if (err) err.textContent = "";
+
+  var subject = ((document.getElementById(prefix + "-import-subject") || {}).value || "").trim();
+  var examType = (document.getElementById(prefix + "-import-type") || {}).value || "JAMB";
+  var title = ((document.getElementById(prefix + "-import-title") || {}).value || "").trim() ||
+    (examType + " " + subject);
+  if (!subject) {
+    if (err) err.textContent = "Pick a subject in the upload form above.";
+    return;
+  }
 
   var threshold = cbtPreviewData.low_confidence_threshold || 0;
   var questions = [];
+  var idPrefix = prefix + "-pv";
   for (var i = 0; i < cbtPreviewData.questions.length; i++) {
-    var inc = document.getElementById("pv-inc-" + i);
+    var inc = document.getElementById(idPrefix + "-inc-" + i);
     if (!inc || !inc.checked) continue;
     var orig = cbtPreviewData.questions[i];
     var q = {
-      question_text: document.getElementById("pv-text-" + i).value.trim(),
-      option_a: document.getElementById("pv-a-" + i).value.trim(),
-      option_b: document.getElementById("pv-b-" + i).value.trim(),
-      option_c: document.getElementById("pv-c-" + i).value.trim(),
-      option_d: document.getElementById("pv-d-" + i).value.trim(),
-      correct_option: document.getElementById("pv-ans-" + i).value,
+      question_text: document.getElementById(idPrefix + "-text-" + i).value.trim(),
+      option_a: document.getElementById(idPrefix + "-a-" + i).value.trim(),
+      option_b: document.getElementById(idPrefix + "-b-" + i).value.trim(),
+      option_c: document.getElementById(idPrefix + "-c-" + i).value.trim(),
+      option_d: document.getElementById(idPrefix + "-d-" + i).value.trim(),
+      correct_option: document.getElementById(idPrefix + "-ans-" + i).value,
     };
     if (!q.question_text || !q.option_a || !q.option_b || !q.option_c || !q.option_d || !q.correct_option) {
-      err.textContent = "Question " + (orig.number || i + 1) +
-        " is incomplete — fill in the text, all four options, and the correct answer (or untick it).";
+      if (err) {
+        err.textContent = "Question " + (orig.number || i + 1) +
+          " is incomplete — fill in the text, all four options, and the correct answer (or untick it).";
+      }
       return;
     }
-    // An edited-and-completed question counts as reviewed; only carry the low
-    // confidence flag when nothing was fixed and the extractor flagged it.
     var edited = q.question_text !== (orig.question_text || "").trim() ||
       q.correct_option !== (orig.correct_option || "");
     if (orig.confidence != null && orig.confidence < threshold && !edited) {
@@ -1364,39 +1405,42 @@ async function confirmCbtPreviewUi() {
     questions.push(q);
   }
   if (!questions.length) {
-    err.textContent = "Keep at least one question ticked.";
+    if (err) err.textContent = "Keep at least one question ticked.";
     return;
   }
 
   var payload = {
     title: title,
     subject: subject,
-    year: year ? parseInt(year, 10) : null,
+    year: null,
     exam_type: examType,
-    duration_minutes: parseInt(document.getElementById("cbt-import-duration").value, 10) || 60,
-    is_published: document.getElementById("cbt-import-publish").checked,
-    skip_duplicates: document.getElementById("cbt-import-skip-dup").checked,
-    paper_kind: cbtMode === "past" ? "past_questions" : "cbt_practice",
+    duration_minutes: parseInt((document.getElementById(prefix + "-import-duration") || {}).value, 10) || 60,
+    is_published: !!(document.getElementById(prefix + "-import-publish") || {}).checked,
+    skip_duplicates: !!(document.getElementById(prefix + "-import-skip-dup") || {}).checked,
+    paper_kind: paperKind,
     questions: questions,
   };
 
-  btn.disabled = true;
-  btn.textContent = "Saving…";
+  if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
   try {
     var r = await confirmCbtImport(payload);
     if (!r) return;
     var msg = "Created \"" + r.title + "\" with " + r.total_questions + " question(s)." +
       (r.is_published ? "" : " Saved unpublished.");
     if (r.note) msg += " " + r.note;
-    document.getElementById("cbt-import-success").textContent = msg;
-    document.getElementById("cbt-import-file").value = "";
-    cancelCbtPreview();
-    loadCbt();
+    var ok = document.getElementById(prefix + "-import-success");
+    if (ok) ok.textContent = msg;
+    var fileInput = document.getElementById(prefix + "-import-file");
+    if (fileInput) fileInput.value = "";
+    cancelPaperPreview(prefix);
+    if (afterSave) afterSave();
   } catch (e) {
-    err.textContent = e.message;
+    if (err) err.textContent = e.message;
   } finally {
-    btn.disabled = false;
-    btn.textContent = "Confirm & save exam";
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = prefix === "pq" ? "Confirm & save paper" : "Confirm & save exam";
+    }
   }
 }
 
