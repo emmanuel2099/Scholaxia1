@@ -126,7 +126,7 @@ function showAdminPage(page) {
   else if (page === "requests") loadRequests();
   else if (page === "live-subs") loadLiveSubscriptions();
   else if (page === "skills-enroll") loadSkillsEnrollments();
-  else if (page === "cbt") { cbtMode = "practice"; initCbtBuilder(); loadCbt(); }
+  else if (page === "cbt") { cbtMode = "practice"; initCbtBuilder(); loadCbt(); loadCbtCoupons(); }
   else if (page === "past-questions") { cbtMode = "past"; loadPastQuestionsAdmin(); }
   else if (page === "library") loadLibraryAdmin();
   else if (page === "videos") loadAdminVideos();

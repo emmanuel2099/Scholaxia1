@@ -247,6 +247,32 @@
       </div>
 
       <div class="panel" style="margin-bottom:16px">
+        <h3>Practice coupon codes</h3>
+        <p class="cbt-hint small">Generate a code so a student can unlock CBT without Paystack.</p>
+        <div class="form-grid">
+          <label><span>Package</span>
+            <select id="coupon-package">
+              <option value="jamb">JAMB Only</option>
+              <option value="waec">WAEC Only</option>
+              <option value="neco">NECO Only</option>
+              <option value="jamb_waec">JAMB &amp; WAEC</option>
+              <option value="jamb_waec_neco">JAMB, WAEC &amp; NECO</option>
+              <option value="junior_waec">Junior WAEC</option>
+              <option value="common_entrance">Common Entrance</option>
+            </select>
+          </label>
+          <label><span>How many codes</span><input id="coupon-count" type="number" min="1" max="50" value="1" /></label>
+          <label><span>Max uses each</span><input id="coupon-uses" type="number" min="1" value="1" /></label>
+        </div>
+        <div class="form-row" style="margin:8px 0">
+          <button type="button" class="btn-primary" style="width:auto;padding:12px 22px" onclick="generateCbtCoupons()">Generate coupon</button>
+          <button type="button" class="btn-sm" onclick="loadCbtCoupons()">Refresh list</button>
+        </div>
+        <p id="coupon-msg" class="cbt-hint small"></p>
+        <div id="coupon-table" class="data-table-wrap"></div>
+      </div>
+
+      <div class="panel" style="margin-bottom:16px">
         <h3>Upload CBT practice questions</h3>
         <div class="cbt-hint" style="margin-bottom:14px">
           Papers uploaded here appear under <strong>CBT Practice</strong> for students. Past papers have their own <strong>Past Questions</strong> tab.
