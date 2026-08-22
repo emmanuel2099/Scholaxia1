@@ -6,7 +6,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.cbt_packages import get_cbt_package, all_cbt_packages_dict
@@ -24,7 +24,6 @@ def _new_code() -> str:
 
 
 def _normalize_code(raw: str) -> str:
-    """Strip spaces and normalize to uppercase SX-XXXX style."""
     code = re.sub(r"\s+", "", (raw or "").strip().upper())
     return code.replace("–", "-").replace("—", "-")
 
@@ -50,6 +49,20 @@ def _coupon_dict(row: CbtCoupon) -> dict:
         "expires_at": row.expires_at.isoformat() if row.expires_at else None,
         "created_at": row.created_at.isoformat() if row.created_at else None,
     }
+
+
+async def _find_coupon(db: AsyncSession, code: str) -> Optional[CbtCoupon]:
+    """Exact match first, then case/dash-insensitive scan of active codes."""
+    row = (await db.execute(select(CbtCoupon).where(CbtCoupon.code == code))).scalar_one_or_none()
+    if row:
+        return row
+    compact = code.replace("-", "")
+    rows = (await db.execute(select(CbtCoupon).where(CbtCoupon.is_active.is_(True)).limit(500))).scalars().all()
+    for candidate in rows:
+        stored = _normalize_code(candidate.code or "")
+        if stored == code or stored.replace("-", "") == compact:
+            return candidate
+    return None
 
 
 class GenerateCouponRequest(BaseModel):
@@ -127,61 +140,66 @@ async def redeem_coupon(
     current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
-    code = _normalize_code(payload.code)
-    if len(code) < 4:
-        raise HTTPException(status_code=400, detail="Enter a valid coupon code")
+    """Redeem a coupon. Never drop the connection — always return JSON + CORS."""
+    try:
+        code = _normalize_code(payload.code)
+        if len(code) < 4:
+            raise HTTPException(status_code=400, detail="Enter a valid coupon code")
 
-    row = (
-        await db.execute(
-            select(CbtCoupon).where(func.upper(func.trim(CbtCoupon.code)) == code)
-        )
-    ).scalar_one_or_none()
-    if not row:
-        compact = code.replace("-", "")
-        rows = (await db.execute(select(CbtCoupon).where(CbtCoupon.is_active.is_(True)))).scalars().all()
-        for candidate in rows:
-            if _normalize_code(candidate.code).replace("-", "") == compact:
-                row = candidate
-                break
-    if not row or not row.is_active:
-        raise HTTPException(status_code=400, detail="Invalid coupon code")
-    now = naive_utc_now()
-    if row.expires_at and row.expires_at < now:
-        raise HTTPException(status_code=400, detail="This coupon has expired")
-    if int(row.used_count or 0) >= int(row.max_uses or 1):
-        raise HTTPException(status_code=400, detail="This coupon has already been used up")
+        try:
+            row = await _find_coupon(db, code)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Coupon service is temporarily unavailable. Try again in a moment.",
+            ) from exc
 
-    student_id = _as_uuid(current_user["sub"])
-    already = (
-        await db.execute(
-            select(CbtCouponRedemption).where(
-                CbtCouponRedemption.coupon_id == row.id,
-                CbtCouponRedemption.student_id == student_id,
+        if not row or not row.is_active:
+            raise HTTPException(status_code=400, detail="Invalid coupon code")
+        now = naive_utc_now()
+        if row.expires_at and row.expires_at < now:
+            raise HTTPException(status_code=400, detail="This coupon has expired")
+        if int(row.used_count or 0) >= int(row.max_uses or 1):
+            raise HTTPException(status_code=400, detail="This coupon has already been used up")
+
+        student_id = _as_uuid(current_user["sub"])
+        already = (
+            await db.execute(
+                select(CbtCouponRedemption).where(
+                    CbtCouponRedemption.coupon_id == row.id,
+                    CbtCouponRedemption.student_id == student_id,
+                )
             )
-        )
-    ).scalar_one_or_none()
-    if already:
+        ).scalar_one_or_none()
+        if already:
+            try:
+                await grant_cbt_package(db, str(student_id), row.package_id)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            await db.flush()
+            return {
+                "ok": True,
+                "package_id": row.package_id,
+                "message": "Coupon already applied. CBT access refreshed.",
+            }
+
         try:
             await grant_cbt_package(db, str(student_id), row.package_id)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        db.add(CbtCouponRedemption(coupon_id=row.id, student_id=student_id))
+        row.used_count = int(row.used_count or 0) + 1
         await db.flush()
         return {
             "ok": True,
             "package_id": row.package_id,
-            "message": "Coupon already applied. CBT access refreshed.",
+            "message": "CBT access unlocked with coupon.",
         }
-
-    try:
-        await grant_cbt_package(db, str(student_id), row.package_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    db.add(CbtCouponRedemption(coupon_id=row.id, student_id=student_id))
-    row.used_count = int(row.used_count or 0) + 1
-    await db.flush()
-    return {
-        "ok": True,
-        "package_id": row.package_id,
-        "message": "CBT access unlocked with coupon.",
-    }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Could not redeem coupon right now. Wait a moment and try again.",
+        ) from exc

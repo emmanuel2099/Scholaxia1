@@ -467,6 +467,47 @@ async def _run_schema_migrations(conn) -> None:
             pass
 
 
+async def ensure_cbt_coupon_tables() -> None:
+    """Make sure CBT coupon tables exist (create_all can miss them on older deploys)."""
+    stmts = (
+        """
+        CREATE TABLE IF NOT EXISTS cbt_coupons (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            code VARCHAR(40) NOT NULL UNIQUE,
+            package_id VARCHAR(80) NOT NULL,
+            max_uses INTEGER DEFAULT 1,
+            used_count INTEGER DEFAULT 0,
+            is_active BOOLEAN DEFAULT TRUE,
+            note TEXT NULL,
+            expires_at TIMESTAMP NULL,
+            created_by UUID NULL REFERENCES users(id),
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_cbt_coupons_code ON cbt_coupons (code)",
+        "CREATE INDEX IF NOT EXISTS ix_cbt_coupons_package_id ON cbt_coupons (package_id)",
+        """
+        CREATE TABLE IF NOT EXISTS cbt_coupon_redemptions (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            coupon_id UUID NOT NULL REFERENCES cbt_coupons(id),
+            student_id UUID NOT NULL REFERENCES users(id),
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_cbt_coupon_redemptions_coupon_id ON cbt_coupon_redemptions (coupon_id)",
+        "CREATE INDEX IF NOT EXISTS ix_cbt_coupon_redemptions_student_id ON cbt_coupon_redemptions (student_id)",
+    )
+    try:
+        async with engine.begin() as conn:
+            for stmt in stmts:
+                try:
+                    await conn.execute(text(stmt))
+                except Exception as exc:
+                    logger.warning("cbt coupon schema stmt skipped: %s", exc)
+    except Exception as exc:
+        logger.warning("cbt coupon schema skipped: %s", exc)
+
+
 async def initialize_database() -> bool:
     """Create tables, run migrations, and seed. Returns False if DATABASE_URL is invalid."""
     global _db_initialized
@@ -492,6 +533,10 @@ async def initialize_database() -> bool:
         await ensure_school_campus_schema()
     except Exception as exc:
         logger.warning("ensure_school_campus_schema: %s", exc)
+    try:
+        await ensure_cbt_coupon_tables()
+    except Exception as exc:
+        logger.warning("ensure_cbt_coupon_tables: %s", exc)
     try:
         await ensure_postgres_enums()
         _db_initialized = True

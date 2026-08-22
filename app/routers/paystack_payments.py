@@ -674,7 +674,7 @@ async def initialize_payment(
             email=email,
             amount_kobo=amount_kobo,
             reference=reference,
-            callback_url="https://scholaxia.app/paystack/callback",
+            callback_url="https://emmakenneth352-gif.github.io/scholaxia-websit/student.html",
             metadata={
                 "student_id": str(student_id),
                 "product_type": product_type,
