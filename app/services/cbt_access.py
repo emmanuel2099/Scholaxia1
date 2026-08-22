@@ -71,11 +71,15 @@ def _snapshot_matches(
     details: dict | None,
     current: dict[str, Any],
 ) -> bool:
-    # Existing purchases made before subject locking are grandfathered.
+    # Existing purchases / coupons without locked subjects are grandfathered.
     if not details:
         return True
     key = "jamb_subjects" if board == "JAMB" else "ssce_subjects"
-    return _normalized_subjects(details.get(key)) == _normalized_subjects(current.get(key))
+    purchased = _normalized_subjects(details.get(key))
+    # Empty list means "no subject lock" (coupon grants, legacy rows)
+    if not purchased:
+        return True
+    return purchased == _normalized_subjects(current.get(key))
 
 
 async def ensure_student_entitlements_schema() -> None:
@@ -238,21 +242,9 @@ async def grant_cbt_package(
     await ensure_student_entitlements_schema()
 
     student_uuid = _as_uuid(user_id)
-    pay_uuid = _as_uuid(payment_id) if payment_id else None
     now = naive_utc_now()
-    details = {"jamb_subjects": [], "ssce_subjects": [], "ssce_exam_type": None}
-
-    # Use SAVEPOINTs so a failed SELECT/INSERT cannot abort the outer redeem transaction
-    try:
-        async with db.begin_nested():
-            profile = (
-                await db.execute(
-                    select(StudentProfile).where(StudentProfile.user_id == student_uuid)
-                )
-            ).scalar_one_or_none()
-            details = subject_snapshot(profile)
-    except Exception:
-        logger.warning("grant_cbt_package: profile load skipped", exc_info=True)
+    # Coupons / free grants: do not lock subjects (empty lock blocked access for everyone)
+    details = None
 
     start = now
     try:
@@ -325,7 +317,7 @@ async def grant_cbt_package(
                 "sid": str(student_uuid),
                 "etype": ENTITLEMENT_TYPE,
                 "ekey": package_id,
-                "pid": str(pay_uuid) if pay_uuid else None,
+                "pid": str(_as_uuid(payment_id)) if payment_id else None,
                 "gat": now,
                 "exp": expires,
             },
@@ -342,22 +334,6 @@ async def grant_cbt_package(
 
     if not inserted:
         raise RuntimeError(str(getattr(last_err, "orig", None) or last_err)[:220])
-
-    # Best-effort: attach subject snapshot (never fail the grant)
-    try:
-        async with db.begin_nested():
-            await db.execute(
-                text(
-                    """
-                    UPDATE student_entitlements
-                    SET details = CAST(:details AS json)
-                    WHERE id = CAST(:id AS uuid)
-                    """
-                ),
-                {"id": str(new_id), "details": json.dumps(details)},
-            )
-    except Exception:
-        logger.warning("grant_cbt_package: details update skipped", exc_info=True)
 
     try:
         await db.flush()
@@ -380,7 +356,9 @@ async def grant_cbt_package(
         "entitlement_type": ENTITLEMENT_TYPE,
         "entitlement_key": package_id,
         "expires_at": expires.isoformat() if hasattr(expires, "isoformat") else str(expires),
+        "details": details,
     }
+
 
 
 
