@@ -1,4 +1,4 @@
-/** CBT annual packages — Paystack (matches mobile CbtPackagesScreen). */
+/** CBT annual packages — Paystack (aligned with student website). */
 
 async function loadCbtPackagesPage() {
   var el = document.getElementById("cbt-packages-root");
@@ -19,7 +19,7 @@ async function loadCbtPackagesPage() {
         (access.expires_at ? " until " + escHtml(String(access.expires_at).slice(0, 10)) : "") +
         ".</div>";
     }
-    html += '<div class="sx-page-hero"><h2>CBT Packages</h2><p>Annual access — pay with Paystack. If you have a coupon, tap Start exam and choose coupon there.</p></div>';
+    html += '<div class="sx-page-hero"><h2>CBT Packages</h2><p>Annual access — pay with Paystack. Or tap Start exam and redeem a coupon there.</p></div>';
     if (!packages.length) {
       html += '<div class="empty-state">No packages available.</div>';
     } else {
@@ -57,9 +57,13 @@ async function buyCbtPackage(packageId) {
       productId: packageId,
     });
     if (ok) {
+      try { sessionStorage.setItem("sia_cbt_just_unlocked", String(Date.now())); } catch (s) {}
+      var next = cbtUnlockAfter;
+      closeCbtUnlockModal(true);
       alert("Payment successful! CBT access unlocked.");
       loadCbtPackagesPage();
       if (typeof loadCbtHubPage === "function") loadCbtHubPage();
+      if (typeof next === "function") setTimeout(function () { next(); }, 400);
     } else {
       alert("Payment was not completed.");
     }
@@ -78,8 +82,11 @@ window.loadCbtPackagesPage = loadCbtPackagesPage;
 window.buyCbtPackage = buyCbtPackage;
 
 var cbtUnlockAfter = null;
+var cbtUnlockOpenedAt = 0;
 
-function closeCbtUnlockModal() {
+function closeCbtUnlockModal(force) {
+  if (!force && cbtUnlockOpenedAt && Date.now() - cbtUnlockOpenedAt < 700) return;
+  cbtUnlockOpenedAt = 0;
   var modal = document.getElementById("cbt-unlock-modal");
   if (modal) modal.classList.add("hidden");
   cbtUnlockAfter = null;
@@ -91,6 +98,8 @@ function closeCbtUnlockModal() {
   if (pay) pay.classList.add("hidden");
   var msg = document.getElementById("cbt-unlock-msg");
   if (msg) msg.textContent = "";
+  var input = document.getElementById("cbt-unlock-code");
+  if (input) input.value = "";
 }
 
 function openCbtUnlockModal(afterUnlock) {
@@ -100,15 +109,27 @@ function openCbtUnlockModal(afterUnlock) {
     if (typeof showPage === "function") showPage("cbt-packages");
     return;
   }
-  closeCbtUnlockModal();
-  cbtUnlockAfter = afterUnlock;
-  modal.classList.remove("hidden");
+  var choice = document.getElementById("cbt-unlock-choice");
+  var coupon = document.getElementById("cbt-unlock-coupon");
+  var pay = document.getElementById("cbt-unlock-pay");
+  if (choice) choice.classList.remove("hidden");
+  if (coupon) coupon.classList.add("hidden");
+  if (pay) pay.classList.add("hidden");
+  var msg = document.getElementById("cbt-unlock-msg");
+  if (msg) msg.textContent = "";
+  cbtUnlockOpenedAt = Date.now();
+  setTimeout(function () {
+    cbtUnlockOpenedAt = Date.now();
+    modal.classList.remove("hidden");
+  }, 60);
 }
 
 function cbtUnlockPick(which) {
   var choice = document.getElementById("cbt-unlock-choice");
   var coupon = document.getElementById("cbt-unlock-coupon");
   var pay = document.getElementById("cbt-unlock-pay");
+  var msg = document.getElementById("cbt-unlock-msg");
+  if (msg) msg.textContent = "";
   if (choice) choice.classList.add("hidden");
   if (which === "coupon") {
     if (coupon) coupon.classList.remove("hidden");
@@ -148,26 +169,40 @@ async function loadCbtUnlockPackages() {
 async function cbtUnlockRedeem() {
   var input = document.getElementById("cbt-unlock-code");
   var msg = document.getElementById("cbt-unlock-msg");
-  var code = (input && input.value || "").trim();
+  var code = ((input && input.value) || "").trim().replace(/\s+/g, "").toUpperCase();
   if (!code) {
     if (msg) msg.textContent = "Enter your coupon code.";
     return;
   }
+  if (msg) msg.textContent = "Checking coupon…";
   try {
-    await api("/api/v1/cbt/coupons/redeem", { method: "POST", body: { code: code } });
+    var res = await api("/api/v1/cbt/coupons/redeem", { method: "POST", body: { code: code } });
     var next = cbtUnlockAfter;
-    closeCbtUnlockModal();
+    try {
+      sessionStorage.setItem("sia_cbt_just_unlocked", String(Date.now()));
+      if (res && res.package_id) sessionStorage.setItem("sia_cbt_package_id", String(res.package_id));
+      if (res && res.boards) sessionStorage.setItem("sia_cbt_boards", JSON.stringify(res.boards));
+    } catch (s) {}
+    closeCbtUnlockModal(true);
     if (typeof loadCbtPackagesPage === "function") loadCbtPackagesPage();
-    if (typeof next === "function") next();
+    if (typeof loadCbtHubPage === "function") loadCbtHubPage();
+    if (typeof next === "function") setTimeout(function () { next(); }, 400);
   } catch (e) {
     if (msg) msg.textContent = e.message || "Invalid coupon";
   }
 }
 
 async function ensureCbtAccessThen(thenFn) {
+  var justUnlocked = 0;
+  try { justUnlocked = Number(sessionStorage.getItem("sia_cbt_just_unlocked") || 0); } catch (e) {}
+  if (justUnlocked && Date.now() - justUnlocked < 120000) {
+    thenFn();
+    return;
+  }
   try {
     var access = await api("/api/v1/payments/paystack/cbt-access");
     if (access && access.has_access) {
+      try { sessionStorage.setItem("sia_cbt_just_unlocked", String(Date.now())); } catch (s) {}
       thenFn();
       return;
     }

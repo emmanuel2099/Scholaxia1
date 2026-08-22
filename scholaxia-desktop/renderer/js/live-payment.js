@@ -136,51 +136,21 @@ async function payForLivePlan(planId, classId, btn) {
   _livePayBusy = true;
   setJoinButtonBusy(btn, true, "Opening payment…");
   try {
-    // Prefer Paystack (same as mobile Class Packages / Subscription).
-    if (typeof paystackPurchase === "function") {
-      var paid = await paystackPurchase({
-        productType: "class_package",
-        productId: String(planId),
-      });
-      if (!paid) throw new Error("Payment was not completed.");
-      await refreshLivePlanAccessAfterPayment();
-      if (classId) await completeJoinClass(classId, null);
-      else {
-        alert("Payment successful. Your live class subscription is active — you can join classes now.");
-      }
-      return { paid: true };
+    // Prefer Paystack (same as student website).
+    if (typeof paystackPurchase !== "function") {
+      throw new Error("Paystack payment module not loaded. Restart the app and try again.");
     }
-
-    await loadFlutterwaveScript();
-
-    var init = await api("/api/v1/payments/flutterwave/live-plan/init", {
-      method: "POST",
-      body: JSON.stringify({
-        plan_id: planId,
-        class_id: classId || null,
-      }),
+    var paid = await paystackPurchase({
+      productType: "class_package",
+      productId: String(planId),
     });
-
-    if (!init) throw new Error("Could not start payment.");
-
-    if (init.already_paid) {
-      if (classId) await completeJoinClass(classId, null);
-      return { paid: true };
+    if (!paid) throw new Error("Payment was not completed.");
+    await refreshLivePlanAccessAfterPayment();
+    if (classId) await completeJoinClass(classId, null);
+    else {
+      alert("Payment successful. Your live class subscription is active — you can join classes now.");
     }
-
-    if (!init.public_key || !init.tx_ref) {
-      throw new Error("Payment could not be started. Try again later.");
-    }
-
-    return startFlutterwaveRedirect(init, {
-      type: "live",
-      plan_id: planId,
-      class_id: classId || init.class_id || "",
-      tx_ref: init.tx_ref,
-      custom_title: "Scholaxia — " + (init.plan_name || "Live Plan"),
-      custom_description: (init.plan_name || "Monthly plan") + " — " + formatNaira(init.amount) + "/month",
-      meta: { plan_id: planId, class_id: classId || "" },
-    });
+    return { paid: true };
   } catch (e) {
     alert(e.message || "Payment could not start.");
     throw e;
@@ -382,65 +352,29 @@ window.reconcilePendingPlanPayment = reconcilePendingPlanPayment;
 window.clearPlanPaymentPending = clearPlanPaymentPending;
 
 async function payForMaterial(materialId) {
-  await loadFlutterwaveScript();
-
-  var init = await api("/api/v1/payments/flutterwave/material/" + encodeURIComponent(materialId) + "/init", {
-    method: "POST",
-  });
-
-  if (init.already_paid || init.is_free) {
-    return { paid: true, has_access: true };
+  if (typeof paystackPurchase !== "function") {
+    throw new Error("Paystack payment module not loaded. Restart the app and try again.");
   }
-
-  if (!init.public_key || !init.tx_ref) {
-    throw new Error("Payment could not be started. Try again later.");
-  }
-
-  return startFlutterwaveRedirect(init, {
-    type: "material",
-    material_id: materialId,
-    tx_ref: init.tx_ref,
-    custom_title: "Scholaxia Library",
-    custom_description: (init.material_title || "Study material") + " — " + (init.material_subject || ""),
-    meta: { material_id: materialId },
+  var paid = await paystackPurchase({
+    productType: "library_book",
+    productId: String(materialId),
   });
+  if (!paid) throw new Error("Payment was not completed.");
+  return { paid: true, has_access: true };
 }
 
 window.payForMaterial = payForMaterial;
 
 async function payForBook(bookId) {
-  // Prefer Paystack (same as mobile library purchase).
-  if (typeof paystackPurchase === "function") {
-    var paid = await paystackPurchase({
-      productType: "library_book",
-      productId: String(bookId),
-    });
-    if (!paid) throw new Error("Payment was not completed.");
-    return { paid: true, has_access: true };
+  if (typeof paystackPurchase !== "function") {
+    throw new Error("Paystack payment module not loaded. Restart the app and try again.");
   }
-
-  await loadFlutterwaveScript();
-
-  var init = await api("/api/v1/payments/flutterwave/book/" + encodeURIComponent(bookId) + "/init", {
-    method: "POST",
+  var paid = await paystackPurchase({
+    productType: "library_book",
+    productId: String(bookId),
   });
-
-  if (init.already_paid || init.is_free) {
-    return { paid: true, has_access: true };
-  }
-
-  if (!init.public_key || !init.tx_ref) {
-    throw new Error("Payment could not be started. Try again later.");
-  }
-
-  return startFlutterwaveRedirect(init, {
-    type: "book",
-    book_id: bookId,
-    tx_ref: init.tx_ref,
-    custom_title: "Scholaxia Materials",
-    custom_description: (init.book_title || "Study material") + " — " + (init.book_subject || ""),
-    meta: { book_id: bookId },
-  });
+  if (!paid) throw new Error("Payment was not completed.");
+  return { paid: true, has_access: true };
 }
 
 window.payForBook = payForBook;

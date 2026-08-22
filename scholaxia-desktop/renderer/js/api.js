@@ -172,15 +172,31 @@ function warmScholaxiaApi() {
 
 async function api(path, options) {
   options = options || {};
+  var method = (options.method || "GET").toUpperCase();
+  var headers = Object.assign(
+    { Accept: "application/json", Authorization: "Bearer " + getToken() },
+    options.headers || {}
+  );
+  var body = options.body;
+  if (body != null && typeof body === "object" && !(typeof FormData !== "undefined" && body instanceof FormData)) {
+    if (!headers["Content-Type"] && !headers["content-type"]) {
+      headers["Content-Type"] = "application/json";
+    }
+    body = JSON.stringify(body);
+  } else if (body != null && !headers["Content-Type"] && !headers["content-type"]) {
+    headers["Content-Type"] = "application/json";
+  }
+  // Avoid sending Content-Type on body-less GETs (some proxies are picky)
+  if ((method === "GET" || method === "HEAD") && body == null) {
+    delete headers["Content-Type"];
+    delete headers["content-type"];
+  }
   var res;
   try {
     res = await fetch(API_BASE + path, {
-      method: options.method || "GET",
-      headers: Object.assign(
-        { "Content-Type": "application/json", Authorization: "Bearer " + getToken() },
-        options.headers || {}
-      ),
-      body: options.body,
+      method: method,
+      headers: headers,
+      body: body,
       signal: options.signal || fetchTimeout(options.timeoutMs || 45000),
     });
   } catch (ex) {
@@ -203,7 +219,12 @@ async function api(path, options) {
     handleApiUnauthorized(formatApiError(data.detail) || data.detail);
     return null;
   }
-  if (!res.ok) throw new Error(formatApiError(data.detail) || "Request failed (" + res.status + ")");
+  if (!res.ok) {
+    var err = new Error(formatApiError(data.detail) || "Request failed (" + res.status + ")");
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
   return data;
 }
 

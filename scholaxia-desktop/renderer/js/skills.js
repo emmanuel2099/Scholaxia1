@@ -368,7 +368,7 @@ async function loadSkillEnrollmentBadges() {
   window.skillsEnrollmentMap = {};
   if (!getToken || !getToken()) return;
   try {
-    var data = await api("/api/v1/payments/flutterwave/skills/enrollments");
+    var data = await api("/api/v1/payments/paystack/skills/enrollments");
     var list = (data && data.enrollments) || [];
     list.forEach(function (e) {
       if (e && e.skill_id) window.skillsEnrollmentMap[e.skill_id] = e;

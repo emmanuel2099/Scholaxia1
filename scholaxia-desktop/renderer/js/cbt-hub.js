@@ -1,4 +1,4 @@
-/** CBT Practice hub — matches mobile CbtScreen (board tabs, download-then-start). */
+/** CBT Practice hub — matches student website (Start auto-loads pack; Download optional for offline). */
 
 var cbtHubState = {
   boards: [],
@@ -187,7 +187,7 @@ function renderCbtHub() {
 
   var html = "";
   if (cbtHubState.activeTab === "JAMB") {
-    html += '<p class="cbt-hub-note"><strong>JAMB</strong> — download all 4 subjects together, then start one full UTME exam.</p>';
+    html += '<p class="cbt-hub-note"><strong>JAMB</strong> — Start loads all 4 subjects (or Download first for offline).</p>';
     var years = cbtJambYears();
     var any = false;
     years.forEach(function (y) {
@@ -225,7 +225,7 @@ function renderCbtHub() {
         subjEl.classList.add("hidden");
       }
     }
-    html += '<p class="cbt-hub-note">Choose a subject, <strong>download</strong> the pack, then tap <strong>Start</strong>.</p>';
+    html += '<p class="cbt-hub-note">Tap <strong>Start exam</strong> to begin. Download is optional for offline use.</p>';
     var exams = cbtFilteredExams();
     if (!exams.length) {
       html += '<div class="empty-state-premium"><h3>No exams for this subject</h3><p>Admin-uploaded papers for your profile will appear here.</p></div>';
@@ -344,22 +344,42 @@ async function cbtHubDownloadJamb(year) {
 }
 
 async function cbtHubStart(examId) {
-  if (!cbtPackDownloaded(examId)) {
-    alert("Download this exam first, then tap Start.");
-    return;
+  async function ensureLocalPack() {
+    var pack = cbtLoadLocalPack(examId);
+    if (pack && pack.questions && pack.questions.length) return pack;
+    // Match website: Start auto-downloads when no offline pack yet
+    var downloaded = await api("/api/v1/cbt/exams/" + examId + "/download");
+    if (typeof saveOfflineCbtPack === "function") saveOfflineCbtPack(examId, "", downloaded);
+    cbtHubState.downloaded[examId] = true;
+    cbtRefreshDownloadedSet();
+    return downloaded;
   }
-  var pack = cbtLoadLocalPack(examId);
-  if (!pack || !pack.questions || !pack.questions.length) {
-    alert("Exam pack not found. Download again while online.");
-    return;
-  }
+
   async function proceed() {
-    var session = null;
+    var pack;
     try {
-      session = await api("/api/v1/cbt/sessions/" + examId + "/start", { method: "POST" });
+      pack = await ensureLocalPack();
     } catch (e) {
       var msg = (e && e.message) || "";
-      if (/402|cbt_package|package|paid|required/i.test(msg)) {
+      if (/402|cbt_package|package|paid|required/i.test(msg) || (e && e.status === 402)) {
+        if (typeof openCbtUnlockModal === "function") openCbtUnlockModal(proceed);
+        else if (typeof showPage === "function") showPage("cbt-packages");
+        else alert(msg);
+        return;
+      }
+      alert(msg || "Could not load this exam.");
+      return;
+    }
+    if (!pack || !pack.questions || !pack.questions.length) {
+      alert("Exam pack not found. Try again while online.");
+      return;
+    }
+    var session = null;
+    try {
+      session = await api("/api/v1/cbt/sessions/" + examId + "/start", { method: "POST", body: {} });
+    } catch (e) {
+      var smsg = (e && e.message) || "";
+      if (/402|cbt_package|package|paid|required/i.test(smsg) || (e && e.status === 402)) {
         if (typeof openCbtUnlockModal === "function") openCbtUnlockModal(proceed);
         else if (typeof showPage === "function") showPage("cbt-packages");
         return;
@@ -380,6 +400,13 @@ async function cbtHubStart(examId) {
     if (typeof renderQuestion === "function") renderQuestion();
     if (typeof startTimer === "function") startTimer();
   }
+
+  var justUnlocked = 0;
+  try { justUnlocked = Number(sessionStorage.getItem("sia_cbt_just_unlocked") || 0); } catch (e) {}
+  if (justUnlocked && Date.now() - justUnlocked < 120000) {
+    await proceed();
+    return;
+  }
   if (typeof ensureCbtAccessThen === "function") await ensureCbtAccessThen(proceed);
   else await proceed();
 }
@@ -390,74 +417,87 @@ async function cbtHubStartJamb(year) {
     alert("Need all 4 JAMB subject exams from admin.");
     return;
   }
-  for (var i = 0; i < members.length; i++) {
-    var id = String(members[i].id);
-    if (!cbtPackDownloaded(id)) {
-      alert("Download this exam first, then tap Start.");
-      return;
+
+  async function proceedJamb() {
+    if (cbtHubState.busyId) return;
+    cbtHubState.busyId = "jamb_" + year;
+    try {
+      var allQuestions = [];
+      var sections = [];
+      var totalDuration = 0;
+      for (var j = 0; j < members.length; j++) {
+        var exam = members[j];
+        var eid = String(exam.id);
+        var pack = cbtLoadLocalPack(eid);
+        if (!pack || !pack.questions || !pack.questions.length) {
+          pack = await api("/api/v1/cbt/exams/" + eid + "/download");
+          if (typeof saveOfflineCbtPack === "function") saveOfflineCbtPack(eid, "", pack);
+          cbtHubState.downloaded[eid] = true;
+        }
+        var subjLabel = cbtExamSubject(exam) || exam.title || "Subject";
+        sections.push({ subject: subjLabel, start: allQuestions.length, count: (pack.questions || []).length });
+        totalDuration = Math.max(totalDuration, pack.duration_minutes || 0);
+        (pack.questions || []).forEach(function (q) { allQuestions.push(q); });
+      }
+      cbtRefreshDownloadedSet();
+      var merged = {
+        title: "JAMB Full Exam (" + cbtHubState.jambSubjects.join(" · ") + ") · " + year,
+        subject: "JAMB",
+        duration_minutes: totalDuration || 120,
+        questions: allQuestions,
+        sections: sections,
+      };
+      var session = null;
+      try {
+        session = await api("/api/v1/cbt/sessions/" + String(members[0].id) + "/start", { method: "POST", body: {} });
+      } catch (e) { /* offline ok */ }
+
+      currentExam = merged;
+      currentSession = session ? { session_id: session.session_id || session.id } : { session_id: null };
+      answers = {};
+      currentQ = 0;
+      secondsLeft = (merged.duration_minutes || 120) * 60;
+
+      if (typeof showCbtExamView === "function") showCbtExamView();
+      document.getElementById("exam-title").textContent = merged.title;
+      document.getElementById("exam-meta").textContent = allQuestions.length + " questions · Full UTME";
+      if (typeof buildSubjectTabs === "function") buildSubjectTabs();
+      if (typeof buildQNav === "function") buildQNav();
+      if (typeof renderQuestion === "function") renderQuestion();
+      if (typeof startTimer === "function") startTimer();
+    } catch (e) {
+      var msg = (e && e.message) || "";
+      if (/402|cbt_package|package|paid|required/i.test(msg) || (e && e.status === 402)) {
+        if (typeof openCbtUnlockModal === "function") openCbtUnlockModal(proceedJamb);
+        else alert(msg);
+      } else {
+        alert(msg || "Could not start exam.");
+      }
+    } finally {
+      cbtHubState.busyId = null;
+      renderCbtHub();
     }
+  }
+
+  var justUnlocked = 0;
+  try { justUnlocked = Number(sessionStorage.getItem("sia_cbt_just_unlocked") || 0); } catch (e2) {}
+  if (justUnlocked && Date.now() - justUnlocked < 120000) {
+    await proceedJamb();
+    return;
   }
   if (typeof ensureCbtAccessThen === "function") {
     try {
       var access = await api("/api/v1/payments/paystack/cbt-access");
       if (!(access && access.has_access)) {
-        openCbtUnlockModal(function () { cbtHubStartJamb(year); });
+        openCbtUnlockModal(proceedJamb);
         return;
       }
     } catch (e) {
-      openCbtUnlockModal(function () { cbtHubStartJamb(year); });
+      openCbtUnlockModal(proceedJamb);
       return;
     }
   }
-  if (cbtHubState.busyId) return;
-  cbtHubState.busyId = "jamb_" + year;
-  try {
-    var allQuestions = [];
-    var sections = [];
-    var totalDuration = 0;
-    for (var j = 0; j < members.length; j++) {
-      var exam = members[j];
-      var eid = String(exam.id);
-      var pack = cbtLoadLocalPack(eid);
-      if (!pack) {
-        pack = await api("/api/v1/cbt/exams/" + eid + "/download");
-      }
-      var subjLabel = cbtExamSubject(exam) || exam.title || "Subject";
-      sections.push({ subject: subjLabel, start: allQuestions.length, count: (pack.questions || []).length });
-      totalDuration = Math.max(totalDuration, pack.duration_minutes || 0);
-      (pack.questions || []).forEach(function (q) { allQuestions.push(q); });
-    }
-    var merged = {
-      title: "JAMB Full Exam (" + cbtHubState.jambSubjects.join(" · ") + ") · " + year,
-      subject: "JAMB",
-      duration_minutes: totalDuration || 120,
-      questions: allQuestions,
-      sections: sections,
-    };
-    var session = null;
-    try {
-      session = await api("/api/v1/cbt/sessions/" + String(members[0].id) + "/start", { method: "POST" });
-    } catch (e) { /* offline ok */ }
-
-    currentExam = merged;
-    currentSession = session ? { session_id: session.session_id || session.id } : { session_id: null };
-    answers = {};
-    currentQ = 0;
-    secondsLeft = (merged.duration_minutes || 120) * 60;
-
-    if (typeof showCbtExamView === "function") showCbtExamView();
-    document.getElementById("exam-title").textContent = merged.title;
-    document.getElementById("exam-meta").textContent = allQuestions.length + " questions · Full UTME";
-    if (typeof buildSubjectTabs === "function") buildSubjectTabs();
-    if (typeof buildQNav === "function") buildQNav();
-    if (typeof renderQuestion === "function") renderQuestion();
-    if (typeof startTimer === "function") startTimer();
-  } catch (e) {
-    alert(e.message || "Could not start exam.");
-  } finally {
-    cbtHubState.busyId = null;
-    renderCbtHub();
-  }
+  await proceedJamb();
 }
 
 if (typeof window !== "undefined") {
