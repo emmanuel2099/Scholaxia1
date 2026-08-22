@@ -577,6 +577,11 @@ async def initialize_database() -> bool:
     except Exception as exc:
         logger.warning("ensure_student_entitlements_schema: %s", exc)
     try:
+        from app.services.cbt_engine import ensure_cbt_settings_schema
+        await ensure_cbt_settings_schema()
+    except Exception as exc:
+        logger.warning("ensure_cbt_settings_schema: %s", exc)
+    try:
         await ensure_postgres_enums()
         _db_initialized = True
     except Exception as exc:

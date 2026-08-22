@@ -126,6 +126,7 @@ function showAdminPage(page) {
   else if (page === "requests") loadRequests();
   else if (page === "live-subs") loadLiveSubscriptions();
   else if (page === "skills-enroll") loadSkillsEnrollments();
+  else if (page === "cbt-settings") { loadCbtSettings(); }
   else if (page === "cbt") { cbtMode = "practice"; initCbtBuilder(); loadCbt(); loadCbtCoupons(); }
   else if (page === "past-questions") { cbtMode = "past"; loadPastQuestionsAdmin(); }
   else if (page === "library") loadLibraryAdmin();
@@ -1191,6 +1192,86 @@ async function saveCbtExamEdit() {
     if (err) err.textContent = e.message;
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = "Save changes"; }
+  }
+}
+
+async function loadCbtSettings() {
+  var msg = document.getElementById("cbt-settings-msg");
+  var bankEl = document.getElementById("cbt-bank-table");
+  try {
+    var data = await adminApi("/api/v1/admin/cbt-settings");
+    var s = (data && data.settings) || {};
+    function setSel(id, val) {
+      var el = document.getElementById(id);
+      if (el) el.value = val ? "true" : "false";
+    }
+    function setNum(id, val) {
+      var el = document.getElementById(id);
+      if (el) el.value = val != null ? val : "";
+    }
+    setSel("cbt-set-enabled", s.cbt_enabled !== false);
+    setSel("cbt-set-rand-q", s.randomize_questions !== false);
+    setSel("cbt-set-rand-opt", s.randomize_options !== false);
+    setSel("cbt-set-resume", s.allow_resume !== false);
+    setSel("cbt-set-autosubmit", s.auto_submit_on_timeout !== false);
+    setNum("cbt-set-jamb-q", s.jamb_questions_per_subject);
+    setNum("cbt-set-jamb-eng", s.jamb_english_questions);
+    setNum("cbt-set-jamb-dur", s.jamb_duration_minutes);
+    setNum("cbt-set-jamb-subj", s.jamb_subjects_required);
+    setNum("cbt-set-waec-q", s.waec_questions_per_subject);
+    setNum("cbt-set-waec-dur", s.waec_duration_minutes);
+    setNum("cbt-set-neco-q", s.neco_questions_per_subject);
+    setNum("cbt-set-neco-dur", s.neco_duration_minutes);
+    var bank = (data && data.question_bank) || [];
+    if (bankEl) {
+      if (!bank.length) {
+        bankEl.innerHTML = '<div class="empty-state">No published practice questions in the bank yet.</div>';
+      } else {
+        bankEl.innerHTML = '<table class="data-table"><thead><tr><th>Exam</th><th>Subject</th><th>Questions in bank</th></tr></thead><tbody>' +
+          bank.map(function (r) {
+            return "<tr><td>" + escHtml(r.exam_type) + "</td><td>" + escHtml(r.subject) + "</td><td>" +
+              escHtml(r.total_questions) + "</td></tr>";
+          }).join("") + "</tbody></table>";
+      }
+    }
+    if (msg) msg.textContent = "";
+  } catch (e) {
+    if (msg) msg.textContent = e.message;
+    if (bankEl) bankEl.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
+  }
+}
+
+async function saveCbtSettings() {
+  var msg = document.getElementById("cbt-settings-msg");
+  function boolVal(id) {
+    return (document.getElementById(id) || {}).value === "true";
+  }
+  function numVal(id) {
+    return parseInt((document.getElementById(id) || {}).value || "0", 10);
+  }
+  try {
+    await adminApi("/api/v1/admin/cbt-settings", {
+      method: "PUT",
+      body: JSON.stringify({
+        cbt_enabled: boolVal("cbt-set-enabled"),
+        randomize_questions: boolVal("cbt-set-rand-q"),
+        randomize_options: boolVal("cbt-set-rand-opt"),
+        allow_resume: boolVal("cbt-set-resume"),
+        auto_submit_on_timeout: boolVal("cbt-set-autosubmit"),
+        jamb_questions_per_subject: numVal("cbt-set-jamb-q"),
+        jamb_english_questions: numVal("cbt-set-jamb-eng"),
+        jamb_duration_minutes: numVal("cbt-set-jamb-dur"),
+        jamb_subjects_required: numVal("cbt-set-jamb-subj"),
+        waec_questions_per_subject: numVal("cbt-set-waec-q"),
+        waec_duration_minutes: numVal("cbt-set-waec-dur"),
+        neco_questions_per_subject: numVal("cbt-set-neco-q"),
+        neco_duration_minutes: numVal("cbt-set-neco-dur"),
+      }),
+    });
+    if (msg) msg.textContent = "Settings saved.";
+    loadCbtSettings();
+  } catch (e) {
+    if (msg) msg.textContent = e.message;
   }
 }
 

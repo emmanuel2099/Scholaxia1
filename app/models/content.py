@@ -104,7 +104,7 @@ class Video(Base):
     video_url: Mapped[str] = mapped_column(String(500), nullable=False)
     thumbnail_url: Mapped[str] = mapped_column(String(500), nullable=True)
     duration_seconds: Mapped[int] = mapped_column(Integer, nullable=True)
-    uploaded_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    uploaded_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

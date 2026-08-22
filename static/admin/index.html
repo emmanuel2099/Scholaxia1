@@ -69,7 +69,8 @@
       <button class="nav-btn" data-page="requests" onclick="showAdminPage('requests')">Session Requests</button>
       <button class="nav-btn" data-page="live-subs" onclick="showAdminPage('live-subs')">Live Subscriptions</button>
       <button class="nav-btn" data-page="skills-enroll" onclick="showAdminPage('skills-enroll')">Skills Enrollments</button>
-      <button class="nav-btn" data-page="cbt" onclick="showAdminPage('cbt')">CBT Exams</button>
+      <button class="nav-btn" data-page="cbt-settings" onclick="showAdminPage('cbt-settings')">CBT Settings</button>
+      <button class="nav-btn" data-page="cbt" onclick="showAdminPage('cbt')">CBT Question Bank</button>
       <button class="nav-btn" data-page="past-questions" onclick="showAdminPage('past-questions')">Past Questions</button>
       <button class="nav-btn" data-page="school-office" onclick="showAdminPage('school-office')">School office</button>
       <button class="nav-btn" data-page="videos" onclick="showAdminPage('videos')">Video Tutorials</button>
@@ -234,25 +235,85 @@
       <div id="skills-enroll-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
     </section>
 
+    <section id="page-cbt-settings" class="admin-page">
+      <div class="page-head">
+        <h2>CBT Settings</h2>
+        <div class="form-row">
+          <button class="btn-sm" onclick="loadCbtSettings()">Refresh</button>
+          <button class="btn-primary" style="width:auto;padding:10px 18px" onclick="saveCbtSettings()">Save settings</button>
+        </div>
+      </div>
+      <p class="page-desc">Global control for how many questions students get, exam duration, and randomization. Question uploads go to the <strong>Question Bank</strong> — these settings decide how many are drawn per attempt.</p>
+      <div class="panel" style="margin-bottom:16px">
+        <h3>General</h3>
+        <div class="form-grid">
+          <label><span>CBT enabled</span>
+            <select id="cbt-set-enabled"><option value="true">Yes</option><option value="false">No</option></select>
+          </label>
+          <label><span>Randomize questions</span>
+            <select id="cbt-set-rand-q"><option value="true">Yes</option><option value="false">No</option></select>
+          </label>
+          <label><span>Randomize answer options</span>
+            <select id="cbt-set-rand-opt"><option value="true">Yes</option><option value="false">No</option></select>
+          </label>
+          <label><span>Allow resume</span>
+            <select id="cbt-set-resume"><option value="true">Yes</option><option value="false">No</option></select>
+          </label>
+          <label><span>Auto-submit on timeout</span>
+            <select id="cbt-set-autosubmit"><option value="true">Yes</option><option value="false">No</option></select>
+          </label>
+        </div>
+      </div>
+      <div class="panel" style="margin-bottom:16px">
+        <h3>JAMB (combined package)</h3>
+        <div class="form-grid">
+          <label><span>Questions per subject</span><input id="cbt-set-jamb-q" type="number" min="1" max="200" /></label>
+          <label><span>English questions</span><input id="cbt-set-jamb-eng" type="number" min="1" max="200" /></label>
+          <label><span>Duration (minutes)</span><input id="cbt-set-jamb-dur" type="number" min="5" max="480" /></label>
+          <label><span>Subjects required</span><input id="cbt-set-jamb-subj" type="number" min="1" max="6" /></label>
+        </div>
+      </div>
+      <div class="panel" style="margin-bottom:16px">
+        <h3>WAEC</h3>
+        <div class="form-grid">
+          <label><span>Questions per subject</span><input id="cbt-set-waec-q" type="number" min="1" max="200" /></label>
+          <label><span>Duration (minutes)</span><input id="cbt-set-waec-dur" type="number" min="5" max="480" /></label>
+        </div>
+      </div>
+      <div class="panel" style="margin-bottom:16px">
+        <h3>NECO</h3>
+        <div class="form-grid">
+          <label><span>Questions per subject</span><input id="cbt-set-neco-q" type="number" min="1" max="200" /></label>
+          <label><span>Duration (minutes)</span><input id="cbt-set-neco-dur" type="number" min="5" max="480" /></label>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Question bank totals</h3>
+        <p class="cbt-hint small">Published practice questions available to draw from (by exam type + subject).</p>
+        <div id="cbt-bank-table" class="data-table-wrap"><div class="loading">Load settings to see bank…</div></div>
+        <p id="cbt-settings-msg" class="cbt-hint small"></p>
+      </div>
+    </section>
+
     <section id="page-cbt" class="admin-page">
       <div class="page-head">
-        <h2>CBT Exams</h2>
+        <h2>CBT Question Bank</h2>
         <div class="form-row">
           <button class="btn-sm" onclick="loadCbt()">Refresh list</button>
         </div>
       </div>
+      <p class="page-desc">Upload questions into the bank. How many each student sees is controlled in <strong>CBT Settings</strong>, not by upload size.</p>
 
       <div class="panel" style="margin-bottom:16px">
         <h3>Practice coupon codes</h3>
-        <p class="cbt-hint small">Generate a code so a student can unlock CBT without Paystack.</p>
+        <p class="cbt-hint small">Coupon type unlocks an exam package (JAMB / WAEC / NECO / ALL), not a single subject paper.</p>
         <div class="form-grid">
-          <label><span>Package</span>
+          <label><span>Coupon type</span>
             <select id="coupon-package">
-              <option value="jamb">JAMB Only</option>
-              <option value="waec">WAEC Only</option>
-              <option value="neco">NECO Only</option>
-              <option value="jamb_waec">JAMB &amp; WAEC</option>
-              <option value="jamb_waec_neco">JAMB, WAEC &amp; NECO</option>
+              <option value="jamb">JAMB</option>
+              <option value="waec">WAEC</option>
+              <option value="neco">NECO</option>
+              <option value="all">ALL (JAMB + WAEC + NECO)</option>
               <option value="junior_waec">Junior WAEC</option>
               <option value="common_entrance">Common Entrance</option>
             </select>
@@ -271,7 +332,7 @@
       <div class="panel" style="margin-bottom:16px">
         <h3>Upload CBT practice questions</h3>
         <div class="cbt-hint" style="margin-bottom:14px">
-          Papers uploaded here appear under <strong>CBT Practice</strong> for students. Past papers have their own <strong>Past Questions</strong> tab.
+          Papers uploaded here go into the <strong>question bank</strong>. How many questions each student sees is set under <strong>CBT Settings</strong>. Past papers have their own <strong>Past Questions</strong> tab.
         </div>
         <ol class="cbt-hint small" style="margin:0 0 16px 18px;line-height:1.55">
           <li>Pick a <strong>.json</strong>, <strong>.csv</strong>, <strong>.pdf</strong>, or <strong>.docx</strong> file of questions.</li>

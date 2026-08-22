@@ -1826,6 +1826,26 @@ async function submitExam(force) {
   stopCbtTimer();
   hideSubjectStartPicker();
 
+  if (currentSession && currentSession.practice_attempt_id) {
+    try {
+      const result = await api("/api/v1/cbt/practice/attempts/" + currentSession.practice_attempt_id + "/submit", {
+        method: "POST",
+        body: JSON.stringify({ answers: answerMap }),
+      });
+      showResult({
+        percentage: result.percent != null ? result.percent : result.percentage,
+        correct: result.score,
+        total: result.max_score,
+        score: result.score,
+        max_score: result.max_score,
+      });
+    } catch (e) {
+      alert(e.message || "Submit failed.");
+      closeExam();
+    }
+    return;
+  }
+
   if (currentSession && currentSession.is_portal && typeof scorePortalExam === "function") {
     showResult(scorePortalExam(currentExam, answers));
     return;
