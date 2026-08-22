@@ -1,6 +1,7 @@
 """Paid annual CBT access and purchase-time subject locking."""
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 from sqlalchemy import select
@@ -15,6 +16,12 @@ from app.models.user import StudentProfile
 
 
 ENTITLEMENT_TYPE = "cbt_package"
+
+
+def _as_uuid(value) -> uuid.UUID:
+    if isinstance(value, uuid.UUID):
+        return value
+    return uuid.UUID(str(value))
 
 
 def normalize_board(value: str | None) -> str:
@@ -166,11 +173,13 @@ async def grant_cbt_package(
     package = get_cbt_package(package_id)
     if not package:
         raise ValueError("Unknown CBT package")
+    student_uuid = _as_uuid(user_id)
+    pay_uuid = _as_uuid(payment_id) if payment_id else None
     now = naive_utc_now()
     active_res = await db.execute(
         select(StudentEntitlement)
         .where(
-            StudentEntitlement.student_id == user_id,
+            StudentEntitlement.student_id == student_uuid,
             StudentEntitlement.entitlement_type == ENTITLEMENT_TYPE,
             StudentEntitlement.entitlement_key == package_id,
             StudentEntitlement.expires_at > now,
@@ -181,13 +190,13 @@ async def grant_cbt_package(
     active = active_res.scalar_one_or_none()
     start = active.expires_at if active else now
     profile = (
-        await db.execute(select(StudentProfile).where(StudentProfile.user_id == user_id))
+        await db.execute(select(StudentProfile).where(StudentProfile.user_id == student_uuid))
     ).scalar_one_or_none()
     row = StudentEntitlement(
-        student_id=user_id,
+        student_id=student_uuid,
         entitlement_type=ENTITLEMENT_TYPE,
         entitlement_key=package_id,
-        payment_id=payment_id,
+        payment_id=pay_uuid,
         granted_at=now,
         expires_at=start + timedelta(days=package.duration_days),
         details=subject_snapshot(profile),

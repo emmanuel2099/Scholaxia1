@@ -1,4 +1,5 @@
 from datetime import timedelta
+import logging
 import re
 import secrets
 import uuid
@@ -6,16 +7,17 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.cbt_packages import get_cbt_package, all_cbt_packages_dict
-from app.core.database import get_db
+from app.core.database import get_db, engine
 from app.core.datetime_utils import naive_utc_now
 from app.core.deps import require_admin, require_student_or_kind
 from app.models.cbt_coupon import CbtCoupon, CbtCouponRedemption
 from app.services.cbt_access import grant_cbt_package
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["CBT coupons"])
 
 
@@ -51,9 +53,55 @@ def _coupon_dict(row: CbtCoupon) -> dict:
     }
 
 
+async def _ensure_coupon_tables() -> None:
+    """Create coupon tables if a prior deploy missed them."""
+    stmts = (
+        """
+        CREATE TABLE IF NOT EXISTS cbt_coupons (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            code VARCHAR(40) NOT NULL UNIQUE,
+            package_id VARCHAR(80) NOT NULL,
+            max_uses INTEGER DEFAULT 1,
+            used_count INTEGER DEFAULT 0,
+            is_active BOOLEAN DEFAULT TRUE,
+            note TEXT NULL,
+            expires_at TIMESTAMP NULL,
+            created_by UUID NULL REFERENCES users(id),
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_cbt_coupons_code ON cbt_coupons (code)",
+        """
+        CREATE TABLE IF NOT EXISTS cbt_coupon_redemptions (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            coupon_id UUID NOT NULL REFERENCES cbt_coupons(id),
+            student_id UUID NOT NULL REFERENCES users(id),
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_cbt_coupon_redemptions_coupon_id ON cbt_coupon_redemptions (coupon_id)",
+        "CREATE INDEX IF NOT EXISTS ix_cbt_coupon_redemptions_student_id ON cbt_coupon_redemptions (student_id)",
+    )
+    try:
+        async with engine.begin() as conn:
+            for stmt in stmts:
+                try:
+                    await conn.execute(text(stmt))
+                except Exception as exc:
+                    logger.warning("coupon table stmt skipped: %s", exc)
+    except Exception as exc:
+        logger.warning("ensure coupon tables failed: %s", exc)
+
+
 async def _find_coupon(db: AsyncSession, code: str) -> Optional[CbtCoupon]:
     """Exact match first, then case/dash-insensitive scan of active codes."""
     row = (await db.execute(select(CbtCoupon).where(CbtCoupon.code == code))).scalar_one_or_none()
+    if row:
+        return row
+    # Also try lowercase storage variants
+    row = (
+        await db.execute(select(CbtCoupon).where(CbtCoupon.code == code.lower()))
+    ).scalar_one_or_none()
     if row:
         return row
     compact = code.replace("-", "")
@@ -82,6 +130,7 @@ async def list_coupons(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    await _ensure_coupon_tables()
     rows = (
         await db.execute(select(CbtCoupon).order_by(CbtCoupon.created_at.desc()).limit(200))
     ).scalars().all()
@@ -94,6 +143,7 @@ async def generate_coupons(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    await _ensure_coupon_tables()
     if not get_cbt_package(payload.package_id):
         raise HTTPException(status_code=400, detail="Unknown CBT package")
     expires = None
@@ -140,66 +190,92 @@ async def redeem_coupon(
     current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
-    """Redeem a coupon. Never drop the connection — always return JSON + CORS."""
+    """Redeem a coupon and grant CBT package access."""
+    await _ensure_coupon_tables()
+
+    code = _normalize_code(payload.code)
+    if len(code) < 4:
+        raise HTTPException(status_code=400, detail="Enter a valid coupon code")
+
     try:
-        code = _normalize_code(payload.code)
-        if len(code) < 4:
-            raise HTTPException(status_code=400, detail="Enter a valid coupon code")
+        row = await _find_coupon(db, code)
+    except Exception as exc:
+        logger.exception("coupon lookup failed")
+        raise HTTPException(
+            status_code=503,
+            detail="Coupon table is not ready yet. Wait one minute after deploy, then try again.",
+        ) from exc
 
-        try:
-            row = await _find_coupon(db, code)
-        except Exception as exc:
-            raise HTTPException(
-                status_code=503,
-                detail="Coupon service is temporarily unavailable. Try again in a moment.",
-            ) from exc
+    if not row or not row.is_active:
+        raise HTTPException(status_code=400, detail="Invalid coupon code")
+    now = naive_utc_now()
+    if row.expires_at and row.expires_at < now:
+        raise HTTPException(status_code=400, detail="This coupon has expired")
+    if int(row.used_count or 0) >= int(row.max_uses or 1):
+        raise HTTPException(status_code=400, detail="This coupon has already been used up")
 
-        if not row or not row.is_active:
-            raise HTTPException(status_code=400, detail="Invalid coupon code")
-        now = naive_utc_now()
-        if row.expires_at and row.expires_at < now:
-            raise HTTPException(status_code=400, detail="This coupon has expired")
-        if int(row.used_count or 0) >= int(row.max_uses or 1):
-            raise HTTPException(status_code=400, detail="This coupon has already been used up")
+    package_id = (row.package_id or "").strip().lower()
+    if not get_cbt_package(package_id):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Coupon package '{row.package_id}' is not valid. Ask admin to regenerate.",
+        )
 
-        student_id = _as_uuid(current_user["sub"])
-        already = (
-            await db.execute(
-                select(CbtCouponRedemption).where(
-                    CbtCouponRedemption.coupon_id == row.id,
-                    CbtCouponRedemption.student_id == student_id,
-                )
+    student_id = _as_uuid(current_user["sub"])
+    already = (
+        await db.execute(
+            select(CbtCouponRedemption).where(
+                CbtCouponRedemption.coupon_id == row.id,
+                CbtCouponRedemption.student_id == student_id,
             )
-        ).scalar_one_or_none()
-        if already:
-            try:
-                await grant_cbt_package(db, str(student_id), row.package_id)
-            except ValueError as exc:
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
-            await db.flush()
-            return {
-                "ok": True,
-                "package_id": row.package_id,
-                "message": "Coupon already applied. CBT access refreshed.",
-            }
-
+        )
+    ).scalar_one_or_none()
+    if already:
         try:
-            await grant_cbt_package(db, str(student_id), row.package_id)
+            await grant_cbt_package(db, str(student_id), package_id)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-        db.add(CbtCouponRedemption(coupon_id=row.id, student_id=student_id))
-        row.used_count = int(row.used_count or 0) + 1
+        except Exception as exc:
+            logger.exception("re-grant after coupon failed")
+            raise HTTPException(
+                status_code=503,
+                detail=f"Could not refresh CBT access ({type(exc).__name__}). Try again.",
+            ) from exc
         await db.flush()
         return {
             "ok": True,
-            "package_id": row.package_id,
-            "message": "CBT access unlocked with coupon.",
+            "package_id": package_id,
+            "message": "Coupon already applied. CBT access refreshed.",
         }
-    except HTTPException:
-        raise
+
+    try:
+        await grant_cbt_package(db, str(student_id), package_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
+        logger.exception("grant_cbt_package failed during redeem")
         raise HTTPException(
             status_code=503,
-            detail="Could not redeem coupon right now. Wait a moment and try again.",
+            detail=f"Could not unlock CBT package ({type(exc).__name__}). Try again.",
         ) from exc
+
+    try:
+        db.add(CbtCouponRedemption(id=uuid.uuid4(), coupon_id=row.id, student_id=student_id))
+        row.used_count = int(row.used_count or 0) + 1
+        row.package_id = package_id
+        await db.flush()
+    except Exception as exc:
+        logger.exception("coupon redemption record failed")
+        # Access may already be granted — still tell the student it worked
+        return {
+            "ok": True,
+            "package_id": package_id,
+            "message": "CBT access unlocked with coupon.",
+            "warning": f"Redeem note failed ({type(exc).__name__})",
+        }
+
+    return {
+        "ok": True,
+        "package_id": package_id,
+        "message": "CBT access unlocked with coupon.",
+    }
