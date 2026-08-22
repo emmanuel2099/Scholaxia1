@@ -251,10 +251,12 @@ async def redeem_coupon(
                 detail=f"Could not refresh CBT access: {detail}",
             ) from exc
         await db.flush()
+        await db.commit()
         return {
             "ok": True,
             "package_id": package_id,
             "message": "Coupon already applied. CBT access refreshed.",
+            "boards": list(get_cbt_package(package_id).boards) if get_cbt_package(package_id) else [],
         }
 
     try:
@@ -276,16 +278,24 @@ async def redeem_coupon(
         await db.flush()
     except Exception as exc:
         logger.exception("coupon redemption record failed")
-        # Access may already be granted — still tell the student it worked
+        # Access may already be granted — commit grant so Start can see it
+        try:
+            await db.commit()
+        except Exception:
+            pass
         return {
             "ok": True,
             "package_id": package_id,
             "message": "CBT access unlocked with coupon.",
+            "boards": list(get_cbt_package(package_id).boards) if get_cbt_package(package_id) else [],
             "warning": f"Redeem note failed ({type(exc).__name__})",
         }
 
+    # Commit BEFORE response so the next Start/download request sees access
+    await db.commit()
     return {
         "ok": True,
         "package_id": package_id,
         "message": "CBT access unlocked with coupon.",
+        "boards": list(get_cbt_package(package_id).boards) if get_cbt_package(package_id) else [],
     }

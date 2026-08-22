@@ -168,35 +168,50 @@ async def active_cbt_access(
 
     await ensure_student_entitlements_schema()
 
-    entitlements = []
+    entitlements_raw: list[tuple] = []
     try:
-        entitlements = (
-            await db.execute(
-                select(StudentEntitlement)
-                .where(
-                    StudentEntitlement.student_id == student_uuid,
-                    StudentEntitlement.entitlement_type == ENTITLEMENT_TYPE,
-                    StudentEntitlement.expires_at > now,
-                )
-                .order_by(StudentEntitlement.expires_at.desc())
-            )
-        ).scalars().all()
+        # Raw SQL — ORM load was failing silently on some schema shapes and looked like "no access"
+        res = await db.execute(
+            text(
+                """
+                SELECT entitlement_key, expires_at, details
+                FROM student_entitlements
+                WHERE student_id = CAST(:sid AS uuid)
+                  AND entitlement_type = :etype
+                  AND expires_at IS NOT NULL
+                  AND expires_at > :now
+                ORDER BY expires_at DESC
+                """
+            ),
+            {
+                "sid": str(student_uuid),
+                "etype": ENTITLEMENT_TYPE,
+                "now": now,
+            },
+        )
+        entitlements_raw = list(res.fetchall())
     except Exception:
         logger.warning("active_cbt_access: entitlement query failed", exc_info=True)
-        entitlements = []
+        entitlements_raw = []
 
     boards: set[str] = set()
     changed_boards: set[str] = set()
     active: list[dict[str, Any]] = []
-    for entitlement in entitlements:
-        package = get_cbt_package(entitlement.entitlement_key)
+    for entitlement_key, expires_at, details in entitlements_raw:
+        package = get_cbt_package(entitlement_key)
         if not package:
             continue
+        if isinstance(details, str):
+            try:
+                import json as _json
+                details = _json.loads(details)
+            except Exception:
+                details = None
         valid_boards: list[str] = []
         invalid_boards: list[str] = []
         for raw_board in package.boards:
             board = normalize_board(raw_board)
-            if _snapshot_matches(board, entitlement.details, current):
+            if _snapshot_matches(board, details, current):
                 boards.add(board)
                 valid_boards.append(board)
             else:
@@ -209,9 +224,9 @@ async def active_cbt_access(
                 "boards": list(package.boards),
                 "valid_boards": valid_boards,
                 "changed_boards": invalid_boards,
-                "expires_at": entitlement.expires_at.isoformat()
-                if entitlement.expires_at
-                else None,
+                "expires_at": expires_at.isoformat() if getattr(expires_at, "isoformat", None) else (
+                    str(expires_at) if expires_at else None
+                ),
             }
         )
 
