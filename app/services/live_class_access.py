@@ -122,7 +122,7 @@ async def _legacy_payment_plan(
 async def _ensure_profile_plan_from_payment(
     db: AsyncSession, student_id: str, now: datetime
 ) -> None:
-    """If Flutterwave payment succeeded but profile was not updated, sync from payments."""
+    """If a live-class payment succeeded but profile was not updated, sync from payments."""
     try:
         sid = parse_uuid(student_id)
     except ValueError:
@@ -142,16 +142,18 @@ async def _ensure_profile_plan_from_payment(
         .where(
             Payment.student_id == sid,
             Payment.status == PaymentStatus.success,
-            Payment.live_plan_id.isnot(None),
         )
         .order_by(Payment.created_at.desc())
-        .limit(10)
+        .limit(30)
     )
     payments = result.scalars().all()
     payment = None
     plan = None
     for row in payments:
-        candidate = get_plan(row.live_plan_id)
+        plan_key = row.live_plan_id or (
+            row.product_id if (row.product_type or "") == "class_package" else None
+        )
+        candidate = get_plan(plan_key) if plan_key else None
         if candidate:
             payment = row
             plan = candidate

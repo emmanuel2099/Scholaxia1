@@ -144,6 +144,6 @@ async def material_access(
         "has_access": has_access,
         "is_free": material.is_free,
         "price": material.price,
-        "public_key": settings.FLUTTERWAVE_PUBLIC_KEY,
+        "public_key": settings.PAYSTACK_PUBLIC_KEY,
         "title": material.title,
     }

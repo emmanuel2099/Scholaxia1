@@ -54,6 +54,8 @@ from app.services.skills_enrollment import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/payments/paystack", tags=["Paystack Payments"])
+# Replaces former Flutterwave routes under /payments/...
+payments_router = APIRouter(prefix="/payments", tags=["Payments"])
 
 PROVIDER = "paystack"
 
@@ -506,37 +508,89 @@ async def list_live_class_plans_paystack(
     current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
-    """Alias of /payments/live-class/plans for clients that call the Paystack prefix."""
+    """Live class plans for the Subscription page (Paystack path)."""
     from app.core.live_class_plans import all_plans_dict, suggest_plan_ids
     from app.models.user import StudentProfile
     from app.services.live_class_access import get_live_access_info
 
-    prof_res = await db.execute(
-        select(StudentProfile).where(StudentProfile.user_id == current_user["sub"])
-    )
-    profile = prof_res.scalar_one_or_none()
-    education_level = profile.education_level if profile else None
-    exam_type = profile.exam_type.value if profile and profile.exam_type else None
-    suggested = suggest_plan_ids(education_level, exam_type)
-    access = await get_live_access_info(db, current_user["sub"])
-    active = access.get("active_plan")
-    can_join = bool(access.get("can_join"))
+    def _iso(value):
+        if value is None:
+            return None
+        if hasattr(value, "isoformat"):
+            try:
+                return value.isoformat()
+            except Exception:
+                return str(value)
+        return str(value)
+
+    try:
+        prof_res = await db.execute(
+            select(StudentProfile).where(StudentProfile.user_id == current_user["sub"])
+        )
+        profile = prof_res.scalar_one_or_none()
+        education_level = profile.education_level if profile else None
+        exam_type = profile.exam_type.value if profile and profile.exam_type else None
+        suggested = suggest_plan_ids(education_level, exam_type)
+    except Exception:
+        suggested = []
+
+    active = None
+    can_join = False
+    sessions_left = 0
+    try:
+        access = await get_live_access_info(db, current_user["sub"])
+        active = access.get("active_plan")
+        can_join = bool(access.get("can_join"))
+        sessions_left = int(access.get("sessions_left") or 0)
+    except Exception:
+        pass
+
+    active_out = None
+    if active:
+        active_out = dict(active)
+        active_out["expires_at"] = _iso(active.get("expires_at"))
+
     return {
         "plans": all_plans_dict(),
         "suggested_plan_ids": suggested,
-        "active_plan": {
-            **active,
-            "expires_at": active["expires_at"].isoformat() if active and active.get("expires_at") else None,
-        }
-        if active
-        else None,
+        "active_plan": active_out,
         "paid": can_join,
         "can_join": can_join,
         "need_plan": not can_join,
-        "sessions_left": access.get("sessions_left", 0),
+        "sessions_left": sessions_left,
         "currency": "NGN",
         "public_key": settings.PAYSTACK_PUBLIC_KEY,
     }
+
+
+@payments_router.get("/live-class/plans")
+async def list_live_class_plans(
+    current_user: dict = Depends(require_student_or_kind),
+    db: AsyncSession = Depends(get_db),
+):
+    """Canonical live-class plans URL (Paystack only — Flutterwave removed)."""
+    return await list_live_class_plans_paystack(current_user=current_user, db=db)
+
+
+@router.get("/skills/enrollments")
+@payments_router.get("/skills/enrollments")
+async def list_my_skill_enrollments(
+    current_user: dict = Depends(require_student_or_kind),
+    db: AsyncSession = Depends(get_db),
+):
+    """Student skill enrollments (Paystack path; replaces Flutterwave enrollments list)."""
+    from app.services.skills_enrollment import (
+        list_skill_entitlements,
+        refresh_skill_entitlement_status,
+        serialize_skill_enrollment,
+    )
+
+    ents = await list_skill_entitlements(db, current_user["sub"])
+    out = []
+    for ent in ents:
+        await refresh_skill_entitlement_status(db, ent)
+        out.append(serialize_skill_enrollment(ent))
+    return {"enrollments": out}
 
 
 @router.post("/initialize")

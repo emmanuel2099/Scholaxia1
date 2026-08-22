@@ -1368,16 +1368,27 @@ async def list_live_classes(
 
     # Students: filter by visibility / access rules
     if role == "student":
-        prof_res = await db.execute(
-            select(StudentProfile).where(StudentProfile.user_id == current_user["sub"])
-        )
-        profile = prof_res.scalar_one_or_none()
-        visible = []
-        for c in classes:
-            ok, _ = await _student_can_access_class(db, current_user["sub"], c, profile)
-            if ok:
-                visible.append(c)
-        classes = visible
+        try:
+            prof_res = await db.execute(
+                select(StudentProfile).where(StudentProfile.user_id == current_user["sub"])
+            )
+            profile = prof_res.scalar_one_or_none()
+            visible = []
+            for c in classes:
+                try:
+                    ok, _ = await _student_can_access_class(db, current_user["sub"], c, profile)
+                    if ok:
+                        visible.append(c)
+                except Exception:
+                    # Never fail the whole Live Now list because one class check blew up
+                    if is_free_live_class(getattr(c, "visibility", None)):
+                        visible.append(c)
+            classes = visible
+        except Exception:
+            classes = [
+                c for c in classes
+                if is_free_live_class(getattr(c, "visibility", None))
+            ]
     elif role == "kind":
         classes = [
             c for c in classes
