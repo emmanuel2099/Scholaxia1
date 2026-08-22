@@ -222,14 +222,22 @@ async def redeem_coupon(
         )
 
     student_id = _as_uuid(current_user["sub"])
-    already = (
-        await db.execute(
-            select(CbtCouponRedemption).where(
-                CbtCouponRedemption.coupon_id == row.id,
-                CbtCouponRedemption.student_id == student_id,
-            )
-        )
-    ).scalar_one_or_none()
+
+    already = None
+    try:
+        async with db.begin_nested():
+            already = (
+                await db.execute(
+                    select(CbtCouponRedemption).where(
+                        CbtCouponRedemption.coupon_id == row.id,
+                        CbtCouponRedemption.student_id == student_id,
+                    )
+                )
+            ).scalar_one_or_none()
+    except Exception:
+        logger.warning("coupon redemption lookup skipped", exc_info=True)
+        already = None
+
     if already:
         try:
             await grant_cbt_package(db, str(student_id), package_id)

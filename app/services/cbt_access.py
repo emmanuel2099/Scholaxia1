@@ -241,117 +241,147 @@ async def grant_cbt_package(
     pay_uuid = _as_uuid(payment_id) if payment_id else None
     now = naive_utc_now()
     details = {"jamb_subjects": [], "ssce_subjects": [], "ssce_exam_type": None}
+
+    # Use SAVEPOINTs so a failed SELECT/INSERT cannot abort the outer redeem transaction
     try:
-        profile = (
-            await db.execute(select(StudentProfile).where(StudentProfile.user_id == student_uuid))
-        ).scalar_one_or_none()
-        details = subject_snapshot(profile)
+        async with db.begin_nested():
+            profile = (
+                await db.execute(
+                    select(StudentProfile).where(StudentProfile.user_id == student_uuid)
+                )
+            ).scalar_one_or_none()
+            details = subject_snapshot(profile)
     except Exception:
         logger.warning("grant_cbt_package: profile load skipped", exc_info=True)
 
-    # Find current expiry with raw SQL (avoids ORM column mismatches)
     start = now
     try:
-        res = await db.execute(
-            text(
-                """
-                SELECT expires_at FROM student_entitlements
-                WHERE student_id = :sid
-                  AND entitlement_type = :etype
-                  AND entitlement_key = :ekey
-                  AND expires_at IS NOT NULL
-                  AND expires_at > :now
-                ORDER BY expires_at DESC
-                LIMIT 1
-                """
-            ),
-            {
-                "sid": student_uuid,
-                "etype": ENTITLEMENT_TYPE,
-                "ekey": package_id,
-                "now": now,
-            },
-        )
-        row = res.first()
-        if row and row[0]:
-            start = row[0]
+        async with db.begin_nested():
+            res = await db.execute(
+                text(
+                    """
+                    SELECT expires_at FROM student_entitlements
+                    WHERE student_id = CAST(:sid AS uuid)
+                      AND entitlement_type = :etype
+                      AND entitlement_key = :ekey
+                      AND expires_at IS NOT NULL
+                      AND expires_at > :now
+                    ORDER BY expires_at DESC
+                    LIMIT 1
+                    """
+                ),
+                {
+                    "sid": str(student_uuid),
+                    "etype": ENTITLEMENT_TYPE,
+                    "ekey": package_id,
+                    "now": now,
+                },
+            )
+            row = res.first()
+            if row and row[0]:
+                start = row[0]
     except Exception:
         logger.warning("grant_cbt_package: active lookup skipped", exc_info=True)
 
     expires = start + timedelta(days=package.duration_days)
     new_id = uuid.uuid4()
-    details_json = json.dumps(details)
 
-    try:
-        await db.execute(
-            text(
-                """
-                INSERT INTO student_entitlements (
-                    id, student_id, entitlement_type, entitlement_key,
-                    payment_id, granted_at, expires_at, details
-                ) VALUES (
-                    :id, :sid, :etype, :ekey,
-                    :pid, :gat, :exp, CAST(:details AS JSON)
-                )
-                """
-            ),
+    inserted = False
+    last_err: Exception | None = None
+
+    # Prefer the simplest insert first (fewest columns / least schema risk)
+    for attempt, sql, params in (
+        (
+            "minimal",
+            """
+            INSERT INTO student_entitlements (
+                id, student_id, entitlement_type, entitlement_key, granted_at, expires_at
+            ) VALUES (
+                CAST(:id AS uuid), CAST(:sid AS uuid), :etype, :ekey, :gat, :exp
+            )
+            """,
             {
-                "id": new_id,
-                "sid": student_uuid,
+                "id": str(new_id),
+                "sid": str(student_uuid),
                 "etype": ENTITLEMENT_TYPE,
                 "ekey": package_id,
-                "pid": pay_uuid,
                 "gat": now,
                 "exp": expires,
-                "details": details_json,
             },
-        )
-        await db.flush()
-    except Exception as exc:
-        # Retry without details / payment_id if older schema is missing those columns
-        logger.warning("grant insert with details failed (%s); retrying minimal insert", exc)
+        ),
+        (
+            "with_payment",
+            """
+            INSERT INTO student_entitlements (
+                id, student_id, entitlement_type, entitlement_key,
+                payment_id, granted_at, expires_at
+            ) VALUES (
+                CAST(:id AS uuid), CAST(:sid AS uuid), :etype, :ekey,
+                CAST(:pid AS uuid), :gat, :exp
+            )
+            """,
+            {
+                "id": str(new_id),
+                "sid": str(student_uuid),
+                "etype": ENTITLEMENT_TYPE,
+                "ekey": package_id,
+                "pid": str(pay_uuid) if pay_uuid else None,
+                "gat": now,
+                "exp": expires,
+            },
+        ),
+    ):
         try:
+            async with db.begin_nested():
+                await db.execute(text(sql), params)
+            inserted = True
+            break
+        except Exception as exc:
+            last_err = exc
+            logger.warning("grant insert %s failed: %s", attempt, exc)
+
+    if not inserted:
+        raise RuntimeError(str(getattr(last_err, "orig", None) or last_err)[:220])
+
+    # Best-effort: attach subject snapshot (never fail the grant)
+    try:
+        async with db.begin_nested():
             await db.execute(
                 text(
                     """
-                    INSERT INTO student_entitlements (
-                        id, student_id, entitlement_type, entitlement_key,
-                        granted_at, expires_at
-                    ) VALUES (
-                        :id, :sid, :etype, :ekey, :gat, :exp
-                    )
+                    UPDATE student_entitlements
+                    SET details = CAST(:details AS json)
+                    WHERE id = CAST(:id AS uuid)
                     """
                 ),
-                {
-                    "id": new_id,
-                    "sid": student_uuid,
-                    "etype": ENTITLEMENT_TYPE,
-                    "ekey": package_id,
-                    "gat": now,
-                    "exp": expires,
-                },
+                {"id": str(new_id), "details": json.dumps(details)},
             )
-            await db.flush()
-        except Exception as exc2:
-            logger.exception("grant_cbt_package raw insert failed")
-            raise RuntimeError(str(getattr(exc2, "orig", None) or exc2)[:220]) from exc2
+    except Exception:
+        logger.warning("grant_cbt_package: details update skipped", exc_info=True)
 
-    # Prefer returning ORM row when possible
     try:
-        ent = (
-            await db.execute(select(StudentEntitlement).where(StudentEntitlement.id == new_id))
-        ).scalar_one_or_none()
-        if ent:
-            return ent
+        await db.flush()
     except Exception:
         pass
+
+    try:
+        async with db.begin_nested():
+            ent = (
+                await db.execute(select(StudentEntitlement).where(StudentEntitlement.id == new_id))
+            ).scalar_one_or_none()
+            if ent:
+                return ent
+    except Exception:
+        pass
+
     return {
         "id": str(new_id),
         "student_id": str(student_uuid),
         "entitlement_type": ENTITLEMENT_TYPE,
         "entitlement_key": package_id,
-        "expires_at": expires.isoformat(),
+        "expires_at": expires.isoformat() if hasattr(expires, "isoformat") else str(expires),
     }
+
 
 
 async def has_board_access(
