@@ -538,6 +538,11 @@ async def initialize_database() -> bool:
     except Exception as exc:
         logger.warning("ensure_cbt_coupon_tables: %s", exc)
     try:
+        from app.services.cbt_access import ensure_student_entitlements_schema
+        await ensure_student_entitlements_schema()
+    except Exception as exc:
+        logger.warning("ensure_student_entitlements_schema: %s", exc)
+    try:
         await ensure_postgres_enums()
         _db_initialized = True
     except Exception as exc:

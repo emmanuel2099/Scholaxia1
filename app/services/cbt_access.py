@@ -1,19 +1,22 @@
 """Paid annual CBT access and purchase-time subject locking."""
 from __future__ import annotations
 
+import json
+import logging
 import uuid
+from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from datetime import timedelta
-
 from app.core.cbt_packages import get_cbt_package
+from app.core.database import engine
 from app.core.datetime_utils import naive_utc_now
 from app.models.payment import StudentEntitlement
 from app.models.user import StudentProfile
 
+logger = logging.getLogger(__name__)
 
 ENTITLEMENT_TYPE = "cbt_package"
 
@@ -75,51 +78,109 @@ def _snapshot_matches(
     return _normalized_subjects(details.get(key)) == _normalized_subjects(current.get(key))
 
 
+async def ensure_student_entitlements_schema() -> None:
+    """Create / patch student_entitlements so coupon + Paystack grants never hit ProgrammingError."""
+    stmts = (
+        """
+        CREATE TABLE IF NOT EXISTS student_entitlements (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            student_id UUID NOT NULL REFERENCES users(id),
+            entitlement_type VARCHAR(40) NOT NULL,
+            entitlement_key VARCHAR(120) NOT NULL,
+            payment_id UUID NULL REFERENCES payments(id),
+            granted_at TIMESTAMP DEFAULT NOW(),
+            expires_at TIMESTAMP NULL,
+            details JSON NULL
+        )
+        """,
+        "ALTER TABLE student_entitlements ADD COLUMN IF NOT EXISTS entitlement_type VARCHAR(40)",
+        "ALTER TABLE student_entitlements ADD COLUMN IF NOT EXISTS entitlement_key VARCHAR(120)",
+        "ALTER TABLE student_entitlements ADD COLUMN IF NOT EXISTS payment_id UUID NULL",
+        "ALTER TABLE student_entitlements ADD COLUMN IF NOT EXISTS granted_at TIMESTAMP DEFAULT NOW()",
+        "ALTER TABLE student_entitlements ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP NULL",
+        "ALTER TABLE student_entitlements ADD COLUMN IF NOT EXISTS details JSON NULL",
+        "CREATE INDEX IF NOT EXISTS ix_student_entitlements_student_id ON student_entitlements (student_id)",
+        "CREATE INDEX IF NOT EXISTS ix_student_entitlements_type ON student_entitlements (entitlement_type)",
+        "CREATE INDEX IF NOT EXISTS ix_student_entitlements_key ON student_entitlements (entitlement_key)",
+    )
+    try:
+        async with engine.begin() as conn:
+            for stmt in stmts:
+                try:
+                    await conn.execute(text(stmt))
+                except Exception as exc:
+                    logger.warning("student_entitlements schema stmt skipped: %s", exc)
+    except Exception as exc:
+        logger.warning("ensure_student_entitlements_schema failed: %s", exc)
+
+
 async def active_cbt_access(
     db: AsyncSession,
     user_id: str,
 ) -> dict[str, Any]:
     now = naive_utc_now()
-    profile = (
-        await db.execute(select(StudentProfile).where(StudentProfile.user_id == user_id))
-    ).scalar_one_or_none()
+    try:
+        student_uuid = _as_uuid(user_id)
+    except Exception:
+        student_uuid = user_id
+
+    profile = None
+    try:
+        profile = (
+            await db.execute(select(StudentProfile).where(StudentProfile.user_id == student_uuid))
+        ).scalar_one_or_none()
+    except Exception:
+        logger.warning("active_cbt_access: could not load student profile", exc_info=True)
     current = subject_snapshot(profile)
+
     from app.models.user import User
     from app.models.school_campus import SchoolCampus
-    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
-    if user and getattr(user, "school_id", None):
-        campus = (
-            await db.execute(select(SchoolCampus).where(SchoolCampus.id == user.school_id))
-        ).scalar_one_or_none()
-        if campus and getattr(campus, "subscription_active", False):
-            boards = {"JAMB", "WAEC", "NECO", "JUNIOR_WAEC", "COMMON_ENTRANCE"}
-            return {
-                "has_access": True,
-                "boards": sorted(boards),
-                "subject_change_boards": [],
-                "subject_change_requires_payment": False,
-                "active_packages": [{
-                    "package_id": "school_subscription",
-                    "name": campus.subscription_plan or "School plan",
+
+    try:
+        user = (await db.execute(select(User).where(User.id == student_uuid))).scalar_one_or_none()
+        if user and getattr(user, "school_id", None):
+            campus = (
+                await db.execute(select(SchoolCampus).where(SchoolCampus.id == user.school_id))
+            ).scalar_one_or_none()
+            if campus and getattr(campus, "subscription_active", False):
+                boards = {"JAMB", "WAEC", "NECO", "JUNIOR_WAEC", "COMMON_ENTRANCE"}
+                return {
+                    "has_access": True,
                     "boards": sorted(boards),
-                    "valid_boards": sorted(boards),
-                    "changed_boards": [],
-                    "expires_at": None,
-                }],
-                "current_subjects": current,
-                "via_school": True,
-            }
-    entitlements = (
-        await db.execute(
-            select(StudentEntitlement)
-            .where(
-                StudentEntitlement.student_id == user_id,
-                StudentEntitlement.entitlement_type == ENTITLEMENT_TYPE,
-                StudentEntitlement.expires_at > now,
+                    "subject_change_boards": [],
+                    "subject_change_requires_payment": False,
+                    "active_packages": [{
+                        "package_id": "school_subscription",
+                        "name": campus.subscription_plan or "School plan",
+                        "boards": sorted(boards),
+                        "valid_boards": sorted(boards),
+                        "changed_boards": [],
+                        "expires_at": None,
+                    }],
+                    "current_subjects": current,
+                    "via_school": True,
+                }
+    except Exception:
+        logger.warning("active_cbt_access: school check failed", exc_info=True)
+
+    await ensure_student_entitlements_schema()
+
+    entitlements = []
+    try:
+        entitlements = (
+            await db.execute(
+                select(StudentEntitlement)
+                .where(
+                    StudentEntitlement.student_id == student_uuid,
+                    StudentEntitlement.entitlement_type == ENTITLEMENT_TYPE,
+                    StudentEntitlement.expires_at > now,
+                )
+                .order_by(StudentEntitlement.expires_at.desc())
             )
-            .order_by(StudentEntitlement.expires_at.desc())
-        )
-    ).scalars().all()
+        ).scalars().all()
+    except Exception:
+        logger.warning("active_cbt_access: entitlement query failed", exc_info=True)
+        entitlements = []
 
     boards: set[str] = set()
     changed_boards: set[str] = set()
@@ -168,42 +229,129 @@ async def grant_cbt_package(
     package_id: str,
     *,
     payment_id=None,
-) -> StudentEntitlement:
+) -> StudentEntitlement | dict:
     """Grant or extend a CBT package without requiring a live Paystack payment."""
     package = get_cbt_package(package_id)
     if not package:
         raise ValueError("Unknown CBT package")
+
+    await ensure_student_entitlements_schema()
+
     student_uuid = _as_uuid(user_id)
     pay_uuid = _as_uuid(payment_id) if payment_id else None
     now = naive_utc_now()
-    active_res = await db.execute(
-        select(StudentEntitlement)
-        .where(
-            StudentEntitlement.student_id == student_uuid,
-            StudentEntitlement.entitlement_type == ENTITLEMENT_TYPE,
-            StudentEntitlement.entitlement_key == package_id,
-            StudentEntitlement.expires_at > now,
+    details = {"jamb_subjects": [], "ssce_subjects": [], "ssce_exam_type": None}
+    try:
+        profile = (
+            await db.execute(select(StudentProfile).where(StudentProfile.user_id == student_uuid))
+        ).scalar_one_or_none()
+        details = subject_snapshot(profile)
+    except Exception:
+        logger.warning("grant_cbt_package: profile load skipped", exc_info=True)
+
+    # Find current expiry with raw SQL (avoids ORM column mismatches)
+    start = now
+    try:
+        res = await db.execute(
+            text(
+                """
+                SELECT expires_at FROM student_entitlements
+                WHERE student_id = :sid
+                  AND entitlement_type = :etype
+                  AND entitlement_key = :ekey
+                  AND expires_at IS NOT NULL
+                  AND expires_at > :now
+                ORDER BY expires_at DESC
+                LIMIT 1
+                """
+            ),
+            {
+                "sid": student_uuid,
+                "etype": ENTITLEMENT_TYPE,
+                "ekey": package_id,
+                "now": now,
+            },
         )
-        .order_by(StudentEntitlement.expires_at.desc())
-        .limit(1)
-    )
-    active = active_res.scalar_one_or_none()
-    start = active.expires_at if active else now
-    profile = (
-        await db.execute(select(StudentProfile).where(StudentProfile.user_id == student_uuid))
-    ).scalar_one_or_none()
-    row = StudentEntitlement(
-        student_id=student_uuid,
-        entitlement_type=ENTITLEMENT_TYPE,
-        entitlement_key=package_id,
-        payment_id=pay_uuid,
-        granted_at=now,
-        expires_at=start + timedelta(days=package.duration_days),
-        details=subject_snapshot(profile),
-    )
-    db.add(row)
-    await db.flush()
-    return row
+        row = res.first()
+        if row and row[0]:
+            start = row[0]
+    except Exception:
+        logger.warning("grant_cbt_package: active lookup skipped", exc_info=True)
+
+    expires = start + timedelta(days=package.duration_days)
+    new_id = uuid.uuid4()
+    details_json = json.dumps(details)
+
+    try:
+        await db.execute(
+            text(
+                """
+                INSERT INTO student_entitlements (
+                    id, student_id, entitlement_type, entitlement_key,
+                    payment_id, granted_at, expires_at, details
+                ) VALUES (
+                    :id, :sid, :etype, :ekey,
+                    :pid, :gat, :exp, CAST(:details AS JSON)
+                )
+                """
+            ),
+            {
+                "id": new_id,
+                "sid": student_uuid,
+                "etype": ENTITLEMENT_TYPE,
+                "ekey": package_id,
+                "pid": pay_uuid,
+                "gat": now,
+                "exp": expires,
+                "details": details_json,
+            },
+        )
+        await db.flush()
+    except Exception as exc:
+        # Retry without details / payment_id if older schema is missing those columns
+        logger.warning("grant insert with details failed (%s); retrying minimal insert", exc)
+        try:
+            await db.execute(
+                text(
+                    """
+                    INSERT INTO student_entitlements (
+                        id, student_id, entitlement_type, entitlement_key,
+                        granted_at, expires_at
+                    ) VALUES (
+                        :id, :sid, :etype, :ekey, :gat, :exp
+                    )
+                    """
+                ),
+                {
+                    "id": new_id,
+                    "sid": student_uuid,
+                    "etype": ENTITLEMENT_TYPE,
+                    "ekey": package_id,
+                    "gat": now,
+                    "exp": expires,
+                },
+            )
+            await db.flush()
+        except Exception as exc2:
+            logger.exception("grant_cbt_package raw insert failed")
+            raise RuntimeError(str(getattr(exc2, "orig", None) or exc2)[:220]) from exc2
+
+    # Prefer returning ORM row when possible
+    try:
+        ent = (
+            await db.execute(select(StudentEntitlement).where(StudentEntitlement.id == new_id))
+        ).scalar_one_or_none()
+        if ent:
+            return ent
+    except Exception:
+        pass
+    return {
+        "id": str(new_id),
+        "student_id": str(student_uuid),
+        "entitlement_type": ENTITLEMENT_TYPE,
+        "entitlement_key": package_id,
+        "expires_at": expires.isoformat(),
+    }
 
 
 async def has_board_access(

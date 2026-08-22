@@ -237,9 +237,10 @@ async def redeem_coupon(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except Exception as exc:
             logger.exception("re-grant after coupon failed")
+            detail = str(getattr(exc, "orig", None) or exc).replace("\n", " ")[:180]
             raise HTTPException(
                 status_code=503,
-                detail=f"Could not refresh CBT access ({type(exc).__name__}). Try again.",
+                detail=f"Could not refresh CBT access: {detail}",
             ) from exc
         await db.flush()
         return {
@@ -254,9 +255,10 @@ async def redeem_coupon(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("grant_cbt_package failed during redeem")
+        detail = str(getattr(exc, "orig", None) or exc).replace("\n", " ")[:180]
         raise HTTPException(
             status_code=503,
-            detail=f"Could not unlock CBT package ({type(exc).__name__}). Try again.",
+            detail=f"Could not unlock CBT package: {detail}",
         ) from exc
 
     try:
