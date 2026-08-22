@@ -129,9 +129,10 @@ async def active_cbt_access(
 
     profile = None
     try:
-        profile = (
-            await db.execute(select(StudentProfile).where(StudentProfile.user_id == student_uuid))
-        ).scalar_one_or_none()
+        async with db.begin_nested():
+            profile = (
+                await db.execute(select(StudentProfile).where(StudentProfile.user_id == student_uuid))
+            ).scalar_one_or_none()
     except Exception:
         logger.warning("active_cbt_access: could not load student profile", exc_info=True)
     current = subject_snapshot(profile)
@@ -140,29 +141,30 @@ async def active_cbt_access(
     from app.models.school_campus import SchoolCampus
 
     try:
-        user = (await db.execute(select(User).where(User.id == student_uuid))).scalar_one_or_none()
-        if user and getattr(user, "school_id", None):
-            campus = (
-                await db.execute(select(SchoolCampus).where(SchoolCampus.id == user.school_id))
-            ).scalar_one_or_none()
-            if campus and getattr(campus, "subscription_active", False):
-                boards = {"JAMB", "WAEC", "NECO", "JUNIOR_WAEC", "COMMON_ENTRANCE"}
-                return {
-                    "has_access": True,
-                    "boards": sorted(boards),
-                    "subject_change_boards": [],
-                    "subject_change_requires_payment": False,
-                    "active_packages": [{
-                        "package_id": "school_subscription",
-                        "name": campus.subscription_plan or "School plan",
+        async with db.begin_nested():
+            user = (await db.execute(select(User).where(User.id == student_uuid))).scalar_one_or_none()
+            if user and getattr(user, "school_id", None):
+                campus = (
+                    await db.execute(select(SchoolCampus).where(SchoolCampus.id == user.school_id))
+                ).scalar_one_or_none()
+                if campus and getattr(campus, "subscription_active", False):
+                    boards = {"JAMB", "WAEC", "NECO", "JUNIOR_WAEC", "COMMON_ENTRANCE"}
+                    return {
+                        "has_access": True,
                         "boards": sorted(boards),
-                        "valid_boards": sorted(boards),
-                        "changed_boards": [],
-                        "expires_at": None,
-                    }],
-                    "current_subjects": current,
-                    "via_school": True,
-                }
+                        "subject_change_boards": [],
+                        "subject_change_requires_payment": False,
+                        "active_packages": [{
+                            "package_id": "school_subscription",
+                            "name": campus.subscription_plan or "School plan",
+                            "boards": sorted(boards),
+                            "valid_boards": sorted(boards),
+                            "changed_boards": [],
+                            "expires_at": None,
+                        }],
+                        "current_subjects": current,
+                        "via_school": True,
+                    }
     except Exception:
         logger.warning("active_cbt_access: school check failed", exc_info=True)
 
@@ -170,35 +172,61 @@ async def active_cbt_access(
 
     entitlements_raw: list[tuple] = []
     try:
-        # Raw SQL — ORM load was failing silently on some schema shapes and looked like "no access"
-        res = await db.execute(
-            text(
-                """
-                SELECT entitlement_key, expires_at, details
-                FROM student_entitlements
-                WHERE student_id = CAST(:sid AS uuid)
-                  AND entitlement_type = :etype
-                  AND expires_at IS NOT NULL
-                  AND expires_at > :now
-                ORDER BY expires_at DESC
-                """
-            ),
-            {
-                "sid": str(student_uuid),
-                "etype": ENTITLEMENT_TYPE,
-                "now": now,
-            },
-        )
-        entitlements_raw = list(res.fetchall())
+        async with db.begin_nested():
+            # Raw SQL — ORM load was failing silently on some schema shapes and looked like "no access"
+            res = await db.execute(
+                text(
+                    """
+                    SELECT entitlement_key, expires_at, details
+                    FROM student_entitlements
+                    WHERE student_id = CAST(:sid AS uuid)
+                      AND entitlement_type = :etype
+                      AND expires_at IS NOT NULL
+                      AND expires_at > :now
+                    ORDER BY expires_at DESC
+                    """
+                ),
+                {
+                    "sid": str(student_uuid),
+                    "etype": ENTITLEMENT_TYPE,
+                    "now": now,
+                },
+            )
+            entitlements_raw = list(res.fetchall())
     except Exception:
         logger.warning("active_cbt_access: entitlement query failed", exc_info=True)
         entitlements_raw = []
+
+    # Fallback without nested (in case savepoints unavailable)
+    if not entitlements_raw:
+        try:
+            res = await db.execute(
+                text(
+                    """
+                    SELECT entitlement_key, expires_at, details
+                    FROM student_entitlements
+                    WHERE student_id = CAST(:sid AS uuid)
+                      AND entitlement_type = :etype
+                      AND expires_at IS NOT NULL
+                      AND expires_at > :now
+                    ORDER BY expires_at DESC
+                    """
+                ),
+                {
+                    "sid": str(student_uuid),
+                    "etype": ENTITLEMENT_TYPE,
+                    "now": now,
+                },
+            )
+            entitlements_raw = list(res.fetchall())
+        except Exception:
+            entitlements_raw = []
 
     boards: set[str] = set()
     changed_boards: set[str] = set()
     active: list[dict[str, Any]] = []
     for entitlement_key, expires_at, details in entitlements_raw:
-        package = get_cbt_package(entitlement_key)
+        package = get_cbt_package(str(entitlement_key or ""))
         if not package:
             continue
         if isinstance(details, str):
@@ -217,6 +245,11 @@ async def active_cbt_access(
             else:
                 changed_boards.add(board)
                 invalid_boards.append(board)
+        # Always count package boards when details are unlocked/empty
+        if not valid_boards and not details:
+            for raw_board in package.boards:
+                boards.add(normalize_board(raw_board))
+                valid_boards.append(normalize_board(raw_board))
         active.append(
             {
                 "package_id": package.id,
@@ -381,5 +414,42 @@ async def has_board_access(
     user_id: str,
     board: str,
 ) -> bool:
+    want = normalize_board(board)
+    if not want:
+        return False
+
+    # Fast path: raw entitlement keys → package boards (avoids profile/ORM abort issues)
+    try:
+        student_uuid = _as_uuid(user_id)
+        now = naive_utc_now()
+        await ensure_student_entitlements_schema()
+        async with db.begin_nested():
+            res = await db.execute(
+                text(
+                    """
+                    SELECT entitlement_key
+                    FROM student_entitlements
+                    WHERE student_id = CAST(:sid AS uuid)
+                      AND entitlement_type = :etype
+                      AND expires_at IS NOT NULL
+                      AND expires_at > :now
+                    """
+                ),
+                {
+                    "sid": str(student_uuid),
+                    "etype": ENTITLEMENT_TYPE,
+                    "now": now,
+                },
+            )
+            keys = [str(r[0] or "").strip().lower() for r in res.fetchall()]
+        for key in keys:
+            package = get_cbt_package(key)
+            if not package:
+                continue
+            if want in {normalize_board(b) for b in package.boards}:
+                return True
+    except Exception:
+        logger.warning("has_board_access fast path failed", exc_info=True)
+
     access = await active_cbt_access(db, user_id)
-    return normalize_board(board) in set(access["boards"])
+    return want in set(access["boards"])
