@@ -1,6 +1,6 @@
 """Student-created groups with admin approval for new members."""
 import uuid
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from pydantic import BaseModel
@@ -108,6 +108,18 @@ def _group_dict(grp: StudentGroup, mem, pending, member_count: int, creator_name
         "member_count": member_count,
         "created_at": grp.created_at.isoformat() if grp.created_at else None,
     }
+
+
+@router.get("/")
+async def list_groups_root(
+    is_community_listed: Optional[bool] = Query(None),
+    current_user: dict = Depends(require_student_or_kind),
+    db: AsyncSession = Depends(get_db),
+):
+    """Compat alias — website used to call GET /student-groups/?is_community_listed=true (405)."""
+    if is_community_listed:
+        return await community_listed_groups(current_user=current_user, db=db)
+    return await discover_groups(current_user=current_user, db=db)
 
 
 @router.post("/")

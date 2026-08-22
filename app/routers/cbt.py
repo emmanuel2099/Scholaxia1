@@ -384,8 +384,9 @@ async def exams_for_student(
     ssce_subjects = boards["ssce_subjects"]
     ssce_board = boards["ssce_exam_type"]
     level = (profile.education_level or "").upper().replace(" ", "")
+    selected = list(profile.selected_subjects or [])
 
-    if not jamb_subjects and not ssce_subjects and not profile.selected_subjects:
+    if not jamb_subjects and not ssce_subjects and not selected:
         raise HTTPException(
             status_code=400,
             detail="Complete exam setup first at /students/setup-exam",
@@ -395,6 +396,17 @@ async def exams_for_student(
         profile.exam_type and profile.exam_type.value == "JUNIOR_WAEC"
     ) or _is_jss_level(profile.education_level or "")
     is_common_entrance = ssce_board == "COMMON_ENTRANCE"
+    exam_type_val = (
+        profile.exam_type.value if profile.exam_type and hasattr(profile.exam_type, "value") else str(profile.exam_type or "")
+    ).upper()
+    wants_jamb = bool(jamb_subjects) or "JAMB" in exam_type_val or "UTME" in exam_type_val
+    wants_ssce = bool(ssce_subjects) or any(
+        x in exam_type_val for x in ("WAEC", "NECO", "JUNIOR", "COMMON", "SSCE")
+    )
+    # Prefer board-specific subjects; fall back to overall selected subjects so
+    # published papers still appear when jamb_subjects/ssce_subjects were never set.
+    jamb_pool = list(jamb_subjects or []) or (selected if wants_jamb else [])
+    ssce_pool = list(ssce_subjects or []) or (selected if wants_ssce else [])
     now = datetime.utcnow()
 
     wanted_kind = normalize_paper_kind(paper_kind)
@@ -439,7 +451,7 @@ async def exams_for_student(
     school = []
     for e in all_exams:
         if e.is_school_exam:
-            subjects = list({*jamb_subjects, *ssce_subjects, *(profile.selected_subjects or [])})
+            subjects = list({*jamb_pool, *ssce_pool, *selected})
             if subjects and not subject_matches(e.subject, subjects):
                 continue
             if _school_exam_is_open(e, now) or (e.scheduled_start and e.scheduled_start > now):
@@ -451,10 +463,23 @@ async def exams_for_student(
                 class_practice.append(_exam_summary(e))
             continue
 
-        if jamb_subjects and _is_jamb(e.exam_type) and subject_matches(e.subject, jamb_subjects):
+        if wants_jamb and _is_jamb(e.exam_type) and subject_matches(e.subject, jamb_pool):
             jamb_practice.append(_exam_summary(e))
-        if ssce_subjects and _is_ssce(e.exam_type) and subject_matches(e.subject, ssce_subjects):
+        if wants_ssce and _is_ssce(e.exam_type) and subject_matches(e.subject, ssce_pool):
             ssce_practice.append(_exam_summary(e))
+
+    # Past-question packs: if board pools were empty filters, still surface all
+    # published papers of that kind so the Past Questions tab is not blank.
+    if wanted_kind == "past_questions" and not jamb_practice and not ssce_practice and not class_practice:
+        for e in all_exams:
+            if e.is_school_exam:
+                continue
+            if _is_jamb(e.exam_type):
+                jamb_practice.append(_exam_summary(e))
+            elif _is_ssce(e.exam_type) or _is_class_level(e.exam_type):
+                ssce_practice.append(_exam_summary(e))
+            else:
+                class_practice.append(_exam_summary(e))
 
     # Deduplicate practice_exams list while keeping board buckets
     seen = set()
@@ -466,27 +491,23 @@ async def exams_for_student(
         practice.append(item)
 
     active_boards = []
-    if jamb_subjects:
+    if wants_jamb or jamb_practice:
         active_boards.append("JAMB")
-    if ssce_subjects:
+    if wants_ssce or ssce_practice:
         if is_common_entrance:
             active_boards.append("COMMON_ENTRANCE")
         elif is_junior:
             active_boards.append("JUNIOR_WAEC")
         else:
-            label = ssce_board or "WAEC"
-            if label == "NECO":
-                active_boards.append("WAEC_NECO")
-            else:
-                active_boards.append("WAEC_NECO")
+            active_boards.append("WAEC_NECO")
 
     return {
         "exam_type": profile.exam_type.value if profile.exam_type else None,
         "boards": active_boards,
-        "jamb_subjects": jamb_subjects,
-        "ssce_subjects": ssce_subjects,
+        "jamb_subjects": jamb_subjects or jamb_pool,
+        "ssce_subjects": ssce_subjects or ssce_pool,
         "ssce_exam_type": ssce_board,
-        "selected_subjects": profile.selected_subjects or [],
+        "selected_subjects": selected,
         "education_level": profile.education_level,
         "practice_exams": practice,
         "jamb_exams": jamb_practice,
