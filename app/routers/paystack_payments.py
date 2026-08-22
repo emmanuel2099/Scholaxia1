@@ -501,6 +501,44 @@ async def get_cbt_access(
     return await active_cbt_access(db, current_user["sub"])
 
 
+@router.get("/live-class/plans")
+async def list_live_class_plans_paystack(
+    current_user: dict = Depends(require_student_or_kind),
+    db: AsyncSession = Depends(get_db),
+):
+    """Alias of /payments/live-class/plans for clients that call the Paystack prefix."""
+    from app.core.live_class_plans import all_plans_dict, suggest_plan_ids
+    from app.models.user import StudentProfile
+    from app.services.live_class_access import get_live_access_info
+
+    prof_res = await db.execute(
+        select(StudentProfile).where(StudentProfile.user_id == current_user["sub"])
+    )
+    profile = prof_res.scalar_one_or_none()
+    education_level = profile.education_level if profile else None
+    exam_type = profile.exam_type.value if profile and profile.exam_type else None
+    suggested = suggest_plan_ids(education_level, exam_type)
+    access = await get_live_access_info(db, current_user["sub"])
+    active = access.get("active_plan")
+    can_join = bool(access.get("can_join"))
+    return {
+        "plans": all_plans_dict(),
+        "suggested_plan_ids": suggested,
+        "active_plan": {
+            **active,
+            "expires_at": active["expires_at"].isoformat() if active and active.get("expires_at") else None,
+        }
+        if active
+        else None,
+        "paid": can_join,
+        "can_join": can_join,
+        "need_plan": not can_join,
+        "sessions_left": access.get("sessions_left", 0),
+        "currency": "NGN",
+        "public_key": settings.PAYSTACK_PUBLIC_KEY,
+    }
+
+
 @router.post("/initialize")
 async def initialize_payment(
     payload: InitializeRequest,

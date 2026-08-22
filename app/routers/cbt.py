@@ -344,9 +344,10 @@ class ExamDownload(BaseModel):
 async def list_exams(
     exam_type: Optional[str] = Query(None),
     subject: Optional[str] = Query(None),
+    paper_kind: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """List all published exams. No auth required. Filterable by exam_type and subject."""
+    """List all published exams. No auth required. Filterable by exam_type, subject, paper_kind."""
     q = select(CBTExam).where(CBTExam.is_published == True)  # noqa: E712
     if exam_type:
         q = q.where(CBTExam.exam_type == exam_type.upper())
@@ -354,6 +355,12 @@ async def list_exams(
         q = q.where(CBTExam.subject.ilike(f"%{subject}%"))
     result = await db.execute(q.order_by(CBTExam.exam_type, CBTExam.subject))
     exams = result.scalars().all()
+    if paper_kind:
+        wanted = normalize_paper_kind(paper_kind)
+        exams = [
+            e for e in exams
+            if normalize_paper_kind(getattr(e, "paper_kind", None)) == wanted
+        ]
     return [_exam_summary(e) for e in exams]
 
 
@@ -374,10 +381,22 @@ async def exams_for_student(
     )
     profile = profile_res.scalar_one_or_none()
     if not profile or not profile.exam_type:
-        raise HTTPException(
-            status_code=400,
-            detail="Complete exam setup first at /students/setup-exam",
-        )
+        # Prefer an empty catalog over a hard error so the website still loads.
+        return {
+            "exam_type": None,
+            "boards": [],
+            "jamb_subjects": [],
+            "ssce_subjects": [],
+            "ssce_exam_type": None,
+            "selected_subjects": [],
+            "education_level": getattr(profile, "education_level", None) if profile else None,
+            "practice_exams": [],
+            "jamb_exams": [],
+            "ssce_exams": [],
+            "school_exams": [],
+            "setup_required": True,
+            "message": "Complete exam setup to personalize practice papers.",
+        }
 
     boards = _profile_boards(profile)
     jamb_subjects = boards["jamb_subjects"]
@@ -387,10 +406,21 @@ async def exams_for_student(
     selected = list(profile.selected_subjects or [])
 
     if not jamb_subjects and not ssce_subjects and not selected:
-        raise HTTPException(
-            status_code=400,
-            detail="Complete exam setup first at /students/setup-exam",
-        )
+        return {
+            "exam_type": profile.exam_type.value if profile.exam_type else None,
+            "boards": [],
+            "jamb_subjects": [],
+            "ssce_subjects": [],
+            "ssce_exam_type": ssce_board,
+            "selected_subjects": [],
+            "education_level": profile.education_level,
+            "practice_exams": [],
+            "jamb_exams": [],
+            "ssce_exams": [],
+            "school_exams": [],
+            "setup_required": True,
+            "message": "Complete exam setup to personalize practice papers.",
+        }
 
     is_junior = (ssce_board == "JUNIOR_WAEC") or (
         profile.exam_type and profile.exam_type.value == "JUNIOR_WAEC"

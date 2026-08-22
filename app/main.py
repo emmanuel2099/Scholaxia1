@@ -75,7 +75,7 @@ class ReflectCORS:
             (b"access-control-allow-origin", origin.encode()),
             (b"access-control-allow-methods", b"GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD"),
             (b"access-control-allow-headers", req_headers.encode()),
-            (b"access-control-max-age", b"1"),
+            (b"access-control-max-age", b"86400"),
             (b"vary", b"Origin"),
         ]
         if scope.get("method") == "OPTIONS":
