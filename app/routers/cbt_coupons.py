@@ -1,10 +1,12 @@
 from datetime import timedelta
+import re
 import secrets
+import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.cbt_packages import get_cbt_package, all_cbt_packages_dict
@@ -19,6 +21,21 @@ router = APIRouter(tags=["CBT coupons"])
 
 def _new_code() -> str:
     return "SX-" + secrets.token_hex(4).upper()
+
+
+def _normalize_code(raw: str) -> str:
+    """Strip spaces and normalize to uppercase SX-XXXX style."""
+    code = re.sub(r"\s+", "", (raw or "").strip().upper())
+    return code.replace("–", "-").replace("—", "-")
+
+
+def _as_uuid(value) -> uuid.UUID:
+    if isinstance(value, uuid.UUID):
+        return value
+    try:
+        return uuid.UUID(str(value))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="Invalid account id") from exc
 
 
 def _coupon_dict(row: CbtCoupon) -> dict:
@@ -69,15 +86,20 @@ async def generate_coupons(
     expires = None
     if payload.days_valid:
         expires = naive_utc_now() + timedelta(days=payload.days_valid)
+    created_by = None
+    try:
+        created_by = _as_uuid(current_user["sub"])
+    except HTTPException:
+        created_by = None
     created = []
     for _ in range(payload.count):
         row = CbtCoupon(
             code=_new_code(),
-            package_id=payload.package_id,
+            package_id=payload.package_id.strip().lower(),
             max_uses=payload.max_uses,
             note=payload.note,
             expires_at=expires,
-            created_by=current_user["sub"],
+            created_by=created_by,
         )
         db.add(row)
         await db.flush()
@@ -105,30 +127,61 @@ async def redeem_coupon(
     current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
-    code = payload.code.strip().upper()
-    row = (await db.execute(select(CbtCoupon).where(CbtCoupon.code == code))).scalar_one_or_none()
+    code = _normalize_code(payload.code)
+    if len(code) < 4:
+        raise HTTPException(status_code=400, detail="Enter a valid coupon code")
+
+    row = (
+        await db.execute(
+            select(CbtCoupon).where(func.upper(func.trim(CbtCoupon.code)) == code)
+        )
+    ).scalar_one_or_none()
+    if not row:
+        compact = code.replace("-", "")
+        rows = (await db.execute(select(CbtCoupon).where(CbtCoupon.is_active.is_(True)))).scalars().all()
+        for candidate in rows:
+            if _normalize_code(candidate.code).replace("-", "") == compact:
+                row = candidate
+                break
     if not row or not row.is_active:
         raise HTTPException(status_code=400, detail="Invalid coupon code")
     now = naive_utc_now()
     if row.expires_at and row.expires_at < now:
         raise HTTPException(status_code=400, detail="This coupon has expired")
-    if row.used_count >= row.max_uses:
+    if int(row.used_count or 0) >= int(row.max_uses or 1):
         raise HTTPException(status_code=400, detail="This coupon has already been used up")
+
+    student_id = _as_uuid(current_user["sub"])
     already = (
         await db.execute(
             select(CbtCouponRedemption).where(
                 CbtCouponRedemption.coupon_id == row.id,
-                CbtCouponRedemption.student_id == current_user["sub"],
+                CbtCouponRedemption.student_id == student_id,
             )
         )
     ).scalar_one_or_none()
     if already:
-        raise HTTPException(status_code=400, detail="You already redeemed this coupon")
+        try:
+            await grant_cbt_package(db, str(student_id), row.package_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        await db.flush()
+        return {
+            "ok": True,
+            "package_id": row.package_id,
+            "message": "Coupon already applied. CBT access refreshed.",
+        }
+
     try:
-        await grant_cbt_package(db, current_user["sub"], row.package_id)
+        await grant_cbt_package(db, str(student_id), row.package_id)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    db.add(CbtCouponRedemption(coupon_id=row.id, student_id=current_user["sub"]))
+
+    db.add(CbtCouponRedemption(coupon_id=row.id, student_id=student_id))
     row.used_count = int(row.used_count or 0) + 1
     await db.flush()
-    return {"ok": True, "package_id": row.package_id, "message": "CBT access unlocked with coupon."}
+    return {
+        "ok": True,
+        "package_id": row.package_id,
+        "message": "CBT access unlocked with coupon.",
+    }

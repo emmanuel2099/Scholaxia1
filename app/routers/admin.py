@@ -766,6 +766,102 @@ async def admin_list_cbt_exams(
     return [_exam_to_response(e) for e in exams]
 
 
+@router.get("/cbt/exams/{exam_id}")
+async def admin_get_cbt_exam(
+    exam_id: str,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return one exam with all questions for preview/edit."""
+    exam = (await db.execute(select(CBTExam).where(CBTExam.id == exam_id))).scalar_one_or_none()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    questions = (
+        await db.execute(select(CBTQuestion).where(CBTQuestion.exam_id == exam.id))
+    ).scalars().all()
+    resp = _exam_to_response(exam)
+    data = resp.model_dump() if hasattr(resp, "model_dump") else resp.dict()
+    data["questions"] = [
+        {
+            "id": str(q.id),
+            "number": i + 1,
+            "question_text": q.question_text,
+            "option_a": q.option_a,
+            "option_b": q.option_b,
+            "option_c": q.option_c,
+            "option_d": q.option_d,
+            "correct_option": q.correct_option,
+            "topic": q.topic,
+            "explanation": q.explanation,
+            "image_url": q.image_url,
+        }
+        for i, q in enumerate(questions)
+    ]
+    return data
+
+
+class CBTExamUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    duration_minutes: Optional[int] = None
+    is_published: Optional[bool] = None
+    questions: list[CBTQuestionCreate]
+
+
+@router.put("/cbt/exams/{exam_id}")
+async def admin_update_cbt_exam(
+    exam_id: str,
+    payload: CBTExamUpdateRequest,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Replace exam questions (and optional title/duration). Use this to remove bad questions."""
+    exam = (await db.execute(select(CBTExam).where(CBTExam.id == exam_id))).scalar_one_or_none()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    if not payload.questions:
+        raise HTTPException(status_code=400, detail="Keep at least one question")
+    if payload.title is not None:
+        title = payload.title.strip()
+        if not title:
+            raise HTTPException(status_code=400, detail="Title cannot be empty")
+        exam.title = title
+    if payload.duration_minutes is not None:
+        if payload.duration_minutes < 5 or payload.duration_minutes > 300:
+            raise HTTPException(status_code=400, detail="Duration must be 5–300 minutes")
+        exam.duration_minutes = payload.duration_minutes
+    if payload.is_published is not None:
+        exam.is_published = payload.is_published
+
+    existing = (
+        await db.execute(select(CBTQuestion).where(CBTQuestion.exam_id == exam.id))
+    ).scalars().all()
+    for q in existing:
+        await db.delete(q)
+    await db.flush()
+
+    for i, q in enumerate(payload.questions, start=1):
+        correct = (q.correct_option or "A").strip().upper()[:1]
+        if correct not in {"A", "B", "C", "D"}:
+            raise HTTPException(status_code=400, detail=f"Question {i}: correct option must be A–D")
+        db.add(
+            CBTQuestion(
+                exam_id=exam.id,
+                question_text=q.question_text.strip(),
+                option_a=q.option_a.strip(),
+                option_b=q.option_b.strip(),
+                option_c=q.option_c.strip(),
+                option_d=q.option_d.strip(),
+                correct_option=correct,
+                topic=(q.topic or None),
+                explanation=(q.explanation or None),
+                image_url=(q.image_url or None),
+            )
+        )
+    exam.total_questions = len(payload.questions)
+    await db.flush()
+    return await admin_get_cbt_exam(exam_id, current_user, db)
+
+
 @router.patch("/cbt/exams/{exam_id}/publish")
 async def toggle_publish(
     exam_id: str,

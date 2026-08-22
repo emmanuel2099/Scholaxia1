@@ -96,9 +96,6 @@
     </div>
     <section id="page-dashboard" class="admin-page active">
       <div class="page-head"><h2>Dashboard</h2><button class="btn-sm" onclick="loadDashboard()">Refresh</button></div>
-      <div class="page-head" style="margin-top:-8px">
-        <button class="btn-sm danger" onclick="purgeAllUsers()">Delete all emails / accounts</button>
-      </div>
       <div id="stats-grid" class="stats-grid"><div class="loading">Loading…</div></div>
     </section>
 
@@ -129,7 +126,6 @@
         <h2>Students &amp; Subjects</h2>
         <div class="form-row">
           <input type="search" id="students-search" class="admin-search" placeholder="Search by email or name to find &amp; remove…" autocomplete="off" oninput="filterStudentsTable()" />
-          <button class="btn-sm danger" onclick="removeAllStudents()">Remove all</button>
           <button class="btn-sm" onclick="loadStudents()">Refresh</button>
         </div>
       </div>
@@ -299,14 +295,13 @@
               <option>Economics</option>
               <option>Government</option>
               <option>Geography</option>
-              <option>Literature</option>
+              <option>Literature in English</option>
               <option>Agricultural Science</option>
               <option>Commerce</option>
-              <option>CRS</option>
-              <option>IRS</option>
+              <option>Christian Religious Studies</option>
+              <option>Islamic Religious Studies</option>
               <option>Further Mathematics</option>
-              <option>Civic Education</option>
-              <option>Basic Science</option>
+              <option>Citizenship and Heritage Studies (Civic)</option>
               <option>Basic Technology</option>
               <option>Social Studies</option>
             </select>
@@ -375,14 +370,13 @@
               <option>Economics</option>
               <option>Government</option>
               <option>Geography</option>
-              <option>Literature</option>
+              <option>Literature in English</option>
               <option>Agricultural Science</option>
               <option>Commerce</option>
-              <option>CRS</option>
-              <option>IRS</option>
+              <option>Christian Religious Studies</option>
+              <option>Islamic Religious Studies</option>
               <option>Further Mathematics</option>
-              <option>Civic Education</option>
-              <option>Basic Science</option>
+              <option>Citizenship and Heritage Studies (Civic)</option>
               <option>Basic Technology</option>
               <option>Social Studies</option>
             </select>
@@ -402,7 +396,10 @@
               <option>SS3</option>
             </select>
           </label>
-          <label><span>Duration (minutes)</span><input id="cbt-duration" type="number" value="30" min="5" max="180" /></label>
+          <label><span>Duration (minutes)</span>
+            <input id="cbt-duration" type="number" value="30" min="5" max="180" />
+            <span class="cbt-hint small">How long students get to finish the paper.</span>
+          </label>
         </div>
         <div class="form-row" style="margin:10px 0 16px">
           <label class="chk-label"><input type="checkbox" id="cbt-publish" checked /> Publish so students can see it</label>
@@ -457,14 +454,13 @@
               <option>Economics</option>
               <option>Government</option>
               <option>Geography</option>
-              <option>Literature</option>
+              <option>Literature in English</option>
               <option>Agricultural Science</option>
               <option>Commerce</option>
-              <option>CRS</option>
-              <option>IRS</option>
+              <option>Christian Religious Studies</option>
+              <option>Islamic Religious Studies</option>
               <option>Further Mathematics</option>
-              <option>Civic Education</option>
-              <option>Basic Science</option>
+              <option>Citizenship and Heritage Studies (Civic)</option>
               <option>Basic Technology</option>
               <option>Social Studies</option>
             </select>
@@ -529,10 +525,66 @@
           <label><span>Title *</span><input id="lib-title" placeholder="e.g. SS2 Mathematics notes" /></label>
           <label><span>Author</span><input id="lib-author" placeholder="Optional" /></label>
           <label><span>Subject *</span>
-            <input id="lib-subject" type="text" placeholder="Type subject, e.g. Mathematics" autocomplete="off" />
+            <select id="lib-subject">
+              <option value="">Select subject</option>
+              <option>Agricultural Science</option>
+              <option>Arabic</option>
+              <option>Basic Technology</option>
+              <option>Beauty and Cosmetology</option>
+              <option>Biology</option>
+              <option>Business Studies</option>
+              <option>Catering and Craft Practice</option>
+              <option>Chemistry</option>
+              <option>Christian Religious Studies</option>
+              <option>Citizenship and Heritage Studies (Civic)</option>
+              <option>Commerce</option>
+              <option>Computer Hardware and GSM Repairs</option>
+              <option>Computer Studies/ICT</option>
+              <option>Cultural and Creative Art</option>
+              <option>Digital Technologies</option>
+              <option>Economics</option>
+              <option>English Language</option>
+              <option>Fashion Design</option>
+              <option>Fashion Design And Garment Making</option>
+              <option>Financial Accounting</option>
+              <option>Food and Nutrition</option>
+              <option>French</option>
+              <option>Further Mathematics</option>
+              <option>Geography</option>
+              <option>Government</option>
+              <option>Hausa</option>
+              <option>Home Economics</option>
+              <option>Horticulture And Crop Production</option>
+              <option>Ibibio</option>
+              <option>Igbo</option>
+              <option>Insurance</option>
+              <option>Intermediate Science</option>
+              <option>Islamic Religious Studies</option>
+              <option>Literature in English</option>
+              <option>Livestock Farming</option>
+              <option>Marketing</option>
+              <option>Mathematics</option>
+              <option>Music</option>
+              <option>Nigerian History</option>
+              <option>Physical and Health Education</option>
+              <option>Physics</option>
+              <option>Social Studies</option>
+              <option>Solar Photovoltaic Installation</option>
+              <option>Store Management</option>
+              <option>Technical Drawing</option>
+              <option>Visual Arts</option>
+              <option>Yoruba</option>
+            </select>
           </label>
-          <label><span>Exam board *</span>
+          <label><span>Class / level *</span>
             <select id="lib-exam">
+              <option value="">Select class</option>
+              <option>JSS1</option>
+              <option>JSS2</option>
+              <option>JSS3</option>
+              <option>SS1</option>
+              <option>SS2</option>
+              <option>SS3</option>
               <option>JAMB</option>
               <option>WAEC</option>
               <option>NECO</option>
@@ -552,6 +604,12 @@
           <label><span>Education level</span>
             <select id="lib-level">
               <option value="">All levels</option>
+              <option>JSS1</option>
+              <option>JSS2</option>
+              <option>JSS3</option>
+              <option>SS1</option>
+              <option>SS2</option>
+              <option>SS3</option>
               <option>Nursery</option>
               <option>Primary</option>
               <option>Junior Secondary</option>
@@ -890,11 +948,33 @@
         <p id="so-live-msg" class="cbt-hint small"></p>
       </div>
     </section>
+
+    <div class="panel" id="cbt-edit-panel" style="display:none;margin:16px 0 24px">
+      <h3 id="cbt-edit-heading">Preview / edit exam</h3>
+      <p class="cbt-hint small">Change text, upload diagrams, or remove any question you do not want. Save when done.</p>
+      <div class="form-grid">
+        <label><span>Exam title *</span><input id="cbt-edit-title" /></label>
+        <label><span>Duration (minutes)</span><input id="cbt-edit-duration" type="number" min="5" max="300" value="30" /></label>
+      </div>
+      <div class="form-row" style="margin:10px 0">
+        <label class="chk-label"><input type="checkbox" id="cbt-edit-publish" /> Published for students</label>
+      </div>
+      <div class="questions-header">
+        <h3>Questions</h3>
+        <button type="button" class="btn-sm" onclick="addCbtEditQuestion()">+ Add question</button>
+      </div>
+      <div id="cbt-edit-questions-list"></div>
+      <div class="cbt-actions" style="margin-top:14px">
+        <button type="button" class="btn-primary" id="btn-save-cbt-edit" onclick="saveCbtExamEdit()">Save changes</button>
+        <button type="button" class="btn-sm" onclick="cancelCbtExamEdit()">Close</button>
+        <p id="cbt-edit-error" class="error-msg"></p>
+      </div>
+    </div>
   </main>
 </div>
 
 <script src="js/admin-api.js?v=20260819s"></script>
-<script src="js/admin.js?v=20260819s"></script>
+<script src="js/admin.js?v=20260822a"></script>
 <script src="js/responsive.js?v=20260805e"></script>
 </body>
 </html>

@@ -229,30 +229,11 @@ async function deleteStudent(id) {
 }
 
 async function removeAllStudents() {
-  if (!confirm("DELETE ALL students permanently? This cannot be undone. Every student email will be removed.")) return;
-  try {
-    var r = await adminApi("/api/v1/admin/students/remove-all", { method: "POST" });
-    alert("Deleted " + (r.removed || 0) + " student(s).");
-    loadStudents();
-    refreshDashboardStats();
-  } catch (e) { alert(e.message); }
+  alert("Bulk delete is disabled so staff cannot wipe student accounts by mistake.");
 }
 
 async function purgeAllUsers() {
-  if (!confirm("DELETE ALL student, teacher, and kid accounts?\n\nEvery email will be permanently removed from the database. Admin accounts are kept. This cannot be undone.")) return;
-  try {
-    var r = await adminApi("/api/v1/admin/users/purge-all", { method: "POST" });
-    alert(
-      "Purged:\n" +
-      "Students: " + (r.students || 0) + "\n" +
-      "Teachers: " + (r.teachers || 0) + "\n" +
-      "Kids: " + (r.kind || 0) + "\n" +
-      "Total: " + (r.total || 0)
-    );
-    loadStudents();
-    loadTeachers();
-    refreshDashboardStats();
-  } catch (e) { alert(e.message); }
+  alert("Bulk delete is disabled so staff cannot wipe all accounts by mistake.");
 }
 
 /* ── Teachers ── */
@@ -995,6 +976,224 @@ function clearQuestionImage(idx) {
   renderCbtQuestions();
 }
 
+var cbtEditExamId = null;
+var cbtEditQuestions = [];
+
+function syncEditQuestionFromDom(idx) {
+  var q = cbtEditQuestions[idx];
+  if (!q) return;
+  var prefix = "eq-" + idx + "-";
+  var textEl = document.getElementById(prefix + "text");
+  if (!textEl) return;
+  q.question_text = textEl.value;
+  q.option_a = document.getElementById(prefix + "a").value;
+  q.option_b = document.getElementById(prefix + "b").value;
+  q.option_c = document.getElementById(prefix + "c").value;
+  q.option_d = document.getElementById(prefix + "d").value;
+  var correct = document.querySelector('input[name="' + prefix + 'correct"]:checked');
+  q.correct_option = correct ? correct.value : "A";
+  q.topic = (document.getElementById(prefix + "topic") || {}).value || "";
+  q.explanation = (document.getElementById(prefix + "explain") || {}).value || "";
+}
+
+function syncAllEditQuestions() {
+  for (var i = 0; i < cbtEditQuestions.length; i++) syncEditQuestionFromDom(i);
+}
+
+function renderCbtEditQuestions() {
+  var list = document.getElementById("cbt-edit-questions-list");
+  if (!list) return;
+  list.innerHTML = cbtEditQuestions.map(function (q, idx) {
+    var prefix = "eq-" + idx + "-";
+    var opts = ["A", "B", "C", "D"].map(function (letter) {
+      var key = "option_" + letter.toLowerCase();
+      var val = escHtml(q[key] || "");
+      var checked = q.correct_option === letter ? " checked" : "";
+      return '<div class="q-opt-row">' +
+        '<input type="radio" name="' + prefix + 'correct" value="' + letter + '"' + checked + ' />' +
+        '<input type="text" id="' + prefix + letter.toLowerCase() + '" placeholder="Option ' + letter + '" value="' + val + '" />' +
+        '</div>';
+    }).join("");
+    var imgBlock = q.image_url || q.image_preview
+      ? '<img src="' + escHtml(q.image_preview || q.image_url) + '" alt="Diagram" />' +
+        '<button type="button" class="btn-sm" style="margin-top:6px" onclick="clearEditQuestionImage(' + idx + ')">Remove diagram</button>'
+      : "";
+    var uploading = q.uploading ? '<div class="uploading">Uploading diagram…</div>' : "";
+    return '<div class="q-card" data-idx="' + idx + '">' +
+      '<div class="q-card-head"><strong>Question ' + (idx + 1) + '</strong>' +
+      (cbtEditQuestions.length > 1 ? '<button type="button" class="q-remove" onclick="removeCbtEditQuestion(' + idx + ')">Delete question</button>' : '') +
+      '</div>' +
+      '<textarea id="' + prefix + 'text" placeholder="Type the question here…">' + escHtml(q.question_text || "") + '</textarea>' +
+      '<div class="q-diagram">' +
+      '<label><span>Diagram / figure (optional) — JPEG, PNG, WebP</span>' +
+      '<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onchange="onEditQuestionImage(' + idx + ', this)" />' +
+      uploading + imgBlock + '</label></div>' +
+      '<div class="q-options">' + opts + '</div>' +
+      '<p class="cbt-hint small">Click the circle next to the correct answer.</p>' +
+      '<div class="q-meta">' +
+      '<input type="text" id="' + prefix + 'topic" placeholder="Topic (optional)" value="' + escHtml(q.topic || "") + '" />' +
+      '<input type="text" id="' + prefix + 'explain" placeholder="Explanation (optional)" value="' + escHtml(q.explanation || "") + '" />' +
+      '</div></div>';
+  }).join("");
+}
+
+function addCbtEditQuestion() {
+  syncAllEditQuestions();
+  cbtEditQuestions.push(emptyQuestion());
+  renderCbtEditQuestions();
+}
+
+function removeCbtEditQuestion(idx) {
+  if (cbtEditQuestions.length <= 1) {
+    alert("Keep at least one question, or leave the exam unpublished.");
+    return;
+  }
+  if (!confirm("Remove question " + (idx + 1) + "?")) return;
+  syncAllEditQuestions();
+  cbtEditQuestions.splice(idx, 1);
+  renderCbtEditQuestions();
+}
+
+async function onEditQuestionImage(idx, input) {
+  var file = input.files && input.files[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) { alert("Image must be under 5MB."); input.value = ""; return; }
+  syncAllEditQuestions();
+  cbtEditQuestions[idx].uploading = true;
+  cbtEditQuestions[idx].image_preview = URL.createObjectURL(file);
+  renderCbtEditQuestions();
+  try {
+    var url = await uploadCbtImage(file);
+    syncAllEditQuestions();
+    cbtEditQuestions[idx].image_url = url;
+    cbtEditQuestions[idx].image_preview = url;
+    cbtEditQuestions[idx].uploading = false;
+    renderCbtEditQuestions();
+  } catch (e) {
+    syncAllEditQuestions();
+    cbtEditQuestions[idx].uploading = false;
+    cbtEditQuestions[idx].image_url = "";
+    cbtEditQuestions[idx].image_preview = "";
+    renderCbtEditQuestions();
+    alert("Diagram upload failed: " + e.message);
+  }
+}
+
+function clearEditQuestionImage(idx) {
+  syncAllEditQuestions();
+  if (!cbtEditQuestions[idx]) return;
+  cbtEditQuestions[idx].image_url = "";
+  cbtEditQuestions[idx].image_preview = "";
+  cbtEditQuestions[idx].uploading = false;
+  renderCbtEditQuestions();
+}
+
+async function openCbtExamEdit(id) {
+  var panel = document.getElementById("cbt-edit-panel");
+  var err = document.getElementById("cbt-edit-error");
+  if (err) err.textContent = "";
+  try {
+    var data = await adminApi("/api/v1/admin/cbt/exams/" + encodeURIComponent(id));
+    cbtEditExamId = id;
+    document.getElementById("cbt-edit-title").value = data.title || "";
+    document.getElementById("cbt-edit-duration").value = data.duration_minutes || 30;
+    document.getElementById("cbt-edit-publish").checked = !!data.is_published;
+    document.getElementById("cbt-edit-heading").textContent =
+      "Preview / edit — " + (data.subject || "") + " (" + (data.exam_type || "") + ")";
+    cbtEditQuestions = (data.questions || []).map(function (q) {
+      return {
+        question_text: q.question_text || "",
+        option_a: q.option_a || "",
+        option_b: q.option_b || "",
+        option_c: q.option_c || "",
+        option_d: q.option_d || "",
+        correct_option: (q.correct_option || "A").toUpperCase().slice(0, 1),
+        topic: q.topic || "",
+        explanation: q.explanation || "",
+        image_url: q.image_url || "",
+        image_preview: q.image_url || "",
+        uploading: false,
+      };
+    });
+    if (!cbtEditQuestions.length) cbtEditQuestions = [emptyQuestion()];
+    renderCbtEditQuestions();
+    if (panel) {
+      panel.style.display = "block";
+      panel.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  } catch (e) {
+    alert(e.message || "Could not load exam");
+  }
+}
+
+function cancelCbtExamEdit() {
+  cbtEditExamId = null;
+  cbtEditQuestions = [];
+  var panel = document.getElementById("cbt-edit-panel");
+  if (panel) panel.style.display = "none";
+}
+
+async function saveCbtExamEdit() {
+  var err = document.getElementById("cbt-edit-error");
+  var btn = document.getElementById("btn-save-cbt-edit");
+  if (!cbtEditExamId) return;
+  if (err) err.textContent = "";
+  syncAllEditQuestions();
+  var title = (document.getElementById("cbt-edit-title").value || "").trim();
+  if (!title) {
+    if (err) err.textContent = "Enter an exam title.";
+    return;
+  }
+  var questions = [];
+  for (var i = 0; i < cbtEditQuestions.length; i++) {
+    var q = cbtEditQuestions[i];
+    if (!q.question_text.trim()) {
+      if (err) err.textContent = "Question " + (i + 1) + " is empty.";
+      return;
+    }
+    if (!q.option_a.trim() || !q.option_b.trim() || !q.option_c.trim() || !q.option_d.trim()) {
+      if (err) err.textContent = "Fill in all four options for question " + (i + 1) + ".";
+      return;
+    }
+    if (q.uploading) {
+      if (err) err.textContent = "Wait for the diagram on question " + (i + 1) + " to finish uploading.";
+      return;
+    }
+    var item = {
+      question_text: q.question_text.trim(),
+      option_a: q.option_a.trim(),
+      option_b: q.option_b.trim(),
+      option_c: q.option_c.trim(),
+      option_d: q.option_d.trim(),
+      correct_option: q.correct_option,
+    };
+    if ((q.topic || "").trim()) item.topic = q.topic.trim();
+    if ((q.explanation || "").trim()) item.explanation = q.explanation.trim();
+    if (q.image_url) item.image_url = q.image_url;
+    questions.push(item);
+  }
+  if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+  try {
+    await adminApi("/api/v1/admin/cbt/exams/" + encodeURIComponent(cbtEditExamId), {
+      method: "PUT",
+      body: JSON.stringify({
+        title: title,
+        duration_minutes: parseInt(document.getElementById("cbt-edit-duration").value, 10) || 30,
+        is_published: !!document.getElementById("cbt-edit-publish").checked,
+        questions: questions,
+      }),
+    });
+    alert("Exam updated.");
+    cancelCbtExamEdit();
+    if (currentAdminPage === "past-questions") loadPastQuestionsAdmin();
+    else loadCbt();
+  } catch (e) {
+    if (err) err.textContent = e.message;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Save changes"; }
+  }
+}
+
 async function loadCbt() {
   var el = document.getElementById("cbt-table");
   if (!el) return;
@@ -1013,8 +1212,8 @@ async function loadCbt() {
         return '<tr><td>' + escHtml(e.title) + '</td><td>' + escHtml(e.subject) + '</td>' +
           '<td>' + typeBadge + '</td><td>' + e.total_questions + '</td><td>' + pub + '</td>' +
           '<td class="actions">' +
+          '<button class="btn-sm" onclick="openCbtExamEdit(\'' + e.id + '\')">Preview / Edit</button>' +
           '<button class="btn-sm" onclick="toggleCbtPublish(\'' + e.id + '\')">Toggle publish</button>' +
-          '<button class="btn-sm danger" onclick="deleteCbt(\'' + e.id + '\')">Delete</button>' +
           '</td></tr>';
       }).join("") + '</tbody></table>';
   } catch (e) {
@@ -1037,8 +1236,8 @@ async function loadPastQuestionsAdmin() {
         return '<tr><td>' + escHtml(e.title) + '</td><td>' + escHtml(e.subject) + '</td>' +
           '<td><span class="badge ok">' + escHtml(e.exam_type) + '</span></td><td>' + e.total_questions + '</td><td>' + pub + '</td>' +
           '<td class="actions">' +
+          '<button class="btn-sm" onclick="openCbtExamEdit(\'' + e.id + '\')">Preview / Edit</button>' +
           '<button class="btn-sm" onclick="toggleCbtPublish(\'' + e.id + '\')">Toggle publish</button>' +
-          '<button class="btn-sm danger" onclick="deleteCbt(\'' + e.id + '\')">Delete</button>' +
           '</td></tr>';
       }).join("") + '</tbody></table>';
   } catch (e) {
