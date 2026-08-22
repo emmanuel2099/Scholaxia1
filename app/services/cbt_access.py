@@ -1,7 +1,6 @@
 """Paid annual CBT access and purchase-time subject locking."""
 from __future__ import annotations
 
-import json
 import logging
 import uuid
 from datetime import timedelta
