@@ -74,15 +74,27 @@ async function wakeAdminServer() {
 
 async function adminApi(path, options) {
   options = options || {};
+  var method = (options.method || "GET").toUpperCase();
+  var headers = Object.assign(
+    { Accept: "application/json", Authorization: "Bearer " + getAdminToken() },
+    options.headers || {}
+  );
+  var body = options.body;
+  if (body != null && typeof body === "object" && !(typeof FormData !== "undefined" && body instanceof FormData)) {
+    headers["Content-Type"] = headers["Content-Type"] || "application/json";
+    body = JSON.stringify(body);
+  } else if (body != null && typeof body === "string") {
+    headers["Content-Type"] = headers["Content-Type"] || "application/json";
+  }
+  if ((method === "GET" || method === "HEAD") && body == null) {
+    delete headers["Content-Type"];
+  }
   var res;
   try {
     res = await fetch(API_BASE + path, {
-      method: options.method || "GET",
-      headers: Object.assign(
-        { "Content-Type": "application/json", Authorization: "Bearer " + getAdminToken() },
-        options.headers || {}
-      ),
-      body: options.body,
+      method: method,
+      headers: headers,
+      body: body,
       signal: options.signal || fetchTimeout(options.timeout || 90000),
     });
   } catch (ex) {

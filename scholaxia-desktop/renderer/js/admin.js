@@ -117,6 +117,7 @@ function showAdminPage(page) {
   else if (page === "skills-enroll") loadSkillsEnrollments();
   else if (page === "cbt") { initCbtBuilder(); loadCbt(); }
   else if (page === "library") loadLibraryAdmin();
+  else if (page === "videos") loadAdminVideos();
   else if (page === "internal-exams") loadInternalExamsAdmin();
   else if (page === "recommendations") loadRecommendations();
   else if (page === "student-groups") loadPendingStudentGroups();
@@ -2285,6 +2286,78 @@ async function deleteLibraryBook(id) {
   try {
     await adminApi("/api/v1/admin/library/books/" + id, { method: "DELETE" });
     loadLibraryAdmin();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+/* ── Video Tutorials ── */
+async function loadAdminVideos() {
+  var el = document.getElementById("videos-table");
+  if (!el) return;
+  el.innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    var data = await adminApi("/api/v1/admin/videos");
+    var rows = (data && data.videos) || [];
+    if (!rows.length) {
+      el.innerHTML = '<div class="empty-state">No video tutorials yet. Publish one above.</div>';
+      return;
+    }
+    el.innerHTML =
+      '<table class="data-table"><thead><tr><th>Title</th><th>Subject</th><th>URL</th><th></th></tr></thead><tbody>' +
+      rows
+        .map(function (v) {
+          return (
+            "<tr><td>" +
+            escHtml(v.title) +
+            "</td><td>" +
+            escHtml(v.subject) +
+            "</td><td>" +
+            escHtml(v.video_url) +
+            '</td><td><button class="btn-sm danger" onclick="deleteAdminVideo(\'' +
+            v.id +
+            "')\">Remove</button></td></tr>"
+          );
+        })
+        .join("") +
+      "</tbody></table>";
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
+  }
+}
+
+async function createAdminVideo() {
+  var msg = document.getElementById("vid-msg");
+  var title = (document.getElementById("vid-title") && document.getElementById("vid-title").value || "").trim();
+  var subject = (document.getElementById("vid-subject") && document.getElementById("vid-subject").value || "General").trim();
+  var url = (document.getElementById("vid-url") && document.getElementById("vid-url").value || "").trim();
+  if (!title || !url) {
+    if (msg) msg.textContent = "Title and video URL are required.";
+    return;
+  }
+  try {
+    await adminApi("/api/v1/admin/videos", {
+      method: "POST",
+      body: JSON.stringify({
+        title: title,
+        subject: subject || "General",
+        video_url: url,
+      }),
+    });
+    if (document.getElementById("vid-title")) document.getElementById("vid-title").value = "";
+    if (document.getElementById("vid-url")) document.getElementById("vid-url").value = "";
+    if (msg) msg.textContent = "Published. Students can watch it under Video Tutorials.";
+    loadAdminVideos();
+  } catch (e) {
+    if (msg) msg.textContent = e.message || "Could not publish.";
+  }
+}
+
+async function deleteAdminVideo(id) {
+  if (!confirm("Remove this video tutorial?")) return;
+  try {
+    await adminApi("/api/v1/admin/videos/" + id, { method: "DELETE" });
+    loadAdminVideos();
   } catch (e) {
     alert(e.message);
   }

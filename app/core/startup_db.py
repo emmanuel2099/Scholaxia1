@@ -508,6 +508,36 @@ async def ensure_cbt_coupon_tables() -> None:
         logger.warning("cbt coupon schema skipped: %s", exc)
 
 
+async def ensure_videos_table() -> None:
+    """Ensure video tutorials table exists for admin publish + student watch."""
+    stmts = (
+        """
+        CREATE TABLE IF NOT EXISTS videos (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            title VARCHAR(255) NOT NULL,
+            subject VARCHAR(100) NOT NULL,
+            exam_type VARCHAR(20) NULL,
+            video_url VARCHAR(500) NOT NULL,
+            thumbnail_url VARCHAR(500) NULL,
+            duration_seconds INTEGER NULL,
+            uploaded_by UUID NULL REFERENCES users(id),
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_videos_subject ON videos (subject)",
+        "CREATE INDEX IF NOT EXISTS ix_videos_created_at ON videos (created_at)",
+    )
+    try:
+        async with engine.begin() as conn:
+            for stmt in stmts:
+                try:
+                    await conn.execute(text(stmt))
+                except Exception as exc:
+                    logger.warning("videos schema stmt skipped: %s", exc)
+    except Exception as exc:
+        logger.warning("ensure_videos_table failed: %s", exc)
+
+
 async def initialize_database() -> bool:
     """Create tables, run migrations, and seed. Returns False if DATABASE_URL is invalid."""
     global _db_initialized
@@ -537,6 +567,10 @@ async def initialize_database() -> bool:
         await ensure_cbt_coupon_tables()
     except Exception as exc:
         logger.warning("ensure_cbt_coupon_tables: %s", exc)
+    try:
+        await ensure_videos_table()
+    except Exception as exc:
+        logger.warning("ensure_videos_table: %s", exc)
     try:
         from app.services.cbt_access import ensure_student_entitlements_schema
         await ensure_student_entitlements_schema()

@@ -70,6 +70,7 @@
       <button class="nav-btn" data-page="skills-enroll" onclick="showAdminPage('skills-enroll')">Skills Enrollments</button>
       <button class="nav-btn" data-page="cbt" onclick="showAdminPage('cbt')">CBT Exams</button>
       <button class="nav-btn" data-page="library" onclick="showAdminPage('library')">Library</button>
+      <button class="nav-btn" data-page="videos" onclick="showAdminPage('videos')">Video Tutorials</button>
       <button class="nav-btn" data-page="internal-exams" onclick="showAdminPage('internal-exams')">Internal Exams</button>
       <button class="nav-btn" data-page="recommendations" onclick="showAdminPage('recommendations')">Recommendations</button>
       <div class="nav-section">Community</div>
@@ -456,6 +457,26 @@
         <p id="lib-form-ok" class="cbt-hint small" style="color:#3dd68c"></p>
       </div>
       <div id="library-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+    </section>
+
+    <section id="page-videos" class="admin-page">
+      <div class="page-head">
+        <h2>Video Tutorials</h2>
+        <button class="btn-sm" onclick="loadAdminVideos()">Refresh</button>
+      </div>
+      <p class="page-desc">Paste a YouTube (or other https) link. Students see it under <strong>Video Tutorials</strong> on the website and desktop app.</p>
+      <div class="panel" style="margin-bottom:1rem">
+        <div class="form-grid">
+          <label><span>Title *</span><input id="vid-title" placeholder="e.g. Mole concept — SS2 Chemistry" /></label>
+          <label><span>Subject</span><input id="vid-subject" placeholder="Chemistry" /></label>
+          <label><span>Video URL *</span><input id="vid-url" placeholder="https://www.youtube.com/watch?v=…" /></label>
+        </div>
+        <div class="form-row" style="margin-top:8px">
+          <button class="btn-primary" style="width:auto;padding:12px 22px" onclick="createAdminVideo()">Publish video</button>
+        </div>
+        <p id="vid-msg" class="cbt-hint small"></p>
+      </div>
+      <div id="videos-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
     </section>
 
     <section id="page-internal-exams" class="admin-page">

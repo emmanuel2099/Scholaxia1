@@ -1,15 +1,47 @@
 from typing import Optional
+import logging
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import get_db
+from app.core.database import get_db, engine
 from app.core.deps import require_admin, require_student_or_kind
 from app.models.content import Video
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Video tutorials"])
+
+
+async def ensure_videos_table() -> None:
+    stmts = (
+        """
+        CREATE TABLE IF NOT EXISTS videos (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            title VARCHAR(255) NOT NULL,
+            subject VARCHAR(100) NOT NULL,
+            exam_type VARCHAR(20) NULL,
+            video_url VARCHAR(500) NOT NULL,
+            thumbnail_url VARCHAR(500) NULL,
+            duration_seconds INTEGER NULL,
+            uploaded_by UUID NULL REFERENCES users(id),
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_videos_subject ON videos (subject)",
+        "CREATE INDEX IF NOT EXISTS ix_videos_created_at ON videos (created_at)",
+    )
+    try:
+        async with engine.begin() as conn:
+            for stmt in stmts:
+                try:
+                    await conn.execute(text(stmt))
+                except Exception as exc:
+                    logger.warning("videos schema stmt skipped: %s", exc)
+    except Exception as exc:
+        logger.warning("ensure_videos_table failed: %s", exc)
 
 
 def _video_dict(row: Video) -> dict:
@@ -38,6 +70,7 @@ async def list_videos(
     current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
+    await ensure_videos_table()
     rows = (
         await db.execute(select(Video).order_by(Video.created_at.desc()).limit(200))
     ).scalars().all()
@@ -49,6 +82,7 @@ async def admin_list_videos(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    await ensure_videos_table()
     rows = (
         await db.execute(select(Video).order_by(Video.created_at.desc()).limit(200))
     ).scalars().all()
@@ -61,16 +95,22 @@ async def create_video(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    await ensure_videos_table()
     url = payload.video_url.strip()
     if not url.startswith(("http://", "https://")):
         raise HTTPException(status_code=400, detail="video_url must be an http(s) link")
+    uploaded_by = None
+    try:
+        uploaded_by = uuid.UUID(str(current_user["sub"]))
+    except Exception:
+        uploaded_by = None
     row = Video(
         title=payload.title.strip(),
         subject=(payload.subject or "General").strip(),
         exam_type=payload.exam_type,
         video_url=url,
         thumbnail_url=payload.thumbnail_url,
-        uploaded_by=current_user["sub"],
+        uploaded_by=uploaded_by,
     )
     db.add(row)
     await db.flush()

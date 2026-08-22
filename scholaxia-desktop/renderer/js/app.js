@@ -870,19 +870,22 @@ async function loadStudyMaterials() {
   try {
     var data = await api("/api/v1/videos");
     var rows = (data && data.videos) || data || [];
+    if (!Array.isArray(rows)) rows = [];
     if (!rows.length) {
-      el.innerHTML = '<div class="empty">No video tutorials yet. Admin will post lessons here.</div>';
+      el.innerHTML = '<div class="empty">No video tutorials yet. Admin will post YouTube lessons here.</div>';
       return;
     }
     el.innerHTML = rows.map(function (r) {
-      var url = String(r.video_url || "");
-      var m = url.match(/(?:youtu\.be\/|v=)([A-Za-z0-9_-]{6,})/);
-      var embed = m ? "https://www.youtube.com/embed/" + m[1] : url;
+      var url = String(r.video_url || r.url || "");
+      var embed = youtubeEmbedUrl(url);
       return (
         '<article class="study-mat-card">' +
-        '<div class="study-mat-body"><h4>' + escHtml(r.title || "Video") + '</h4>' +
+        '<div class="study-mat-body"><h4>' + escHtml(r.title || "Video") + "</h4>" +
         '<p class="study-mat-meta">' + escHtml(r.subject || "Tutorial") + "</p>" +
-        '<iframe src="' + mpAttrSafe(embed) + '" title="' + escHtml(r.title || "Video") + '" allowfullscreen style="width:100%;min-height:220px;border:0;border-radius:12px"></iframe>' +
+        (embed
+          ? '<iframe src="' + mpAttrSafe(embed) + '" title="' + escHtml(r.title || "Video") +
+            '" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen style="width:100%;min-height:240px;border:0;border-radius:12px"></iframe>'
+          : '<p class="study-mat-meta">Open: <a href="' + mpAttrSafe(url) + '" target="_blank" rel="noopener">' + escHtml(url) + "</a></p>") +
         "</div></article>"
       );
     }).join("");
@@ -890,6 +893,18 @@ async function loadStudyMaterials() {
     var msg = typeof networkErrorMessage === "function" ? networkErrorMessage(e) : e.message;
     el.innerHTML = '<div class="empty">' + escHtml(msg) + "</div>";
   }
+}
+function youtubeEmbedUrl(url) {
+  var u = String(url || "").trim();
+  if (!u) return "";
+  var m =
+    u.match(/youtu\.be\/([A-Za-z0-9_-]{6,})/) ||
+    u.match(/[?&]v=([A-Za-z0-9_-]{6,})/) ||
+    u.match(/youtube\.com\/embed\/([A-Za-z0-9_-]{6,})/) ||
+    u.match(/youtube\.com\/shorts\/([A-Za-z0-9_-]{6,})/);
+  if (m) return "https://www.youtube.com/embed/" + m[1];
+  if (/^https?:\/\//i.test(u)) return u;
+  return "";
 }
 function mpAttrSafe(s) {
   return String(s || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
