@@ -208,6 +208,9 @@ async def start_practice(
     current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
+    import logging
+
+    log = logging.getLogger("cbt_practice")
     try:
         attempt = await cbt_engine.start_practice_attempt(
             db,
@@ -215,8 +218,7 @@ async def start_practice(
             exam_type=payload.exam_type,
             subjects=payload.subjects,
         )
-        await db.commit()
-        await db.refresh(attempt)
+        await db.flush()
     except PermissionError:
         raise HTTPException(
             status_code=402,
@@ -229,13 +231,20 @@ async def start_practice(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
+        log.exception("practice start failed")
         try:
             await db.rollback()
         except Exception:
             pass
+        raw = str(exc) or exc.__class__.__name__
+        if "timeout" in raw.lower() or "canceling statement" in raw.lower():
+            raise HTTPException(
+                status_code=504,
+                detail="Building the paper timed out. Tap Start again.",
+            ) from exc
         raise HTTPException(
             status_code=500,
-            detail="Could not build CBT paper. Try again in a moment.",
+            detail=f"Could not build CBT paper: {raw[:220]}",
         ) from exc
     return cbt_engine.attempt_client_dict(attempt)
 

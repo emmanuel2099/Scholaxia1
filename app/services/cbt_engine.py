@@ -7,9 +7,8 @@ import uuid
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import select, func
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
 
 from app.core.database import engine
 from app.core.datetime_utils import naive_utc_now
@@ -163,6 +162,35 @@ def _norm_subject(value: str | None) -> str:
     return re.sub(r"\s+", " ", (value or "").strip().lower())
 
 
+def _subject_keys(subject: str) -> set[str]:
+    """Loose matching so Maths ↔ Mathematics, CRS aliases, etc."""
+    n = _norm_subject(subject)
+    keys = {n} if n else set()
+    if not n:
+        return keys
+    if n in {"math", "maths", "mathematics", "further mathematics", "addmath"} or "math" in n:
+        keys |= {"math", "maths", "mathematics"}
+    if n in ENGLISH_ALIASES or "english" in n:
+        keys |= set(ENGLISH_ALIASES) | {n}
+    if n in {"crs", "crk", "christian religious studies", "christian religious knowledge"} or (
+        "christian" in n and "relig" in n
+    ):
+        keys |= {"crs", "crk", "christian religious studies", "christian religious knowledge"}
+    if n in {"irs", "irk", "islamic religious studies", "islamic studies"} or (
+        "islam" in n and "relig" in n
+    ):
+        keys |= {"irs", "irk", "islamic religious studies", "islamic studies"}
+    if n in {"government", "govt"}:
+        keys |= {"government", "govt"}
+    if n in {"biology", "agric", "agricultural science"} and "agric" in n:
+        keys |= {"agricultural science", "agric", "agriculture"}
+    return keys
+
+
+def subjects_match(a: str | None, b: str | None) -> bool:
+    return bool(_subject_keys(a or "") & _subject_keys(b or ""))
+
+
 def is_english_subject(subject: str) -> bool:
     return _norm_subject(subject) in ENGLISH_ALIASES or "english" in _norm_subject(subject)
 
@@ -193,17 +221,26 @@ def _shuffle_options(
 
 
 async def _published_practice_exams(db: AsyncSession, exam_type: str) -> list[CBTExam]:
+    from app.models.cbt import normalize_paper_kind
+
     board = normalize_board(exam_type)
     exams = (
         await db.execute(
             select(CBTExam).where(
                 CBTExam.is_published.is_(True),
                 CBTExam.is_school_exam.is_(False),
-                CBTExam.paper_kind == "cbt_practice",
             )
         )
     ).scalars().all()
-    return [ex for ex in exams if normalize_board(ex.exam_type) == board]
+    out = []
+    for ex in exams:
+        if normalize_board(ex.exam_type) != board:
+            continue
+        # Practice bank = anything that is not past_questions
+        if normalize_paper_kind(getattr(ex, "paper_kind", None)) == "past_questions":
+            continue
+        out.append(ex)
+    return out
 
 
 async def _bank_questions_for(
@@ -213,22 +250,29 @@ async def _bank_questions_for(
     practice_exams: list[CBTExam] | None = None,
     limit: int | None = None,
 ) -> list[CBTQuestion]:
-    from sqlalchemy import func
-
+    """Load a capped set of questions. Never use ORDER BY random() — it times out on Render."""
     exams = practice_exams if practice_exams is not None else await _published_practice_exams(db, exam_type)
-    exam_ids = []
-    want = _norm_subject(subject)
-    for ex in exams:
-        sub = _norm_subject(ex.subject)
-        if sub == want or (is_english_subject(subject) and is_english_subject(ex.subject)):
-            exam_ids.append(ex.id)
+    exam_ids = [ex.id for ex in exams if subjects_match(ex.subject, subject)]
     if not exam_ids:
         return []
-    stmt = select(CBTQuestion).where(CBTQuestion.exam_id.in_(exam_ids))
-    # Only pull what we need for this section — loading the full bank was hanging Start
+
+    # Fast path: ids only, then sample in Python, then fetch rows
+    id_cap = 600
     if limit and limit > 0:
-        stmt = stmt.order_by(func.random()).limit(max(limit * 3, limit + 10))
-    rows = (await db.execute(stmt)).scalars().all()
+        id_cap = min(max(int(limit) * 8, 120), 600)
+    id_rows = (
+        await db.execute(
+            select(CBTQuestion.id).where(CBTQuestion.exam_id.in_(exam_ids)).limit(id_cap)
+        )
+    ).scalars().all()
+    ids = list(id_rows)
+    if not ids:
+        return []
+    if limit and len(ids) > limit:
+        ids = random.sample(ids, int(limit))
+    rows = (
+        await db.execute(select(CBTQuestion).where(CBTQuestion.id.in_(ids)))
+    ).scalars().all()
     return list(rows)
 
 
@@ -242,16 +286,20 @@ async def build_section(
     randomize_options: bool,
     practice_exams: list[CBTExam] | None = None,
 ) -> dict[str, Any]:
+    need = max(int(count or 1), 1)
     bank = await _bank_questions_for(
         db,
         exam_type,
         subject,
         practice_exams=practice_exams,
-        limit=max(int(count or 1), 1),
+        limit=need,
     )
     if not bank:
-        raise ValueError(f"No questions in bank for {exam_type} / {subject}. Upload practice questions first.")
-    pick_n = min(count, len(bank))
+        raise ValueError(
+            f"No questions in bank for {exam_type} / {subject}. "
+            "In Admin → CBT, upload/publish practice questions for this subject."
+        )
+    pick_n = min(need, len(bank))
     chosen = random.sample(bank, pick_n) if randomize_questions else bank[:pick_n]
     questions_out = []
     for q in chosen:
@@ -259,9 +307,9 @@ async def build_section(
         questions_out.append(
             {
                 "id": str(q.id),
-                "question_text": q.question_text,
+                "question_text": q.question_text or "",
                 "options": options,
-                "correct_key": correct_key,  # stripped for client pack
+                "correct_key": correct_key,
                 "topic": q.topic,
                 "image_url": q.image_url,
             }
@@ -318,8 +366,20 @@ async def start_practice_attempt(
         raise ValueError("Exam type must be JAMB, WAEC, or NECO")
 
     sid = uuid.UUID(str(student_id))
-    if not await has_board_access(db, str(sid), board):
+    # Access check must never poison the DB transaction used to build the paper
+    try:
+        allowed = await has_board_access(db, str(sid), board)
+    except Exception:
+        logger.exception("has_board_access failed during practice start")
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        allowed = False
+    if not allowed:
         raise PermissionError(f"{board}_PACKAGE_REQUIRED")
+
+    await ensure_cbt_settings_schema()
 
     # Resume in-progress attempt only if time remains; otherwise close it and start fresh
     if settings.get("allow_resume"):

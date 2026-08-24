@@ -450,6 +450,18 @@ async def has_board_access(
                 return True
     except Exception:
         logger.warning("has_board_access fast path failed", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception:
+            pass
 
-    access = await active_cbt_access(db, user_id)
-    return want in set(access["boards"])
+    try:
+        access = await active_cbt_access(db, user_id)
+        return want in set(access["boards"])
+    except Exception:
+        logger.warning("has_board_access slow path failed", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        return False
