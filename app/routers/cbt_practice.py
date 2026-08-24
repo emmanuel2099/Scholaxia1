@@ -117,7 +117,9 @@ async def practice_home(
         settings = {
             "cbt_enabled": True,
             "jamb_subjects_required": 4,
-            "jamb_duration_minutes": 180,
+            "jamb_duration_minutes": 60,
+            "jamb_questions_per_subject": 40,
+            "jamb_english_questions": 40,
             "waec_duration_minutes": 60,
             "neco_duration_minutes": 60,
         }
@@ -159,7 +161,9 @@ async def practice_home(
         "settings": {
             "cbt_enabled": bool(settings.get("cbt_enabled", True)),
             "jamb_subjects_required": int(settings.get("jamb_subjects_required") or 4),
-            "jamb_duration_minutes": int(settings.get("jamb_duration_minutes") or 180),
+            "jamb_duration_minutes": int(settings.get("jamb_duration_minutes") or 60),
+            "jamb_questions_per_subject": int(settings.get("jamb_questions_per_subject") or 40),
+            "jamb_english_questions": int(settings.get("jamb_english_questions") or 40),
             "waec_duration_minutes": int(settings.get("waec_duration_minutes") or 60),
             "neco_duration_minutes": int(settings.get("neco_duration_minutes") or 60),
         },
@@ -173,6 +177,28 @@ async def practice_home(
             "ssce_subjects": ssce_subjects,
             "ssce_exam_type": ssce_exam,
         },
+    }
+
+
+@router.get("/cbt/practice/settings")
+async def practice_settings_public(
+    current_user: dict = Depends(require_student_or_kind),
+    db: AsyncSession = Depends(get_db),
+):
+    """Student-facing CBT settings used for preview (duration, question counts)."""
+    settings = await cbt_engine.get_cbt_settings(db)
+    return {
+        "settings": {
+            "cbt_enabled": bool(settings.get("cbt_enabled", True)),
+            "jamb_subjects_required": int(settings.get("jamb_subjects_required") or 4),
+            "jamb_duration_minutes": int(settings.get("jamb_duration_minutes") or 60),
+            "jamb_questions_per_subject": int(settings.get("jamb_questions_per_subject") or 40),
+            "jamb_english_questions": int(settings.get("jamb_english_questions") or 40),
+            "waec_duration_minutes": int(settings.get("waec_duration_minutes") or 60),
+            "waec_questions_per_subject": int(settings.get("waec_questions_per_subject") or 50),
+            "neco_duration_minutes": int(settings.get("neco_duration_minutes") or 60),
+            "neco_questions_per_subject": int(settings.get("neco_questions_per_subject") or 50),
+        }
     }
 
 
