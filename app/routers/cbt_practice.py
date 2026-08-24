@@ -110,21 +110,45 @@ async def practice_home(
     db: AsyncSession = Depends(get_db),
 ):
     """Exam-type first home: JAMB | WAEC | NECO with access + profile subjects."""
-    settings = await cbt_engine.get_cbt_settings(db)
     sid = current_user["sub"]
-    profile = (
-        await db.execute(select(StudentProfile).where(StudentProfile.user_id == sid))
-    ).scalar_one_or_none()
-    jamb_subjects = list((profile.jamb_subjects if profile else None) or [])
-    ssce_subjects = list(
-        (profile.ssce_subjects if profile else None)
-        or (profile.selected_subjects if profile else None)
-        or []
-    )
-    ssce_exam = (profile.ssce_exam_type if profile else None) or "WAEC"
+    try:
+        settings = await cbt_engine.get_cbt_settings(db)
+    except Exception:
+        settings = {
+            "cbt_enabled": True,
+            "jamb_subjects_required": 4,
+            "jamb_duration_minutes": 180,
+            "waec_duration_minutes": 60,
+            "neco_duration_minutes": 60,
+        }
+
+    jamb_subjects: list = []
+    ssce_subjects: list = []
+    ssce_exam = "WAEC"
+    try:
+        profile = (
+            await db.execute(select(StudentProfile).where(StudentProfile.user_id == sid))
+        ).scalar_one_or_none()
+        if profile:
+            jamb_subjects = list(getattr(profile, "jamb_subjects", None) or [])
+            ssce_subjects = list(
+                getattr(profile, "ssce_subjects", None)
+                or getattr(profile, "selected_subjects", None)
+                or []
+            )
+            ssce_exam = getattr(profile, "ssce_exam_type", None) or "WAEC"
+    except Exception:
+        try:
+            await db.rollback()
+        except Exception:
+            pass
 
     async def board_block(board: str) -> dict:
-        has = await has_board_access(db, sid, board)
+        has = False
+        try:
+            has = await has_board_access(db, sid, board)
+        except Exception:
+            has = False
         return {
             "exam_type": board,
             "has_access": has,
@@ -133,11 +157,11 @@ async def practice_home(
 
     return {
         "settings": {
-            "cbt_enabled": settings["cbt_enabled"],
-            "jamb_subjects_required": settings["jamb_subjects_required"],
-            "jamb_duration_minutes": settings["jamb_duration_minutes"],
-            "waec_duration_minutes": settings["waec_duration_minutes"],
-            "neco_duration_minutes": settings["neco_duration_minutes"],
+            "cbt_enabled": bool(settings.get("cbt_enabled", True)),
+            "jamb_subjects_required": int(settings.get("jamb_subjects_required") or 4),
+            "jamb_duration_minutes": int(settings.get("jamb_duration_minutes") or 180),
+            "waec_duration_minutes": int(settings.get("waec_duration_minutes") or 60),
+            "neco_duration_minutes": int(settings.get("neco_duration_minutes") or 60),
         },
         "exam_types": [
             await board_block("JAMB"),
