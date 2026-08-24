@@ -293,6 +293,8 @@ async def start_practice_attempt(
     exam_type: str,
     subjects: list[str],
 ) -> CbtPracticeAttempt:
+    from app.models.user import StudentProfile
+
     settings = await get_cbt_settings(db)
     if not settings.get("cbt_enabled", True):
         raise ValueError("CBT practice is currently disabled by admin.")
@@ -323,10 +325,25 @@ async def start_practice_attempt(
             return existing
 
     subjects_clean = [s.strip() for s in subjects if (s or "").strip()]
+
+    # Prefer student profile subjects (exam package), not a per-start selection form
+    try:
+        profile = (
+            await db.execute(select(StudentProfile).where(StudentProfile.user_id == sid))
+        ).scalar_one_or_none()
+    except Exception:
+        profile = None
+
     if board == "JAMB":
         need = int(settings["jamb_subjects_required"] or 4)
+        profile_jamb = list((profile.jamb_subjects if profile else None) or [])
+        if len(subjects_clean) != need and len(profile_jamb) == need:
+            subjects_clean = [str(s).strip() for s in profile_jamb if str(s).strip()]
         if len(subjects_clean) != need:
-            raise ValueError(f"Select exactly {need} JAMB subjects.")
+            raise ValueError(
+                f"Your profile must have exactly {need} JAMB subjects before starting CBT. "
+                "Update Profile → Exam subjects, then try again."
+            )
         duration = int(settings["jamb_duration_minutes"] or 180)
         sections = []
         for sub in subjects_clean:
@@ -346,8 +363,23 @@ async def start_practice_attempt(
                 )
             )
     else:
+        profile_ssce = list(
+            (profile.ssce_subjects if profile else None)
+            or (profile.selected_subjects if profile else None)
+            or []
+        )
+        if not subjects_clean and len(profile_ssce) == 1:
+            subjects_clean = [str(profile_ssce[0]).strip()]
         if len(subjects_clean) != 1:
             raise ValueError(f"Select one {board} subject to practice.")
+        # Soft-check: subject should be one the student registered
+        if profile_ssce:
+            want = subjects_clean[0].strip().lower()
+            allowed = {str(s).strip().lower() for s in profile_ssce}
+            if want not in allowed:
+                raise ValueError(
+                    f"{subjects_clean[0]} is not in your registered {board} subjects. Update your profile."
+                )
         duration = int(
             settings["waec_duration_minutes"] if board == "WAEC" else settings["neco_duration_minutes"]
         )
