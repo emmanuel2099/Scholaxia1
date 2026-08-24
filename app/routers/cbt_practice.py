@@ -215,6 +215,8 @@ async def start_practice(
             exam_type=payload.exam_type,
             subjects=payload.subjects,
         )
+        await db.commit()
+        await db.refresh(attempt)
     except PermissionError:
         raise HTTPException(
             status_code=402,
@@ -226,6 +228,15 @@ async def start_practice(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        raise HTTPException(
+            status_code=500,
+            detail="Could not build CBT paper. Try again in a moment.",
+        ) from exc
     return cbt_engine.attempt_client_dict(attempt)
 
 

@@ -211,7 +211,10 @@ async def _bank_questions_for(
     exam_type: str,
     subject: str,
     practice_exams: list[CBTExam] | None = None,
+    limit: int | None = None,
 ) -> list[CBTQuestion]:
+    from sqlalchemy import func
+
     exams = practice_exams if practice_exams is not None else await _published_practice_exams(db, exam_type)
     exam_ids = []
     want = _norm_subject(subject)
@@ -221,9 +224,11 @@ async def _bank_questions_for(
             exam_ids.append(ex.id)
     if not exam_ids:
         return []
-    rows = (
-        await db.execute(select(CBTQuestion).where(CBTQuestion.exam_id.in_(exam_ids)))
-    ).scalars().all()
+    stmt = select(CBTQuestion).where(CBTQuestion.exam_id.in_(exam_ids))
+    # Only pull what we need for this section — loading the full bank was hanging Start
+    if limit and limit > 0:
+        stmt = stmt.order_by(func.random()).limit(max(limit * 3, limit + 10))
+    rows = (await db.execute(stmt)).scalars().all()
     return list(rows)
 
 
@@ -237,7 +242,13 @@ async def build_section(
     randomize_options: bool,
     practice_exams: list[CBTExam] | None = None,
 ) -> dict[str, Any]:
-    bank = await _bank_questions_for(db, exam_type, subject, practice_exams=practice_exams)
+    bank = await _bank_questions_for(
+        db,
+        exam_type,
+        subject,
+        practice_exams=practice_exams,
+        limit=max(int(count or 1), 1),
+    )
     if not bank:
         raise ValueError(f"No questions in bank for {exam_type} / {subject}. Upload practice questions first.")
     pick_n = min(count, len(bank))
@@ -251,7 +262,6 @@ async def build_section(
                 "question_text": q.question_text,
                 "options": options,
                 "correct_key": correct_key,  # stripped for client pack
-                "explanation": q.explanation,
                 "topic": q.topic,
                 "image_url": q.image_url,
             }
@@ -359,7 +369,7 @@ async def start_practice_attempt(
                 f"Your profile must have exactly {need} JAMB subjects before starting CBT. "
                 "Update Profile → Exam subjects, then try again."
             )
-        duration = int(settings["jamb_duration_minutes"] or 180)
+        duration = int(settings["jamb_duration_minutes"] or 60)
         practice_exams = await _published_practice_exams(db, board)
         sections = []
         for sub in subjects_clean:
