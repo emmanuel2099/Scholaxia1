@@ -192,13 +192,8 @@ def _shuffle_options(
     return options, correct_key
 
 
-async def _bank_questions_for(
-    db: AsyncSession,
-    exam_type: str,
-    subject: str,
-) -> list[CBTQuestion]:
+async def _published_practice_exams(db: AsyncSession, exam_type: str) -> list[CBTExam]:
     board = normalize_board(exam_type)
-    # Pull from all published practice papers for this board+subject (acts as question bank)
     exams = (
         await db.execute(
             select(CBTExam).where(
@@ -208,11 +203,19 @@ async def _bank_questions_for(
             )
         )
     ).scalars().all()
+    return [ex for ex in exams if normalize_board(ex.exam_type) == board]
+
+
+async def _bank_questions_for(
+    db: AsyncSession,
+    exam_type: str,
+    subject: str,
+    practice_exams: list[CBTExam] | None = None,
+) -> list[CBTQuestion]:
+    exams = practice_exams if practice_exams is not None else await _published_practice_exams(db, exam_type)
     exam_ids = []
     want = _norm_subject(subject)
     for ex in exams:
-        if normalize_board(ex.exam_type) != board:
-            continue
         sub = _norm_subject(ex.subject)
         if sub == want or (is_english_subject(subject) and is_english_subject(ex.subject)):
             exam_ids.append(ex.id)
@@ -232,8 +235,9 @@ async def build_section(
     count: int,
     randomize_questions: bool,
     randomize_options: bool,
+    practice_exams: list[CBTExam] | None = None,
 ) -> dict[str, Any]:
-    bank = await _bank_questions_for(db, exam_type, subject)
+    bank = await _bank_questions_for(db, exam_type, subject, practice_exams=practice_exams)
     if not bank:
         raise ValueError(f"No questions in bank for {exam_type} / {subject}. Upload practice questions first.")
     pick_n = min(count, len(bank))
@@ -356,6 +360,7 @@ async def start_practice_attempt(
                 "Update Profile → Exam subjects, then try again."
             )
         duration = int(settings["jamb_duration_minutes"] or 180)
+        practice_exams = await _published_practice_exams(db, board)
         sections = []
         for sub in subjects_clean:
             n = (
@@ -371,6 +376,7 @@ async def start_practice_attempt(
                     count=n,
                     randomize_questions=bool(settings["randomize_questions"]),
                     randomize_options=bool(settings["randomize_options"]),
+                    practice_exams=practice_exams,
                 )
             )
     else:
@@ -399,6 +405,7 @@ async def start_practice_attempt(
             if board == "WAEC"
             else settings["neco_questions_per_subject"]
         )
+        practice_exams = await _published_practice_exams(db, board)
         sections = [
             await build_section(
                 db,
@@ -407,6 +414,7 @@ async def start_practice_attempt(
                 count=count,
                 randomize_questions=bool(settings["randomize_questions"]),
                 randomize_options=bool(settings["randomize_options"]),
+                practice_exams=practice_exams,
             )
         ]
 
