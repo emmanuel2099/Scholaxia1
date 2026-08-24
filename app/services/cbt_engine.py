@@ -348,6 +348,29 @@ def client_sections(sections: list[dict]) -> list[dict]:
     return out
 
 
+def light_sections(sections: list[dict]) -> list[dict]:
+    """Subject stubs only — full questions load per section on demand."""
+    out = []
+    for sec in sections or []:
+        qs = sec.get("questions") or []
+        out.append(
+            {
+                "subject": sec.get("subject"),
+                "total": int(sec.get("total") or len(qs) or 0),
+                "completed": bool(sec.get("completed")),
+                "questions": [],
+            }
+        )
+    return out
+
+
+def client_section_at(sections: list[dict], index: int) -> dict[str, Any]:
+    secs = list(sections or [])
+    if index < 0 or index >= len(secs):
+        raise IndexError("section index out of range")
+    return client_sections([secs[index]])[0]
+
+
 async def start_practice_attempt(
     db: AsyncSession,
     *,
@@ -506,17 +529,25 @@ async def start_practice_attempt(
     return attempt
 
 
-def attempt_client_dict(attempt: CbtPracticeAttempt) -> dict[str, Any]:
+def attempt_client_dict(
+    attempt: CbtPracticeAttempt,
+    *,
+    include_questions: bool = True,
+) -> dict[str, Any]:
     now = naive_utc_now()
     ends = attempt.ends_at
     seconds_left = None
     if ends:
         seconds_left = max(0, int((ends - now).total_seconds()))
+    raw_sections = attempt.sections or []
+    sections = (
+        client_sections(raw_sections) if include_questions else light_sections(raw_sections)
+    )
     return {
         "attempt_id": str(attempt.id),
         "exam_type": attempt.exam_type,
         "subjects": attempt.subjects or [],
-        "sections": client_sections(attempt.sections or []),
+        "sections": sections,
         "section_index": int(attempt.section_index or 0),
         "status": attempt.status,
         "duration_minutes": attempt.duration_minutes,
@@ -524,4 +555,5 @@ def attempt_client_dict(attempt: CbtPracticeAttempt) -> dict[str, Any]:
         "ends_at": attempt.ends_at.isoformat() if attempt.ends_at else None,
         "seconds_left": seconds_left,
         "answers": attempt.answers or {},
+        "questions_deferred": not include_questions,
     }

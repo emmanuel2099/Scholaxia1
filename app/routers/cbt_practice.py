@@ -246,7 +246,8 @@ async def start_practice(
             status_code=500,
             detail=f"Could not build CBT paper: {raw[:220]}",
         ) from exc
-    return cbt_engine.attempt_client_dict(attempt)
+    # Light payload: open exam UI immediately; questions load per subject
+    return cbt_engine.attempt_client_dict(attempt, include_questions=False)
 
 
 @router.get("/cbt/practice/attempts/{attempt_id}")
@@ -256,7 +257,21 @@ async def get_practice_attempt(
     db: AsyncSession = Depends(get_db),
 ):
     attempt = await _load_own_attempt(db, attempt_id, current_user["sub"])
-    return cbt_engine.attempt_client_dict(attempt)
+    return cbt_engine.attempt_client_dict(attempt, include_questions=False)
+
+
+@router.get("/cbt/practice/attempts/{attempt_id}/sections/{section_index}")
+async def get_practice_section(
+    attempt_id: str,
+    section_index: int,
+    current_user: dict = Depends(require_student_or_kind),
+    db: AsyncSession = Depends(get_db),
+):
+    attempt = await _load_own_attempt(db, attempt_id, current_user["sub"])
+    try:
+        return cbt_engine.client_section_at(attempt.sections or [], int(section_index))
+    except (IndexError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail="Section not found") from exc
 
 
 @router.post("/cbt/practice/attempts/{attempt_id}/answers")
