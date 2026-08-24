@@ -307,7 +307,7 @@ async def start_practice_attempt(
     if not await has_board_access(db, str(sid), board):
         raise PermissionError(f"{board}_PACKAGE_REQUIRED")
 
-    # Resume in-progress attempt if allowed
+    # Resume in-progress attempt only if time remains; otherwise close it and start fresh
     if settings.get("allow_resume"):
         existing = (
             await db.execute(
@@ -322,7 +322,18 @@ async def start_practice_attempt(
             )
         ).scalar_one_or_none()
         if existing:
-            return existing
+            now_check = naive_utc_now()
+            ends = existing.ends_at
+            still_valid = True
+            if ends is not None:
+                # Treat already-expired attempts as abandoned so coupon/start opens a real exam
+                if ends <= now_check:
+                    existing.status = "abandoned"
+                    existing.submitted_at = now_check
+                    await db.flush()
+                    still_valid = False
+            if still_valid:
+                return existing
 
     subjects_clean = [s.strip() for s in subjects if (s or "").strip()]
 
