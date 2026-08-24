@@ -11,7 +11,7 @@ var LIBRARY_TABS = [
   { id: "books", label: "Books" },
   { id: "study", label: "Study Materials" },
   { id: "scheme", label: "Scheme of Work" },
-  { id: "notes", label: "Notes" },
+  { id: "notes", label: "Lesson Notes" },
 ];
 
 function libraryPriceTag(item) {

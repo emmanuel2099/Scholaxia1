@@ -22,6 +22,7 @@ async def ensure_videos_table() -> None:
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             title VARCHAR(255) NOT NULL,
             subject VARCHAR(100) NOT NULL,
+            tutor_name VARCHAR(150) NULL,
             exam_type VARCHAR(20) NULL,
             video_url VARCHAR(500) NOT NULL,
             thumbnail_url VARCHAR(500) NULL,
@@ -30,6 +31,7 @@ async def ensure_videos_table() -> None:
             created_at TIMESTAMP DEFAULT NOW()
         )
         """,
+        "ALTER TABLE videos ADD COLUMN IF NOT EXISTS tutor_name VARCHAR(150)",
         "CREATE INDEX IF NOT EXISTS ix_videos_subject ON videos (subject)",
         "CREATE INDEX IF NOT EXISTS ix_videos_created_at ON videos (created_at)",
     )
@@ -49,6 +51,7 @@ def _video_dict(row: Video) -> dict:
         "id": str(row.id),
         "title": row.title,
         "subject": row.subject,
+        "tutor_name": getattr(row, "tutor_name", None) or "",
         "exam_type": row.exam_type,
         "video_url": row.video_url,
         "thumbnail_url": row.thumbnail_url,
@@ -60,6 +63,7 @@ def _video_dict(row: Video) -> dict:
 class VideoCreate(BaseModel):
     title: str = Field(..., min_length=2, max_length=255)
     subject: str = "General"
+    tutor_name: Optional[str] = None
     exam_type: Optional[str] = None
     video_url: str = Field(..., min_length=8, max_length=500)
     thumbnail_url: Optional[str] = None
@@ -107,6 +111,7 @@ async def create_video(
     row = Video(
         title=payload.title.strip(),
         subject=(payload.subject or "General").strip(),
+        tutor_name=((payload.tutor_name or "").strip() or None),
         exam_type=payload.exam_type,
         video_url=url,
         thumbnail_url=payload.thumbnail_url,

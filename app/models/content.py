@@ -100,6 +100,7 @@ class Video(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     subject: Mapped[str] = mapped_column(String(100), nullable=False)
+    tutor_name: Mapped[str | None] = mapped_column(String(150), nullable=True)
     exam_type: Mapped[str] = mapped_column(String(20), nullable=True)
     video_url: Mapped[str] = mapped_column(String(500), nullable=False)
     thumbnail_url: Mapped[str] = mapped_column(String(500), nullable=True)

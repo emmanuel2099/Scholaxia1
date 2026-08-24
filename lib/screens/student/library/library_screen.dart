@@ -21,7 +21,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     'Books',
     'Study Materials',
     'Scheme of Work',
-    'Notes',
+    'Lesson Notes',
   ];
 
   final _api = ApiService();
@@ -47,13 +47,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   String _bookCategory(Map<String, dynamic> book) {
     final raw = (book['category']?.toString() ?? 'Books').trim();
-    if (raw.toLowerCase().contains('scheme')) return 'Scheme of Work';
-    if (raw.toLowerCase().contains('study') ||
-        raw.toLowerCase().contains('note') ||
-        raw.toLowerCase().contains('material')) {
+    final lower = raw.toLowerCase();
+    if (lower.contains('scheme')) return 'Scheme of Work';
+    if (lower.contains('lesson note') || lower == 'notes' || lower.contains('note')) {
+      return 'Lesson Notes';
+    }
+    if (lower.contains('study') || lower.contains('material')) {
       return 'Study Materials';
     }
-    if (raw.toLowerCase().contains('past')) return 'Study Materials';
+    if (lower.contains('past')) return 'Study Materials';
     return 'Books';
   }
 
@@ -304,6 +306,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         return Icons.description_rounded;
       case 'Scheme of Work':
         return Icons.calendar_view_week_rounded;
+      case 'Lesson Notes':
       case 'Notes':
         return Icons.sticky_note_2_rounded;
       default:
@@ -322,8 +325,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
         return 'No study materials yet. Admin will upload notes and materials here.';
       case 'Scheme of Work':
         return 'No scheme of work yet. Admin will upload weekly schemes here.';
+      case 'Lesson Notes':
       case 'Notes':
-        return 'No notes yet.';
+        return 'No lesson notes yet.';
       default:
         return 'Admin will add books and study materials soon.';
     }

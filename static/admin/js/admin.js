@@ -2785,10 +2785,11 @@ async function loadAdminVideos() {
   try {
     var data = await adminApi("/api/v1/admin/videos");
     var rows = (data && data.videos) || [];
-    if (!rows.length) { el.innerHTML = '<div class="empty-state">No video tutorials yet.</div>'; return; }
-    el.innerHTML = '<table class="data-table"><thead><tr><th>Title</th><th>Subject</th><th>URL</th><th></th></tr></thead><tbody>' +
+    if (!rows.length) { el.innerHTML = '<div class="empty-state">No lesson notes yet.</div>'; return; }
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Title</th><th>Subject</th><th>Tutor</th><th>URL</th><th></th></tr></thead><tbody>' +
       rows.map(function (v) {
-        return '<tr><td>' + escHtml(v.title) + '</td><td>' + escHtml(v.subject) + '</td><td>' + escHtml(v.video_url) +
+        return '<tr><td>' + escHtml(v.title) + '</td><td>' + escHtml(v.subject) + '</td><td>' + escHtml(v.tutor_name || "—") +
+          '</td><td>' + escHtml(v.video_url) +
           '</td><td><button class="btn-sm danger" onclick="deleteAdminVideo(\'' + v.id + '\')">Remove</button></td></tr>';
       }).join("") + "</tbody></table>";
   } catch (e) {
@@ -2804,11 +2805,13 @@ async function createAdminVideo() {
       body: JSON.stringify({
         title: (document.getElementById("vid-title").value || "").trim(),
         subject: (document.getElementById("vid-subject").value || "General").trim(),
+        tutor_name: (document.getElementById("vid-tutor") && document.getElementById("vid-tutor").value || "").trim(),
         video_url: (document.getElementById("vid-url").value || "").trim(),
       }),
     });
     document.getElementById("vid-title").value = "";
     document.getElementById("vid-url").value = "";
+    if (document.getElementById("vid-tutor")) document.getElementById("vid-tutor").value = "";
     if (msg) msg.textContent = "Published.";
     loadAdminVideos();
   } catch (e) {

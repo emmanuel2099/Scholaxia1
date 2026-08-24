@@ -758,7 +758,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       (
         Icons.play_circle_fill_rounded,
-        'Video Tutorials',
+        'Lesson Notes',
         'Watch lessons posted by admin.',
         const [Color(0xFFDC2626), Color(0xFFF87171)],
         const VideoTutorialsScreen(),
