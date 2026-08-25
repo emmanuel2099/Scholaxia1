@@ -402,7 +402,7 @@ def fetch_book_bytes(public_id: str) -> tuple[bytes, str]:
                 return pdf
         return None
 
-    with httpx.Client(timeout=20.0, follow_redirects=True) as client:
+    with httpx.Client(timeout=90.0, follow_redirects=True) as client:
         found = try_urls(client, urls)
         if found:
             return found, "application/pdf"

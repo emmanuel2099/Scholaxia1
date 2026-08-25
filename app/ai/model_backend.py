@@ -376,11 +376,8 @@ async def run_inference(prompt: str, conversation_history: list = None,
         "groq": settings.GROQ_API_KEY,
     }
 
-    # Build try order: configured primary first, then fallbacks.
+    # Use only the configured backend (DeepSeek-only when AI_BACKEND=deepseek).
     try_order = [backend] if backend in backends else ["deepseek"]
-    for name in ("deepseek", "openai", "gemini", "groq"):
-        if name not in try_order and keys.get(name):
-            try_order.append(name)
 
     last_error = None
     tried = []
