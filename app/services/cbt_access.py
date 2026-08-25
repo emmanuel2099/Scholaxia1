@@ -168,8 +168,7 @@ async def active_cbt_access(
     except Exception:
         logger.warning("active_cbt_access: school check failed", exc_info=True)
 
-    await ensure_student_entitlements_schema()
-
+    # Schema is ensured at app startup — never DDL on CBT Start hot path
     entitlements_raw: list[tuple] = []
     try:
         async with db.begin_nested():
@@ -422,7 +421,7 @@ async def has_board_access(
     try:
         student_uuid = _as_uuid(user_id)
         now = naive_utc_now()
-        await ensure_student_entitlements_schema()
+        # Schema is ensured at app startup — never DDL on the Start hot path
         async with db.begin_nested():
             res = await db.execute(
                 text(
