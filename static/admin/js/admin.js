@@ -2679,8 +2679,11 @@ async function uploadLibraryBook() {
     fileInput.value = "";
     var dlSel = document.getElementById("lib-downloadable");
     if (dlSel) dlSel.value = "no";
-    ok.textContent = "Material uploaded to the student library.";
-    loadLibraryAdmin();
+    ok.textContent =
+      "Uploaded as «" +
+      category +
+      "». Students see it under Lesson Notes (for Lesson Notes / Study Materials) and Library.";
+    await loadLibraryAdmin();
   } catch (e) {
     err.textContent = e.message || "Upload failed.";
   } finally {

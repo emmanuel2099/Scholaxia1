@@ -651,7 +651,7 @@
         <h2>Library</h2>
         <button class="btn-sm" onclick="loadLibraryAdmin()">Refresh</button>
       </div>
-      <p class="page-desc">Upload PDF materials for students. Choose whether they may download the file to their device. If Read shows “PDF is missing on storage”, click Replace PDF on that row (do not delete the listing).</p>
+      <p class="page-desc">Upload PDF materials for students. <strong>Lesson Notes</strong> and <strong>Study Materials</strong> appear on the student site under <em>Lesson Notes</em> and also in <em>Library</em>. Books / Scheme of Work appear in Library. If Read shows “PDF is missing on storage”, click Replace PDF on that row (do not delete the listing).</p>
       <div class="panel">
         <h3>Upload material</h3>
         <div class="form-grid">
@@ -728,10 +728,10 @@
           </label>
           <label><span>Material type *</span>
             <select id="lib-category" onchange="onLibraryCategoryChange()">
-              <option>Books</option>
-              <option>Study Materials</option>
-              <option>Scheme of Work</option>
-              <option>Lesson Notes</option>
+              <option value="Books">Books</option>
+              <option value="Study Materials" selected>Study Materials</option>
+              <option value="Scheme of Work">Scheme of Work</option>
+              <option value="Lesson Notes">Lesson Notes</option>
             </select>
           </label>
           <label><span>Education level</span>

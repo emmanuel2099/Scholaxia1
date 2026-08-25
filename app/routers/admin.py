@@ -429,6 +429,16 @@ async def add_book(
     db: AsyncSession = Depends(get_db),
 ):
     category = (payload.category or "Books").strip()
+    # Keep old "Notes" uploads aligned with student Lesson Notes page
+    cat_key = category.lower().replace("_", " ").strip()
+    if cat_key in {"notes", "lesson note", "lesson notes"}:
+        category = "Lesson Notes"
+    elif cat_key in {"study material", "study materials", "materials"}:
+        category = "Study Materials"
+    elif cat_key in {"scheme", "scheme of work", "schemes of work"}:
+        category = "Scheme of Work"
+    elif cat_key in {"book", "books"}:
+        category = "Books"
     is_free = bool(payload.is_free)
     price = float(payload.price or 0)
     # Past Questions are always paid — students unlock via Paystack.
