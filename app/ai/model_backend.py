@@ -335,22 +335,34 @@ async def _infer_local(prompt: str) -> str:
 
 # ── Public interface ──────────────────────────────────────────────────────────
 
+def _resolve_ai_backend() -> str:
+    """Pick the active AI provider.
+
+    Scholaxia production uses DeepSeek when DEEPSEEK_API_KEY is set — even if
+    Render still has AI_BACKEND=gemini from an older deploy.
+    """
+    if settings.DEEPSEEK_API_KEY:
+        return "deepseek"
+    backend = (settings.AI_BACKEND or "deepseek").lower().strip()
+    valid = {"gemini", "openai", "deepseek", "groq", "hosted", "local"}
+    return backend if backend in valid else "deepseek"
+
+
 async def run_inference(prompt: str, conversation_history: list = None,
                         image_base64: str = None, system_prompt: str = None,
                         max_tokens: int = None, temperature: float = None) -> str:
     """
-    Run inference with automatic fallback chain.
+    Run inference using the configured backend only (no cross-provider fallback).
 
-    Priority order (primary → fallbacks):
-      deepseek → openai → gemini → groq
+    Production default: DeepSeek when DEEPSEEK_API_KEY is set.
     """
     if not _any_api_key_configured():
         raise RuntimeError(
             "Sia AI is not configured on the server. "
-            "Set DEEPSEEK_API_KEY (recommended) or OPENAI_API_KEY / GEMINI_API_KEY in Render Environment, then redeploy."
+            "Set DEEPSEEK_API_KEY on Render Environment (AI_BACKEND=deepseek), then redeploy."
         )
 
-    backend = settings.AI_BACKEND.lower()
+    backend = _resolve_ai_backend()
 
     backends = {
         "gemini": lambda: _infer_gemini(
@@ -397,8 +409,8 @@ async def run_inference(prompt: str, conversation_history: list = None,
 
     if last_error:
         raise RuntimeError(
-            f"All AI backends failed ({', '.join(tried) or 'none'}). Last error: {type(last_error).__name__}: {str(last_error)[:160]}"
+            f"Sia AI failed ({backend}). Last error: {type(last_error).__name__}: {str(last_error)[:160]}"
         )
     raise RuntimeError(
-        "No AI backends available. Set DEEPSEEK_API_KEY on Render Environment and redeploy."
+        "No AI backend available. Set DEEPSEEK_API_KEY on Render and redeploy."
     )

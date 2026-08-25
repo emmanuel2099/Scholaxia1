@@ -173,10 +173,13 @@ class AskRequest(BaseModel):
 async def sia_status():
     """Public check: which AI providers are configured (no secrets)."""
     from app.core.config import settings
+    from app.ai.model_backend import _resolve_ai_backend
 
+    effective = _resolve_ai_backend()
     return {
         "ok": True,
         "ai_backend": settings.AI_BACKEND,
+        "effective_backend": effective,
         "providers": {
             "deepseek": bool(settings.DEEPSEEK_API_KEY),
             "openai": bool(settings.OPENAI_API_KEY),
