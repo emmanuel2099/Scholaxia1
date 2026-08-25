@@ -1,4 +1,5 @@
 import json
+import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import delete, select
 from app.models.user import StudentProfile, User, UserRole
@@ -52,8 +53,12 @@ async def send_all_students_notification(
         ntype = NotificationType.announcement
 
     for student_id in student_ids:
+        try:
+            uid = uuid.UUID(str(student_id))
+        except Exception:
+            continue
         db.add(Notification(
-            user_id=student_id,
+            user_id=uid,
             type=ntype,
             title=title,
             body=body,
