@@ -528,12 +528,25 @@ async def add_book(
 @router.get("/library/books")
 async def list_all_books(
     library_target: Optional[LibraryTarget] = None,
+    q: Optional[str] = None,
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
     query = select(Book).where(Book.is_active == True)  # noqa: E712
     if library_target:
         query = query.where(Book.library_target == library_target)
+    if q and q.strip():
+        term = f"%{q.strip()}%"
+        query = query.where(
+            or_(
+                Book.title.ilike(term),
+                Book.author.ilike(term),
+                Book.subject.ilike(term),
+                Book.description.ilike(term),
+                Book.category.ilike(term),
+                Book.scheme_topic.ilike(term),
+            )
+        )
     result = await db.execute(query.order_by(Book.created_at.desc()))
     books = result.scalars().all()
     return [{"id": str(b.id), "title": b.title, "author": b.author,

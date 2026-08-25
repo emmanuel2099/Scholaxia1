@@ -238,6 +238,13 @@ async def _run_schema_migrations(conn) -> None:
     await conn.execute(text(
         "ALTER TABLE books ADD COLUMN IF NOT EXISTS allow_print BOOLEAN NOT NULL DEFAULT FALSE"
     ))
+    try:
+        await conn.execute(text("ALTER TYPE librarytarget ADD VALUE IF NOT EXISTS 'kind'"))
+    except Exception:
+        pass
+    await conn.execute(text(
+        "ALTER TABLE videos ADD COLUMN IF NOT EXISTS audience VARCHAR(20) NOT NULL DEFAULT 'student'"
+    ))
     await conn.execute(text(
         "ALTER TABLE payments ADD COLUMN IF NOT EXISTS book_id UUID NULL"
     ))

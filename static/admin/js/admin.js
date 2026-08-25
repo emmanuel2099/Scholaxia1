@@ -123,6 +123,8 @@ function showAdminPage(page) {
   else if (page === "vendors") loadVendors();
   else if (page === "kind") loadKind();
   else if (page === "kind-games") loadKindGamesAdmin();
+  else if (page === "kind-library") loadKindLibraryAdmin();
+  else if (page === "kind-videos") loadKindVideosAdmin();
   else if (page === "requests") loadRequests();
   else if (page === "live-subs") loadLiveSubscriptions();
   else if (page === "skills-enroll") loadSkillsEnrollments();
@@ -1296,7 +1298,7 @@ async function loadCbt() {
         return '<tr><td>' + escHtml(e.title) + '</td><td>' + escHtml(e.subject) + '</td>' +
           '<td>' + typeBadge + '</td><td>' + e.total_questions + '</td><td>' + pub + '</td>' +
           '<td class="actions">' +
-          '<button class="btn-sm" onclick="openCbtExamEdit(\'' + e.id + '\')">Preview / Edit</button>' +
+          '<button class="btn-sm" onclick="openCbtExamEdit(\'' + e.id + '\')">Edit questions &amp; images</button>' +
           '<button class="btn-sm" onclick="toggleCbtPublish(\'' + e.id + '\')">Toggle publish</button>' +
           '</td></tr>';
       }).join("") + '</tbody></table>';
@@ -1320,7 +1322,7 @@ async function loadPastQuestionsAdmin() {
         return '<tr><td>' + escHtml(e.title) + '</td><td>' + escHtml(e.subject) + '</td>' +
           '<td><span class="badge ok">' + escHtml(e.exam_type) + '</span></td><td>' + e.total_questions + '</td><td>' + pub + '</td>' +
           '<td class="actions">' +
-          '<button class="btn-sm" onclick="openCbtExamEdit(\'' + e.id + '\')">Preview / Edit</button>' +
+          '<button class="btn-sm" onclick="openCbtExamEdit(\'' + e.id + '\')">Edit questions &amp; images</button>' +
           '<button class="btn-sm" onclick="toggleCbtPublish(\'' + e.id + '\')">Toggle publish</button>' +
           '</td></tr>';
       }).join("") + '</tbody></table>';
@@ -2535,40 +2537,132 @@ document.addEventListener("change", function (ev) {
 });
 
 /* ── Library ── */
+var librarySearchTimer = null;
+var kindLibrarySearchTimer = null;
+var kindVideosSearchTimer = null;
+
+function onLibraryAdminSearchInput() {
+  clearTimeout(librarySearchTimer);
+  librarySearchTimer = setTimeout(loadLibraryAdmin, 300);
+}
+
+function onKindLibrarySearchInput() {
+  clearTimeout(kindLibrarySearchTimer);
+  kindLibrarySearchTimer = setTimeout(loadKindLibraryAdmin, 300);
+}
+
+function onKindVideosSearchInput() {
+  clearTimeout(kindVideosSearchTimer);
+  kindVideosSearchTimer = setTimeout(loadKindVideosAdmin, 300);
+}
+
+function renderLibraryAdminTable(el, rows, reloadFn) {
+  if (!el) return;
+  if (!rows || !rows.length) {
+    el.innerHTML = '<div class="empty-state">No materials match your search.</div>';
+    return;
+  }
+  el.innerHTML =
+    '<table class="data-table"><thead><tr><th>Title</th><th>Audience</th><th>Type</th><th>Subject</th><th>Board</th><th>Access</th><th>Download</th><th></th></tr></thead><tbody>' +
+    rows.map(function (b) {
+      var access = b.is_free ? "Free" : "₦" + Number(b.price || 0).toLocaleString();
+      var dl = !!b.is_downloadable;
+      var aud = (b.library_target && (b.library_target.value || b.library_target)) || "student";
+      return "<tr><td>" + escHtml(b.title) + "</td><td>" + escHtml(String(aud)) + "</td><td>" + escHtml(b.category || "Books") +
+        "</td><td>" + escHtml(b.subject || "—") +
+        "</td><td>" + escHtml(b.exam_type || "—") + "</td><td>" + escHtml(access) +
+        '</td><td><span class="badge ' + (dl ? "ok" : "muted") + '">' + (dl ? "Downloadable" : "Read only") +
+        '</span></td><td class="actions"><button class="btn-sm" onclick=\'changeLibraryCategory(' +
+        JSON.stringify(String(b.id)) +
+        ", " +
+        JSON.stringify(String(b.category || "Books")) +
+        ")\'>Change type</button> <button class=\"btn-sm\" onclick=\"toggleLibraryDownloadable('" +
+        b.id + "', " + (dl ? "true" : "false") + ')">' +
+        (dl ? "Make read-only" : "Allow download") +
+        '</button> <button class="btn-sm" onclick="replaceLibraryPdf(\'' +
+        b.id +
+        "')\">Replace PDF</button> <button class=\"btn-sm danger\" onclick=\"deleteLibraryBook('" +
+        b.id + "')\">Remove</button></td></tr>";
+    }).join("") +
+    "</tbody></table>";
+}
+
 async function loadLibraryAdmin() {
   var el = document.getElementById("library-table");
   if (!el) return;
   el.innerHTML = '<div class="loading">Loading…</div>';
   try {
-    var rows = await adminApi("/api/v1/admin/library/books");
-    if (!rows || !rows.length) {
-      el.innerHTML = '<div class="empty-state">No library materials yet.</div>';
-      return;
-    }
-    el.innerHTML =
-      '<table class="data-table"><thead><tr><th>Title</th><th>Type</th><th>Subject</th><th>Board</th><th>Access</th><th>Download</th><th></th></tr></thead><tbody>' +
-      rows.map(function (b) {
-        var access = b.is_free ? "Free" : "₦" + Number(b.price || 0).toLocaleString();
-        var dl = !!b.is_downloadable;
-        return "<tr><td>" + escHtml(b.title) + "</td><td>" + escHtml(b.category || "Books") +
-          "</td><td>" + escHtml(b.subject || "—") +
-          "</td><td>" + escHtml(b.exam_type || "—") + "</td><td>" + escHtml(access) +
-          '</td><td><span class="badge ' + (dl ? "ok" : "muted") + '">' + (dl ? "Downloadable" : "Read only") +
-          '</span></td><td class="actions"><button class="btn-sm" onclick=\'changeLibraryCategory(' +
-          JSON.stringify(String(b.id)) +
-          ", " +
-          JSON.stringify(String(b.category || "Books")) +
-          ")\'>Change type</button> <button class=\"btn-sm\" onclick=\"toggleLibraryDownloadable('" +
-          b.id + "', " + (dl ? "true" : "false") + ')">' +
-          (dl ? "Make read-only" : "Allow download") +
-          '</button> <button class="btn-sm" onclick="replaceLibraryPdf(\'' +
-          b.id +
-          "')\">Replace PDF</button> <button class=\"btn-sm danger\" onclick=\"deleteLibraryBook('" +
-          b.id + "')\">Remove</button></td></tr>";
-      }).join("") +
-      "</tbody></table>";
+    var target = (document.getElementById("lib-target-filter") || {}).value || "student";
+    var q = ((document.getElementById("lib-search") || {}).value || "").trim();
+    var path = "/api/v1/admin/library/books?library_target=" + encodeURIComponent(target);
+    if (q) path += "&q=" + encodeURIComponent(q);
+    var rows = await adminApi(path);
+    renderLibraryAdminTable(el, rows, loadLibraryAdmin);
   } catch (e) {
     el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
+  }
+}
+
+async function loadKindLibraryAdmin() {
+  var el = document.getElementById("kind-library-table");
+  if (!el) return;
+  el.innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    var q = ((document.getElementById("klib-search") || {}).value || "").trim();
+    var path = "/api/v1/admin/library/books?library_target=kind";
+    if (q) path += "&q=" + encodeURIComponent(q);
+    var rows = await adminApi(path);
+    renderLibraryAdminTable(el, rows, loadKindLibraryAdmin);
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
+  }
+}
+
+async function uploadKindLibraryBook() {
+  var err = document.getElementById("klib-form-error");
+  var ok = document.getElementById("klib-form-ok");
+  if (err) err.textContent = "";
+  if (ok) ok.textContent = "";
+  var title = ((document.getElementById("klib-title") || {}).value || "").trim();
+  var subject = ((document.getElementById("klib-subject") || {}).value || "").trim();
+  var category = (document.getElementById("klib-category") || {}).value || "Books";
+  var level = (document.getElementById("klib-level") || {}).value || "";
+  var desc = ((document.getElementById("klib-desc") || {}).value || "").trim();
+  var fileInput = document.getElementById("klib-file");
+  var file = fileInput && fileInput.files && fileInput.files[0];
+  var isFree = (document.getElementById("klib-access") || {}).value !== "paid";
+  var price = Number((document.getElementById("klib-price") || {}).value || 0);
+  if (!title || !subject) {
+    if (err) err.textContent = "Title and subject are required.";
+    return;
+  }
+  if (!file) {
+    if (err) err.textContent = "Choose a PDF file.";
+    return;
+  }
+  try {
+    var up = await uploadLibraryPdf(file);
+    if (!up || !up.file_key) throw new Error("Upload did not return a file key.");
+    await adminApi("/api/v1/admin/library/books", {
+      method: "POST",
+      body: JSON.stringify({
+        title: title,
+        subject: subject,
+        file_key: up.file_key,
+        description: desc || null,
+        category: category,
+        education_level: level || null,
+        library_target: "kind",
+        is_free: isFree,
+        price: isFree ? 0 : price,
+        is_downloadable: true,
+      }),
+    });
+    if (fileInput) fileInput.value = "";
+    if (ok) ok.textContent = "Uploaded to Kids Library.";
+    loadKindLibraryAdmin();
+  } catch (e) {
+    if (err) err.textContent = e.message || "Upload failed.";
   }
 }
 
@@ -2871,9 +2965,9 @@ async function loadAdminVideos() {
   if (!el) return;
   el.innerHTML = '<div class="loading">Loading…</div>';
   try {
-    var data = await adminApi("/api/v1/admin/videos");
+    var data = await adminApi("/api/v1/admin/videos?audience=student");
     var rows = (data && data.videos) || [];
-    if (!rows.length) { el.innerHTML = '<div class="empty-state">No lesson notes yet.</div>'; return; }
+    if (!rows.length) { el.innerHTML = '<div class="empty-state">No student videos yet.</div>'; return; }
     el.innerHTML = '<table class="data-table"><thead><tr><th>Title</th><th>Subject</th><th>Tutor</th><th>URL</th><th></th></tr></thead><tbody>' +
       rows.map(function (v) {
         return '<tr><td>' + escHtml(v.title) + '</td><td>' + escHtml(v.subject) + '</td><td>' + escHtml(v.tutor_name || "—") +
@@ -2882,6 +2976,51 @@ async function loadAdminVideos() {
       }).join("") + "</tbody></table>";
   } catch (e) {
     el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
+  }
+}
+
+async function loadKindVideosAdmin() {
+  var el = document.getElementById("kind-videos-table");
+  if (!el) return;
+  el.innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    var q = ((document.getElementById("kvid-search") || {}).value || "").trim();
+    var path = "/api/v1/admin/videos?audience=kind";
+    if (q) path += "&q=" + encodeURIComponent(q);
+    var data = await adminApi(path);
+    var rows = (data && data.videos) || [];
+    if (!rows.length) { el.innerHTML = '<div class="empty-state">No kids videos yet.</div>'; return; }
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Title</th><th>Subject</th><th>Tutor</th><th>URL</th><th></th></tr></thead><tbody>' +
+      rows.map(function (v) {
+        return '<tr><td>' + escHtml(v.title) + '</td><td>' + escHtml(v.subject) + '</td><td>' + escHtml(v.tutor_name || "—") +
+          '</td><td>' + escHtml(v.video_url) +
+          '</td><td><button class="btn-sm danger" onclick="deleteAdminVideo(\'' + v.id + '\')">Remove</button></td></tr>';
+      }).join("") + "</tbody></table>";
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
+  }
+}
+
+async function createKindAdminVideo() {
+  var msg = document.getElementById("kvid-msg");
+  try {
+    await adminApi("/api/v1/admin/videos", {
+      method: "POST",
+      body: JSON.stringify({
+        title: (document.getElementById("kvid-title").value || "").trim(),
+        subject: (document.getElementById("kvid-subject").value || "General").trim(),
+        tutor_name: (document.getElementById("kvid-tutor") && document.getElementById("kvid-tutor").value || "").trim(),
+        video_url: (document.getElementById("kvid-url").value || "").trim(),
+        audience: "kind",
+      }),
+    });
+    document.getElementById("kvid-title").value = "";
+    document.getElementById("kvid-url").value = "";
+    if (document.getElementById("kvid-tutor")) document.getElementById("kvid-tutor").value = "";
+    if (msg) msg.textContent = "Published to Kids app.";
+    loadKindVideosAdmin();
+  } catch (e) {
+    if (msg) msg.textContent = e.message;
   }
 }
 
@@ -2895,12 +3034,13 @@ async function createAdminVideo() {
         subject: (document.getElementById("vid-subject").value || "General").trim(),
         tutor_name: (document.getElementById("vid-tutor") && document.getElementById("vid-tutor").value || "").trim(),
         video_url: (document.getElementById("vid-url").value || "").trim(),
+        audience: "student",
       }),
     });
     document.getElementById("vid-title").value = "";
     document.getElementById("vid-url").value = "";
     if (document.getElementById("vid-tutor")) document.getElementById("vid-tutor").value = "";
-    if (msg) msg.textContent = "Published.";
+    if (msg) msg.textContent = "Published to student Video Tutorials.";
     loadAdminVideos();
   } catch (e) {
     if (msg) msg.textContent = e.message;

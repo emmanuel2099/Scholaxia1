@@ -21,7 +21,7 @@ from typing import Optional
 from datetime import datetime
 
 from app.core.database import get_db
-from app.core.deps import get_current_user, require_student, require_teacher
+from app.core.deps import get_current_user, require_student, require_teacher, require_kind
 from app.models.content import Book, BookPurchase, SavedBook, BookReadProgress, LibraryTarget
 from app.models.user import UserRole
 from app.services.media_service import generate_read_url, fetch_book_bytes
@@ -89,7 +89,9 @@ async def _book_for_read(book_id: str, current_user: dict, db: AsyncSession) -> 
         raise HTTPException(status_code=403, detail="This book is not in your library")
     if role == UserRole.teacher and book.library_target != LibraryTarget.teacher:
         raise HTTPException(status_code=403, detail="This book is not in your library")
-    if role == UserRole.student:
+    if role == UserRole.kind and book.library_target != LibraryTarget.kind:
+        raise HTTPException(status_code=403, detail="This book is not in your library")
+    if role in (UserRole.student, UserRole.kind):
         if not await _student_has_book_access(db, current_user["sub"], book):
             raise HTTPException(status_code=402, detail="Pay to unlock this Scholaxia material")
     return book
@@ -126,6 +128,63 @@ async def student_library(
                 Book.subject.ilike(term),
                 Book.description.ilike(term),
                 Book.scheme_topic.ilike(term),
+                Book.category.ilike(term),
+            )
+        )
+
+    result = await db.execute(query.order_by(Book.created_at.desc()))
+    books = result.scalars().all()
+
+    paid_ids = [b.id for b in books if not getattr(b, "is_free", True)]
+    purchased_ids = set()
+    if paid_ids:
+        purchases = await db.execute(
+            select(BookPurchase.book_id).where(
+                BookPurchase.student_id == current_user["sub"],
+                BookPurchase.book_id.in_(paid_ids),
+            )
+        )
+        purchased_ids = set(purchases.scalars().all())
+
+    return [
+        _book_response(
+            book,
+            has_access=getattr(book, "is_free", True) or book.id in purchased_ids,
+        )
+        for book in books
+    ]
+
+
+# ── Kids Library (kind learners only) ─────────────────────────────────────────
+
+@router.get("/kind")
+async def kind_library(
+    subject: Optional[str] = None,
+    exam_type: Optional[str] = None,
+    q: Optional[str] = None,
+    category: Optional[str] = None,
+    current_user: dict = Depends(require_kind),
+    db: AsyncSession = Depends(get_db),
+):
+    """Browse PDF materials uploaded for Kids (separate from student library)."""
+    query = select(Book).where(
+        Book.library_target == LibraryTarget.kind,
+        Book.is_active == True,
+    )
+    if subject:
+        query = query.where(Book.subject == subject)
+    if exam_type:
+        query = query.where(Book.exam_type.ilike(exam_type))
+    if category:
+        query = query.where(Book.category.ilike(category))
+    if q and q.strip():
+        term = f"%{q.strip()}%"
+        query = query.where(
+            or_(
+                Book.title.ilike(term),
+                Book.author.ilike(term),
+                Book.subject.ilike(term),
+                Book.description.ilike(term),
                 Book.category.ilike(term),
             )
         )

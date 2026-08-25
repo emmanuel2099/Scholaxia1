@@ -10,6 +10,7 @@ import enum
 class LibraryTarget(str, enum.Enum):
     student = "student"   # visible in student library
     teacher = "teacher"   # visible in teacher library only
+    kind = "kind"         # visible in Kids app / kind.html library only
 
 
 class Book(Base):
@@ -106,6 +107,8 @@ class Video(Base):
     thumbnail_url: Mapped[str] = mapped_column(String(500), nullable=True)
     duration_seconds: Mapped[int] = mapped_column(Integer, nullable=True)
     uploaded_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    # student = student site Video Tutorials; kind = Kids app only
+    audience: Mapped[str] = mapped_column(String(20), default="student", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

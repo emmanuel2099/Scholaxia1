@@ -65,6 +65,8 @@
       <button class="nav-btn" data-page="vendors" onclick="showAdminPage('vendors')">Vendors</button>
       <button class="nav-btn" data-page="kind" onclick="showAdminPage('kind')">Kind (Kids)</button>
       <button class="nav-btn" data-page="kind-games" onclick="showAdminPage('kind-games')">Kids Games Qs</button>
+      <button class="nav-btn" data-page="kind-library" onclick="showAdminPage('kind-library')">Kids Library</button>
+      <button class="nav-btn" data-page="kind-videos" onclick="showAdminPage('kind-videos')">Kids Videos</button>
       <div class="nav-section">Learning</div>
       <button class="nav-btn" data-page="requests" onclick="showAdminPage('requests')">Session Requests</button>
       <button class="nav-btn" data-page="live-subs" onclick="showAdminPage('live-subs')">Live Subscriptions</button>
@@ -651,7 +653,14 @@
         <h2>Library</h2>
         <button class="btn-sm" onclick="loadLibraryAdmin()">Refresh</button>
       </div>
-      <p class="page-desc">Upload PDF materials for students. They appear on the student site under <strong>Library</strong> (filter by Books / Study Materials / Scheme of Work / Lesson Notes). YouTube lessons go under Admin → Video Tutorials (student menu: Video Tutorials). If Read shows “PDF is missing on storage”, click Replace PDF on that row (do not delete the listing).</p>
+      <p class="page-desc">Upload PDF materials for students. They appear on the student site under <strong>Library</strong>. Use <strong>search</strong> below to find materials to edit, replace PDF, or remove. Kids materials go under <strong>Kids Library</strong> (separate).</p>
+      <div class="form-row" style="margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem">
+        <input type="search" id="lib-search" class="admin-search" style="flex:1;min-width:200px" placeholder="Search title, subject, author, type…" oninput="onLibraryAdminSearchInput()" />
+        <select id="lib-target-filter" onchange="loadLibraryAdmin()">
+          <option value="student">Show: Students</option>
+          <option value="teacher">Show: Teachers</option>
+        </select>
+      </div>
       <div class="panel">
         <h3>Upload material</h3>
         <div class="form-grid">
@@ -788,6 +797,75 @@
         <p id="lib-form-ok" class="cbt-hint small" style="color:#3dd68c"></p>
       </div>
       <div id="library-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+    </section>
+
+    <section id="page-kind-library" class="admin-page">
+      <div class="page-head">
+        <h2>Kids Library</h2>
+        <button class="btn-sm" onclick="loadKindLibraryAdmin()">Refresh</button>
+      </div>
+      <p class="page-desc">PDFs for the <strong>Kids app</strong> only — not shown in the student Library. Search below to find and manage uploads.</p>
+      <div class="form-row" style="margin-bottom:1rem">
+        <input type="search" id="klib-search" class="admin-search" style="flex:1" placeholder="Search kids library…" oninput="onKindLibrarySearchInput()" />
+      </div>
+      <div class="panel">
+        <h3>Upload kids PDF</h3>
+        <div class="form-grid">
+          <label><span>Title *</span><input id="klib-title" placeholder="e.g. Primary 4 Maths fun book" /></label>
+          <label><span>Subject *</span><input id="klib-subject" placeholder="Mathematics" /></label>
+          <label><span>Category</span>
+            <select id="klib-category">
+              <option>Books</option>
+              <option>Study Materials</option>
+              <option>Lesson Notes</option>
+              <option>Story Books</option>
+            </select>
+          </label>
+          <label><span>Class / level</span>
+            <select id="klib-level">
+              <option>Primary 1</option><option>Primary 2</option><option>Primary 3</option>
+              <option>Primary 4</option><option>Primary 5</option><option>Primary 6</option>
+              <option>JSS1</option><option>JSS2</option><option>JSS3</option>
+            </select>
+          </label>
+          <label><span>Access</span>
+            <select id="klib-access"><option value="free" selected>Free</option><option value="paid">Paid</option></select>
+          </label>
+          <label><span>Price (₦)</span><input id="klib-price" type="number" min="0" placeholder="0" /></label>
+          <label><span>PDF file *</span><input id="klib-file" type="file" accept=".pdf,application/pdf" /></label>
+          <label><span>Description</span><input id="klib-desc" placeholder="Short note for kids" /></label>
+        </div>
+        <div class="cbt-actions">
+          <button type="button" class="btn-primary" onclick="uploadKindLibraryBook()">Upload to Kids Library</button>
+        </div>
+        <p id="klib-form-error" class="error-msg"></p>
+        <p id="klib-form-ok" class="cbt-hint small" style="color:#3dd68c"></p>
+      </div>
+      <div id="kind-library-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+    </section>
+
+    <section id="page-kind-videos" class="admin-page">
+      <div class="page-head">
+        <h2>Kids Videos</h2>
+        <button class="btn-sm" onclick="loadKindVideosAdmin()">Refresh</button>
+      </div>
+      <p class="page-desc">Videos for the <strong>Kids app</strong> only — separate from student Video Tutorials.</p>
+      <div class="panel" style="margin-bottom:1rem">
+        <div class="form-grid">
+          <label><span>Title *</span><input id="kvid-title" placeholder="e.g. Fun fractions for Primary 4" /></label>
+          <label><span>Subject / topic</span><input id="kvid-subject" placeholder="Mathematics" /></label>
+          <label><span>Tutor name</span><input id="kvid-tutor" placeholder="Scholaxia Kids" /></label>
+          <label><span>Video URL *</span><input id="kvid-url" placeholder="https://www.youtube.com/watch?v=…" /></label>
+        </div>
+        <div class="form-row" style="margin-top:8px">
+          <button class="btn-primary" style="width:auto;padding:12px 22px" onclick="createKindAdminVideo()">Publish kids video</button>
+        </div>
+        <p id="kvid-msg" class="cbt-hint small"></p>
+      </div>
+      <div class="form-row" style="margin-bottom:1rem">
+        <input type="search" id="kvid-search" class="admin-search" style="flex:1" placeholder="Search kids videos…" oninput="onKindVideosSearchInput()" />
+      </div>
+      <div id="kind-videos-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
     </section>
 
     <section id="page-internal-exams" class="admin-page">
@@ -966,7 +1044,7 @@
         <h2>Video Tutorials</h2>
         <button class="btn-sm" onclick="loadAdminVideos()">Refresh</button>
       </div>
-      <p class="cbt-hint small">Paste a YouTube (or other https) link. It appears as <strong>Video Tutorials</strong> on the website, app, and desktop.</p>
+      <p class="cbt-hint small">Paste a YouTube (or other https) link. Shown under <strong>Video Tutorials</strong> for <strong>students only</strong> — not Kids. Kids videos go under <strong>Kids Videos</strong>.</p>
       <div class="panel" style="margin-bottom:1rem">
         <div class="form-grid">
           <label><span>Title *</span><input id="vid-title" placeholder="e.g. Mole concept — SS2 Chemistry" /></label>
