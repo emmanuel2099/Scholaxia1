@@ -428,6 +428,7 @@ async def ensure_section_built(
     attempt.sections = sections
     flag_modified(attempt, "sections")
     await db.flush()
+    await db.commit()
     return built
 
 
