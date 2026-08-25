@@ -446,51 +446,66 @@ async def start_practice_attempt(
 ) -> CbtPracticeAttempt:
     from app.models.user import StudentProfile
 
-    settings = await get_cbt_settings(db)
-    if not settings.get("cbt_enabled", True):
-        raise ValueError("CBT practice is currently disabled by admin.")
-
     board = normalize_board(exam_type)
     if board not in {"JAMB", "WAEC", "NECO"}:
         raise ValueError("Exam type must be JAMB, WAEC, or NECO")
 
     sid = uuid.UUID(str(student_id))
-    # Access check must never poison the DB transaction used to build the paper
+
+    # Access check must never poison the DB transaction used to create the attempt.
+    # Nested savepoint / entitlement failures leave the session aborted — always
+    # rollback before INSERT into cbt_practice_attempts.
+    allowed = False
     try:
         allowed = await has_board_access(db, str(sid), board)
     except Exception:
         logger.exception("has_board_access failed during practice start")
+        allowed = False
+    try:
+        await db.rollback()
+    except Exception:
+        pass
+
+    if not allowed:
+        raise PermissionError(f"{board}_PACKAGE_REQUIRED")
+
+    settings = await get_cbt_settings(db)
+    if not settings.get("cbt_enabled", True):
+        raise ValueError("CBT practice is currently disabled by admin.")
+
+    # Instant Start: abandon old in-progress rows with a lightweight UPDATE
+    # (never SELECT the huge JSON sections blob into Python).
+    try:
+        await db.execute(
+            update(CbtPracticeAttempt)
+            .where(
+                CbtPracticeAttempt.student_id == sid,
+                CbtPracticeAttempt.exam_type == board,
+                CbtPracticeAttempt.status == "in_progress",
+            )
+            .values(status="abandoned", submitted_at=naive_utc_now())
+        )
+    except Exception:
+        logger.exception("abandon prior CBT attempts failed")
         try:
             await db.rollback()
         except Exception:
             pass
-        allowed = False
-    if not allowed:
-        raise PermissionError(f"{board}_PACKAGE_REQUIRED")
-
-    # Do NOT run schema DDL on every Start — that was making JAMB hang on "Opening…"
-    # Schema is ensured at app startup.
-
-    # Instant Start: abandon old in-progress rows with a lightweight UPDATE
-    # (never SELECT the huge JSON sections blob into Python).
-    await db.execute(
-        update(CbtPracticeAttempt)
-        .where(
-            CbtPracticeAttempt.student_id == sid,
-            CbtPracticeAttempt.exam_type == board,
-            CbtPracticeAttempt.status == "in_progress",
-        )
-        .values(status="abandoned", submitted_at=naive_utc_now())
-    )
 
     subjects_clean = [s.strip() for s in subjects if (s or "").strip()]
 
     # Prefer student profile subjects (exam package), not a per-start selection form
+    profile = None
     try:
         profile = (
             await db.execute(select(StudentProfile).where(StudentProfile.user_id == sid))
         ).scalar_one_or_none()
     except Exception:
+        logger.warning("practice start: could not load student profile", exc_info=True)
+        try:
+            await db.rollback()
+        except Exception:
+            pass
         profile = None
 
     if board == "JAMB":

@@ -195,6 +195,10 @@ async def active_cbt_access(
     except Exception:
         logger.warning("active_cbt_access: entitlement query failed", exc_info=True)
         entitlements_raw = []
+        try:
+            await db.rollback()
+        except Exception:
+            pass
 
     # Fallback without nested (in case savepoints unavailable)
     if not entitlements_raw:
