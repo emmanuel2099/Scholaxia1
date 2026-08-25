@@ -371,6 +371,21 @@ class AddBookRequest(BaseModel):
 
 class PatchBookRequest(BaseModel):
     is_downloadable: Optional[bool] = None
+    category: Optional[str] = None
+
+
+def normalize_book_category(raw: str | None) -> str:
+    category = (raw or "Books").strip() or "Books"
+    cat_key = category.lower().replace("_", " ").strip()
+    if cat_key in {"notes", "lesson note", "lesson notes"}:
+        return "Lesson Notes"
+    if cat_key in {"study material", "study materials", "materials"}:
+        return "Study Materials"
+    if cat_key in {"scheme", "scheme of work", "schemes of work"}:
+        return "Scheme of Work"
+    if cat_key in {"book", "books"}:
+        return "Books"
+    return category
 
 
 class BookResponse(BaseModel):
@@ -428,17 +443,7 @@ async def add_book(
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    category = (payload.category or "Books").strip()
-    # Keep old "Notes" uploads aligned with student Lesson Notes page
-    cat_key = category.lower().replace("_", " ").strip()
-    if cat_key in {"notes", "lesson note", "lesson notes"}:
-        category = "Lesson Notes"
-    elif cat_key in {"study material", "study materials", "materials"}:
-        category = "Study Materials"
-    elif cat_key in {"scheme", "scheme of work", "schemes of work"}:
-        category = "Scheme of Work"
-    elif cat_key in {"book", "books"}:
-        category = "Books"
+    category = normalize_book_category(payload.category)
     is_free = bool(payload.is_free)
     price = float(payload.price or 0)
     # Past Questions are always paid — students unlock via Paystack.
@@ -535,9 +540,12 @@ async def patch_library_book(
         raise HTTPException(status_code=404, detail="Book not found")
     if payload.is_downloadable is not None:
         book.is_downloadable = bool(payload.is_downloadable)
+    if payload.category is not None and str(payload.category).strip():
+        book.category = normalize_book_category(payload.category)
     await db.flush()
     return {
         "id": str(book.id),
+        "category": getattr(book, "category", None),
         "is_downloadable": bool(book.is_downloadable),
     }
 

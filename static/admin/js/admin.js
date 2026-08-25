@@ -2551,7 +2551,11 @@ async function loadLibraryAdmin() {
           "</td><td>" + escHtml(b.subject || "—") +
           "</td><td>" + escHtml(b.exam_type || "—") + "</td><td>" + escHtml(access) +
           '</td><td><span class="badge ' + (dl ? "ok" : "muted") + '">' + (dl ? "Downloadable" : "Read only") +
-          '</span></td><td class="actions"><button class="btn-sm" onclick="toggleLibraryDownloadable(\'' +
+          '</span></td><td class="actions"><button class="btn-sm" onclick=\'changeLibraryCategory(' +
+          JSON.stringify(String(b.id)) +
+          ", " +
+          JSON.stringify(String(b.category || "Books")) +
+          ")\'>Change type</button> <button class=\"btn-sm\" onclick=\"toggleLibraryDownloadable('" +
           b.id + "', " + (dl ? "true" : "false") + ')">' +
           (dl ? "Make read-only" : "Allow download") +
           '</button> <button class="btn-sm" onclick="replaceLibraryPdf(\'' +
@@ -2622,6 +2626,10 @@ async function uploadLibraryBook() {
   var fileInput = document.getElementById("lib-file");
   if (!title || !subject) {
     err.textContent = "Title and subject are required.";
+    return;
+  }
+  if (!category) {
+    err.textContent = "Choose Material type (e.g. Lesson Notes).";
     return;
   }
   if (!fileInput.files || !fileInput.files[0]) {
@@ -2715,6 +2723,25 @@ async function replaceLibraryPdf(id) {
     }
   };
   input.click();
+}
+
+async function changeLibraryCategory(id, currentCategory) {
+  var next = window.prompt(
+    "Set material type:\nLesson Notes\nStudy Materials\nScheme of Work\nBooks",
+    currentCategory || "Lesson Notes"
+  );
+  if (next == null) return;
+  next = String(next || "").trim();
+  if (!next) return;
+  try {
+    await adminApi("/api/v1/admin/library/books/" + encodeURIComponent(id), {
+      method: "PATCH",
+      body: JSON.stringify({ category: next }),
+    });
+    loadLibraryAdmin();
+  } catch (e) {
+    alert(e.message || "Could not change type.");
+  }
 }
 
 async function toggleLibraryDownloadable(id, currentlyDownloadable) {
