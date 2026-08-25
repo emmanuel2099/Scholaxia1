@@ -2139,6 +2139,7 @@ function toggleLibraryPrice() {
 function onLibraryPdfPicked(input) {
   var nameEl = document.getElementById("lib-file-name");
   var err = document.getElementById("lib-form-error");
+  var titleEl = document.getElementById("lib-title");
   var file = input && input.files && input.files[0];
   if (!file) {
     if (nameEl) nameEl.textContent = "Choose a .pdf (not a photo).";
@@ -2155,15 +2156,32 @@ function onLibraryPdfPicked(input) {
   }
   if (err) err.textContent = "";
   if (nameEl) nameEl.textContent = "Selected: " + file.name;
+  if (titleEl && !String(titleEl.value || "").trim()) {
+    titleEl.value = String(file.name || "")
+      .replace(/\.pdf$/i, "")
+      .replace(/[_]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+}
+
+function showLibraryFormMsg(kind, text) {
+  var err = document.getElementById("lib-form-error");
+  var ok = document.getElementById("lib-form-ok");
+  if (err) err.textContent = kind === "err" ? text || "" : "";
+  if (ok) ok.textContent = kind === "ok" ? text || "" : "";
+  var el = kind === "ok" ? ok : err;
+  try {
+    if (el && el.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  } catch (e0) {}
 }
 
 async function uploadLibraryBook() {
-  var err = document.getElementById("lib-form-error");
-  var ok = document.getElementById("lib-form-ok");
   var btn = document.getElementById("btn-lib-upload");
-  err.textContent = "";
-  ok.textContent = "";
-  var title = document.getElementById("lib-title").value.trim();
+  var nameEl = document.getElementById("lib-file-name");
+  showLibraryFormMsg("err", "");
+  var titleEl = document.getElementById("lib-title");
+  var title = (titleEl && titleEl.value || "").trim();
   var subject = document.getElementById("lib-subject").value.trim();
   var exam = document.getElementById("lib-exam").value;
   var author = document.getElementById("lib-author").value.trim();
@@ -2177,35 +2195,54 @@ async function uploadLibraryBook() {
   var price = Number(document.getElementById("lib-price").value || 0);
   var isDownloadable = (document.getElementById("lib-downloadable") || {}).value === "yes";
   var fileInput = document.getElementById("lib-file");
+  var file = fileInput && fileInput.files && fileInput.files[0];
+
+  if (!file) {
+    showLibraryFormMsg("err", "Choose a PDF file again (the file box is empty).");
+    if (nameEl) nameEl.textContent = "Choose a .pdf (not a photo).";
+    return;
+  }
+  if (!title) {
+    title = String(file.name || "")
+      .replace(/\.pdf$/i, "")
+      .replace(/[_]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (titleEl) titleEl.value = title;
+  }
   if (!title || !subject) {
-    err.textContent = "Title and subject are required.";
+    showLibraryFormMsg("err", "Title and subject are required.");
     return;
   }
-  if (!fileInput.files || !fileInput.files[0]) {
-    err.textContent = "Choose a PDF file.";
+  if (!category) {
+    showLibraryFormMsg("err", "Choose Material type (e.g. Lesson Notes).");
     return;
   }
-  var pdfName = (fileInput.files[0].name || "").toLowerCase();
-  var pdfType = (fileInput.files[0].type || "").toLowerCase();
+  if (!exam) {
+    showLibraryFormMsg("err", "Choose Class / level (e.g. SS2).");
+    return;
+  }
+  var pdfName = (file.name || "").toLowerCase();
+  var pdfType = (file.type || "").toLowerCase();
   if (!pdfName.endsWith(".pdf") && pdfType !== "application/pdf" && pdfType !== "application/x-pdf") {
-    err.textContent = "Library needs a PDF file, not an image.";
+    showLibraryFormMsg("err", "Library needs a PDF file, not an image.");
     return;
   }
   if (category === "Past Questions") {
     isFree = false;
     if (price <= 0) {
-      err.textContent = "Past Questions must be paid. Enter a price greater than zero.";
+      showLibraryFormMsg("err", "Past Questions must be paid. Enter a price greater than zero.");
       return;
     }
   }
   if (!isFree && price <= 0) {
-    err.textContent = "Enter a price greater than zero.";
+    showLibraryFormMsg("err", "Enter a price greater than zero.");
     return;
   }
   btn.disabled = true;
   btn.textContent = "Uploading…";
   try {
-    var up = await uploadLibraryPdf(fileInput.files[0]);
+    var up = await uploadLibraryPdf(file);
     if (!up || !up.file_key) throw new Error("Upload did not return a file key.");
     await adminApi("/api/v1/admin/library/books", {
       method: "POST",
@@ -2213,7 +2250,7 @@ async function uploadLibraryBook() {
         title: title,
         author: author || null,
         subject: subject,
-        exam_type: exam,
+        exam_type: exam || null,
         file_key: up.file_key,
         description: desc || null,
         category: category,
@@ -2234,12 +2271,18 @@ async function uploadLibraryBook() {
     document.getElementById("lib-week").value = "";
     document.getElementById("lib-topic").value = "";
     fileInput.value = "";
+    if (nameEl) nameEl.textContent = "Choose a .pdf (not a photo).";
     var dlSel = document.getElementById("lib-downloadable");
     if (dlSel) dlSel.value = "no";
-    ok.textContent = "Material uploaded to the student library.";
-    loadLibraryAdmin();
+    var catSel = document.getElementById("lib-category");
+    if (catSel) catSel.value = category;
+    showLibraryFormMsg(
+      "ok",
+      "Saved «" + title + "» as " + category + ". Open student Library → filter «" + category + "»."
+    );
+    await loadLibraryAdmin();
   } catch (e) {
-    err.textContent = e.message || "Upload failed.";
+    showLibraryFormMsg("err", e.message || "Upload failed.");
   } finally {
     btn.disabled = false;
     btn.textContent = "Upload material";
