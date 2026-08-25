@@ -7,7 +7,7 @@ import uuid
 from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
@@ -136,7 +136,7 @@ def settings_to_dict(row: CbtGlobalSettings | None) -> dict[str, Any]:
 
 
 async def get_cbt_settings(db: AsyncSession) -> dict[str, Any]:
-    await ensure_cbt_settings_schema()
+    # Schema is ensured at app startup — do not DDL here (it freezes CBT Start).
     row = (await db.execute(select(CbtGlobalSettings).where(CbtGlobalSettings.id == 1))).scalar_one_or_none()
     if not row:
         row = CbtGlobalSettings(id=1, **DEFAULT_SETTINGS)
@@ -468,45 +468,20 @@ async def start_practice_attempt(
     if not allowed:
         raise PermissionError(f"{board}_PACKAGE_REQUIRED")
 
-    await ensure_cbt_settings_schema()
+    # Do NOT run schema DDL on every Start — that was making JAMB hang on "Opening…"
+    # Schema is ensured at app startup.
 
-    # Resume in-progress attempt only if time remains; otherwise close it and start fresh
-    if settings.get("allow_resume"):
-        existing = (
-            await db.execute(
-                select(CbtPracticeAttempt)
-                .where(
-                    CbtPracticeAttempt.student_id == sid,
-                    CbtPracticeAttempt.exam_type == board,
-                    CbtPracticeAttempt.status == "in_progress",
-                )
-                .order_by(CbtPracticeAttempt.started_at.desc())
-                .limit(1)
-            )
-        ).scalar_one_or_none()
-        if existing:
-            now_check = naive_utc_now()
-            ends = existing.ends_at
-            still_valid = True
-            if ends is not None:
-                # Treat already-expired attempts as abandoned so coupon/start opens a real exam
-                if ends <= now_check:
-                    existing.status = "abandoned"
-                    existing.submitted_at = now_check
-                    await db.flush()
-                    still_valid = False
-            if still_valid:
-                secs = existing.sections or []
-                has_answers = bool(existing.answers)
-                # Heavy unanswered papers block instant Start — replace with a fresh stub session
-                heavy = any(len((s or {}).get("questions") or []) > 0 for s in secs)
-                if heavy and not has_answers:
-                    existing.status = "abandoned"
-                    existing.submitted_at = now_check
-                    await db.flush()
-                    still_valid = False
-                else:
-                    return existing
+    # Instant Start: abandon old in-progress rows with a lightweight UPDATE
+    # (never SELECT the huge JSON sections blob into Python).
+    await db.execute(
+        update(CbtPracticeAttempt)
+        .where(
+            CbtPracticeAttempt.student_id == sid,
+            CbtPracticeAttempt.exam_type == board,
+            CbtPracticeAttempt.status == "in_progress",
+        )
+        .values(status="abandoned", submitted_at=naive_utc_now())
+    )
 
     subjects_clean = [s.strip() for s in subjects if (s or "").strip()]
 
@@ -551,8 +526,8 @@ async def start_practice_attempt(
         # Soft-check: subject should be one the student registered
         if profile_ssce:
             want = subjects_clean[0].strip().lower()
-            allowed = {str(s).strip().lower() for s in profile_ssce}
-            if want not in allowed:
+            allowed_subs = {str(s).strip().lower() for s in profile_ssce}
+            if want not in allowed_subs:
                 raise ValueError(
                     f"{subjects_clean[0]} is not in your registered {board} subjects. Update your profile."
                 )
@@ -581,6 +556,8 @@ async def start_practice_attempt(
     )
     db.add(attempt)
     await db.flush()
+    await db.commit()
+    await db.refresh(attempt)
     return attempt
 
 
