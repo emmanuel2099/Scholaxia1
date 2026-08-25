@@ -392,6 +392,7 @@ class BookResponse(BaseModel):
     id: str
     title: str
     subject: str
+    category: str = "Books"
     library_target: str
     is_downloadable: bool
     allow_copy: bool
@@ -469,36 +470,58 @@ async def add_book(
         term=payload.term,
         scheme_week=payload.scheme_week,
         scheme_topic=payload.scheme_topic,
-        library_target=payload.library_target,
+        library_target=payload.library_target or LibraryTarget.student,
         is_free=is_free,
         price=0.0 if is_free else max(price, 0),
         uploaded_by=current_user["sub"],
         is_downloadable=bool(payload.is_downloadable),
         allow_copy=False, allow_screenshot=False, allow_print=False,
+        is_active=True,
     )
     db.add(book)
+    # Commit the book BEFORE notifications. Notify failures used to abort the
+    # same transaction and roll back the upload while the admin UI still looked OK.
     await db.flush()
+    await db.commit()
+    await db.refresh(book)
+
+    book_id = str(book.id)
+    book_title = book.title
+    book_subject = book.subject
+    book_category = book.category or category
+    book_target = book.library_target
+    book_dl = bool(book.is_downloadable)
+
     try:
         notify = (
             send_all_teachers_notification
-            if book.library_target == LibraryTarget.teacher
+            if book_target == LibraryTarget.teacher
             else send_all_students_notification
         )
         await notify(
             db=db,
             title="New library book",
-            body=f"«{book.title}» ({book.subject}) is now in your library.",
+            body=f"«{book_title}» ({book_subject}) is now in your library.",
             notification_type="announcement",
-            data={"type": "library_book", "book_id": str(book.id)},
+            data={"type": "library_book", "book_id": book_id},
         )
+        await db.commit()
     except Exception:
-        pass
-    target = book.library_target
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+
+    target = book_target
     return BookResponse(
-        id=str(book.id), title=book.title, subject=book.subject,
+        id=book_id,
+        title=book_title,
+        subject=book_subject,
+        category=book_category,
         library_target=target.value if hasattr(target, "value") else str(target),
-        is_downloadable=bool(book.is_downloadable),
-        allow_copy=False, allow_screenshot=False,
+        is_downloadable=book_dl,
+        allow_copy=False,
+        allow_screenshot=False,
     )
 
 

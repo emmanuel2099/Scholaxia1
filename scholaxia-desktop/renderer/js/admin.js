@@ -2244,7 +2244,7 @@ async function uploadLibraryBook() {
   try {
     var up = await uploadLibraryPdf(file);
     if (!up || !up.file_key) throw new Error("Upload did not return a file key.");
-    await adminApi("/api/v1/admin/library/books", {
+    var created = await adminApi("/api/v1/admin/library/books", {
       method: "POST",
       body: JSON.stringify({
         title: title,
@@ -2264,6 +2264,9 @@ async function uploadLibraryBook() {
         is_downloadable: isDownloadable,
       }),
     });
+    if (!created || !created.id) {
+      throw new Error("Server did not confirm the upload. Try again.");
+    }
     document.getElementById("lib-title").value = "";
     document.getElementById("lib-author").value = "";
     document.getElementById("lib-desc").value = "";
@@ -2276,9 +2279,17 @@ async function uploadLibraryBook() {
     if (dlSel) dlSel.value = "no";
     var catSel = document.getElementById("lib-category");
     if (catSel) catSel.value = category;
+    var savedCat = created.category || category;
+    var savedTitle = created.title || title;
     showLibraryFormMsg(
       "ok",
-      "Saved «" + title + "» as " + category + ". Open student Library → filter «" + category + "»."
+      "Saved «" +
+        savedTitle +
+        "» as " +
+        savedCat +
+        ". Students: Library → filter «" +
+        savedCat +
+        "»."
     );
     await loadLibraryAdmin();
   } catch (e) {

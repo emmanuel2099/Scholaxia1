@@ -2695,7 +2695,7 @@ async function uploadLibraryBook() {
   try {
     var up = await uploadLibraryPdf(file);
     if (!up || !up.file_key) throw new Error("Upload did not return a file key.");
-    await adminApi("/api/v1/admin/library/books", {
+    var created = await adminApi("/api/v1/admin/library/books", {
       method: "POST",
       body: JSON.stringify({
         title: title,
@@ -2715,6 +2715,9 @@ async function uploadLibraryBook() {
         is_downloadable: isDownloadable,
       }),
     });
+    if (!created || !created.id) {
+      throw new Error("Server did not confirm the upload. Try again.");
+    }
     document.getElementById("lib-title").value = "";
     document.getElementById("lib-author").value = "";
     document.getElementById("lib-desc").value = "";
@@ -2725,14 +2728,25 @@ async function uploadLibraryBook() {
     if (nameEl) nameEl.textContent = "Choose a .pdf (not a photo).";
     var dlSel = document.getElementById("lib-downloadable");
     if (dlSel) dlSel.value = "no";
-    // Keep Lesson Notes selected so the next upload is the same type
     var catSel = document.getElementById("lib-category");
     if (catSel) catSel.value = category;
+    var savedCat = created.category || category;
+    var savedTitle = created.title || title;
     showLibraryFormMsg(
       "ok",
-      "Saved «" + title + "» as " + category + ". Open student Library → filter «" + category + "»."
+      "Saved «" + savedTitle + "» as " + savedCat + ". Refreshing list…"
     );
     await loadLibraryAdmin();
+    showLibraryFormMsg(
+      "ok",
+      "Saved «" +
+        savedTitle +
+        "» as " +
+        savedCat +
+        ". Students: Library → filter «" +
+        savedCat +
+        "»."
+    );
   } catch (e) {
     showLibraryFormMsg("err", e.message || "Upload failed.");
   } finally {
