@@ -362,12 +362,15 @@ async def submit_practice(
     attempt.status = "completed"
     attempt.submitted_at = naive_utc_now()
     await db.flush()
+    review = cbt_engine.build_practice_review(attempt.sections or [], answers)
     return {
         "attempt_id": str(attempt.id),
         "score": attempt.score,
         "max_score": attempt.max_score,
         "percent": round((score / max_score) * 100, 1) if max_score else 0,
         "result_summary": attempt.result_summary,
+        "review": review,
+        "wrong_count": len(review),
     }
 
 

@@ -313,6 +313,7 @@ async def build_section(
                 "correct_key": correct_key,
                 "topic": q.topic,
                 "image_url": q.image_url,
+                "explanation": (q.explanation or "").strip() or None,
             }
         )
     return {
@@ -347,6 +348,32 @@ def client_sections(sections: list[dict]) -> list[dict]:
             }
         )
     return out
+
+
+def build_practice_review(sections: list[dict], answers: dict) -> list[dict]:
+    """Wrong answers with explanations — returned only after submit."""
+    wrong: list[dict] = []
+    ans = {str(k): str(v).upper()[:1] for k, v in (answers or {}).items()}
+    for sec in sections or []:
+        subject = sec.get("subject") or "Subject"
+        for q in sec.get("questions") or []:
+            qid = str(q.get("id"))
+            student = ans.get(qid) or ""
+            correct = (q.get("correct_key") or "").upper()
+            if not student or student == correct:
+                continue
+            wrong.append(
+                {
+                    "id": qid,
+                    "subject": subject,
+                    "question_text": q.get("question_text") or "",
+                    "options": q.get("options") or [],
+                    "your_answer": student,
+                    "correct_key": correct,
+                    "explanation": (q.get("explanation") or "").strip(),
+                }
+            )
+    return wrong
 
 
 def light_sections(sections: list[dict]) -> list[dict]:
