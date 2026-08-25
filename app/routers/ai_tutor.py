@@ -8,7 +8,7 @@ Sia is the Scholaxia Intelligent Assistant — friendly, adaptive, personalised.
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select, update, text
 from pydantic import BaseModel, Field
 from typing import Optional, List
 import io, base64
@@ -63,33 +63,68 @@ SUPPORTED_CURRICULA = ["WAEC", "NECO", "JAMB", "Cambridge", "Nigerian"]
 # ── Helper: get student name from DB ─────────────────────────────────────────
 
 async def _get_student_name(user_id: str, db: AsyncSession) -> str:
-    result = await db.execute(select(User).where(User.id == user_id))
-    user = result.scalar_one_or_none()
-    if user and user.full_name:
-        parts = user.full_name.strip().split()
-        if parts:
-            return parts[0]
+    try:
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if user and user.full_name:
+            parts = user.full_name.strip().split()
+            if parts:
+                return parts[0]
+    except Exception:
+        try:
+            await db.rollback()
+        except Exception:
+            pass
     return "there"
 
 
 async def _get_student_level(user_id: str, db: AsyncSession) -> str:
-    result = await db.execute(select(StudentProfile).where(StudentProfile.user_id == user_id))
-    profile = result.scalar_one_or_none()
-    return profile.education_level if profile and profile.education_level else "UNKNOWN"
+    try:
+        row = (
+            await db.execute(
+                text(
+                    "SELECT education_level FROM student_profiles "
+                    "WHERE user_id = CAST(:uid AS uuid) LIMIT 1"
+                ),
+                {"uid": str(user_id)},
+            )
+        ).mappings().first()
+        if row and row.get("education_level"):
+            return str(row["education_level"])
+    except Exception:
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+    return "UNKNOWN"
 
 
 async def _get_student_profile(user_id: str, db: AsyncSession) -> tuple[str, list]:
-    result = await db.execute(select(StudentProfile).where(StudentProfile.user_id == user_id))
-    profile = result.scalar_one_or_none()
-    if not profile:
-        return "UNKNOWN", []
-    level = profile.education_level or "UNKNOWN"
-    raw = profile.selected_subjects or []
     try:
-        subjects = list(raw)
-    except TypeError:
-        subjects = []
-    return level, subjects
+        row = (
+            await db.execute(
+                text(
+                    "SELECT education_level, selected_subjects FROM student_profiles "
+                    "WHERE user_id = CAST(:uid AS uuid) LIMIT 1"
+                ),
+                {"uid": str(user_id)},
+            )
+        ).mappings().first()
+        if not row:
+            return "UNKNOWN", []
+        level = row.get("education_level") or "UNKNOWN"
+        raw = row.get("selected_subjects") or []
+        try:
+            subjects = list(raw)
+        except TypeError:
+            subjects = []
+        return str(level), subjects
+    except Exception:
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        return "UNKNOWN", []
 
 
 def _normalize_history(history: Optional[list]) -> Optional[list]:
@@ -426,20 +461,32 @@ async def sia_explain_wrong(
     db: AsyncSession = Depends(get_db),
 ):
     """Sia explains why an answer is wrong and re-teaches the concept."""
-    _validate_language(payload.language)
-    student_name = await _get_student_name(current_user["sub"], db)
-    level = payload.education_level or await _get_student_level(current_user["sub"], db)
+    student_name = "there"
+    try:
+        _validate_language(payload.language)
+        student_name = await _get_student_name(current_user["sub"], db)
+        level = payload.education_level or await _get_student_level(current_user["sub"], db)
 
-    answer = await sia_explain_wrong_answer(
-        question=payload.question,
-        wrong_answer=payload.wrong_answer,
-        correct_answer=payload.correct_answer,
-        subject=payload.subject,
-        education_level=level,
-        language=payload.language,
-        student_name=student_name,
-    )
-    return {"sia": answer}
+        answer = await sia_explain_wrong_answer(
+            question=payload.question,
+            wrong_answer=payload.wrong_answer,
+            correct_answer=payload.correct_answer,
+            subject=payload.subject,
+            education_level=level,
+            language=payload.language,
+            student_name=student_name,
+            student_id=current_user["sub"],
+        )
+        return {"sia": answer}
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {
+            "sia": (
+                f"I hit a temporary server issue ({type(e).__name__}), {student_name}. "
+                "Please try again in a few seconds."
+            ),
+        }
 
 
 # ── Recommendations & History ─────────────────────────────────────────────────

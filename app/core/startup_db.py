@@ -26,7 +26,7 @@ async def ensure_school_campus_schema() -> None:
     stmts = (
         "ALTER TABLE school_campuses ADD COLUMN IF NOT EXISTS subscription_active BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE school_campuses ADD COLUMN IF NOT EXISTS subscription_plan VARCHAR(80) NULL",
-    )
+    )w
     for stmt in stmts:
         try:
             async with engine.begin() as conn:
@@ -197,6 +197,9 @@ async def _run_schema_migrations(conn) -> None:
         "ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS live_plan_sessions_used INTEGER NOT NULL DEFAULT 0"
     ))
     await conn.execute(text(
+        "ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS community_channel_id UUID NULL"
+    ))
+    await conn.execute(text(
         "ALTER TABLE live_session_requests ADD COLUMN IF NOT EXISTS assigned_teacher_id UUID NULL"
     ))
     await conn.execute(text(
@@ -219,6 +222,21 @@ async def _run_schema_migrations(conn) -> None:
     ))
     await conn.execute(text(
         "ALTER TABLE books ADD COLUMN IF NOT EXISTS scheme_topic VARCHAR(255) NULL"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE books ADD COLUMN IF NOT EXISTS library_target VARCHAR(20) NOT NULL DEFAULT 'student'"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE books ADD COLUMN IF NOT EXISTS is_downloadable BOOLEAN NOT NULL DEFAULT FALSE"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE books ADD COLUMN IF NOT EXISTS allow_copy BOOLEAN NOT NULL DEFAULT FALSE"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE books ADD COLUMN IF NOT EXISTS allow_screenshot BOOLEAN NOT NULL DEFAULT FALSE"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE books ADD COLUMN IF NOT EXISTS allow_print BOOLEAN NOT NULL DEFAULT FALSE"
     ))
     await conn.execute(text(
         "ALTER TABLE payments ADD COLUMN IF NOT EXISTS book_id UUID NULL"

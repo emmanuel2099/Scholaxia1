@@ -25,15 +25,32 @@ async def get_recommendations(
     weak = await get_weak_topics(student_id)
     weak_topics_for_subject = weak.get(subject, [])
 
-    # Books: match by subject, optionally filter by weak topic keywords
-    book_query = select(Book).where(Book.subject == subject).limit(5)
-    book_result = await db.execute(book_query)
-    books = book_result.scalars().all()
-
-    # Videos: match by subject
-    video_query = select(Video).where(Video.subject == subject).limit(5)
-    video_result = await db.execute(video_query)
-    videos = video_result.scalars().all()
+    books = []
+    videos = []
+    try:
+        book_result = await db.execute(
+            select(Book.id, Book.title, Book.author)
+            .where(Book.subject == subject)
+            .limit(5)
+        )
+        books = book_result.all()
+    except Exception:
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+    try:
+        video_result = await db.execute(
+            select(Video.id, Video.title, Video.video_url, Video.thumbnail_url)
+            .where(Video.subject == subject)
+            .limit(5)
+        )
+        videos = video_result.all()
+    except Exception:
+        try:
+            await db.rollback()
+        except Exception:
+            pass
 
     return {
         "weak_topics": weak_topics_for_subject,
@@ -42,7 +59,12 @@ async def get_recommendations(
             for b in books
         ],
         "recommended_videos": [
-            {"id": str(v.id), "title": v.title, "video_url": v.video_url, "thumbnail": v.thumbnail_url}
+            {
+                "id": str(v.id),
+                "title": v.title,
+                "video_url": v.video_url,
+                "thumbnail": v.thumbnail_url,
+            }
             for v in videos
         ],
     }
