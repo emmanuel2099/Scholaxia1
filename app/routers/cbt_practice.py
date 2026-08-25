@@ -269,9 +269,23 @@ async def get_practice_section(
 ):
     attempt = await _load_own_attempt(db, attempt_id, current_user["sub"])
     try:
+        await cbt_engine.ensure_section_built(db, attempt, int(section_index))
         return cbt_engine.client_section_at(attempt.sections or [], int(section_index))
-    except (IndexError, TypeError, ValueError) as exc:
+    except IndexError as exc:
         raise HTTPException(status_code=404, detail="Section not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raw = str(exc) or exc.__class__.__name__
+        if "timeout" in raw.lower() or "canceling statement" in raw.lower():
+            raise HTTPException(
+                status_code=504,
+                detail="Loading this subject timed out. Tap the subject again.",
+            ) from exc
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not load subject paper: {raw[:220]}",
+        ) from exc
 
 
 @router.post("/cbt/practice/attempts/{attempt_id}/answers")
@@ -314,6 +328,12 @@ async def submit_practice(
     if payload.answers:
         answers.update({str(k): str(v).upper()[:1] for k, v in payload.answers.items()})
     attempt.answers = answers
+
+    # Finish any subjects the student never opened so scoring uses full paper
+    try:
+        await cbt_engine.ensure_all_sections_built(db, attempt)
+    except Exception:
+        pass
 
     score = 0
     max_score = 0

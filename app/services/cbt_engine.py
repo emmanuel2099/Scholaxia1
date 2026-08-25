@@ -9,6 +9,7 @@ from typing import Any
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.database import engine
 from app.core.datetime_utils import naive_utc_now
@@ -371,6 +372,71 @@ def client_section_at(sections: list[dict], index: int) -> dict[str, Any]:
     return client_sections([secs[index]])[0]
 
 
+def section_stub(subject: str, count: int) -> dict[str, Any]:
+    """Placeholder section — questions are filled on first open."""
+    n = max(int(count or 1), 1)
+    return {
+        "subject": subject,
+        "total": n,
+        "completed": False,
+        "questions": [],
+    }
+
+
+async def ensure_section_built(
+    db: AsyncSession,
+    attempt: CbtPracticeAttempt,
+    section_index: int,
+) -> dict[str, Any]:
+    """Build one subject paper the first time the student opens it."""
+    sections = list(attempt.sections or [])
+    if section_index < 0 or section_index >= len(sections):
+        raise IndexError("section index out of range")
+    sec = dict(sections[section_index] or {})
+    if sec.get("questions"):
+        return sec
+
+    settings = await get_cbt_settings(db)
+    board = normalize_board(attempt.exam_type)
+    subject = str(sec.get("subject") or "").strip()
+    if not subject:
+        raise ValueError("Section has no subject")
+
+    if board == "JAMB":
+        count = (
+            int(settings["jamb_english_questions"] or 60)
+            if is_english_subject(subject)
+            else int(settings["jamb_questions_per_subject"] or 40)
+        )
+    elif board == "WAEC":
+        count = int(settings["waec_questions_per_subject"] or 50)
+    else:
+        count = int(settings["neco_questions_per_subject"] or 50)
+    # Prefer stub total if admin already set it at start
+    if int(sec.get("total") or 0) > 0:
+        count = int(sec["total"])
+
+    built = await build_section(
+        db,
+        exam_type=board,
+        subject=subject,
+        count=count,
+        randomize_questions=bool(settings["randomize_questions"]),
+        randomize_options=bool(settings["randomize_options"]),
+    )
+    sections[section_index] = built
+    attempt.sections = sections
+    flag_modified(attempt, "sections")
+    await db.flush()
+    return built
+
+
+async def ensure_all_sections_built(db: AsyncSession, attempt: CbtPracticeAttempt) -> None:
+    for i, sec in enumerate(list(attempt.sections or [])):
+        if not (sec or {}).get("questions"):
+            await ensure_section_built(db, attempt, i)
+
+
 async def start_practice_attempt(
     db: AsyncSession,
     *,
@@ -430,7 +496,17 @@ async def start_practice_attempt(
                     await db.flush()
                     still_valid = False
             if still_valid:
-                return existing
+                secs = existing.sections or []
+                has_answers = bool(existing.answers)
+                # Heavy unanswered papers block instant Start — replace with a fresh stub session
+                heavy = any(len((s or {}).get("questions") or []) > 0 for s in secs)
+                if heavy and not has_answers:
+                    existing.status = "abandoned"
+                    existing.submitted_at = now_check
+                    await db.flush()
+                    still_valid = False
+                else:
+                    return existing
 
     subjects_clean = [s.strip() for s in subjects if (s or "").strip()]
 
@@ -453,7 +529,7 @@ async def start_practice_attempt(
                 "Update Profile → Exam subjects, then try again."
             )
         duration = int(settings["jamb_duration_minutes"] or 60)
-        practice_exams = await _published_practice_exams(db, board)
+        # Fast open: create subject stubs now; build questions when student picks a subject
         sections = []
         for sub in subjects_clean:
             n = (
@@ -461,17 +537,7 @@ async def start_practice_attempt(
                 if is_english_subject(sub)
                 else int(settings["jamb_questions_per_subject"] or 40)
             )
-            sections.append(
-                await build_section(
-                    db,
-                    exam_type=board,
-                    subject=sub,
-                    count=n,
-                    randomize_questions=bool(settings["randomize_questions"]),
-                    randomize_options=bool(settings["randomize_options"]),
-                    practice_exams=practice_exams,
-                )
-            )
+            sections.append(section_stub(sub, n))
     else:
         profile_ssce = list(
             (profile.ssce_subjects if profile else None)
@@ -498,18 +564,7 @@ async def start_practice_attempt(
             if board == "WAEC"
             else settings["neco_questions_per_subject"]
         )
-        practice_exams = await _published_practice_exams(db, board)
-        sections = [
-            await build_section(
-                db,
-                exam_type=board,
-                subject=subjects_clean[0],
-                count=count,
-                randomize_questions=bool(settings["randomize_questions"]),
-                randomize_options=bool(settings["randomize_options"]),
-                practice_exams=practice_exams,
-            )
-        ]
+        sections = [section_stub(subjects_clean[0], count)]
 
     now = naive_utc_now()
     attempt = CbtPracticeAttempt(
