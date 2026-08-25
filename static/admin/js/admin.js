@@ -2682,7 +2682,9 @@ async function uploadLibraryBook() {
     ok.textContent =
       "Uploaded as «" +
       category +
-      "». Students see it under Lesson Notes (for Lesson Notes / Study Materials) and Library.";
+      "». Students see it in Library → filter «" +
+      category +
+      "».";
     await loadLibraryAdmin();
   } catch (e) {
     err.textContent = e.message || "Upload failed.";
