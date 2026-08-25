@@ -162,7 +162,7 @@ def _validate_language(language: str):
 
 class AskRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=2000)
-    subject: str
+    subject: Optional[str] = "General"
     language: str = "english"
     education_level: Optional[str] = None
     conversation_history: Optional[list] = None  # last N messages for context
@@ -214,7 +214,7 @@ async def ask_sia(
         profile_level, profile_subjects = await _get_student_profile(current_user["sub"], db)
         level = payload.education_level or profile_level
         default_subject = (
-            profile_subjects[0] if profile_subjects else payload.subject
+            profile_subjects[0] if profile_subjects else (payload.subject or "General")
         )
         active_subject = resolve_active_subject(
             payload.question,
