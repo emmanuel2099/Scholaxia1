@@ -137,7 +137,7 @@ function showAdminPage(page) {
   else if (page === "school-office") loadSchoolOffice();
   else if (page === "internal-exams") loadInternalExamsAdmin();
   else if (page === "recommendations") loadRecommendations();
-  else if (page === "student-groups") loadPendingStudentGroups();
+  else if (page === "student-groups") loadStudentGroupsAdmin();
   else if (page === "community") loadCommunityPosts();
   else if (page === "marketplace") loadMarketplace();
 }
@@ -1808,56 +1808,159 @@ async function removeAllRecommendations() {
   } catch (e) { alert(e.message); }
 }
 
-/* ── Student group approval ── */
-async function loadPendingStudentGroups() {
+/* ── Student group management ── */
+var sgGroupsCache = [];
+var sgSearchTimer = null;
+
+function debounceStudentGroupsSearch() {
+  if (sgSearchTimer) clearTimeout(sgSearchTimer);
+  sgSearchTimer = setTimeout(loadStudentGroupsAdmin, 300);
+}
+
+function renderStudentGroupsTable(rows) {
+  var el = document.getElementById("student-groups-table");
+  if (!el) return;
+  if (!rows || !rows.length) {
+    el.innerHTML = '<div class="empty-state">No groups match this filter.</div>';
+    return;
+  }
+  el.innerHTML =
+    '<table class="data-table"><thead><tr><th>Group</th><th>Creator</th><th>Status</th><th>Members</th><th>Listed?</th><th>Created</th><th>Actions</th></tr></thead><tbody>' +
+    rows.map(function (g) {
+      var status = g.is_approved
+        ? '<span style="color:#15803d;font-weight:700">Approved</span>'
+        : '<span style="color:#b45309;font-weight:700">Pending</span>';
+      var actions =
+        '<button class="btn-sm" onclick="viewGroupChat(\'' + g.id + '\', ' + JSON.stringify(g.name || "Group") + ')">View chat</button> ';
+      if (!g.is_approved) {
+        actions +=
+          '<button class="btn-sm primary" onclick="approveStudentGroup(\'' + g.id + '\')">Approve</button> ' +
+          '<button class="btn-sm" onclick="rejectStudentGroup(\'' + g.id + '\')">Reject</button> ';
+      }
+      actions += '<button class="btn-sm danger" onclick="deleteStudentGroup(\'' + g.id + '\', ' + JSON.stringify(g.name || "Group") + ')">Delete</button>';
+      return (
+        '<tr><td><strong>' + escHtml(g.name) + '</strong><br><span style="font-size:.8rem;color:#8aa896">' +
+        escHtml(g.description || "") + '</span></td>' +
+        '<td>' + escHtml(g.creator_name) + '<br><span style="font-size:.75rem;color:#6b8f75">' + escHtml(g.creator_email) + '</span></td>' +
+        '<td>' + status + '</td>' +
+        '<td>' + (g.member_count || 0) + '</td>' +
+        '<td>' + (g.is_community_listed ? "Yes" : "No") + '</td>' +
+        '<td>' + fmtDate(g.created_at) + '</td>' +
+        '<td class="actions">' + actions + '</td></tr>'
+      );
+    }).join("") +
+    "</tbody></table>";
+}
+
+async function loadStudentGroupsAdmin() {
   var el = document.getElementById("student-groups-table");
   if (!el) return;
   el.innerHTML = '<div class="loading">Loading…</div>';
   try {
-    var rows = await adminApi("/api/v1/admin/student-groups/pending");
-    if (!rows || !rows.length) {
-      el.innerHTML = '<div class="empty-state">No groups waiting for approval.</div>';
-      return;
-    }
-    el.innerHTML =
-      '<table class="data-table"><thead><tr><th>Group</th><th>Creator</th><th>Members</th><th>Listed?</th><th>Date</th><th></th></tr></thead><tbody>' +
-      rows.map(function (g) {
-        return (
-          '<tr><td><strong>' + escHtml(g.name) + '</strong><br><span style="font-size:.8rem;color:#8aa896">' +
-          escHtml(g.description || "") + '</span></td>' +
-          '<td>' + escHtml(g.creator_name) + '<br><span style="font-size:.75rem;color:#6b8f75">' + escHtml(g.creator_email) + '</span></td>' +
-          '<td>' + (g.member_count || 0) + '</td>' +
-          '<td>' + (g.is_community_listed ? "Yes" : "No") + '</td>' +
-          '<td>' + fmtDate(g.created_at) + '</td>' +
-          '<td class="actions">' +
-          '<button class="btn-sm primary" onclick="approveStudentGroup(\'' + g.id + '\')">Approve</button> ' +
-          '<button class="btn-sm danger" onclick="rejectStudentGroup(\'' + g.id + '\')">Reject</button>' +
-          '</td></tr>'
-        );
-      }).join("") +
-      "</tbody></table>";
+    var status = ((document.getElementById("sg-filter") || {}).value || "all").trim();
+    var q = ((document.getElementById("sg-search") || {}).value || "").trim();
+    var url = "/api/v1/admin/student-groups?status=" + encodeURIComponent(status);
+    if (q) url += "&q=" + encodeURIComponent(q);
+    var rows = await adminApi(url);
+    sgGroupsCache = Array.isArray(rows) ? rows : [];
+    renderStudentGroupsTable(sgGroupsCache);
   } catch (e) {
     el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + '</div>';
   }
 }
 
+async function loadPendingStudentGroups() {
+  var filter = document.getElementById("sg-filter");
+  if (filter) filter.value = "pending";
+  return loadStudentGroupsAdmin();
+}
+
+function closeGroupChatPanel() {
+  var panel = document.getElementById("sg-chat-panel");
+  if (panel) panel.style.display = "none";
+  var msgs = document.getElementById("sg-chat-messages");
+  if (msgs) msgs.innerHTML = "";
+  var mem = document.getElementById("sg-members-wrap");
+  if (mem) mem.innerHTML = "";
+}
+
+async function viewGroupChat(id, name) {
+  if (!id) return;
+  var panel = document.getElementById("sg-chat-panel");
+  var title = document.getElementById("sg-chat-title");
+  var msgs = document.getElementById("sg-chat-messages");
+  var memWrap = document.getElementById("sg-members-wrap");
+  if (title) title.textContent = "Chat — " + (name || "Group");
+  if (panel) panel.style.display = "block";
+  if (msgs) msgs.innerHTML = '<div class="loading">Loading chat…</div>';
+  if (memWrap) memWrap.innerHTML = "";
+  if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  try {
+    var members = await adminApi("/api/v1/admin/student-groups/" + id + "/members");
+    if (memWrap && Array.isArray(members) && members.length) {
+      memWrap.innerHTML =
+        "<strong>Members (" + members.length + "):</strong> " +
+        members.map(function (m) {
+          return escHtml(m.name || m.email) + (m.role === "admin" ? " (admin)" : "");
+        }).join(", ");
+    }
+    var data = await adminApi("/api/v1/admin/student-groups/" + id + "/messages?limit=300");
+    var list = (data && data.messages) || [];
+    if (!msgs) return;
+    if (!list.length) {
+      msgs.innerHTML = '<div class="empty-state">No chat messages in this group yet.</div>';
+      return;
+    }
+    msgs.innerHTML = list
+      .map(function (m) {
+        return (
+          '<article class="sg-chat-msg"><div class="sg-chat-meta"><strong>' +
+          escHtml(m.author_name || "User") +
+          '</strong><span>' +
+          escHtml(m.author_email || "") +
+          " · " +
+          fmtDate(m.created_at) +
+          '</span></div><div class="sg-chat-body">' +
+          escHtml(m.content || "") +
+          "</div></article>"
+        );
+      })
+      .join("");
+    msgs.scrollTop = msgs.scrollHeight;
+  } catch (e) {
+    if (msgs) msgs.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
+  }
+}
+
 async function approveStudentGroup(id) {
-  if (!confirm("Approve this group? Students can chat once approved.")) return;
+  if (!confirm("Approve this group? The creator and members can chat once approved.")) return;
   try {
     var res = await adminApi("/api/v1/admin/student-groups/" + id + "/approve", { method: "POST" });
     alert((res && res.message) || "Group approved.");
-    loadPendingStudentGroups();
+    loadStudentGroupsAdmin();
   } catch (e) {
     alert(e.message);
   }
 }
 
 async function rejectStudentGroup(id) {
-  if (!confirm("Reject this group? It will stay inactive.")) return;
+  if (!confirm("Reject this group? It will stay inactive (not deleted).")) return;
   try {
     var res = await adminApi("/api/v1/admin/student-groups/" + id + "/reject", { method: "POST" });
     alert((res && res.message) || "Group rejected.");
-    loadPendingStudentGroups();
+    loadStudentGroupsAdmin();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+async function deleteStudentGroup(id, name) {
+  if (!confirm('Delete group "' + (name || "this group") + '" permanently? All chat and members will be removed.')) return;
+  try {
+    var res = await adminApi("/api/v1/admin/student-groups/" + id, { method: "DELETE" });
+    alert((res && res.message) || "Group deleted.");
+    closeGroupChatPanel();
+    loadStudentGroupsAdmin();
   } catch (e) {
     alert(e.message);
   }

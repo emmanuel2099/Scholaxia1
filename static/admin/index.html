@@ -961,11 +961,27 @@
 
     <section id="page-student-groups" class="admin-page">
       <div class="page-head">
-        <h2>Student Groups — Pending Approval</h2>
-        <button class="btn-sm" onclick="loadPendingStudentGroups()">Refresh</button>
+        <h2>Manage Student Groups</h2>
+        <button class="btn-sm" onclick="loadStudentGroupsAdmin()">Refresh</button>
       </div>
-      <p class="cbt-hint small">Students cannot activate groups until you approve them here.</p>
+      <p class="cbt-hint small">See who created each group, approve new groups, read group chat, or delete a group.</p>
+      <div class="form-row" style="margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem">
+        <select id="sg-filter" onchange="loadStudentGroupsAdmin()">
+          <option value="all">All groups</option>
+          <option value="pending">Pending approval</option>
+          <option value="approved">Approved</option>
+        </select>
+        <input id="sg-search" type="search" placeholder="Search group or creator…" oninput="debounceStudentGroupsSearch()" style="min-width:220px" />
+      </div>
       <div id="student-groups-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+      <div id="sg-chat-panel" class="panel" style="display:none;margin-top:1.25rem;padding:1rem">
+        <div class="page-head" style="margin-bottom:0.75rem">
+          <h3 id="sg-chat-title">Group chat</h3>
+          <button class="btn-sm" type="button" onclick="closeGroupChatPanel()">Close</button>
+        </div>
+        <div id="sg-members-wrap" style="margin-bottom:0.85rem;font-size:0.85rem;color:#6b8f75"></div>
+        <div id="sg-chat-messages" class="sg-chat-log"><div class="loading">Loading chat…</div></div>
+      </div>
     </section>
 
     <section id="page-community" class="admin-page">

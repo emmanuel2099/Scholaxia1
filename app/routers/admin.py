@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Query
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, text
@@ -15,7 +15,12 @@ from app.models.user import User, UserRole, TeacherProfile, StudentProfile, Kind
 from app.models.content import Book, LibraryTarget
 from app.models.cbt import CBTExam, CBTQuestion, CBTSession, ExamProctorLog, normalize_paper_kind
 from app.models.community import CommunityPost, CommunityChannel
-from app.models.student_group import StudentGroup, StudentGroupMember
+from app.models.student_group import (
+    StudentGroup,
+    StudentGroupMember,
+    StudentGroupJoinRequest,
+    StudentGroupMessage,
+)
 from app.services.group_community import ensure_group_feed_post
 from app.services.media_service import generate_upload_signature, upload_file
 from app.services.cbt_import import CBT_IMPORT_TEMPLATE, normalize_exam_type, parse_cbt_file
@@ -2356,17 +2361,51 @@ async def delete_live_class(
 
 # ── Student group approval ────────────────────────────────────────────────────
 
+def _student_group_admin_row(grp: StudentGroup, creator: User, member_count: int) -> dict:
+    return {
+        "id": str(grp.id),
+        "name": grp.name,
+        "description": grp.description or "",
+        "creator_id": str(grp.creator_id),
+        "creator_name": creator.full_name or creator.email,
+        "creator_email": creator.email,
+        "is_public": grp.is_public,
+        "is_community_listed": grp.is_community_listed,
+        "is_approved": grp.is_approved,
+        "member_count": member_count,
+        "created_at": grp.created_at.isoformat() if grp.created_at else None,
+    }
+
+
 @router.get("/student-groups")
 async def list_all_student_groups(
+    status: Optional[str] = Query(None, description="pending | approved | all"),
+    q: Optional[str] = None,
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """All student groups (for admin moderation / clear follow-up)."""
-    result = await db.execute(
+    """All student groups — filter by approval status or search name/creator."""
+    query = (
         select(StudentGroup, User)
         .join(User, User.id == StudentGroup.creator_id)
         .order_by(StudentGroup.created_at.desc())
     )
+    status_norm = (status or "all").strip().lower()
+    if status_norm == "pending":
+        query = query.where(StudentGroup.is_approved == False)  # noqa: E712
+    elif status_norm == "approved":
+        query = query.where(StudentGroup.is_approved == True)  # noqa: E712
+    if q and q.strip():
+        term = f"%{q.strip()}%"
+        query = query.where(
+            or_(
+                StudentGroup.name.ilike(term),
+                StudentGroup.description.ilike(term),
+                User.full_name.ilike(term),
+                User.email.ilike(term),
+            )
+        )
+    result = await db.execute(query)
     out = []
     for grp, creator in result.all():
         mem_count = await db.execute(
@@ -2374,17 +2413,7 @@ async def list_all_student_groups(
                 StudentGroupMember.group_id == grp.id
             )
         )
-        out.append({
-            "id": str(grp.id),
-            "name": grp.name,
-            "description": grp.description or "",
-            "creator_name": creator.full_name or creator.email,
-            "creator_email": creator.email,
-            "is_community_listed": grp.is_community_listed,
-            "is_approved": grp.is_approved,
-            "member_count": int(mem_count.scalar() or 0),
-            "created_at": grp.created_at.isoformat() if grp.created_at else None,
-        })
+        out.append(_student_group_admin_row(grp, creator, int(mem_count.scalar() or 0)))
     return out
 
 
@@ -2454,6 +2483,100 @@ async def reject_student_group(
     group.is_community_listed = False
     await db.flush()
     return {"message": f'Group "{group.name}" was rejected and remains inactive.'}
+
+
+@router.get("/student-groups/{group_id}/members")
+async def admin_list_group_members(
+    group_id: str,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    gid = uuid.UUID(group_id)
+    res = await db.execute(select(StudentGroup).where(StudentGroup.id == gid))
+    if not res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Group not found.")
+    rows = (
+        await db.execute(
+            select(StudentGroupMember, User)
+            .join(User, User.id == StudentGroupMember.user_id)
+            .where(StudentGroupMember.group_id == gid)
+            .order_by(StudentGroupMember.joined_at.asc())
+        )
+    ).all()
+    return [
+        {
+            "id": str(mem.id),
+            "user_id": str(mem.user_id),
+            "name": user.full_name or user.email,
+            "email": user.email,
+            "role": mem.role.value if hasattr(mem.role, "value") else str(mem.role),
+            "joined_at": mem.joined_at.isoformat() if mem.joined_at else None,
+        }
+        for mem, user in rows
+    ]
+
+
+@router.get("/student-groups/{group_id}/messages")
+async def admin_list_group_messages(
+    group_id: str,
+    limit: int = Query(200, ge=1, le=500),
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Read-only group chat for admin moderation (shows all messages, no auto-delete)."""
+    gid = uuid.UUID(group_id)
+    res = await db.execute(select(StudentGroup).where(StudentGroup.id == gid))
+    group = res.scalar_one_or_none()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found.")
+    rows = (
+        await db.execute(
+            select(StudentGroupMessage, User)
+            .join(User, User.id == StudentGroupMessage.user_id)
+            .where(StudentGroupMessage.group_id == gid)
+            .order_by(StudentGroupMessage.created_at.asc())
+            .limit(limit)
+        )
+    ).all()
+    return {
+        "group_id": str(group.id),
+        "group_name": group.name,
+        "is_approved": group.is_approved,
+        "messages": [
+            {
+                "id": str(msg.id),
+                "user_id": str(msg.user_id),
+                "author_name": user.full_name or user.email,
+                "author_email": user.email,
+                "content": msg.content,
+                "created_at": msg.created_at.isoformat() if msg.created_at else None,
+            }
+            for msg, user in rows
+        ],
+    }
+
+
+@router.delete("/student-groups/{group_id}", status_code=status.HTTP_200_OK)
+async def admin_delete_student_group(
+    group_id: str,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    from sqlalchemy import delete as sql_delete
+
+    gid = uuid.UUID(group_id)
+    res = await db.execute(select(StudentGroup).where(StudentGroup.id == gid))
+    group = res.scalar_one_or_none()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found.")
+    name = group.name
+    await db.execute(sql_delete(StudentGroupJoinRequest).where(StudentGroupJoinRequest.group_id == gid))
+    await db.execute(sql_delete(StudentGroupMessage).where(StudentGroupMessage.group_id == gid))
+    await db.execute(sql_delete(StudentGroupMember).where(StudentGroupMember.group_id == gid))
+    await db.execute(sql_delete(CommunityPost).where(CommunityPost.group_id == gid))
+    await db.execute(sql_delete(StudentGroup).where(StudentGroup.id == gid))
+    await db.flush()
+    return {"message": f'Group "{name}" was deleted.'}
 
 
 # ── Kind (Kids) Learners ──────────────────────────────────────────────────────

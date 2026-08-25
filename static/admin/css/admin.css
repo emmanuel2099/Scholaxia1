@@ -1228,6 +1228,34 @@ body {
 
 .btn-primary:hover { filter: brightness(1.08); transform: translateY(-1px); }
 
+.sg-chat-log {
+  max-height: 420px;
+  overflow: auto;
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.35rem 0;
+}
+.sg-chat-msg {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+  background: rgba(15, 23, 42, 0.35);
+}
+.sg-chat-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.65rem;
+  align-items: baseline;
+  margin-bottom: 0.35rem;
+  font-size: 0.82rem;
+}
+.sg-chat-meta span { color: #94a3b8; }
+.sg-chat-body {
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.45;
+}
+
 @media (max-width: 720px) {
   .admin-main::before {
     content: "ACADEMY CONTROL";
