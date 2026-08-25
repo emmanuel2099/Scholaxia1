@@ -13,7 +13,16 @@ from app.models.community import (
     MessageReport,
     PostLike,
 )
-from app.models.content import BookReadProgress, SavedBook
+from app.models.content import BookReadProgress, SavedBook, BookPurchase
+from app.models.cbt_coupon import CbtCouponRedemption
+from app.models.cbt_settings import CbtPracticeAttempt
+from app.models.payment import StudentEntitlement
+from app.models.teacher_material import MaterialPurchase
+from app.models.external_exam import (
+    ExternalExamAttempt,
+    ExternalExamAnswer,
+    ExternalExamResultAudit,
+)
 from app.models.notification import DeviceToken, Notification
 from app.models.payment import Payment, Subscription
 from app.models.review_report import Report, TeacherReview
@@ -106,6 +115,31 @@ async def delete_student_user(db: AsyncSession, user_id: uuid.UUID) -> bool:
     await db.execute(delete(CommunityMessage).where(CommunityMessage.sender_id == user_id))
 
     await db.execute(delete(AssignmentSubmission).where(AssignmentSubmission.student_id == user_id))
+
+    ext_attempt_ids = (
+        await db.execute(
+            select(ExternalExamAttempt.id).where(ExternalExamAttempt.student_user_id == user_id)
+        )
+    ).scalars().all()
+    if ext_attempt_ids:
+        await db.execute(
+            delete(ExternalExamAnswer).where(ExternalExamAnswer.attempt_id.in_(ext_attempt_ids))
+        )
+        await db.execute(
+            delete(ExternalExamResultAudit).where(
+                ExternalExamResultAudit.attempt_id.in_(ext_attempt_ids)
+            )
+        )
+    await db.execute(
+        delete(ExternalExamAttempt).where(ExternalExamAttempt.student_user_id == user_id)
+    )
+
+    await db.execute(delete(BookPurchase).where(BookPurchase.student_id == user_id))
+    await db.execute(delete(MaterialPurchase).where(MaterialPurchase.student_id == user_id))
+    await db.execute(delete(CbtCouponRedemption).where(CbtCouponRedemption.student_id == user_id))
+    await db.execute(delete(StudentEntitlement).where(StudentEntitlement.student_id == user_id))
+    await db.execute(delete(CbtPracticeAttempt).where(CbtPracticeAttempt.student_id == user_id))
+
     await db.execute(delete(Notification).where(Notification.user_id == user_id))
     await db.execute(delete(DeviceToken).where(DeviceToken.user_id == user_id))
     await db.execute(delete(SiaNote).where(SiaNote.student_id == user_id))

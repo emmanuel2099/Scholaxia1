@@ -317,11 +317,20 @@ async def submit_practice(
 ):
     attempt = await _load_own_attempt(db, attempt_id, current_user["sub"])
     if attempt.status == "completed":
+        answers = dict(attempt.answers or {})
+        full_review = cbt_engine.build_practice_full_review(attempt.sections or [], answers)
+        review = [q for q in full_review if not q.get("is_correct")]
         return {
             "attempt_id": str(attempt.id),
             "score": attempt.score,
             "max_score": attempt.max_score,
+            "percent": round((attempt.score / attempt.max_score) * 100, 1)
+            if attempt.max_score
+            else 0,
             "result_summary": attempt.result_summary,
+            "review": review,
+            "full_review": full_review,
+            "wrong_count": len(review),
         }
 
     answers = dict(attempt.answers or {})
@@ -362,13 +371,41 @@ async def submit_practice(
     attempt.status = "completed"
     attempt.submitted_at = naive_utc_now()
     await db.flush()
-    review = cbt_engine.build_practice_review(attempt.sections or [], answers)
+    full_review = cbt_engine.build_practice_full_review(attempt.sections or [], answers)
+    review = [q for q in full_review if not q.get("is_correct")]
     return {
         "attempt_id": str(attempt.id),
         "score": attempt.score,
         "max_score": attempt.max_score,
         "percent": round((score / max_score) * 100, 1) if max_score else 0,
         "result_summary": attempt.result_summary,
+        "review": review,
+        "full_review": full_review,
+        "wrong_count": len(review),
+    }
+
+
+@router.get("/cbt/practice/attempts/{attempt_id}/review")
+async def get_practice_review(
+    attempt_id: str,
+    current_user: dict = Depends(require_student_or_kind),
+    db: AsyncSession = Depends(get_db),
+):
+    """Full answer key + explanations for a completed practice attempt."""
+    attempt = await _load_own_attempt(db, attempt_id, current_user["sub"])
+    if attempt.status != "completed":
+        raise HTTPException(status_code=400, detail="Complete the exam before reviewing answers")
+    answers = dict(attempt.answers or {})
+    full_review = cbt_engine.build_practice_full_review(attempt.sections or [], answers)
+    review = [q for q in full_review if not q.get("is_correct")]
+    return {
+        "attempt_id": str(attempt.id),
+        "exam_type": attempt.exam_type,
+        "subjects": attempt.subjects or [],
+        "score": attempt.score,
+        "max_score": attempt.max_score,
+        "percent": round((attempt.score / attempt.max_score) * 100, 1) if attempt.max_score else 0,
+        "full_review": full_review,
         "review": review,
         "wrong_count": len(review),
     }

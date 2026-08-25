@@ -220,13 +220,16 @@ async function refreshDashboardStats() {
   }
 }
 
-async function deleteStudent(id) {
-  if (!confirm("Delete this student permanently? They will be removed from the list.")) return;
+async def deleteStudent(id) {
+  if (!confirm("Delete this student permanently? They will be removed from the database.")) return;
   try {
     await adminApi("/api/v1/admin/students/" + id, { method: "DELETE" });
+    alert("Student deleted.");
     loadStudents();
     refreshDashboardStats();
-  } catch (e) { alert(e.message); }
+  } catch (e) {
+    alert((e && e.message) || "Could not delete this student. They may have linked records — try again or contact support.");
+  }
 }
 
 async function removeAllStudents() {

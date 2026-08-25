@@ -350,9 +350,9 @@ def client_sections(sections: list[dict]) -> list[dict]:
     return out
 
 
-def build_practice_review(sections: list[dict], answers: dict) -> list[dict]:
-    """Wrong answers with explanations — returned only after submit."""
-    wrong: list[dict] = []
+def build_practice_full_review(sections: list[dict], answers: dict) -> list[dict]:
+    """Every question with answers — returned only after submit."""
+    items: list[dict] = []
     ans = {str(k): str(v).upper()[:1] for k, v in (answers or {}).items()}
     for sec in sections or []:
         subject = sec.get("subject") or "Subject"
@@ -360,20 +360,26 @@ def build_practice_review(sections: list[dict], answers: dict) -> list[dict]:
             qid = str(q.get("id"))
             student = ans.get(qid) or ""
             correct = (q.get("correct_key") or "").upper()
-            if not student or student == correct:
-                continue
-            wrong.append(
+            items.append(
                 {
                     "id": qid,
                     "subject": subject,
+                    "topic": q.get("topic"),
                     "question_text": q.get("question_text") or "",
                     "options": q.get("options") or [],
-                    "your_answer": student,
+                    "your_answer": student or None,
                     "correct_key": correct,
+                    "is_correct": bool(student and student == correct),
+                    "is_skipped": not bool(student),
                     "explanation": (q.get("explanation") or "").strip(),
                 }
             )
-    return wrong
+    return items
+
+
+def build_practice_review(sections: list[dict], answers: dict) -> list[dict]:
+    """Wrong answers with explanations — returned only after submit."""
+    return [q for q in build_practice_full_review(sections, answers) if not q.get("is_correct")]
 
 
 def light_sections(sections: list[dict]) -> list[dict]:

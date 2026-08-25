@@ -1971,11 +1971,21 @@ async def delete_student(
     db: AsyncSession = Depends(get_db),
 ):
     import uuid as _uuid
+    import logging
+
+    logger = logging.getLogger(__name__)
     try:
         uid = _uuid.UUID(student_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid student id")
-    deleted = await delete_student_user(db, uid)
+    try:
+        deleted = await delete_student_user(db, uid)
+    except Exception as exc:
+        logger.exception("delete_student failed for %s", student_id)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not delete student: {type(exc).__name__}",
+        ) from exc
     if not deleted:
         raise HTTPException(status_code=404, detail="Student not found")
 
