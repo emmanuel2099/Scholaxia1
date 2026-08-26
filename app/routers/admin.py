@@ -70,10 +70,11 @@ async def admin_register(payload: AdminRegisterRequest, db: AsyncSession = Depen
     db.add(user)
     await db.flush()
     access_token, refresh_token = await issue_auth_tokens(db, user)
+    role = user.role.value if hasattr(user.role, "value") else str(user.role)
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
-        role=user.role,
+        role=role,
     )
 
 

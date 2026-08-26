@@ -51,30 +51,40 @@ async function adminLogin(e) {
   var btn = document.getElementById("btn-login");
   err.textContent = "";
   btn.disabled = true;
+  btn.textContent = "Signing in…";
   try {
+    if (typeof wakeAdminServer === "function") {
+      try { await wakeAdminServer(); } catch (wakeErr) { /* continue */ }
+    }
     var res = await fetch(API_BASE + "/api/v1/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: email, password: password }),
-      signal: fetchTimeout(45000),
+      signal: fetchTimeout(90000),
     });
-    var data = await res.json();
+    var data = await res.json().catch(function () { return {}; });
     if (!res.ok) { err.textContent = formatApiError(data.detail) || "Login failed."; return; }
-    if (data.role === "school_admin") {
+    var role = String(data.role || (data.user && data.user.role) || "").toLowerCase().replace(/^userrole\./, "");
+    if (role === "school_admin") {
       err.textContent = "School admins log in on the Schools website tab, not this main admin.";
       return;
     }
-    if (data.role !== "admin") {
-      err.textContent = "This email is a " + data.role + " account, not an admin.";
+    if (role !== "admin") {
+      err.textContent = "This email is a " + (role || "unknown") + " account, not an admin.";
       return;
     }
-    saveAdminSession(data, email, data.user && data.user.full_name);
+    saveAdminSession(data, email, (data.user && data.user.full_name) || email);
     showApp();
     loadDashboard();
   } catch (ex) {
-    err.textContent = "Network error. Check your connection.";
+    if (ex && ex.name === "AbortError") {
+      err.textContent = "Server took too long (waking up). Wait 20 seconds and try again.";
+    } else {
+      err.textContent = "Network error. Check your connection and try again.";
+    }
   } finally {
     btn.disabled = false;
+    btn.textContent = "LOG IN";
   }
 }
 
@@ -222,7 +232,7 @@ async function refreshDashboardStats() {
   }
 }
 
-async def deleteStudent(id) {
+async function deleteStudent(id) {
   if (!confirm("Delete this student permanently? They will be removed from the database.")) return;
   try {
     await adminApi("/api/v1/admin/students/" + id, { method: "DELETE" });
