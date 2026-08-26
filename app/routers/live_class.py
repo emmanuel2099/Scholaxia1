@@ -1363,8 +1363,13 @@ async def list_live_classes(
         query = query.where(LiveClass.teacher_id == current_user["sub"])
 
     query = query.order_by(LiveClass.start_time.desc()).limit(limit).offset(offset)
-    result = await db.execute(query)
-    classes = result.scalars().all()
+    try:
+        result = await db.execute(query)
+        classes = result.scalars().all()
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("list_live_classes query failed")
+        return []
 
     # Students: filter by visibility / access rules
     if role == "student":
@@ -1396,12 +1401,17 @@ async def list_live_classes(
         ]
 
     # Fetch teacher names
-    teacher_ids = list({str(c.teacher_id) for c in classes})
-    from app.models.user import User
-    users_res = await db.execute(
-        select(User).where(User.id.in_(teacher_ids))
-    )
-    teachers_map = {str(u.id): u.full_name for u in users_res.scalars().all()}
+    teacher_ids = list({str(c.teacher_id) for c in classes if c.teacher_id})
+    teachers_map = {}
+    if teacher_ids:
+        from app.models.user import User
+        try:
+            users_res = await db.execute(
+                select(User).where(User.id.in_(teacher_ids))
+            )
+            teachers_map = {str(u.id): u.full_name for u in users_res.scalars().all()}
+        except Exception:
+            teachers_map = {}
 
     return [
         {

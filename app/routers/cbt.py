@@ -272,13 +272,17 @@ class ExamSummary(BaseModel):
 
 def _exam_summary(e: CBTExam) -> ExamSummary:
     return ExamSummary(
-        id=str(e.id), title=e.title, subject=e.subject,
-        exam_type=e.exam_type, year=e.year,
-        duration_minutes=e.duration_minutes,
-        total_questions=e.total_questions, is_published=e.is_published,
-        is_school_exam=e.is_school_exam,
+        id=str(e.id),
+        title=e.title or "Exam",
+        subject=e.subject or "General",
+        exam_type=str(e.exam_type or "GENERAL"),
+        year=e.year,
+        duration_minutes=int(e.duration_minutes or 60),
+        total_questions=int(e.total_questions or 0),
+        is_published=bool(e.is_published),
+        is_school_exam=bool(e.is_school_exam),
         paper_kind=normalize_paper_kind(getattr(e, "paper_kind", None)),
-        camera_required=e.camera_required,
+        camera_required=bool(getattr(e, "camera_required", False)),
         scheduled_start=e.scheduled_start,
         scheduled_end=e.scheduled_end,
     )
@@ -369,6 +373,39 @@ async def exams_for_student(
     paper_kind: Optional[str] = Query("cbt_practice"),
     current_user: dict = Depends(require_student),
     db: AsyncSession = Depends(get_db),
+):
+    """
+    Practice + school exams filtered by the student's exam boards and subjects.
+    Returns jamb_exams and ssce_exams so the app can show JAMB | WAEC/NECO tabs.
+    """
+    try:
+        return await _exams_for_student_impl(paper_kind, current_user, db)
+    except HTTPException:
+        raise
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("exams/for-me failed")
+        return {
+            "exam_type": None,
+            "boards": [],
+            "jamb_subjects": [],
+            "ssce_subjects": [],
+            "ssce_exam_type": None,
+            "selected_subjects": [],
+            "education_level": None,
+            "practice_exams": [],
+            "jamb_exams": [],
+            "ssce_exams": [],
+            "school_exams": [],
+            "setup_required": True,
+            "message": "Could not load exams right now. Complete Profile setup, then refresh.",
+        }
+
+
+async def _exams_for_student_impl(
+    paper_kind: Optional[str],
+    current_user: dict,
+    db: AsyncSession,
 ):
     """
     Practice + school exams filtered by the student's exam boards and subjects.
@@ -1137,7 +1174,7 @@ async def internal_exams_for_me(
     teacher_ids = {e.created_by for e in exams if e.created_by}
     teachers = {}
     if teacher_ids:
-        t_res = await db.execute(select(User).where(User.id.in_(teacher_ids)))
+        t_res = await db.execute(select(User).where(User.id.in_(list(teacher_ids))))
         teachers = {str(u.id): u for u in t_res.scalars().all()}
 
     uid = str(current_user["sub"])
