@@ -256,6 +256,10 @@ class _LiveClassScreenState extends State<LiveClassScreen>
       onDone: _scheduleWsReconnect,
       cancelOnError: true,
     );
+    // Late joiners need the current board; teachers reply with history.
+    try {
+      channel.sink.add(jsonEncode({'event': 'request_board_sync'}));
+    } catch (_) {}
   }
 
   void _scheduleWsReconnect() {
@@ -382,9 +386,24 @@ class _LiveClassScreenState extends State<LiveClassScreen>
         break;
       case 'whiteboard':
         _board.handleRemoteMessage(msg);
-        if (!widget.isTeacher && msg['action'] == 'board_open') {
-          final open = msg['data'] is Map && msg['data']['open'] == true;
-          if (mounted) setState(() => _boardOpen = open);
+        if (!widget.isTeacher) {
+          final action = msg['action']?.toString() ?? '';
+          if (action == 'board_open') {
+            final open = msg['data'] is Map && msg['data']['open'] == true;
+            if (mounted) setState(() => _boardOpen = open);
+          } else if (action == 'draw' ||
+              action == 'text' ||
+              action == 'text_stream' ||
+              action == 'erase' ||
+              action == 'image') {
+            // Auto-show board when teacher draws (matches website).
+            if (!_boardOpen && mounted) setState(() => _boardOpen = true);
+          }
+        }
+        break;
+      case 'request_board_sync':
+        if (widget.isTeacher) {
+          _board.syncToRoom(boardOpen: _boardOpen);
         }
         break;
       default:
@@ -602,8 +621,9 @@ class _LiveClassScreenState extends State<LiveClassScreen>
       _livekitToken = newToken;
       _livekitUrl = newUrl;
       if (!widget.isTeacher) {
-        _micAllowed = tokenData['mic_allowed'] == true;
-        _cameraAllowed = tokenData['camera_allowed'] == true;
+        // Match join: treat missing/null as allowed (open mic/cam by default).
+        _micAllowed = tokenData['mic_allowed'] != false;
+        _cameraAllowed = tokenData['camera_allowed'] != false;
       }
 
       if (reconnect && _liveKit != null) {

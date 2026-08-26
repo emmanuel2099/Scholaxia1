@@ -35,8 +35,8 @@ router = APIRouter(prefix="/live-classes", tags=["Live Classes"])
 
 
 @router.get("/livekit/status")
-async def livekit_video_status(current_user: dict = Depends(get_current_user)):
-    """Check whether live video (LiveKit) is configured on the server."""
+async def livekit_video_status():
+    """Public health check — does not expose secrets, only whether LiveKit is configured."""
     configured = _livekit_configured()
     return {
         "livekit_url": settings.LIVEKIT_URL if configured else "",
@@ -51,9 +51,9 @@ async def livekit_video_status(current_user: dict = Depends(get_current_user)):
 
 
 @router.get("/agora/status")
-async def agora_video_status(current_user: dict = Depends(get_current_user)):
+async def agora_video_status():
     """Deprecated alias — use /livekit/status."""
-    return await livekit_video_status(current_user)
+    return await livekit_video_status()
 
 
 @router.get("/join-preview")

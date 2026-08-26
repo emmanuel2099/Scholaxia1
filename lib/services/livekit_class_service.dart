@@ -83,6 +83,7 @@ class LiveKitClassService {
       ..on<TrackSubscribedEvent>((e) {
         if (e.track is AudioTrack) {
           unawaited(_ensureAudioPlayback());
+          unawaited(ensureRemoteAudioSubscribed());
         }
         _rescanAll();
       })

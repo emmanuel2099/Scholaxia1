@@ -1,4 +1,4 @@
-const { app, BrowserWindow, shell, screen } = require("electron");
+const { app, BrowserWindow, shell, screen, session, desktopCapturer } = require("electron");
 const path = require("path");
 const { startDesktopServer, stopDesktopServer } = require("./desktop-server");
 let mainWindow;
@@ -12,6 +12,49 @@ function getWindowSize() {
   const minWidth = Math.min(768, width);
   const minHeight = Math.min(600, height);
   return { width, height, minWidth, minHeight };
+}
+
+/** Allow mic/camera/screen-share so live class A/V works in Electron. */
+function enableLiveClassMediaPermissions() {
+  const ses = session.defaultSession;
+  ses.setPermissionRequestHandler((_wc, permission, callback) => {
+    const allow = new Set([
+      "media",
+      "display-capture",
+      "fullscreen",
+      "notifications",
+      "clipboard-sanitized-write",
+    ]);
+    callback(allow.has(permission));
+  });
+  ses.setPermissionCheckHandler((_wc, permission) => {
+    return (
+      permission === "media" ||
+      permission === "display-capture" ||
+      permission === "fullscreen" ||
+      permission === "notifications"
+    );
+  });
+  // Electron 28+: without this, getDisplayMedia / LiveKit screen share often fails.
+  try {
+    ses.setDisplayMediaRequestHandler(async (_request, callback) => {
+      try {
+        const sources = await desktopCapturer.getSources({
+          types: ["screen", "window"],
+          thumbnailSize: { width: 0, height: 0 },
+        });
+        if (!sources.length) {
+          callback({});
+          return;
+        }
+        callback({ video: sources[0], audio: "loopback" });
+      } catch (_e) {
+        callback({});
+      }
+    });
+  } catch (_e) {
+    /* older Electron without setDisplayMediaRequestHandler */
+  }
 }
 
 function createWindow() {
@@ -48,6 +91,7 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  enableLiveClassMediaPermissions();
   try {
     appBaseUrl = await startDesktopServer();
   } catch (err) {

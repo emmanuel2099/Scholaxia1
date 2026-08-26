@@ -148,6 +148,8 @@ class BoardController extends ChangeNotifier {
 
   final List<BoardStroke> strokes = [];
   final List<BoardText> texts = [];
+  /// Replay log for late joiners (teacher → request_board_sync).
+  final List<Map<String, dynamic>> history = [];
 
   BoardTool tool = BoardTool.draw;
   Color penColor = Colors.white;
@@ -201,7 +203,9 @@ class BoardController extends ChangeNotifier {
     strokes.add(stroke);
     _lastPoint = p;
     notifyListeners();
-    onSend?.call('draw', stroke.toJson());
+    final payload = stroke.toJson();
+    _recordHistory('draw', payload);
+    onSend?.call('draw', payload);
   }
 
   void panEnd() => _lastPoint = null;
@@ -217,7 +221,9 @@ class BoardController extends ChangeNotifier {
       notifyListeners();
     }
     if (broadcast && canDraw) {
-      onSend?.call('erase', {'x': p.dx, 'y': p.dy, 'r': r});
+      final payload = {'x': p.dx, 'y': p.dy, 'r': r};
+      _recordHistory('erase', payload);
+      onSend?.call('erase', payload);
     }
   }
 
@@ -274,7 +280,9 @@ class BoardController extends ChangeNotifier {
         color: penColor,
         size: 22,
       );
-      onSend?.call('text', t.toJson());
+      final payload = t.toJson();
+      _recordHistory('text', payload);
+      onSend?.call('text', payload);
     }
     _activeTextId = null;
     textAnchor = Offset(textAnchor.dx, textAnchor.dy + 40);
@@ -322,9 +330,35 @@ class BoardController extends ChangeNotifier {
   double get contentBottom => contentBottomFor(_lastKnownWidth);
 
   // ---- Sync / clear ----
+  void _recordHistory(String type, Map<String, dynamic> data) {
+    if (!canDraw) return;
+    if (type == 'clear') {
+      history.clear();
+      return;
+    }
+    history.add({'type': type, 'data': Map<String, dynamic>.from(data)});
+    // Cap memory for long classes
+    if (history.length > 4000) {
+      history.removeRange(0, history.length - 3500);
+    }
+  }
+
+  /// Teacher: replay board state to the room (late joiners).
+  void syncToRoom({required bool boardOpen}) {
+    if (!canDraw || onSend == null) return;
+    onSend!('board_open', {'open': boardOpen});
+    for (final item in history) {
+      final type = item['type']?.toString() ?? '';
+      final data = item['data'];
+      if (type.isEmpty || data is! Map) continue;
+      onSend!(type, Map<String, dynamic>.from(data));
+    }
+  }
+
   void handleRemoteMessage(Map<String, dynamic> msg) {
     final action = msg['action']?.toString() ?? '';
     final data = msg['data'];
+    if (action == 'board_open') return; // handled by screen
     if (data is! Map) return;
     final m = Map<String, dynamic>.from(data);
 
@@ -336,6 +370,7 @@ class BoardController extends ChangeNotifier {
       case 'clear':
         strokes.clear();
         texts.clear();
+        history.clear();
         notifyListeners();
         onScrollToContent?.call(contentBottom);
         break;
@@ -375,9 +410,13 @@ class BoardController extends ChangeNotifier {
   void clear({bool broadcast = true}) {
     strokes.clear();
     texts.clear();
+    history.clear();
     _activeTextId = null;
     notifyListeners();
-    if (broadcast && canDraw) onSend?.call('clear', {});
+    if (broadcast && canDraw) {
+      _recordHistory('clear', {});
+      onSend?.call('clear', {});
+    }
   }
 }
 

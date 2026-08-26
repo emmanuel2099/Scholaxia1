@@ -19,7 +19,11 @@
   var MAX_SIDEBAR_VIDEOS = 9;
   var JOIN_TIMEOUT_MS = 45000;
   var PUBLISH_TIMEOUT_MS = 35000;
-  var AUDIO_CAPTURE_OPTS = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
+  var AUDIO_CAPTURE_OPTS = {
+    echoCancellation: { ideal: true },
+    noiseSuppression: { ideal: true },
+    autoGainControl: { ideal: true },
+  };
 
   function lk() {
     return window.LivekitClient || null;
@@ -228,7 +232,7 @@
 
   function applyStudentMediaPermissions(data) {
     if (isTeacherRole() || !data) return;
-    if (data.mic_allowed) {
+    if (data.mic_allowed !== false) {
       window.studentMicAllowed = true;
       if (typeof syncStudentMicState === "function") syncStudentMicState(true);
     }
@@ -266,13 +270,8 @@
     if (!pid) return;
     remoteAudioEls = remoteAudioEls.filter(function (el) {
       if (el && el.getAttribute && el.getAttribute("data-participant-id") === pid) {
-        try {
-          if (el.srcObject) {
-            el.srcObject.getTracks().forEach(function (t) {
-              try { t.stop(); } catch (e) { /* ignore */ }
-            });
-          }
-        } catch (e) { /* ignore */ }
+        // Never stop() remote tracks — that permanently mutes the student for this page.
+        try { el.srcObject = null; } catch (e) { /* ignore */ }
         try { el.remove(); } catch (e2) { /* ignore */ }
         return false;
       }
@@ -592,13 +591,25 @@
 
   function attachExistingRemoteTracks() {
     if (!liveRoom) return;
+    var c = lk();
     liveRoom.remoteParticipants.forEach(function (participant) {
       wireParticipantVideoEvents(participant);
       participant.trackPublications.forEach(function (pub) {
+        var isAudio = !!(c && (pub.kind === c.Track.Kind.Audio || pub.kind === "audio"));
+        if (isAudio) setPublicationSubscribed(pub, true);
         if (pub.track) attachRemoteTrack(pub.track, pub, participant);
       });
     });
+    ensureRoomAudioPlayback();
   }
+
+  function reattachRemoteClassAudio() {
+    if (!liveRoom) return;
+    attachExistingRemoteTracks();
+    ensureRoomAudioPlayback();
+  }
+  window.reattachRemoteClassAudio = reattachRemoteClassAudio;
+  window.ensureRoomAudioPlayback = ensureRoomAudioPlayback;
 
   function attachLocalCameraPreview() {
     if (!liveRoom) return;
@@ -1025,6 +1036,15 @@
       if (typeof setStatus === "function") setStatus("Connected — video + chat");
       if (typeof showAudioUnlockBanner === "function") showAudioUnlockBanner();
       await ensureRoomAudioPlayback();
+      // Keep remote student audio alive for the teacher (autoplay / resubscribe).
+      if (isTeacherRole()) {
+        if (window._sxAudioKeepAlive) clearInterval(window._sxAudioKeepAlive);
+        window._sxAudioKeepAlive = setInterval(function () {
+          if (!liveVideoJoined) return;
+          attachExistingRemoteTracks();
+          ensureRoomAudioPlayback();
+        }, 4000);
+      }
       var studBadge = document.getElementById("audience-badge");
       if (studBadge && !isTeacherRole()) {
         studBadge.textContent = "In class · live";
@@ -1038,6 +1058,10 @@
           if (ov2) ov2.classList.remove("view-only");
         }
         await transitionHostToLiveBroadcast();
+        // Stop leftover preview mic/cam so browser AEC is not fighting a second capture (echo).
+        if (typeof clearLocalPreviewStream === "function") {
+          clearLocalPreviewStream();
+        }
         // Always publish mic so students can hear the teacher.
         try { await setMic(true); } catch (e) {}
         if (typeof hideVideoPlaceholder === "function") hideVideoPlaceholder();
@@ -1050,6 +1074,10 @@
         if (liveSession) liveSession.mic_allowed = true;
         try {
           await setMic(true);
+          // Retry once — some browsers need a second publish after permission.
+          setTimeout(function () {
+            setMic(true).catch(function () {});
+          }, 1200);
         } catch (micErr) { /* permission may need a tap */ }
         if (!liveRoom.remoteParticipants.size) {
           if (typeof showVideoPlaceholder === "function") {
@@ -1536,5 +1564,5 @@
   window.getRemoteClassMediaStream = getRemoteClassMediaStream;
   window.reattachParticipantVideos = reattachParticipantVideos;
   window.reattachTeacherMainStage = reattachTeacherMainStage;
-  window.reattachRemoteClassAudio = attachExistingRemoteTracks;
+  window.reattachRemoteClassAudio = reattachRemoteClassAudio;
 })();
