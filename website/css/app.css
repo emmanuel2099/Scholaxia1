@@ -1178,6 +1178,125 @@ button { font: inherit; cursor: pointer; border: 0; background: none; color: inh
 
 .exam-timer.is-low { background: #fee2e2; color: #b91c1c; }
 
+.exam-section-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  padding: 0.65rem 1.4rem;
+  background: #faf5ff;
+  border-bottom: 1px solid var(--line);
+}
+
+.exam-section-bar[hidden] { display: none !important; }
+
+.exam-section-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.exam-section-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  flex: 1;
+}
+
+.exam-section-tab {
+  border: 1px solid #ddd6fe;
+  background: #fff;
+  color: #4c1d95;
+  border-radius: 999px;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.exam-section-tab.is-active {
+  background: var(--purple, #7c3aed);
+  border-color: var(--purple, #7c3aed);
+  color: #fff;
+}
+
+.exam-section-tab.is-done {
+  border-color: #86efac;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.exam-section-tab.is-done.is-active {
+  background: #16a34a;
+  border-color: #16a34a;
+  color: #fff;
+}
+
+.exam-section-chooser {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: #f3f4f6;
+}
+
+.exam-section-chooser[hidden] { display: none !important; }
+
+.exam-section-chooser-card {
+  width: min(720px, 100%);
+  background: #fff;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  padding: 1.4rem 1.5rem 1.6rem;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+}
+
+.exam-section-chooser-card h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1.25rem;
+}
+
+.exam-section-chooser-grid {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.exam-section-chooser-btn {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  text-align: left;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+  cursor: pointer;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.exam-section-chooser-btn:hover {
+  border-color: #c4b5fd;
+  background: #faf5ff;
+}
+
+.exam-section-chooser-btn .meta {
+  font-weight: 600;
+  font-size: 0.82rem;
+  color: #64748b;
+}
+
+.exam-section-chooser-btn.is-done {
+  border-color: #86efac;
+  background: #f0fdf4;
+}
+
 .exam-body {
   flex: 1;
   display: grid;
@@ -1363,6 +1482,94 @@ button { font: inherit; cursor: pointer; border: 0; background: none; color: inh
 
 .result-actions { justify-content: center; }
 
+.review-screen {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  background: #f4f2fb;
+  overflow-y: auto;
+}
+.review-screen.is-on { display: block; }
+
+.review-page {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 1rem 1rem 2.5rem;
+}
+
+.review-page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+  padding: 1rem 1.1rem;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #ede9fe, #e0f2fe);
+  border: 1px solid #ddd6fe;
+}
+.review-page-head h2 { margin: 0.35rem 0 0.25rem; font-size: 1.35rem; }
+
+.review-books-panel {
+  margin-bottom: 1.25rem;
+  padding: 1rem 1.1rem;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid var(--border);
+}
+.review-books-panel h3 { margin: 0 0 0.65rem; font-size: 1rem; color: var(--purple-dark); }
+.review-books-list { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.review-book-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.7rem;
+  border-radius: 999px;
+  background: #f5f3ff;
+  border: 1px solid #ddd6fe;
+  font-size: 0.82rem;
+}
+
+.review-list { display: flex; flex-direction: column; gap: 1rem; }
+.review-item {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1rem 1.1rem;
+  background: #fff;
+  box-shadow: 0 2px 12px rgba(91, 33, 182, 0.04);
+}
+.review-item.is-correct { border-left: 4px solid #027a48; }
+.review-item.is-wrong { border-left: 4px solid #b42318; }
+.review-item.is-skipped { border-left: 4px solid #94a3b8; }
+.review-meta { font-size: 0.72rem; color: var(--purple); font-weight: 600; margin: 0 0 0.35rem; }
+.review-q { margin: 0 0 0.65rem; font-weight: 600; line-height: 1.5; font-size: 1rem; }
+.review-answer-row { margin: 0 0 0.35rem; font-size: 0.9rem; }
+.review-answer-row.is-wrong { color: #b42318; }
+.review-answer-row.is-correct { color: #027a48; }
+.review-answer-row.is-skipped { color: #64748b; }
+.review-expl {
+  margin-top: 0.65rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 10px;
+  background: #faf9ff;
+  border-left: 3px solid var(--purple);
+  font-size: 0.9rem;
+}
+.review-expl strong { display: block; margin-bottom: 0.25rem; color: var(--purple-dark); }
+.review-expl p { margin: 0; line-height: 1.55; white-space: pre-wrap; }
+.review-sia {
+  margin-top: 0.75rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 10px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  font-size: 0.9rem;
+}
+.review-sia strong { display: block; margin-bottom: 0.35rem; color: #065f46; }
+.review-sia p { margin: 0; line-height: 1.55; white-space: pre-wrap; }
+.review-sia-actions { margin-top: 0.65rem; }
+
 .dash-actions { margin-bottom: 0.5rem; }
 
 .assignment-form { margin-bottom: 1.5rem; }
@@ -1383,3 +1590,135 @@ button { font: inherit; cursor: pointer; border: 0; background: none; color: inh
   .page-title { display: block; }
 }
 
+
+/* —— Student Brain Breakers games —— */
+.hidden { display: none !important; }
+.btn-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border: none;
+  border-radius: 12px;
+  padding: 0.75rem 1.15rem;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  background: linear-gradient(135deg, #7c3aed, #a855f7);
+  color: #fff;
+}
+.btn-action:hover { filter: brightness(1.05); }
+.games-hero {
+  padding: 28px 32px;
+  border-radius: 20px;
+  color: #fff;
+  margin-bottom: 24px;
+  background: linear-gradient(135deg, #4c1d95, #7c3aed 55%, #a855f7);
+}
+.games-hero h2 { margin: 0 0 8px; font-size: 1.45rem; }
+.games-hero p { margin: 0; opacity: 0.92; line-height: 1.45; }
+.games-grid { display: grid; gap: 16px; margin-bottom: 24px; }
+.games-tile-list { display: flex; flex-direction: column; gap: 14px; max-width: 640px; }
+.game-card,
+.game-tile-btn {
+  background: #fff;
+  border: 1px solid rgba(124,58,237,0.16);
+  border-radius: 16px;
+  padding: 20px;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  width: 100%;
+}
+.game-tile-btn {
+  display: flex !important;
+  align-items: center;
+  gap: 14px;
+  padding: 16px !important;
+  border-radius: 20px !important;
+}
+.game-card:hover,
+.game-tile-btn:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px rgba(124,58,237,0.14);
+  border-color: #a78bfa;
+}
+.game-card-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  color: #fff;
+  flex-shrink: 0;
+}
+.game-tile-body { flex: 1; }
+.game-tile-body h3,
+.game-card h3 { font-size: 1rem; font-weight: 800; margin: 0 0 4px; }
+.game-tile-body p,
+.game-card p { font-size: 0.82rem; color: #6b7280; margin: 0; line-height: 1.4; }
+.game-tile-chevron { font-size: 1.4rem; color: #9ca3af; }
+.game-play-area {
+  background: #fff;
+  border: 1px solid rgba(124,58,237,0.16);
+  border-radius: 16px;
+  padding: 24px;
+  max-width: 640px;
+}
+.game-play-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.game-timer { font-size: 1.1rem; font-weight: 800; color: #7c3aed; }
+.game-score { font-weight: 700; color: #6b7280; }
+.game-lives { color: #ef4444; font-weight: 700; }
+.game-prompt {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: 16px;
+  color: #111827;
+}
+.game-math-expr {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 12px 0;
+  font-family: ui-monospace, monospace;
+}
+.game-input {
+  width: 100%;
+  padding: 14px 16px;
+  border: 2px solid rgba(124,58,237,0.18);
+  border-radius: 12px;
+  font-size: 1rem;
+  margin-bottom: 12px;
+  outline: none;
+  box-sizing: border-box;
+}
+.game-input:focus { border-color: #7c3aed; }
+.game-options { display: grid; gap: 10px; margin-bottom: 16px; }
+.game-option-btn,
+.scramble-chip {
+  padding: 14px 16px;
+  border: 2px solid rgba(124,58,237,0.18);
+  border-radius: 12px;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.92rem;
+}
+.game-option-btn:hover:not(:disabled),
+.scramble-chip:hover:not(:disabled) {
+  border-color: #a78bfa;
+  background: #f8f5ff;
+}
+.game-feedback { font-size: 0.85rem; color: #ef4444; margin: 8px 0; min-height: 1.2em; }
+.quick.action.qa-games { background: linear-gradient(135deg, #fef3c7, #fde68a); }

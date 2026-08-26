@@ -38,6 +38,12 @@
 
   function errMsg(err) {
     var msg = (err && err.message) || "Something went wrong. Please try again.";
+    if (/failed to fetch|networkerror|load failed/i.test(msg)) {
+      return "Cannot reach the Scholaxia API. Wait a minute if the server is waking up, then tap Try again.";
+    }
+    if (/aborted|abort/i.test(msg) || (err && err.name === "AbortError")) {
+      return "Server took too long. Wait 30 seconds and try again (Render may be waking up).";
+    }
     // Unwrap JSON-looking detail blobs from FastAPI
     try {
       if (msg.charAt(0) === "{") {
@@ -183,16 +189,17 @@
 
   var PAGE_TITLES = {
     home: "Home",
-    "study-materials": "Study Materials",
+    "study-materials": "Video Tutorials",
     "past-questions": "Past Questions",
     cbt: "CBT Practice",
     school: "Scholaxia Exam",
     "access-code": "Live Class",
     live: "Live Class",
-    "school-portal": "External School Exam",
+    "school-portal": "Examinations",
     subscription: "Subscription",
     skills: "Skills",
     library: "Library",
+    games: "Games",
     assignments: "Assignments",
     sia: "Tutor AI",
     community: "Community",
@@ -217,6 +224,9 @@
     subscription: loadSubscription,
     skills: loadSkills,
     library: loadLibrary,
+    games: function () {
+      if (typeof loadGamesPage === "function") loadGamesPage();
+    },
     assignments: loadAssignments,
     community: loadCommunity,
     groups: loadGroups,
@@ -230,7 +240,6 @@
   function showPage(id, opts) {
     opts = opts || {};
     if (id === "access-code") id = "live";
-    if (id === "past-questions") id = "cbt";
     if (!PAGE_TITLES.hasOwnProperty(id)) id = "home";
 
     if (!opts.replace && currentPageId && currentPageId !== id) {
@@ -251,8 +260,8 @@
 
     updateBackBtn();
 
-    if (!loadedPages[id] && PAGE_LOADERS[id]) {
-      loadedPages[id] = true;
+    if ((!loadedPages[id] || id === "games") && PAGE_LOADERS[id]) {
+      if (id !== "games") loadedPages[id] = true;
       try {
         PAGE_LOADERS[id]();
       } catch (e) {
@@ -314,12 +323,32 @@
     var retryBtn = e.target.closest("[data-retry]");
     if (retryBtn) {
       var page = retryBtn.dataset.retry;
-      if (PAGE_LOADERS[page]) PAGE_LOADERS[page]();
+      loadedPages[page] = false;
+      examsCacheByKind = {};
+      examsForMeCache = null;
+      var go = function () {
+        if (PAGE_LOADERS[page]) PAGE_LOADERS[page]();
+      };
+      if (api.wakeServer) {
+        retryBtn.disabled = true;
+        retryBtn.textContent = "Waking server…";
+        api
+          .wakeServer(60000)
+          .catch(function () { return null; })
+          .then(go)
+          .finally(function () {
+            retryBtn.disabled = false;
+            retryBtn.textContent = "Try again";
+          });
+      } else {
+        go();
+      }
       return;
     }
     var refreshBtn = e.target.closest("[data-refresh]");
     if (refreshBtn) {
       var p2 = refreshBtn.dataset.refresh;
+      loadedPages[p2] = false;
       if (PAGE_LOADERS[p2]) PAGE_LOADERS[p2]();
     }
   });
@@ -401,104 +430,377 @@
      STUDY MATERIALS  — recommendations feed
      ===================================================================== */
 
+  function youtubeEmbed(url) {
+    var u = String(url || "").trim();
+    var m = u.match(/(?:youtu\.be\/|v=)([A-Za-z0-9_-]{6,})/);
+    if (m) return "https://www.youtube.com/embed/" + m[1];
+    return u;
+  }
+
+  var lessonVideosCache = [];
+
+  function renderLessonVideos(items) {
+    var wrap = $("studyMaterialsList");
+    if (!wrap) return;
+    if (!items.length) {
+      wrap.innerHTML = emptyHtml(
+        "▶",
+        "No video tutorials yet. Admin posts YouTube lessons under Video Tutorials. PDF Lesson Notes are in Library."
+      );
+      return;
+    }
+    wrap.innerHTML = items
+      .map(function (it) {
+        var src = youtubeEmbed(it.video_url || it.url || "");
+        var tutor = it.tutor_name || it.tutor || it.teacher_name || it.channel || "";
+        return (
+          '<div class="card">' +
+          '<span class="card-tag">' +
+          esc(it.subject || "Video") +
+          "</span><h4>" +
+          esc(it.title || "Lesson video") +
+          "</h4>" +
+          (tutor
+            ? '<p class="muted" style="margin:0.25rem 0 0.65rem">Tutor: ' + esc(tutor) + "</p>"
+            : "") +
+          (src
+            ? '<div class="video-frame"><iframe src="' +
+              esc(src) +
+              '" title="' +
+              esc(it.title || "Lesson") +
+              '" allowfullscreen loading="lazy"></iframe></div>'
+            : "") +
+          "</div>"
+        );
+      })
+      .join("");
+  }
+
+  function filterLessonNotes() {
+    var q = (($("lessonNotesSearch") && $("lessonNotesSearch").value) || "").trim().toLowerCase();
+    if (!q) {
+      renderLessonVideos(lessonVideosCache);
+      return;
+    }
+    var filteredVideos = lessonVideosCache.filter(function (it) {
+      var blob = [
+        it.title,
+        it.subject,
+        it.topic,
+        it.tutor_name,
+        it.tutor,
+        it.teacher_name,
+        it.channel,
+        it.exam_type,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return blob.indexOf(q) >= 0;
+    });
+    renderLessonVideos(filteredVideos);
+  }
+
   function loadStudyMaterials() {
     var wrap = $("studyMaterialsList");
     if (!wrap) return;
-    wrap.innerHTML = loadingHtml("Loading recommendations…");
+    wrap.innerHTML = loadingHtml("Loading video tutorials…");
     api
-      .api("/api/v1/recommendations/feed")
+      .api("/api/v1/videos", { timeout: 30000, retries: 1, preferXhr: true })
       .then(function (data) {
-        var items = firstArray(data, ["items", "results", "feed", "recommendations"]);
-        if (!items.length) {
-          wrap.innerHTML = emptyHtml("📘", "No recommendations yet. Set up your subjects in Profile to get personalised study picks.");
-          return;
-        }
-        wrap.innerHTML = items
-          .map(function (it) {
-            var title = it.title || it.name || it.subject || "Study material";
-            var desc = it.description || it.summary || it.reason || "";
-            var tag = it.subject || it.category || "Recommended";
-            var bookId = it.book_id || it.library_id || it.id;
-            var canOpen = !!it.book_id || !!it.library_id;
-            return (
-              '<div class="card">' +
-              '<span class="card-tag">' +
-              esc(tag) +
-              "</span><h4>" +
-              esc(title) +
-              "</h4>" +
-              (desc ? "<p>" + esc(desc) + "</p>" : "") +
-              '<div class="card-foot">' +
-              (canOpen
-                ? '<button type="button" class="btn btn-primary btn-mini" data-open-book="' +
-                  esc(bookId) +
-                  '">Open</button>'
-                : '<span class="muted">Recommended for you</span>') +
-              "</div></div>"
-            );
-          })
-          .join("");
+        lessonVideosCache = firstArray(data, ["videos", "items", "results"]);
+        filterLessonNotes();
       })
       .catch(function (err) {
         wrap.innerHTML = errorHtml(errMsg(err), "study-materials");
       });
   }
 
+  document.addEventListener("input", function (e) {
+    if (e.target && e.target.id === "lessonNotesSearch") filterLessonNotes();
+  });
+
   document.addEventListener("click", function (e) {
+    if (e.target.closest("#libReaderClose")) {
+      closeLibraryReader();
+      return;
+    }
     var openBtn = e.target.closest("[data-open-book]");
     if (openBtn) openLibraryRead(openBtn.dataset.openBook, openBtn);
+    var dlBtn = e.target.closest("[data-download-book]");
+    if (dlBtn) downloadLibraryPdf(dlBtn.dataset.downloadBook, dlBtn);
   });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") closeLibraryReader();
+  });
+
+  var libReaderTask = 0;
+
+  function closeLibraryReader() {
+    libReaderTask += 1;
+    var overlay = $("libReader");
+    var pages = $("libReaderPages");
+    if (overlay) overlay.hidden = true;
+    if (pages) pages.innerHTML = "";
+  }
+
+  function loadPdfJs() {
+    return new Promise(function (resolve, reject) {
+      if (window.pdfjsLib) {
+        resolve(window.pdfjsLib);
+        return;
+      }
+      var s = document.createElement("script");
+      s.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+      s.onload = function () {
+        if (!window.pdfjsLib) {
+          reject(new Error("PDF reader failed to load"));
+          return;
+        }
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+          "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+        resolve(window.pdfjsLib);
+      };
+      s.onerror = function () {
+        reject(new Error("Could not load the PDF reader. Check your connection."));
+      };
+      document.head.appendChild(s);
+    });
+  }
+
+  async function renderPdfPages(bytes, taskId) {
+    var pages = $("libReaderPages");
+    if (!pages) return;
+    pages.innerHTML = '<p class="lib-reader-status">Opening pages…</p>';
+    var pdfjs = await loadPdfJs();
+    if (taskId !== libReaderTask) return;
+    var pdf = await pdfjs.getDocument({ data: bytes }).promise;
+    if (taskId !== libReaderTask) return;
+    pages.innerHTML = "";
+    var maxW = Math.max(280, pages.clientWidth - 16);
+    for (var n = 1; n <= pdf.numPages; n++) {
+      if (taskId !== libReaderTask) return;
+      var page = await pdf.getPage(n);
+      var base = page.getViewport({ scale: 1 });
+      var scale = Math.min(1.6, maxW / base.width);
+      var viewport = page.getViewport({ scale: scale * (window.devicePixelRatio || 1) });
+      var canvas = document.createElement("canvas");
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      canvas.style.width = Math.floor(base.width * scale) + "px";
+      pages.appendChild(canvas);
+      await page.render({ canvasContext: canvas.getContext("2d"), viewport: viewport }).promise;
+    }
+  }
+
+  async function fetchLibraryPdf(id) {
+    if (api.fetchBinary) {
+      return api.fetchBinary("/api/v1/library/" + encodeURIComponent(id) + "/file", {
+        timeout: 180000,
+        retries: 3,
+        headers: { Accept: "application/pdf" },
+      });
+    }
+    var token = api.getToken();
+    var url = api.API_BASE + "/api/v1/library/" + encodeURIComponent(id) + "/file";
+    var lastErr = null;
+    for (var attempt = 0; attempt < 4; attempt++) {
+      if (api.wakeServer) {
+        try {
+          await api.wakeServer(60000);
+        } catch (e) {}
+      }
+      try {
+        var bytes = await new Promise(function (resolve, reject) {
+          var xhr = new XMLHttpRequest();
+          xhr.open("GET", url, true);
+          xhr.responseType = "arraybuffer";
+          xhr.timeout = 180000;
+          xhr.setRequestHeader("Authorization", "Bearer " + token);
+          xhr.setRequestHeader("Accept", "application/pdf");
+          xhr.onload = function () {
+            if (xhr.status === 402) {
+              reject(new Error("Pay to unlock this material."));
+              return;
+            }
+            if (xhr.status >= 200 && xhr.status < 300) {
+              resolve(new Uint8Array(xhr.response));
+              return;
+            }
+            reject(new Error("Could not open this material (" + xhr.status + ")"));
+          };
+          xhr.onerror = function () {
+            reject(new Error("Failed to fetch"));
+          };
+          xhr.ontimeout = function () {
+            reject(new Error("The user aborted a request."));
+          };
+          xhr.send();
+        });
+        return bytes;
+      } catch (err) {
+        lastErr = err;
+        if (attempt < 3) continue;
+        throw err;
+      }
+    }
+    throw lastErr || new Error("Could not open this material.");
+  }
+
+  function isLibraryDownloadable(it) {
+    if (!it) return false;
+    if (it.is_downloadable === true) return true;
+    return !!(it.drm && it.drm.is_downloadable);
+  }
+
+  async function downloadLibraryPdf(id, btn) {
+    if (!id) return;
+    var prev = btn ? btn.textContent : "";
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Saving…";
+    }
+    try {
+      if (api.wakeServer) {
+        try {
+          await api.wakeServer(45000);
+        } catch (e) {}
+      }
+      var bytes;
+      if (api.fetchBinary) {
+        bytes = await api.fetchBinary(
+          "/api/v1/library/" + encodeURIComponent(id) + "/file?download=1",
+          { timeout: 180000, retries: 3, headers: { Accept: "application/pdf" } }
+        );
+      } else {
+        bytes = await fetchLibraryPdf(id);
+      }
+      var blob = new Blob([bytes], { type: "application/pdf" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = "scholaxia-material.pdf";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
+    } catch (err) {
+      alert(err && err.message ? err.message : "Download failed.");
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = prev || "Download";
+      }
+    }
+  }
 
   function openLibraryRead(id, btn) {
     if (!id) return;
+    if ($("result-screen")) $("result-screen").classList.remove("is-on");
+    var prevText = btn ? btn.textContent : "";
     if (btn) {
       btn.disabled = true;
-      var prevText = btn.textContent;
       btn.textContent = "Opening…";
-      var reset = function () {
-        btn.disabled = false;
-        btn.textContent = prevText;
-      };
     }
-    api
-      .api("/api/v1/library/" + id + "/read")
-      .then(function (res) {
-        var url =
-          (res && (res.read_url || res.file_url || res.url)) ||
-          (typeof res === "string" ? res : "");
-        if (url) {
-          window.open(url, "_blank");
-        } else {
-          alert("This resource has no readable file yet.");
-        }
-        if (btn) reset();
+    var reset = function () {
+      if (!btn) return;
+      btn.disabled = false;
+      btn.textContent = prevText || "Read";
+    };
+    var title = "";
+    if (btn && btn.closest(".card")) {
+      var h = btn.closest(".card").querySelector("h4");
+      title = (h && h.textContent) || "";
+    }
+    var overlay = $("libReader");
+    var titleEl = $("libReaderTitle");
+    var pages = $("libReaderPages");
+    if (titleEl) titleEl.textContent = title || "Reading";
+    if (pages) pages.innerHTML = '<p class="lib-reader-status">Waking server… then loading PDF. Large books can take up to 2 minutes on first open.</p>';
+    if (overlay) overlay.hidden = false;
+    var taskId = ++libReaderTask;
+    fetchLibraryPdf(id)
+      .then(function (bytes) {
+        if (taskId !== libReaderTask) return;
+        return renderPdfPages(bytes, taskId);
       })
+      .then(function () { reset(); })
       .catch(function (err) {
-        alert("Could not open resource: " + errMsg(err));
-        if (btn) reset();
+        if (pages) {
+          pages.innerHTML =
+            '<p class="lib-reader-status">' + esc(errMsg(err) || "Could not open this PDF on this phone.") + "</p>";
+        } else {
+          alert("Could not open resource: " + errMsg(err));
+        }
+        reset();
       });
   }
 
   /* =====================================================================
-     PAST QUESTIONS — library filtered to "past" category
+     PAST QUESTIONS — paid library PDFs (buy + download, not CBT)
      ===================================================================== */
 
   var pastQuestionsCache = null;
   var pqActiveCat = "all";
 
+  function renderPastQuestionCard(it) {
+    var title = it.title || it.name || "Past paper";
+    var exam = it.exam_type || "";
+    var desc = it.description || it.subject || "";
+    var price = Number(it.price || 0);
+    var hasAccess = !!(it.has_access || it.is_free || price <= 0);
+    var canDownload = isLibraryDownloadable(it);
+    var foot;
+    if (hasAccess) {
+      if (canDownload) {
+        foot =
+          '<button type="button" class="btn btn-primary btn-mini" data-download-book="' +
+          esc(it.id) +
+          '">Download PDF</button>';
+      } else {
+        foot =
+          '<button type="button" class="btn btn-primary btn-mini" data-open-book="' +
+          esc(it.id) +
+          '">Read</button>';
+      }
+    } else {
+      foot =
+        "<strong>₦" +
+        price.toLocaleString("en-NG") +
+        '</strong><button type="button" class="btn btn-primary btn-mini" data-pay-type="library_book" data-pay-id="' +
+        esc(it.id) +
+        '">Buy &amp; download</button>';
+    }
+    return (
+      '<div class="card">' +
+      '<span class="card-tag">' +
+      esc(exam || "Past Questions") +
+      "</span>" +
+      (canDownload ? '<span class="card-tag is-downloadable">PDF</span>' : "") +
+      "<h4>" +
+      esc(title) +
+      "</h4>" +
+      (desc ? "<p>" + esc(desc) + "</p>" : "") +
+      '<div class="card-foot">' +
+      foot +
+      "</div></div>"
+    );
+  }
+
   function loadPastQuestions() {
     var wrap = $("pastQuestionsList");
     if (!wrap) return;
-    wrap.innerHTML = loadingHtml("Loading past questions…");
-    api
-      .api("/api/v1/library/student")
+    wrap.innerHTML = loadingHtml("Loading past question papers…");
+    var load = function () {
+      return api.api("/api/v1/library/student?category=Past%20Questions", {
+        timeout: 45000,
+        retries: 1,
+        preferXhr: true,
+      });
+    };
+    (api.wakeServer ? api.wakeServer(30000).then(load).catch(load) : load())
       .then(function (data) {
-        var items = firstArray(data, ["items", "results", "library"]);
-        pastQuestionsCache = items.filter(function (it) {
-          var cat = (it.category || it.type || "").toString().toLowerCase();
-          var title = (it.title || "").toString().toLowerCase();
-          return cat.indexOf("past") > -1 || title.indexOf("past question") > -1;
-        });
+        pastQuestionsCache = firstArray(data, ["items", "results", "library", "books"]);
         renderPastQuestions();
       })
       .catch(function (err) {
@@ -512,15 +814,26 @@
     var items = pastQuestionsCache;
     if (pqActiveCat !== "all") {
       items = items.filter(function (it) {
-        var hay = ((it.category || "") + " " + (it.title || "")).toLowerCase();
+        var hay = (
+          (it.exam_type || "") +
+          " " +
+          (it.title || "") +
+          " " +
+          (it.subject || "") +
+          " " +
+          (it.category || "")
+        ).toLowerCase();
         return hay.indexOf(pqActiveCat) > -1 || (pqActiveCat === "post" && hay.indexOf("utme") > -1);
       });
     }
     if (!items.length) {
-      wrap.innerHTML = emptyHtml("📄", "No past questions found for this filter yet.");
+      wrap.innerHTML = emptyHtml(
+        "📄",
+        "No past-question PDFs yet. Admin uploads them under Library → Past Questions. Buy a pack here, then download the PDF — not timed CBT."
+      );
       return;
     }
-    wrap.innerHTML = items.map(renderLibraryCard).join("");
+    wrap.innerHTML = items.map(renderPastQuestionCard).join("");
   }
 
   var pqTabs = $("pqFilterTabs");
@@ -542,12 +855,19 @@
     var desc = it.description || it.subject || "";
     var price = Number(it.price || 0);
     var hasAccess = !!(it.has_access || it.is_free || price <= 0);
+    var canDownload = isLibraryDownloadable(it);
     var foot;
     if (hasAccess) {
       foot =
         '<button type="button" class="btn btn-primary btn-mini" data-open-book="' +
         esc(it.id) +
         '">Read</button>';
+      if (canDownload) {
+        foot +=
+          '<button type="button" class="btn btn-secondary btn-mini" data-download-book="' +
+          esc(it.id) +
+          '">Download</button>';
+      }
     } else {
       foot =
         "<strong>₦" +
@@ -560,7 +880,9 @@
       '<div class="card">' +
       '<span class="card-tag">' +
       esc(cat) +
-      "</span><h4>" +
+      "</span>" +
+      (canDownload ? '<span class="card-tag is-downloadable">Downloadable</span>' : "") +
+      "<h4>" +
       esc(title) +
       "</h4>" +
       (desc ? "<p>" + esc(desc) + "</p>" : "") +
@@ -581,17 +903,31 @@
     if (!wrap) return;
     wrap.innerHTML = loadingHtml("Loading library…");
     api
-      .api("/api/v1/library/student")
+      .api("/api/v1/library/student", { timeout: 45000, retries: 1, preferXhr: true })
       .then(function (data) {
-        libraryCache = firstArray(data, ["items", "results", "library"]);
-        var cats = Array.from(
-          new Set(libraryCache.map(function (it) { return it.category || it.type; }).filter(Boolean))
+        libraryCache = firstArray(data, ["items", "results", "library", "books"]);
+        var fixed = ["Books", "Study Materials", "Scheme of Work", "Lesson Notes"];
+        var extras = libraryCache
+          .map(function (it) {
+            return it.category || it.type;
+          })
+          .filter(function (c) {
+            return c && fixed.indexOf(c) < 0;
+          });
+        var cats = fixed.concat(
+          Array.from(new Set(extras)).sort(function (a, b) {
+            return String(a).localeCompare(String(b));
+          })
         );
         var sel = $("libFilter");
+        var prev = sel ? sel.value : "";
         if (sel) {
           sel.innerHTML =
             '<option value="">All categories</option>' +
-            cats.map(function (c) { return '<option value="' + esc(c) + '">' + esc(c) + "</option>"; }).join("");
+            cats.map(function (c) {
+              return '<option value="' + esc(c) + '">' + esc(c) + "</option>";
+            }).join("");
+          if (prev) sel.value = prev;
         }
         renderLibrary();
       })
@@ -600,13 +936,30 @@
       });
   }
 
+  function libraryCategoryMatches(itemCat, filterCat) {
+    if (!filterCat) return true;
+    var a = String(itemCat || "")
+      .toLowerCase()
+      .replace(/[_-]+/g, " ")
+      .trim();
+    var b = String(filterCat || "")
+      .toLowerCase()
+      .replace(/[_-]+/g, " ")
+      .trim();
+    if (a === b) return true;
+    if (b === "lesson notes" && (a === "notes" || a === "lesson note")) return true;
+    if (b === "study materials" && (a === "study material" || a === "materials")) return true;
+    if (b === "scheme of work" && (a === "scheme" || a.indexOf("scheme") === 0)) return true;
+    return false;
+  }
+
   function renderLibrary() {
     var wrap = $("libraryGrid");
     if (!wrap) return;
     var q = ($("libSearch") && $("libSearch").value || "").toLowerCase().trim();
     var cat = ($("libFilter") && $("libFilter").value) || "";
     var items = libraryCache.filter(function (it) {
-      if (cat && (it.category || it.type) !== cat) return false;
+      if (!libraryCategoryMatches(it.category || it.type, cat)) return false;
       if (q) {
         var hay = ((it.title || "") + " " + (it.description || "") + " " + (it.subject || "")).toLowerCase();
         if (hay.indexOf(q) < 0) return false;
@@ -614,7 +967,12 @@
       return true;
     });
     if (!items.length) {
-      wrap.innerHTML = emptyHtml("📚", "No library resources match your search.");
+      wrap.innerHTML = emptyHtml(
+        "📚",
+        cat
+          ? "No materials in «" + cat + "» yet. Admin uploads them under Library with that Material type."
+          : "No library resources match your search."
+      );
       return;
     }
     wrap.innerHTML = items.map(renderLibraryCard).join("");
@@ -629,16 +987,76 @@
 
   var examsForMeCache = null;
 
+  var examsCacheByKind = {};
+
   function cacheExamsForMe(data) {
     examsForMeCache = data || {};
+    examsCacheByKind.cbt_practice = examsForMeCache;
   }
 
-  function fetchExamsForMe() {
-    if (examsForMeCache) return Promise.resolve(examsForMeCache);
-    return api.api("/api/v1/cbt/exams/for-me").then(function (data) {
-      cacheExamsForMe(data);
-      return examsForMeCache;
+  function bucketPublicExams(rows) {
+    var jamb = [];
+    var ssce = [];
+    var practice = [];
+    var school = [];
+    (rows || []).forEach(function (e) {
+      if (e.is_school_exam) {
+        school.push(e);
+        return;
+      }
+      var t = String(e.exam_type || "").toUpperCase();
+      if (t.indexOf("JAMB") >= 0 || t.indexOf("UTME") >= 0) jamb.push(e);
+      else if (
+        t.indexOf("WAEC") >= 0 ||
+        t.indexOf("NECO") >= 0 ||
+        t.indexOf("JUNIOR") >= 0 ||
+        t.indexOf("COMMON") >= 0
+      ) {
+        ssce.push(e);
+      } else {
+        practice.push(e);
+      }
     });
+    return {
+      practice_exams: practice.concat(jamb, ssce),
+      jamb_exams: jamb,
+      ssce_exams: ssce,
+      school_exams: school,
+      boards: [].concat(jamb.length ? ["JAMB"] : [], ssce.length ? ["WAEC_NECO"] : []),
+      _fallback: true,
+    };
+  }
+
+  function fetchExamsForMe(paperKind) {
+    paperKind = paperKind || "cbt_practice";
+    if (examsCacheByKind[paperKind]) return Promise.resolve(examsCacheByKind[paperKind]);
+    return api
+      .api("/api/v1/cbt/exams/for-me?paper_kind=" + encodeURIComponent(paperKind), {
+        timeout: 60000,
+        retries: 3,
+      })
+      .then(function (data) {
+        examsCacheByKind[paperKind] = data || {};
+        if (paperKind === "cbt_practice") examsForMeCache = examsCacheByKind[paperKind];
+        return examsCacheByKind[paperKind];
+      })
+      .catch(function (err) {
+        // Fallback: public published list so Practice / Past Questions still show something
+        return api
+          .api(
+            "/api/v1/cbt/exams?paper_kind=" + encodeURIComponent(paperKind),
+            { timeout: 60000, retries: 2, noAuth: false }
+          )
+          .then(function (rows) {
+            var data = bucketPublicExams(Array.isArray(rows) ? rows : []);
+            examsCacheByKind[paperKind] = data;
+            if (paperKind === "cbt_practice") examsForMeCache = data;
+            return data;
+          })
+          .catch(function () {
+            throw err;
+          });
+      });
   }
 
   function packKey(id, isExternal) {
@@ -707,8 +1125,80 @@
     return (list || []).filter(function (e) { return String(e.id || e.exam_id) === String(id); })[0];
   }
 
+  var cbtUnlockAfter = null;
+  var cbtUnlockOpenedAt = 0;
+  var startExamLock = false;
+
+  function resetCbtUnlockModal() {
+    if ($("cbtUnlockChoice")) $("cbtUnlockChoice").hidden = false;
+    if ($("cbtUnlockCoupon")) $("cbtUnlockCoupon").hidden = true;
+    if ($("cbtUnlockPay")) $("cbtUnlockPay").hidden = true;
+    if ($("cbtUnlockStatus")) {
+      $("cbtUnlockStatus").textContent = "";
+      $("cbtUnlockStatus").className = "form-status";
+    }
+    if ($("cbtUnlockCode")) $("cbtUnlockCode").value = "";
+  }
+
+  function closeCbtUnlockModal(force) {
+    // Ignore the same tap that opened the modal (common on phones)
+    if (!force && cbtUnlockOpenedAt && Date.now() - cbtUnlockOpenedAt < 700) return;
+    cbtUnlockOpenedAt = 0;
+    var modal = $("cbtUnlockModal");
+    if (modal) modal.classList.remove("is-on");
+    cbtUnlockAfter = null;
+    resetCbtUnlockModal();
+  }
+
+  function openCbtUnlockModal(afterUnlock) {
+    cbtUnlockAfter = afterUnlock;
+    resetCbtUnlockModal();
+    var modal = $("cbtUnlockModal");
+    if (!modal) {
+      if (confirm("CBT package required. Open CBT packages to pay?")) showPage("cbt");
+      return;
+    }
+    // Defer show so the Start click cannot hit the new overlay and instantly close it
+    cbtUnlockOpenedAt = Date.now();
+    setTimeout(function () {
+      cbtUnlockOpenedAt = Date.now();
+      modal.classList.add("is-on");
+    }, 60);
+  }
+
+  function loadCbtUnlockPackages() {
+    var list = $("cbtUnlockPayList");
+    if (!list) return;
+    list.innerHTML = loadingHtml("Loading packages…");
+    api.api("/api/v1/payments/paystack/cbt-packages").then(function (catalog) {
+      var packages = firstArray(catalog, ["packages", "items"]);
+      if (!packages.length) {
+        list.innerHTML = emptyHtml("📝", "No CBT packages listed yet.");
+        return;
+      }
+      list.innerHTML = packages.map(function (p) {
+        var id = p.id || p.package_id;
+        var price = Number(p.price || p.amount || 0);
+        return (
+          '<div class="card-foot" style="margin-bottom:8px">' +
+          "<strong>" + esc(p.name || p.title || id) + " · ₦" + price.toLocaleString("en-NG") + "</strong>" +
+          '<button type="button" class="btn btn-primary btn-mini" data-pay-type="cbt_package" data-pay-id="' +
+          esc(id) +
+          '">Pay</button></div>'
+        );
+      }).join("");
+    }).catch(function (err) {
+      list.innerHTML = errorHtml(errMsg(err));
+    });
+  }
+
   // Delegated handlers for exam cards (download / start) across cbt / school / school-portal
   document.addEventListener("click", function (e) {
+    var openSchool = e.target.closest("[data-open-school-exam]");
+    if (openSchool) {
+      window.location.href = "exam.html?exam=" + encodeURIComponent(openSchool.getAttribute("data-open-school-exam"));
+      return;
+    }
     var btn = e.target.closest("[data-action]");
     if (!btn) return;
     var action = btn.dataset.action;
@@ -751,9 +1241,7 @@
           btn.textContent = "Download";
         }
         if (isCbtPackageError(err)) {
-          if (confirm("Your CBT package is inactive or expired. Open CBT packages to pay with Paystack?")) {
-            showPage("cbt");
-          }
+          openCbtUnlockModal(function () { downloadExam(examId, isExternal, btn); });
           return;
         }
         alert("Download failed: " + errMsg(err));
@@ -761,62 +1249,166 @@
   }
 
   function startExamFlow(examId, isExternal, isSchool, btn) {
-    var pack = getPack(examId, isExternal);
-    if (!pack) {
-      alert("Please download this exam first.");
-      return;
-    }
+    if (startExamLock) return;
+    startExamLock = true;
     var exam = findExamById(currentExamSourceList(), examId) || {};
-    var title = exam.title || exam.name || pack.title || pack.name || "Exam";
 
-    if (isExternal) {
-      openExam({
-        examId: examId,
-        title: title,
-        pack: pack,
-        isExternal: true,
-      });
-      return;
+    function unlockStart() {
+      startExamLock = false;
     }
 
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = "Starting…";
-    }
-    api
-      .api("/api/v1/cbt/sessions/" + examId + "/start", {
-        method: "POST",
-        body: { is_school: !!isSchool },
-      })
-      .then(function (res) {
-        var sessionId =
-          (res && (res.session_id || res.id || (res.session && res.session.id))) || null;
-        var questions = (res && (res.questions || (res.session && res.session.questions))) || null;
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = "Start exam";
-        }
+    function launchWithPack(pack) {
+      var title = exam.title || exam.name || (pack && (pack.title || pack.name)) || "Exam";
+
+      if (isExternal) {
+        unlockStart();
         openExam({
           examId: examId,
           title: title,
-          pack: questions ? { questions: questions, duration_minutes: examMinutes(exam) } : pack,
-          sessionId: sessionId,
-          isSchool: isSchool,
+          pack: pack,
+          isExternal: true,
         });
-      })
-      .catch(function (err) {
+        return;
+      }
+
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "Starting…";
+      }
+      api
+        .api("/api/v1/cbt/sessions/" + examId + "/start", {
+          method: "POST",
+          body: { is_school: !!isSchool },
+        })
+        .then(function (res) {
+          var sessionId =
+            (res && (res.session_id || res.id || (res.session && res.session.id))) || null;
+          var questions = (res && (res.questions || (res.session && res.session.questions))) || null;
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = "Start exam";
+          }
+          unlockStart();
+          openExam({
+            examId: examId,
+            title: title,
+            pack: questions ? { questions: questions, duration_minutes: examMinutes(exam) } : pack,
+            sessionId: sessionId,
+            isSchool: isSchool,
+          });
+        })
+        .catch(function (err) {
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = "Start exam";
+          }
+          if (typeof isCbtPackageError === "function" && isCbtPackageError(err)) {
+            unlockStart();
+            openCbtUnlockModal(function () { ensurePackThenLaunch(false); });
+            return;
+          }
+          unlockStart();
+          // Offline pack is enough to sit the paper if session start fails for other reasons
+          openExam({ examId: examId, title: title, pack: pack, isSchool: isSchool });
+        });
+    }
+
+    function ensurePackThenLaunch(retried) {
+      var pack = getPack(examId, isExternal);
+      if (pack) {
+        launchWithPack(pack);
+        return;
+      }
+      // Download is optional for the student — Start loads the paper automatically
+      var base = isExternal ? "/api/v1/cbt/external-exams/" : "/api/v1/cbt/exams/";
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = "Loading…";
+      }
+      api
+        .api(base + examId + "/download", { timeout: 90000, retries: 2 })
+        .then(function (data) {
+          setPack(examId, isExternal, data);
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = "Start exam";
+          }
+          launchWithPack(data);
+        })
+        .catch(function (err) {
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = "Start exam";
+          }
+          // After coupon redeem, first download can race the DB commit — retry once
+          var justUnlocked = 0;
+          try { justUnlocked = Number(sessionStorage.getItem("sia_cbt_just_unlocked") || 0); } catch (e) {}
+          if (!retried && isCbtPackageError(err) && justUnlocked && Date.now() - justUnlocked < 120000) {
+            setTimeout(function () { ensurePackThenLaunch(true); }, 700);
+            return;
+          }
+          unlockStart();
+          if (isCbtPackageError(err)) {
+            var boardHint = "";
+            try {
+              var d = err && err.data && err.data.detail;
+              if (d && d.board) boardHint = " This exam needs " + d.board + " access.";
+            } catch (e2) {}
+            if (justUnlocked && Date.now() - justUnlocked < 120000) {
+              alert(
+                "Coupon saved, but this exam board is not in your package." +
+                  boardHint +
+                  " Open an exam that matches your coupon, or pay for the right package."
+              );
+            }
+            openCbtUnlockModal(function () { ensurePackThenLaunch(false); });
+            return;
+          }
+          alert("Could not open this exam: " + errMsg(err));
+        });
+    }
+
+    if (isSchool || isExternal) {
+      ensurePackThenLaunch(false);
+      return;
+    }
+    // If coupon was just redeemed on this device, skip the unlock popup
+    var justUnlockedAt = 0;
+    try { justUnlockedAt = Number(sessionStorage.getItem("sia_cbt_just_unlocked") || 0); } catch (e3) {}
+    if (justUnlockedAt && Date.now() - justUnlockedAt < 120000) {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "Start exam";
+      }
+      ensurePackThenLaunch(false);
+      return;
+    }
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Checking…";
+    }
+    api
+      .api("/api/v1/payments/paystack/cbt-access", { timeout: 25000, retries: 1 })
+      .then(function (access) {
         if (btn) {
           btn.disabled = false;
           btn.textContent = "Start exam";
         }
-        if (typeof isCbtPackageError === "function" && isCbtPackageError(err)) {
-          if (confirm("CBT package required. Open CBT packages to pay with Paystack?")) {
-            showPage("cbt");
-          }
-          return;
+        if (access && access.has_access) {
+          try { sessionStorage.setItem("sia_cbt_just_unlocked", String(Date.now())); } catch (e4) {}
+          ensurePackThenLaunch(false);
+        } else {
+          unlockStart();
+          openCbtUnlockModal(function () { ensurePackThenLaunch(false); });
         }
-        // Offline fallback — still let the student practice with the local pack.
-        openExam({ examId: examId, title: title, pack: pack, isSchool: isSchool });
+      })
+      .catch(function () {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = "Start exam";
+        }
+        unlockStart();
+        openCbtUnlockModal(function () { ensurePackThenLaunch(false); });
       });
   }
 
@@ -835,7 +1427,11 @@
         var letters = ["A", "B", "C", "D", "E"];
         q.options.forEach(function (opt, idx) {
           var text = typeof opt === "string" ? opt : opt.text || opt.label || opt.value || "";
-          if (text) options.push({ key: letters[idx] || String(idx), text: text });
+          var key =
+            typeof opt === "object" && opt && opt.key
+              ? String(opt.key).toUpperCase()
+              : letters[idx] || String(idx);
+          if (text) options.push({ key: key, text: text });
         });
       } else {
         ["a", "b", "c", "d", "e"].forEach(function (l) {
@@ -882,12 +1478,24 @@
       " · " +
       questions.length +
       " questions";
+    var bar = $("examSectionBar");
+    if (bar) bar.hidden = true;
+    var chooser = $("examSectionChooser");
+    if (chooser) chooser.hidden = true;
+    var body = $("examBody");
+    if (body) body.hidden = false;
     $("exam-screen").classList.add("is-on");
     startExamTimer();
   }
 
   function startExamTimer() {
     stopExamTimer();
+    if (!Exam.current) return;
+    // Never open an exam with 0 time left — that instantly auto-submits as 0%
+    if (!(Exam.current.remainingSec > 0)) {
+      var mins = Exam.current.durationMinutes || 180;
+      Exam.current.remainingSec = Math.max(60, mins * 60);
+    }
     updateTimerDisplay();
     Exam.current.timerId = setInterval(function () {
       if (!Exam.current) return;
@@ -895,6 +1503,12 @@
       updateTimerDisplay();
       if (Exam.current.remainingSec <= 0) {
         stopExamTimer();
+        // Only auto-submit if the student actually entered the paper
+        if (Exam.current.awaitingSectionPick) {
+          Exam.current.remainingSec = 0;
+          updateTimerDisplay();
+          return;
+        }
         submitExam(true);
       }
     }, 1000);
@@ -935,27 +1549,42 @@
   function renderExamQuestion() {
     var st = Exam.current;
     if (!st) return;
-    var q = st.questions[st.index];
-    $("examQCount").textContent = "Question " + (st.index + 1) + " of " + st.questions.length;
-    $("examQuestionText").textContent = q.text;
+    var qCount = $("examQCount");
+    var qText = $("examQuestionText");
+    var qOpts = $("examOptions");
+    var q = st.questions && st.questions[st.index];
+    if (!q) {
+      if (qCount) qCount.textContent = "No question loaded";
+      if (qText) qText.textContent = "Pick a subject again, or tap Start to reopen the exam.";
+      if (qOpts) qOpts.innerHTML = "";
+      return;
+    }
+    if (qCount) qCount.textContent = "Question " + (st.index + 1) + " of " + st.questions.length;
+    if (qText) qText.textContent = q.text || q.question_text || "";
     var selected = st.answers[q.id];
-    $("examOptions").innerHTML = q.options
-      .map(function (opt) {
-        return (
-          '<button type="button" class="exam-option' +
-          (selected === opt.key ? " is-selected" : "") +
-          '" data-opt-key="' +
-          esc(opt.key) +
-          '"><span class="opt-key">' +
-          esc(opt.key) +
-          "</span><span>" +
-          esc(opt.text) +
-          "</span></button>"
-        );
-      })
-      .join("");
-    $("examPrevBtn").disabled = st.index === 0;
-    $("examNextBtn").textContent = st.index === st.questions.length - 1 ? "Finish" : "Next →";
+    var options = q.options || [];
+    if (qOpts) {
+      qOpts.innerHTML = options
+        .map(function (opt) {
+          return (
+            '<button type="button" class="exam-option' +
+            (selected === opt.key ? " is-selected" : "") +
+            '" data-opt-key="' +
+            esc(opt.key) +
+            '"><span class="opt-key">' +
+            esc(opt.key) +
+            "</span><span>" +
+            esc(opt.text) +
+            "</span></button>"
+          );
+        })
+        .join("");
+    }
+    if ($("examPrevBtn")) $("examPrevBtn").disabled = st.index === 0;
+    if ($("examNextBtn")) {
+      $("examNextBtn").textContent =
+        st.index === st.questions.length - 1 ? "Finish" : "Next →";
+    }
     renderExamNav();
   }
 
@@ -967,6 +1596,10 @@
       var q = Exam.current.questions[Exam.current.index];
       Exam.current.answers[q.id] = btn.dataset.optKey;
       renderExamQuestion();
+      if (Exam.current.isPractice) {
+        renderPracticeSectionTabs();
+        savePracticeAnswers();
+      }
     });
   }
 
@@ -992,12 +1625,27 @@
     $("examNextBtn").addEventListener("click", function () {
       if (!Exam.current) return;
       if (Exam.current.index >= Exam.current.questions.length - 1) {
-        confirmSubmitExam();
+        if (Exam.current.isPractice) {
+          advanceOrSubmitPracticeSection();
+        } else {
+          confirmSubmitExam();
+        }
       } else {
         Exam.current.index += 1;
         renderExamQuestion();
       }
     });
+  }
+
+  function closeExamScreen() {
+    stopExamTimer();
+    Exam.current = null;
+    var screen = $("exam-screen");
+    if (!screen) return;
+    screen.classList.remove("is-on");
+    // openPracticeAttempt sets inline display:flex — must clear or Quit looks broken
+    screen.style.display = "";
+    screen.style.removeProperty("display");
   }
 
   if ($("examSubmitBtn")) {
@@ -1006,10 +1654,27 @@
 
   if ($("examQuitBtn")) {
     $("examQuitBtn").addEventListener("click", function () {
+      if (!Exam.current) {
+        closeExamScreen();
+        return;
+      }
+      if (Exam.current.isPractice) {
+        if (!confirm("Leave this CBT? Your answers will be saved so you can resume later.")) return;
+        var leaving = Exam.current;
+        savePracticeAnswers(function () {
+          // Only close if we are still on the same attempt
+          if (Exam.current === leaving || !Exam.current) {
+            closeExamScreen();
+          }
+        });
+        // Safety: never stay stuck if save hangs
+        setTimeout(function () {
+          if (Exam.current === leaving) closeExamScreen();
+        }, 2500);
+        return;
+      }
       if (confirm("Quit this exam? Your progress will be lost.")) {
-        stopExamTimer();
-        Exam.current = null;
-        $("exam-screen").classList.remove("is-on");
+        closeExamScreen();
       }
     });
   }
@@ -1047,12 +1712,34 @@
     var st = Exam.current;
     if (!st) return;
     stopExamTimer();
-    $("exam-screen").classList.remove("is-on");
+    var screen = $("exam-screen");
+    if (screen) {
+      screen.classList.remove("is-on");
+      screen.style.display = "";
+      screen.style.removeProperty("display");
+    }
 
     var answersOut = {};
     Object.keys(st.answers).forEach(function (k) {
       answersOut[k] = st.answers[k];
     });
+
+    if (st.isPractice && st.practiceAttemptId) {
+      api
+        .api("/api/v1/cbt/practice/attempts/" + st.practiceAttemptId + "/submit", {
+          method: "POST",
+          body: { answers: answersOut },
+        })
+        .then(function (res) {
+          if (res && res.percent != null && res.percentage == null) res.percentage = res.percent;
+          if (res && res.max_score != null && res.total == null) res.total = res.max_score;
+          showResult(res, st);
+        })
+        .catch(function () {
+          showResult(localScore(st), st);
+        });
+      return;
+    }
 
     if (st.isExternal) {
       api
@@ -1087,13 +1774,265 @@
     showResult(localScore(st), st);
   }
 
+  var lastExamReview = null;
+  var lastExamFullReview = null;
+  var lastReviewMeta = null;
+
+  function optionLabel(options, key) {
+    if (!options || !key) return key || "—";
+    var found = options.find(function (o) {
+      return String(o.key || o.label || "").toUpperCase() === String(key).toUpperCase();
+    });
+    if (found) return (found.key || "") + ". " + (found.text || found.label || "");
+    return key;
+  }
+
+  function loadReviewBookTips(subjects) {
+    var panel = $("reviewBooksPanel");
+    var list = $("reviewBooksList");
+    if (!panel || !list || !subjects || !subjects.length) return;
+    panel.hidden = false;
+    list.innerHTML = '<p class="muted">Loading book tips…</p>';
+    var seen = {};
+    var books = [];
+    Promise.all(
+      subjects
+        .filter(function (s) {
+          return s && !seen[s] && (seen[s] = true);
+        })
+        .slice(0, 4)
+        .map(function (sub) {
+          return api
+            .api("/api/v1/sia/recommendations?subject=" + encodeURIComponent(sub), {
+              timeout: 35000,
+              retries: 0,
+            })
+            .then(function (data) {
+              (data && data.recommended_books || []).forEach(function (b) {
+                if (b && b.title) books.push({ title: b.title, author: b.author, subject: sub });
+              });
+            })
+            .catch(function () {});
+        })
+    ).then(function () {
+      if (!books.length) {
+        list.innerHTML =
+          '<p class="muted">No library books tagged for these subjects yet. Check Library → Books or Study Materials.</p>';
+        return;
+      }
+      var uniq = {};
+      list.innerHTML = books
+        .filter(function (b) {
+          var k = b.title + "|" + b.subject;
+          if (uniq[k]) return false;
+          uniq[k] = true;
+          return true;
+        })
+        .slice(0, 8)
+        .map(function (b) {
+          return (
+            '<span class="review-book-chip"><strong>' +
+            esc(b.subject) +
+            "</strong> · " +
+            esc(b.title) +
+            (b.author ? " — " + esc(b.author) : "") +
+            "</span>"
+          );
+        })
+        .join("");
+    });
+  }
+
+  function fetchSiaDeepExplain(q) {
+    var subject = q.subject || "General";
+    var correctText = optionLabel(q.options, q.correct_key);
+    var yourText = q.your_answer ? optionLabel(q.options, q.your_answer) : "Not answered";
+    var prompt =
+      "I just finished a CBT practice question in " +
+      subject +
+      ".\n\nQuestion: " +
+      (q.question_text || "") +
+      "\nMy answer: " +
+      yourText +
+      "\nCorrect answer: " +
+      correctText +
+      (q.explanation ? "\nShort explanation: " + q.explanation : "") +
+      "\n\nGive a deeper step-by-step explanation so I understand this type of question. " +
+      "Then list 2–3 specific books or topics from Scholaxia library I should read to master similar questions.";
+
+    if (!q.is_correct && q.your_answer) {
+      return api.api("/api/v1/sia/explain-wrong", {
+        method: "POST",
+        body: {
+          question: q.question_text || "",
+          wrong_answer: yourText,
+          correct_answer: correctText,
+          subject: subject,
+          language: "english",
+        },
+        timeout: 90000,
+        retries: 0,
+      });
+    }
+    return api.api("/api/v1/sia/ask", {
+      method: "POST",
+      body: {
+        question: prompt,
+        subject: subject,
+        language: "english",
+        tutor_mode: "smart",
+      },
+      timeout: 90000,
+      retries: 0,
+    });
+  }
+
+  function renderReviewQuestionCard(q, index) {
+    var expl = (q.explanation || "").trim();
+    var cls = q.is_skipped ? "is-skipped" : q.is_correct ? "is-correct" : "is-wrong";
+    var status = q.is_skipped ? "Skipped" : q.is_correct ? "Correct" : "Wrong";
+    return (
+      '<article class="review-item ' +
+      cls +
+      '" data-review-q="' +
+      esc(q.id) +
+      '">' +
+      '<p class="review-meta">Question ' +
+      (index + 1) +
+      " · " +
+      esc(q.subject || "") +
+      " · " +
+      status +
+      (q.topic ? " · " + esc(q.topic) : "") +
+      "</p>" +
+      '<p class="review-q">' +
+      esc(q.question_text || "") +
+      "</p>" +
+      '<p class="review-answer-row ' +
+      cls +
+      '"><strong>Your answer:</strong> ' +
+      esc(q.your_answer ? optionLabel(q.options, q.your_answer) : "Not answered") +
+      "</p>" +
+      '<p class="review-answer-row is-correct"><strong>Correct answer:</strong> ' +
+      esc(optionLabel(q.options, q.correct_key)) +
+      "</p>" +
+      (expl
+        ? '<div class="review-expl"><strong>Explanation</strong><p>' + esc(expl) + "</p></div>"
+        : "") +
+      '<div class="review-sia-actions">' +
+      '<button type="button" class="btn btn-secondary btn-mini" data-sia-deep="' +
+      esc(q.id) +
+      '">Ask Sia for deeper explanation</button>' +
+      "</div>" +
+      '<div class="review-sia" id="review-sia-' +
+      esc(q.id) +
+      '" hidden></div>' +
+      "</article>"
+    );
+  }
+
+  function showReviewScreen(items, meta) {
+    items = items || [];
+    meta = meta || lastReviewMeta || {};
+    var wrap = $("reviewList");
+    var screen = $("review-screen");
+    var titleEl = $("reviewPageTitle");
+    var subEl = $("reviewPageSub");
+    if (!wrap || !screen) return;
+    if (titleEl) {
+      titleEl.textContent =
+        (meta.title || "Your answers & explanations") +
+        (meta.percent != null ? " · " + meta.percent + "%" : "");
+    }
+    if (subEl) {
+      subEl.textContent =
+        items.length +
+        " questions · " +
+        (meta.wrong_count != null ? meta.wrong_count + " wrong · " : "") +
+        "Tap Ask Sia on any question for a deeper explanation and study tips.";
+    }
+    if (!items.length) {
+      wrap.innerHTML =
+        '<div class="empty-state"><strong>No review data yet</strong><p>Finish a CBT exam and tap Review all answers on the result screen.</p></div>';
+    } else {
+      wrap.innerHTML = items.map(renderReviewQuestionCard).join("");
+    }
+    var subjects = [];
+    var seen = {};
+    items.forEach(function (q) {
+      if (q.subject && !seen[q.subject]) {
+        seen[q.subject] = true;
+        subjects.push(q.subject);
+      }
+    });
+    loadReviewBookTips(subjects);
+    screen.classList.add("is-on");
+    document.body.style.overflow = "hidden";
+  }
+
+  function closeReviewScreen() {
+    var screen = $("review-screen");
+    if (screen) screen.classList.remove("is-on");
+    document.body.style.overflow = "";
+  }
+
+  document.addEventListener("click", function (e) {
+    var siaBtn = e.target.closest("[data-sia-deep]");
+    if (!siaBtn) return;
+    var qid = siaBtn.dataset.siaDeep;
+    var q = (lastExamFullReview || lastExamReview || []).find(function (x) {
+      return String(x.id) === String(qid);
+    });
+    if (!q) return;
+    var box = $("review-sia-" + qid);
+    if (!box) return;
+    siaBtn.disabled = true;
+    siaBtn.textContent = "Sia is thinking…";
+    box.hidden = false;
+    box.innerHTML = "<strong>Sia</strong><p>Loading deeper explanation…</p>";
+    fetchSiaDeepExplain(q)
+      .then(function (res) {
+        var text = (res && (res.sia || res.answer || res.message)) || "Could not load explanation.";
+        box.innerHTML = "<strong>Sia — deeper explanation</strong><p>" + esc(text) + "</p>";
+        siaBtn.textContent = "Refresh Sia explanation";
+        siaBtn.disabled = false;
+      })
+      .catch(function (err) {
+        box.innerHTML =
+          "<strong>Sia</strong><p>" +
+          esc(errMsg(err) || "Sia is unavailable right now. Try again in a moment.") +
+          "</p>";
+        siaBtn.textContent = "Try Sia again";
+        siaBtn.disabled = false;
+      });
+  });
+
   function showResult(res, st) {
     res = res || {};
+    lastExamReview = Array.isArray(res.review) ? res.review : null;
+    lastExamFullReview = Array.isArray(res.full_review)
+      ? res.full_review
+      : lastExamReview
+      ? lastExamReview.slice()
+      : null;
+    lastReviewMeta = {
+      title: st ? st.title : "",
+      percent: pct,
+      wrong_count: res.wrong_count != null ? res.wrong_count : lastExamReview ? lastExamReview.length : 0,
+      attempt_id: res.attempt_id || (st && st.practiceAttemptId),
+    };
     var score = res.score != null ? res.score : res.correct_count;
-    var total = res.total != null ? res.total : res.total_questions || (st && st.questions.length);
+    var total =
+      res.total != null
+        ? res.total
+        : res.max_score != null
+        ? res.max_score
+        : res.total_questions || (st && st.questions && st.questions.length);
     var pct =
       res.percentage != null
         ? res.percentage
+        : res.percent != null
+        ? res.percent
         : score != null && total
         ? Math.round((score / total) * 100)
         : null;
@@ -1111,8 +2050,43 @@
       '<div><strong>' +
       (res.offline ? "Offline" : "Synced") +
       "</strong><span>Status</span></div>";
+    var reviewBtn = $("resultReviewBtn");
+    if (reviewBtn) {
+      reviewBtn.hidden = !(st && st.isPractice);
+      reviewBtn.textContent = "Review all answers";
+    }
     $("result-screen").classList.add("is-on");
     Exam.current = null;
+  }
+
+  if ($("resultReviewBtn")) {
+    $("resultReviewBtn").addEventListener("click", function () {
+      $("result-screen").classList.remove("is-on");
+      var items = lastExamFullReview || lastExamReview || [];
+      if (!items.length && lastReviewMeta && lastReviewMeta.attempt_id) {
+        api
+          .api("/api/v1/cbt/practice/attempts/" + lastReviewMeta.attempt_id + "/review", {
+            timeout: 60000,
+            retries: 0,
+          })
+          .then(function (data) {
+            lastExamFullReview = data.full_review || [];
+            lastExamReview = data.review || [];
+            lastReviewMeta.wrong_count = data.wrong_count;
+            lastReviewMeta.percent = data.percent;
+            showReviewScreen(lastExamFullReview, lastReviewMeta);
+          })
+          .catch(function (err) {
+            alert(errMsg(err) || "Could not load review.");
+          });
+        return;
+      }
+      showReviewScreen(items, lastReviewMeta);
+    });
+  }
+
+  if ($("reviewCloseBtn")) {
+    $("reviewCloseBtn").addEventListener("click", closeReviewScreen);
   }
 
   if ($("resultCloseBtn")) {
@@ -1129,54 +2103,942 @@
   }
 
   /* =====================================================================
-     CBT
+     CBT — exam type packages (JAMB / WAEC / NECO)
      ===================================================================== */
 
-  var cbtActiveBoard = "practice_exams";
+  var cbtHomeCache = null;
+  var cbtSelectedBoard = null;
+  var DEFAULT_JAMB_SUBJECTS = [
+    "Use of English",
+    "Mathematics",
+    "Physics",
+    "Chemistry",
+    "Biology",
+    "Economics",
+    "Government",
+    "Literature in English",
+    "Geography",
+    "Christian Religious Studies",
+    "Islamic Religious Studies",
+    "Commerce",
+    "Accounting",
+  ];
+  var DEFAULT_SSCE_SUBJECTS = [
+    "English Language",
+    "Mathematics",
+    "Biology",
+    "Chemistry",
+    "Physics",
+    "Economics",
+    "Government",
+    "Literature in English",
+    "Geography",
+    "Agricultural Science",
+    "Further Mathematics",
+    "Commerce",
+    "Financial Accounting",
+  ];
+
+  function localProfileSubjects() {
+    var examType = (localStorage.getItem("sia_exam_type") || "").toUpperCase();
+    var jamb = readLocalJson("sia_jamb_subjects", null) || [];
+    var ssce = readLocalJson("sia_ssce_subjects", null) || [];
+    var any = readLocalJson("sia_subjects", []) || [];
+    if ((!jamb || !jamb.length) && examType === "JAMB" && any.length) jamb = any.slice();
+    if ((!ssce || !ssce.length) && (examType === "WAEC" || examType === "NECO") && any.length) {
+      ssce = any.slice();
+    }
+    return {
+      jamb_subjects: Array.isArray(jamb) ? jamb.filter(Boolean) : [],
+      ssce_subjects: Array.isArray(ssce) ? ssce.filter(Boolean) : [],
+      ssce_exam_type: examType === "NECO" ? "NECO" : "WAEC",
+    };
+  }
+
+  function cachedCbtSettings() {
+    return readLocalJson("sia_cbt_settings", null) || {};
+  }
+
+  function saveCachedCbtSettings(settings) {
+    if (!settings || typeof settings !== "object") return;
+    writeLocalJson("sia_cbt_settings", {
+      cbt_enabled: settings.cbt_enabled !== false,
+      jamb_subjects_required: Number(settings.jamb_subjects_required) || 4,
+      jamb_duration_minutes: Number(settings.jamb_duration_minutes) || 60,
+      jamb_questions_per_subject: Number(settings.jamb_questions_per_subject) || 40,
+      jamb_english_questions: Number(settings.jamb_english_questions) || 40,
+      waec_duration_minutes: Number(settings.waec_duration_minutes) || 60,
+      neco_duration_minutes: Number(settings.neco_duration_minutes) || 60,
+    });
+  }
+
+  function defaultCbtHome(accessBoards) {
+    var boards = accessBoards || [];
+    function has(b) {
+      return boards.indexOf(b) >= 0;
+    }
+    // Treat a very recent coupon redeem as unlocked on this device
+    try {
+      var justAt = Number(sessionStorage.getItem("sia_cbt_just_unlocked") || 0);
+      var pkg = String(sessionStorage.getItem("sia_cbt_package_id") || "").toLowerCase();
+      if (justAt && Date.now() - justAt < 24 * 60 * 60 * 1000) {
+        ["jamb", "waec", "neco"].forEach(function (id) {
+          if (pkg === id || pkg.indexOf(id) >= 0) {
+            var name = id.toUpperCase();
+            if (boards.indexOf(name) < 0) boards.push(name);
+          }
+        });
+        if (!pkg && boards.indexOf("JAMB") < 0) boards.push("JAMB", "WAEC", "NECO");
+      }
+    } catch (e) {}
+    var cached = cachedCbtSettings();
+    return {
+      settings: {
+        cbt_enabled: cached.cbt_enabled !== false,
+        jamb_subjects_required: Number(cached.jamb_subjects_required) || 4,
+        // Prefer last admin settings from API — do not hardcode 180
+        jamb_duration_minutes: Number(cached.jamb_duration_minutes) || 60,
+        jamb_questions_per_subject: Number(cached.jamb_questions_per_subject) || 40,
+        jamb_english_questions: Number(cached.jamb_english_questions) || 40,
+        waec_duration_minutes: Number(cached.waec_duration_minutes) || 60,
+        neco_duration_minutes: Number(cached.neco_duration_minutes) || 60,
+      },
+      exam_types: [
+        { exam_type: "JAMB", has_access: has("JAMB"), package_id: "jamb" },
+        { exam_type: "WAEC", has_access: has("WAEC"), package_id: "waec" },
+        { exam_type: "NECO", has_access: has("NECO"), package_id: "neco" },
+      ],
+      profile: localProfileSubjects(),
+      _local: true,
+    };
+  }
+
+  function mergeCbtHome(data) {
+    var base = defaultCbtHome();
+    var incoming = data || {};
+    var local = localProfileSubjects();
+    var profile = Object.assign({}, base.profile, incoming.profile || {});
+    if (!(profile.jamb_subjects && profile.jamb_subjects.length) && local.jamb_subjects.length) {
+      profile.jamb_subjects = local.jamb_subjects.slice();
+    }
+    if (!(profile.ssce_subjects && profile.ssce_subjects.length) && local.ssce_subjects.length) {
+      profile.ssce_subjects = local.ssce_subjects.slice();
+    }
+    var types = (incoming.exam_types && incoming.exam_types.length
+      ? incoming.exam_types
+      : base.exam_types
+    ).map(function (t) {
+      var localT = (base.exam_types || []).find(function (x) {
+        return x.exam_type === t.exam_type;
+      });
+      return Object.assign({}, t, {
+        has_access: !!(t.has_access || (localT && localT.has_access)),
+      });
+    });
+    var settings = Object.assign({}, base.settings, incoming.settings || {});
+    if (incoming.settings) saveCachedCbtSettings(settings);
+    return {
+      settings: settings,
+      exam_types: types,
+      profile: profile,
+    };
+  }
 
   function loadCbt() {
-    loadCbtPackages({
-      gridId: "cbtPagePackagesGrid",
-      bannerId: "cbtPageAccessBanner",
-    });
-    var wrap = $("cbtExamList");
-    if (!wrap) return;
-    wrap.innerHTML = loadingHtml("Loading exams…");
-    fetchExamsForMe()
-      .then(function () {
-        renderCbtBoard();
-      })
-      .catch(function (err) {
-        wrap.innerHTML = errorHtml(errMsg(err), "cbt");
+    var list = $("cbtExamTypeList");
+    var home = $("cbtHomePanel");
+    var board = $("cbtBoardPanel");
+    if (home) home.hidden = false;
+    if (board) board.hidden = true;
+    if (!list) return;
+
+    function applyHome(data) {
+      cbtHomeCache = mergeCbtHome(data);
+      renderCbtExamTypes();
+    }
+
+    // Never leave cards stuck on "Loading…" — show Locked packages immediately
+    applyHome(defaultCbtHome());
+
+    function fallbackHome() {
+      return api
+        .api("/api/v1/payments/paystack/cbt-access", { timeout: 12000, retries: 0, preferXhr: true })
+        .then(function (access) {
+          return defaultCbtHome((access && access.boards) || []);
+        });
+    }
+
+    if (api.wakeServer) {
+      try {
+        api.wakeServer(12000);
+      } catch (e) {}
+    }
+
+    api
+      .api("/api/v1/cbt/practice/home", { timeout: 18000, retries: 0, preferXhr: true })
+      .then(applyHome)
+      .catch(function () {
+        fallbackHome()
+          .then(applyHome)
+          .catch(function () {
+            // Keep the local Locked cards — user can still tap JAMB → coupon/pay
+            applyHome(defaultCbtHome());
+          });
       });
   }
 
-  function renderCbtBoard() {
-    var wrap = $("cbtExamList");
-    if (!wrap) return;
-    var list = (examsForMeCache && examsForMeCache[cbtActiveBoard]) || [];
-    if (!list.length) {
-      wrap.innerHTML = emptyHtml("📝", "No exams available in this category yet.");
+  function renderCbtExamTypes() {
+    var list = $("cbtExamTypeList");
+    if (!list) return;
+    var types = (cbtHomeCache && cbtHomeCache.exam_types) || [];
+    if (!types.length) {
+      list.innerHTML = emptyHtml("📝", "CBT is not available yet.");
       return;
     }
-    wrap.innerHTML = list
-      .map(function (exam) {
-        return renderExamCard(exam, { badge: exam.board || cbtActiveBoard.replace("_exams", "").toUpperCase() });
+    var settings = (cbtHomeCache && cbtHomeCache.settings) || {};
+    if (settings.cbt_enabled === false) {
+      list.innerHTML = emptyHtml("📝", "CBT practice is currently disabled by admin.");
+      return;
+    }
+    list.innerHTML = types
+      .map(function (t) {
+        var board = t.exam_type;
+        var access = t.has_access
+          ? '<span class="badge badge-purple">Unlocked</span>'
+          : '<span class="badge">Locked</span>';
+        var hint =
+          board === "JAMB"
+            ? "One combined CBT · your profile subjects · settings from admin"
+            : "Subject practice from your registered profile subjects";
+        return (
+          '<button type="button" class="card card-click" data-cbt-board="' +
+          esc(board) +
+          '" style="text-align:left;cursor:pointer;border:1px solid #e2e8f0">' +
+          '<span class="card-tag">' +
+          esc(board) +
+          "</span>" +
+          access +
+          "<h4 style=\"margin:0.5rem 0 0.35rem\">" +
+          esc(board) +
+          "</h4><p style=\"margin:0;color:#64748b;font-size:0.9rem\">" +
+          esc(hint) +
+          "</p></button>"
+        );
       })
       .join("");
   }
 
-  var cbtTabs = $("cbtBoardTabs");
-  if (cbtTabs) {
-    cbtTabs.addEventListener("click", function (e) {
-      var btn = e.target.closest(".tab");
-      if (!btn) return;
-      cbtTabs.querySelectorAll(".tab").forEach(function (t) {
-        t.classList.toggle("is-active", t === btn);
-      });
-      cbtActiveBoard = btn.dataset.board;
-      renderCbtBoard();
+  function boardHasAccess(board) {
+    var types = (cbtHomeCache && cbtHomeCache.exam_types) || [];
+    var info = types.find(function (t) {
+      return t.exam_type === board;
     });
+    return !!(info && info.has_access);
+  }
+
+  function markBoardUnlockedLocally(board) {
+    try {
+      sessionStorage.setItem("sia_cbt_just_unlocked", String(Date.now()));
+      sessionStorage.setItem("sia_cbt_package_id", String(board).toLowerCase());
+    } catch (e) {}
+    cbtHomeCache = mergeCbtHome(
+      Object.assign({}, cbtHomeCache || {}, {
+        exam_types: ["JAMB", "WAEC", "NECO"].map(function (b) {
+          var prev = ((cbtHomeCache && cbtHomeCache.exam_types) || []).find(function (t) {
+            return t.exam_type === b;
+          });
+          return {
+            exam_type: b,
+            has_access: b === board || !!(prev && prev.has_access),
+            package_id: b.toLowerCase(),
+          };
+        }),
+      })
+    );
+  }
+
+  function ensureBoardUnlockedThen(board, run) {
+    if (boardHasAccess(board)) {
+      run();
+      return;
+    }
+    openCbtUnlockModal(function () {
+      markBoardUnlockedLocally(board);
+      run();
+    });
+  }
+
+  function openCbtBoard(board, opts) {
+    opts = opts || {};
+    cbtSelectedBoard = board;
+    if (!cbtHomeCache) cbtHomeCache = defaultCbtHome();
+
+    // Never show pay/coupon until the student taps START
+    try {
+      closeCbtUnlockModal(true);
+    } catch (eClose) {}
+
+    var home = $("cbtHomePanel");
+    var panel = $("cbtBoardPanel");
+    var body = $("cbtBoardBody");
+    var title = $("cbtBoardTitle");
+    var hint = $("cbtBoardHint");
+    if (home) home.hidden = true;
+    if (panel) panel.hidden = false;
+    if (title) title.textContent = board === "JAMB" ? "Your JAMB exam" : board + " CBT";
+    if (!body) return;
+
+    var types = (cbtHomeCache && cbtHomeCache.exam_types) || [];
+    var info = types.find(function (t) {
+      return t.exam_type === board;
+    }) || { has_access: false };
+    var profile = Object.assign({}, localProfileSubjects(), (cbtHomeCache && cbtHomeCache.profile) || {});
+    var settings = (cbtHomeCache && cbtHomeCache.settings) || {};
+    var unlocked = !!info.has_access;
+
+    if (board === "JAMB") {
+      var need = settings.jamb_subjects_required || 4;
+      var jambSubs = (profile.jamb_subjects || []).filter(Boolean);
+      if (jambSubs.length < need) {
+        var localJamb = readLocalJson("sia_jamb_subjects", null) || readLocalJson("sia_subjects", []);
+        if (Array.isArray(localJamb) && localJamb.length) jambSubs = localJamb.filter(Boolean);
+      }
+      // Dedupe keep order
+      jambSubs = jambSubs.filter(function (s, i, arr) {
+        return arr.indexOf(s) === i;
+      });
+      var dur = Number(settings.jamb_duration_minutes) || Number(cachedCbtSettings().jamb_duration_minutes) || 60;
+      var perSub = Number(settings.jamb_questions_per_subject) || Number(cachedCbtSettings().jamb_questions_per_subject) || 40;
+      var totalQ = perSub * jambSubs.length;
+      if (hint) {
+        hint.textContent = "Your saved JAMB subjects. Settings come from Admin CBT Settings.";
+      }
+      if (!jambSubs.length) {
+        body.innerHTML =
+          '<div class="empty-state"><strong>No JAMB subjects saved yet</strong>' +
+          "<p>Go to Profile, choose your " +
+          need +
+          " JAMB subjects, save, then come back here to preview the exam.</p>" +
+          '<button type="button" class="btn btn-primary" data-goto="profile">Open Profile</button></div>';
+        // Refresh from API in case subjects exist only on server
+        api.api("/api/v1/students/me", { timeout: 15000, retries: 0, preferXhr: true }).then(function (me) {
+          var p = (me && (me.profile || me)) || {};
+          var remote = p.jamb_subjects || p.subjects || [];
+          if (Array.isArray(remote) && remote.length) {
+            writeLocalJson("sia_jamb_subjects", remote);
+            writeLocalJson("sia_subjects", remote);
+            openCbtBoard("JAMB");
+          }
+        }).catch(function () {});
+        return;
+      }
+      body.innerHTML =
+        "<h3 style=\"margin:0 0 0.55rem\">Your " +
+        esc(String(jambSubs.length)) +
+        " subjects</h3>" +
+        '<p class="muted" style="margin:0 0 0.85rem">' +
+        esc(String(totalQ)) +
+        " questions · " +
+        esc(String(dur)) +
+        " minutes (from admin settings)</p>" +
+        '<ol style="margin:0 0 1rem;padding:0;list-style:none;display:grid;gap:0.45rem">' +
+        jambSubs
+          .map(function (s, idx) {
+            return (
+              '<li style="display:flex;align-items:center;gap:0.75rem;padding:0.85rem 1rem;border:1px solid #e2e8f0;border-radius:12px;background:#fff">' +
+              '<span style="width:1.75rem;height:1.75rem;border-radius:999px;background:#ede9fe;color:#5b21b6;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:0.85rem">' +
+              (idx + 1) +
+              "</span>" +
+              '<span style="font-weight:700;font-size:1.02rem">' +
+              esc(s) +
+              "</span>" +
+              '<span style="margin-left:auto;color:#64748b;font-size:0.85rem">' +
+              esc(String(perSub)) +
+              " q</span></li>"
+            );
+          })
+          .join("") +
+        "</ol>" +
+        (jambSubs.length !== need
+          ? '<p class="form-status err" style="margin:0 0 0.85rem">JAMB usually needs exactly ' +
+            need +
+            " subjects. You have " +
+            jambSubs.length +
+            '. <button type="button" class="btn btn-mini" data-goto="profile">Edit in Profile</button></p>'
+          : "") +
+        (unlocked
+          ? ""
+          : '<p style="margin:0 0 1rem;padding:0.75rem 0.9rem;border-radius:10px;background:#ecfdf5;color:#065f46;font-size:0.92rem">Preview only for now. Coupon or Paystack appears when you tap <strong>Start this JAMB exam</strong>.</p>') +
+        '<div class="btn-row" style="margin-top:0.5rem">' +
+        '<button type="button" class="btn btn-primary" id="cbtStartJambBtn">' +
+        (unlocked ? "START CBT" : "Start this JAMB exam") +
+        "</button>" +
+        "</div>" +
+        '<p id="cbtJambPickMsg" class="form-status" style="margin-top:0.75rem"></p>';
+      var startJ = $("cbtStartJambBtn");
+      if (startJ) {
+        startJ.onclick = function () {
+          if (jambSubs.length !== need) {
+            var msg = $("cbtJambPickMsg");
+            if (msg) {
+              msg.className = "form-status err";
+              msg.textContent = "Save exactly " + need + " JAMB subjects in Profile first.";
+            }
+            return;
+          }
+          ensureBoardUnlockedThen(board, function () {
+            startPracticeAttempt("JAMB", jambSubs.slice(), startJ);
+          });
+        };
+      }
+      // Refresh admin settings in background so duration/question counts stay correct
+      api
+        .api("/api/v1/cbt/practice/settings", { timeout: 12000, retries: 0, preferXhr: true })
+        .then(function (data) {
+          if (!data || !data.settings) return;
+          saveCachedCbtSettings(data.settings);
+          if (cbtHomeCache) cbtHomeCache.settings = Object.assign({}, cbtHomeCache.settings || {}, data.settings);
+          var nextDur = Number(data.settings.jamb_duration_minutes);
+          if (nextDur && nextDur !== dur) openCbtBoard("JAMB", { skipUnlockModal: true });
+        })
+        .catch(function () {});
+      return;
+    }
+
+    // WAEC / NECO — show saved subjects first; gate on START
+    var registered = (profile.ssce_subjects || []).filter(Boolean);
+    if (!registered.length) {
+      var localSsce = readLocalJson("sia_ssce_subjects", null) || readLocalJson("sia_subjects", []);
+      if (Array.isArray(localSsce) && localSsce.length) registered = localSsce.slice();
+    }
+    if (hint) {
+      hint.textContent = unlocked
+        ? "Pick a subject and start."
+        : "Preview your saved subjects first. Pay or coupon only when you tap START.";
+    }
+    if (!registered.length) {
+      body.innerHTML =
+        '<div class="empty-state"><strong>No ' +
+        esc(board) +
+        " subjects on your profile</strong>" +
+        "<p>Add your subjects under Profile, then return here.</p>" +
+        '<button type="button" class="btn btn-primary" data-goto="profile">Open Profile</button></div>';
+      return;
+    }
+    var packDur =
+      board === "WAEC" ? settings.waec_duration_minutes || 60 : settings.neco_duration_minutes || 60;
+    body.innerHTML =
+      (unlocked
+        ? ""
+        : '<p style="margin:0 0 0.85rem;padding:0.75rem 0.9rem;border-radius:10px;background:#ecfdf5;color:#065f46;font-size:0.92rem">Review your subjects first. Unlock with coupon or pay when you start.</p>') +
+      '<p class="muted" style="margin:0 0 0.85rem">Pick one subject to practice · ' +
+      esc(String(packDur)) +
+      " min</p>" +
+      '<div class="card-grid" id="cbtSubjectCards">' +
+      registered
+        .map(function (s) {
+          return (
+            '<div class="card"><span class="card-tag">' +
+            esc(board) +
+            "</span><h4>" +
+            esc(s) +
+            "</h4>" +
+            '<div class="card-foot"><button type="button" class="btn btn-primary btn-mini" data-cbt-start-subject="' +
+            esc(s) +
+            '">' +
+            (unlocked ? "START CBT" : "START") +
+            "</button></div></div>"
+          );
+        })
+        .join("") +
+      "</div>";
+  }
+
+  function startPracticeAttempt(examType, subjects, btn) {
+    var statusEl = $("cbtJambPickMsg");
+    function setStartStatus(msg, ok) {
+      if (!statusEl) return;
+      statusEl.className = "form-status" + (msg ? (ok ? " ok" : " err") : "");
+      statusEl.textContent = msg || "";
+    }
+    function resetStartBtn() {
+      if (!btn) return;
+      btn.disabled = false;
+      btn.textContent = btn.getAttribute("data-start-label") || "Start this JAMB exam";
+    }
+    if (btn) {
+      if (!btn.getAttribute("data-start-label")) {
+        btn.setAttribute("data-start-label", btn.textContent || "Start this JAMB exam");
+      }
+      btn.disabled = true;
+      btn.textContent = "Opening…";
+    }
+    setStartStatus("Opening exam…", true);
+
+    try {
+      if ($("result-screen")) $("result-screen").classList.remove("is-on");
+    } catch (e0) {}
+
+    if (api.wakeServer) {
+      try {
+        api.wakeServer(12000);
+      } catch (eWake) {}
+    }
+
+    var finished = false;
+    var watchdog = setTimeout(function () {
+      if (finished) return;
+      setStartStatus("Still opening… one moment.", true);
+    }, 5000);
+    var hardStop = setTimeout(function () {
+      if (finished) return;
+      finished = true;
+      clearTimeout(watchdog);
+      resetStartBtn();
+      setStartStatus("Start timed out. Tap Start again.", false);
+    }, 60000);
+
+    api
+      .api("/api/v1/cbt/practice/start", {
+        method: "POST",
+        body: { exam_type: examType, subjects: subjects },
+        timeout: 55000,
+        retries: 0,
+        preferXhr: true,
+      })
+      .then(function (attempt) {
+        if (finished && !attempt) return;
+        finished = true;
+        clearTimeout(watchdog);
+        clearTimeout(hardStop);
+        resetStartBtn();
+        try {
+          openPracticeAttempt(attempt);
+          setStartStatus("", true);
+        } catch (openErr) {
+          setStartStatus(errMsg(openErr) || "Could not open exam. Tap Start again.", false);
+        }
+      })
+      .catch(function (err) {
+        if (finished) return;
+        finished = true;
+        clearTimeout(watchdog);
+        clearTimeout(hardStop);
+        resetStartBtn();
+        if (isCbtPackageError(err)) {
+          setStartStatus("Unlock required — use coupon or pay, then start again.", false);
+          openCbtUnlockModal(function () {
+            startPracticeAttempt(examType, subjects, btn);
+          });
+          return;
+        }
+        setStartStatus(errMsg(err) || "Could not start CBT. Try again.", false);
+      });
+  }
+
+  function sectionQuestions(section) {
+    return normalizeQuestions((section && section.questions) || []).map(function (q) {
+      return q;
+    });
+  }
+
+  function openPracticeAttempt(attempt) {
+    if (!attempt || !attempt.attempt_id) {
+      alert("Could not start CBT attempt.");
+      return;
+    }
+    // Never show a fake completed result instead of the exam
+    if (String(attempt.status || "").toLowerCase() === "completed") {
+      alert("That attempt already finished. Starting a new exam…");
+      startPracticeAttempt(attempt.exam_type || cbtSelectedBoard || "JAMB", attempt.subjects || [], null);
+      return;
+    }
+
+    var sections = attempt.sections || [];
+    if (!sections.length) {
+      alert("No questions were loaded for this exam. Ask admin to upload JAMB practice questions.");
+      return;
+    }
+    var totalQs = 0;
+    sections.forEach(function (sec) {
+      totalQs += Number(sec && sec.total) || ((sec && sec.questions) || []).length || 0;
+    });
+    if (!totalQs) {
+      alert("No questions were loaded for this exam. Ask admin to upload JAMB practice questions.");
+      return;
+    }
+
+    var idx = Math.min(attempt.section_index || 0, Math.max(0, sections.length - 1));
+    var answers = Object.assign({}, attempt.answers || {});
+    try {
+      var cached = JSON.parse(localStorage.getItem("sia_cbt_attempt_" + attempt.attempt_id) || "null");
+      if (cached && cached.answers) Object.assign(answers, cached.answers);
+    } catch (e) {}
+    var hasAnyAnswer = Object.keys(answers).length > 0;
+    var multi = sections.length > 1;
+
+    var durationMinutes =
+      attempt.duration_minutes ||
+      Number(cachedCbtSettings().jamb_duration_minutes) ||
+      60;
+    var remaining =
+      typeof attempt.seconds_left === "number" ? attempt.seconds_left : durationMinutes * 60;
+    // Expired resumed attempts used to open with 0s and instantly submit as 0%
+    if (!(remaining > 30)) {
+      remaining = durationMinutes * 60;
+    }
+
+    Exam.current = {
+      practiceAttemptId: attempt.attempt_id,
+      examId: attempt.attempt_id,
+      title: (attempt.exam_type || "CBT") + " CBT",
+      examType: attempt.exam_type,
+      sections: sections,
+      sectionIndex: idx,
+      questions: [],
+      answers: answers,
+      sessionId: null,
+      isPractice: true,
+      awaitingSectionPick: false,
+      isExternal: false,
+      isSchool: false,
+      index: 0,
+      durationMinutes: durationMinutes,
+      remainingSec: remaining,
+      timerId: null,
+    };
+
+    try {
+      if ($("result-screen")) $("result-screen").classList.remove("is-on");
+      closeCbtUnlockModal(true);
+    } catch (e1) {}
+
+    if ($("examTitle")) $("examTitle").textContent = Exam.current.title;
+    updatePracticeExamSub();
+    var screen = $("exam-screen");
+    if (!screen) {
+      throw new Error("Exam screen missing on this page. Hard refresh and try again.");
+    }
+    screen.classList.add("is-on");
+    screen.style.display = "flex";
+    try {
+      screen.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.scrollTo(0, 0);
+    } catch (eScroll) {}
+    startExamTimer();
+
+    // No chooser popup — load the selected top subject (or first) immediately
+    var chooser = $("examSectionChooser");
+    if (chooser) chooser.hidden = true;
+    enterPracticeSection(idx, true);
+  }
+
+  function setPracticeQuestionView(showQuestions) {
+    var chooser = $("examSectionChooser");
+    var body = $("examBody");
+    if (chooser) chooser.hidden = !!showQuestions;
+    if (body) body.hidden = !showQuestions;
+  }
+
+  function showPracticeSectionChooser() {
+    var st = Exam.current;
+    if (!st || !st.isPractice) return;
+    st.awaitingSectionPick = true;
+    st.questions = [];
+    setPracticeQuestionView(false);
+    renderPracticeSectionTabs();
+    var title = $("examChooserTitle");
+    var hint = $("examChooserHint");
+    var grid = $("examChooserGrid");
+    if (title) title.textContent = (st.examType || "CBT") + " — Choose where to start";
+    if (hint) {
+      hint.textContent =
+        "Subjects stay separate. Pick any section. Progress is saved automatically.";
+    }
+    if (!grid) return;
+    grid.innerHTML = (st.sections || [])
+      .map(function (sec, i) {
+        var answered = 0;
+        (sec.questions || []).forEach(function (q) {
+          if (st.answers[String(q.id)]) answered += 1;
+        });
+        var total = Number(sec.total) || (sec.questions || []).length || 0;
+        var done = !!sec.completed || (total > 0 && answered === total && (sec.questions || []).length > 0);
+        return (
+          '<button type="button" class="exam-section-chooser-btn' +
+          (done ? " is-done" : "") +
+          '" data-practice-section="' +
+          i +
+          '"><span>' +
+          (done ? "✓ " : "") +
+          esc(sec.subject || "Subject " + (i + 1)) +
+          '</span><span class="meta">' +
+          answered +
+          " / " +
+          total +
+          (done ? " completed" : " answered") +
+          "</span></button>"
+        );
+      })
+      .join("");
+    if ($("examSub")) {
+      $("examSub").textContent =
+        (st.examType || "CBT") + " · Choose a subject · Timer from admin settings";
+    }
+  }
+
+  function enterPracticeSection(nextIndex, skipSave) {
+    var st = Exam.current;
+    if (!st || !st.isPractice) return;
+    var sections = st.sections || [];
+    nextIndex = parseInt(nextIndex, 10);
+    if (isNaN(nextIndex) || nextIndex < 0 || nextIndex >= sections.length) return;
+
+    function apply() {
+      st.awaitingSectionPick = false;
+      st.sectionIndex = nextIndex;
+      var next = sections[nextIndex];
+      st.questions = sectionQuestions(next);
+      st.index = 0;
+      st.title = (st.examType || "CBT") + " · " + ((next && next.subject) || "Practice");
+      if ($("examTitle")) $("examTitle").textContent = st.title;
+      setPracticeQuestionView(true);
+      updatePracticeExamSub();
+      renderPracticeSectionTabs();
+      renderExamNav();
+      renderExamQuestion();
+      savePracticeAnswers();
+    }
+
+    function ensureQuestionsThenApply() {
+      var next = sections[nextIndex];
+      var hasQs = next && next.questions && next.questions.length;
+      if (hasQs) {
+        apply();
+        return;
+      }
+      if (!st.practiceAttemptId) {
+        alert("Could not load this subject. Tap Start again.");
+        return;
+      }
+
+      // Never replace #examBody HTML — that destroys question/option nodes permanently.
+      var loadId = (st._sectionLoadId = (st._sectionLoadId || 0) + 1);
+      var subjectName = (next && next.subject) || "subject";
+      st.awaitingSectionPick = false;
+      st.sectionIndex = nextIndex;
+      st.questions = [];
+      st.title = (st.examType || "CBT") + " · " + subjectName;
+      if ($("examTitle")) $("examTitle").textContent = st.title;
+      setPracticeQuestionView(true);
+      renderPracticeSectionTabs();
+      if ($("examQuestionText")) {
+        $("examQuestionText").textContent = "Loading " + subjectName + " questions…";
+      }
+      if ($("examOptions")) $("examOptions").innerHTML = "";
+      if ($("examQCount")) $("examQCount").textContent = "Loading…";
+      if ($("examQuestionNav")) $("examQuestionNav").innerHTML = "";
+      if ($("examSub")) $("examSub").textContent = "Loading " + subjectName + "…";
+
+      api
+        .api(
+          "/api/v1/cbt/practice/attempts/" +
+            encodeURIComponent(st.practiceAttemptId) +
+            "/sections/" +
+            nextIndex,
+          { timeout: 90000, retries: 1, preferXhr: true }
+        )
+        .then(function (sec) {
+          if (!Exam.current || Exam.current._sectionLoadId !== loadId) return;
+          if (!sec || !(sec.questions || []).length) {
+            throw new Error(
+              "No questions in the bank for " +
+                subjectName +
+                ". Ask admin to upload/publish JAMB practice questions for this subject."
+            );
+          }
+          sections[nextIndex] = sec;
+          st.sections = sections;
+          apply();
+        })
+        .catch(function (err) {
+          if (!Exam.current || Exam.current._sectionLoadId !== loadId) return;
+          var msg = errMsg(err) || "Could not load subject questions. Try again.";
+          if ($("examQuestionText")) $("examQuestionText").textContent = msg;
+          if ($("examOptions")) {
+            $("examOptions").innerHTML =
+              '<button type="button" class="btn btn-primary btn-mini" id="cbtRetrySectionBtn">Try again</button>';
+            var retry = $("cbtRetrySectionBtn");
+            if (retry) {
+              retry.onclick = function () {
+                enterPracticeSection(nextIndex, true);
+              };
+            }
+          }
+          if ($("examSub")) $("examSub").textContent = "Could not load " + subjectName;
+        });
+    }
+
+    if (skipSave) ensureQuestionsThenApply();
+    else savePracticeAnswers(ensureQuestionsThenApply);
+  }
+
+  function renderPracticeSectionTabs() {
+    var bar = $("examSectionBar");
+    var tabs = $("examSectionTabs");
+    var st = Exam.current;
+    if (!bar || !tabs) return;
+    if (!st || !st.isPractice || !(st.sections && st.sections.length > 1)) {
+      bar.hidden = true;
+      tabs.innerHTML = "";
+      return;
+    }
+    bar.hidden = false;
+    var html = st.sections
+      .map(function (sec, i) {
+        var answered = 0;
+        (sec.questions || []).forEach(function (q) {
+          if (st.answers[String(q.id)]) answered += 1;
+        });
+        var total = Number(sec.total) || (sec.questions || []).length || 0;
+        var cls = "exam-section-tab";
+        if (!st.awaitingSectionPick && i === st.sectionIndex) cls += " is-active";
+        if (sec.completed || (total && answered === total && (sec.questions || []).length)) cls += " is-done";
+        return (
+          '<button type="button" class="' +
+          cls +
+          '" data-practice-section="' +
+          i +
+          '">' +
+          esc(sec.subject || "Subject " + (i + 1)) +
+          (total ? " (" + answered + "/" + total + ")" : "") +
+          "</button>"
+        );
+      })
+      .join("");
+    tabs.innerHTML = html;
+  }
+
+  function switchPracticeSection(nextIndex) {
+    enterPracticeSection(nextIndex, false);
+  }
+
+  function updatePracticeExamSub() {
+    var st = Exam.current;
+    if (!st || !$("examSub")) return;
+    if (st.awaitingSectionPick) {
+      $("examSub").textContent =
+        (st.examType || "CBT") + " · Choose a subject · Timer from admin settings";
+      renderPracticeSectionTabs();
+      return;
+    }
+    var sec = (st.sections && st.sections[st.sectionIndex]) || {};
+    $("examSub").textContent =
+      (st.examType || "CBT") +
+      " · Section " +
+      (st.sectionIndex + 1) +
+      "/" +
+      (st.sections || []).length +
+      " · " +
+      (sec.subject || "") +
+      " · " +
+      st.questions.length +
+      " questions";
+    renderPracticeSectionTabs();
+  }
+
+  function savePracticeAnswers(done) {
+    var st = Exam.current;
+    if (!st || !st.practiceAttemptId) {
+      if (done) done();
+      return;
+    }
+    // Keep a local copy for poor networks
+    try {
+      localStorage.setItem(
+        "sia_cbt_attempt_" + st.practiceAttemptId,
+        JSON.stringify({
+          answers: st.answers,
+          section_index: st.sectionIndex,
+          saved_at: Date.now(),
+        })
+      );
+    } catch (e) {}
+    api
+      .api("/api/v1/cbt/practice/attempts/" + st.practiceAttemptId + "/answers", {
+        method: "POST",
+        body: { answers: st.answers, section_index: st.sectionIndex },
+        preferXhr: true,
+        retries: 1,
+        timeout: 20000,
+      })
+      .then(function () {
+        if (done) done();
+      })
+      .catch(function () {
+        if (done) done();
+      });
+  }
+
+  function advanceOrSubmitPracticeSection() {
+    var st = Exam.current;
+    if (!st || !st.isPractice) return;
+    var sections = st.sections || [];
+    sections[st.sectionIndex].completed = true;
+    renderPracticeSectionTabs();
+
+    var remaining = sections.filter(function (sec, i) {
+      return i !== st.sectionIndex && !sec.completed;
+    }).length;
+
+    if (remaining > 0) {
+      var nextIdx = -1;
+      for (var i = 0; i < sections.length; i++) {
+        if (i !== st.sectionIndex && !sections[i].completed) {
+          nextIdx = i;
+          break;
+        }
+      }
+      savePracticeAnswers(function () {
+        if (nextIdx >= 0) enterPracticeSection(nextIdx, true);
+        else confirmSubmitExam();
+      });
+      return;
+    }
+    confirmSubmitExam();
+  }
+
+  document.addEventListener("click", function (e) {
+    var secTab = e.target.closest("[data-practice-section]");
+    if (secTab) {
+      switchPracticeSection(secTab.getAttribute("data-practice-section"));
+      return;
+    }
+    var typeBtn = e.target.closest("[data-cbt-board]");
+    if (typeBtn) {
+      openCbtBoard(typeBtn.getAttribute("data-cbt-board"));
+      return;
+    }
+    var subBtn = e.target.closest("[data-cbt-start-subject]");
+    if (subBtn) {
+      var subject = subBtn.getAttribute("data-cbt-start-subject");
+      var board = cbtSelectedBoard || "WAEC";
+      ensureBoardUnlockedThen(board, function () {
+        startPracticeAttempt(board, [subject], subBtn);
+      });
+    }
+  });
+
+  if ($("cbtBackToTypes")) {
+    $("cbtBackToTypes").addEventListener("click", function () {
+      loadCbt();
+    });
+  }
+
+  var cbtActiveBoard = "practice_exams";
+
+  function renderCbtBoard() {
+    /* legacy no-op — exam cards replaced by exam-type flow */
   }
 
   /* =====================================================================
@@ -1209,22 +3071,45 @@
 
   function loadSchoolPortal() {
     var wrap = $("schoolPortalList");
+    var idCard = $("examIdentityCard");
     if (!wrap) return;
-    wrap.innerHTML = loadingHtml("Loading external exams…");
+    wrap.innerHTML = loadingHtml("Loading exams…");
     api
-      .api("/api/v1/cbt/external-exams/for-me")
+      .api("/api/v1/external-exams/mine")
       .then(function (data) {
-        externalExamsCache = firstArray(data, ["exams", "items", "results", "external_exams"]);
-        if (!externalExamsCache.length) {
-          wrap.innerHTML = emptyHtml("🏫", "No external school exams available right now.");
+        var st = (data && data.student) || {};
+        if (idCard) {
+          idCard.style.display = "block";
+          idCard.innerHTML =
+            "<strong>" + esc(st.full_name || api.getUser().name) + "</strong> · " +
+            esc(st.school_name || "") + " · " + esc(st.class_name || "") +
+            (st.school_student_id ? " · ID " + esc(st.school_student_id) : "");
+        }
+        var exams = (data && data.exams) || [];
+        if (!exams.length) {
+          wrap.innerHTML = emptyHtml("🏫", "No exam is published for your class yet.");
           return;
         }
-        wrap.innerHTML = externalExamsCache
-          .map(function (exam) { return renderExamCard(exam, { isExternal: true, badge: "EXTERNAL" }); })
-          .join("");
+        wrap.innerHTML = exams.map(function (exam) {
+          return (
+            '<div class="card"><span class="card-tag">EXAM</span><h4>' + esc(exam.title) + "</h4><p>" +
+            esc(exam.subject) + " · " + esc(exam.total_questions || 0) + " questions · " +
+            esc(exam.duration_minutes) + " min · " + esc(exam.total_marks) + " marks</p>" +
+            '<div class="card-foot"><button type="button" class="btn btn-primary btn-mini" data-open-school-exam="' +
+            esc(exam.id) + '">View exam</button></div></div>'
+          );
+        }).join("");
       })
       .catch(function (err) {
-        wrap.innerHTML = errorHtml(errMsg(err), "school-portal");
+        var msg = errMsg(err);
+        if (/not linked|school_id|school has not/i.test(msg + JSON.stringify((err && err.data) || {}))) {
+          wrap.innerHTML = emptyHtml(
+            "🏫",
+            "Your school has not linked this account yet. Ask the school office to add your email, then refresh."
+          );
+          return;
+        }
+        wrap.innerHTML = errorHtml(msg, "school-portal");
       });
   }
 
@@ -1472,7 +3357,7 @@
     if (upWrap) upWrap.innerHTML = loadingHtml("Loading upcoming classes…");
 
     api
-      .api("/api/v1/live-classes/?status=live")
+      .api("/api/v1/live-classes/?status=live", { timeout: 60000, retries: 3 })
       .then(function (data) {
         var items = firstArray(data, ["classes", "items", "results", "live_classes"]);
         if (!liveWrap) return;
@@ -1480,12 +3365,17 @@
           ? items.map(function (c) { return renderLiveCard(c, true); }).join("")
           : emptyHtml("📺", "No live classes right now. Your invite codes appear above when a teacher starts a class.");
       })
-      .catch(function (err) {
-        if (liveWrap) liveWrap.innerHTML = errorHtml(errMsg(err), "live");
+      .catch(function () {
+        if (liveWrap) {
+          liveWrap.innerHTML = emptyHtml(
+            "📺",
+            "No live classes right now. Your invite codes appear above when a teacher starts a class."
+          );
+        }
       });
 
     api
-      .api("/api/v1/live-classes/?status=upcoming")
+      .api("/api/v1/live-classes/?status=upcoming", { timeout: 60000, retries: 3 })
       .then(function (data) {
         var items = firstArray(data, ["classes", "items", "results", "live_classes"]);
         if (!upWrap) return;
@@ -1735,7 +3625,10 @@
     if (!wrap) return;
     wrap.innerHTML = loadingHtml("Loading plans…");
     api
-      .api("/api/v1/payments/live-class/plans")
+      .api("/api/v1/payments/paystack/live-class/plans", { timeout: 60000, retries: 3 })
+      .catch(function () {
+        return api.api("/api/v1/payments/live-class/plans", { timeout: 60000, retries: 2 });
+      })
       .then(function (data) {
         data = data || {};
         var plans = firstArray(data, ["plans", "items", "results"]);
@@ -1827,7 +3720,7 @@
           banner.style.display = "block";
           banner.className = "info-banner warn-banner";
           banner.textContent =
-            "No active CBT package yet. Pick a plan below and pay with Paystack to unlock downloads.";
+            "No active CBT package yet. When you tap Start exam you can use a coupon or pay with Paystack.";
         }
       }
       if (!packages.length) {
@@ -1941,7 +3834,12 @@
     wrap.innerHTML = SKILLS_PROGRAMS.map(function (p) { return renderSkillCard(p, false); }).join("");
 
     api
-      .api("/api/v1/payments/flutterwave/skills/enrollments")
+      .api("/api/v1/payments/paystack/skills/enrollments")
+      .catch(function () {
+        return api.api("/api/v1/payments/skills/enrollments").catch(function () {
+          return { enrollments: [] };
+        });
+      })
       .then(function (data) {
         var items = firstArray(data, ["enrollments", "items", "results"]);
         enrolledIds = items.map(function (it) { return it.program_id || it.skill_id || it.slug || it.id; });
@@ -2015,6 +3913,94 @@
     if (enrollBtn) openSkillEnroll(enrollBtn.dataset.enrollSkill);
     if (e.target.id === "skillEnrollClose" || e.target === $("skillEnrollModal")) {
       if ($("skillEnrollModal")) $("skillEnrollModal").classList.remove("is-on");
+    }
+    if (e.target.id === "cbtUnlockClose") {
+      closeCbtUnlockModal(true);
+      return;
+    }
+    if (e.target === $("cbtUnlockModal")) {
+      closeCbtUnlockModal();
+      return;
+    }
+    // Clicks inside the modal panel must not bubble to overlay close logic elsewhere
+    if (e.target.closest && e.target.closest("#cbtUnlockModal .modal")) {
+      e.stopPropagation();
+    }
+    if (e.target.id === "cbtUnlockPickCoupon") {
+      $("cbtUnlockChoice").hidden = true;
+      $("cbtUnlockCoupon").hidden = false;
+      $("cbtUnlockPay").hidden = true;
+      if ($("cbtUnlockStatus")) {
+        $("cbtUnlockStatus").textContent = "";
+        $("cbtUnlockStatus").className = "form-status";
+      }
+    }
+    if (e.target.id === "cbtUnlockPickPay") {
+      $("cbtUnlockChoice").hidden = true;
+      $("cbtUnlockCoupon").hidden = true;
+      $("cbtUnlockPay").hidden = false;
+      if ($("cbtUnlockStatus")) {
+        $("cbtUnlockStatus").textContent = "";
+        $("cbtUnlockStatus").className = "form-status";
+      }
+      loadCbtUnlockPackages();
+    }
+    if (e.target.id === "cbtUnlockRedeem") {
+      var code = (($("cbtUnlockCode") && $("cbtUnlockCode").value) || "")
+        .trim()
+        .replace(/\s+/g, "")
+        .toUpperCase();
+      var statusEl = $("cbtUnlockStatus");
+      if (!code) {
+        if (statusEl) {
+          statusEl.className = "form-status err";
+          statusEl.textContent = "Enter your coupon code.";
+        }
+        return;
+      }
+      e.target.disabled = true;
+      if (statusEl) {
+        statusEl.className = "form-status";
+        statusEl.textContent = "Checking coupon…";
+      }
+      api.api("/api/v1/cbt/coupons/redeem", {
+        method: "POST",
+        body: { code: code },
+        timeout: 90000,
+        retries: 2,
+      })
+        .then(function (res) {
+          var next = cbtUnlockAfter;
+          var boards = (res && res.boards) || [];
+          try {
+            sessionStorage.setItem("sia_cbt_just_unlocked", String(Date.now()));
+            if (res && res.package_id) {
+              sessionStorage.setItem("sia_cbt_package_id", String(res.package_id));
+            }
+            if (boards.length) {
+              sessionStorage.setItem("sia_cbt_boards", JSON.stringify(boards));
+            }
+          } catch (s) {}
+          closeCbtUnlockModal(true);
+          examsCacheByKind = {};
+          examsForMeCache = null;
+          if (typeof loadCbtPackages === "function") {
+            loadCbtPackages({ gridId: "cbtPackagesGrid", bannerId: "cbtAccessBanner" });
+          }
+          // Wait briefly so DB commit is visible, then start the exam
+          if (typeof next === "function") {
+            setTimeout(function () { next(); }, 400);
+          } else if (typeof loadCbt === "function") {
+            loadCbt();
+          }
+        })
+        .catch(function (err) {
+          if (statusEl) {
+            statusEl.className = "form-status err";
+            statusEl.textContent = errMsg(err) || "Coupon could not be redeemed.";
+          }
+        })
+        .finally(function () { e.target.disabled = false; });
     }
   });
   if ($("skillPayMode")) $("skillPayMode").addEventListener("change", updateSkillFeeCopy);
@@ -2196,6 +4182,14 @@
     $("communityAv").textContent = (user.name || "S").charAt(0).toUpperCase();
   }
 
+  function siaDefaultSubject() {
+    var jamb = readLocalJson("sia_jamb_subjects", null) || readLocalJson("sia_subjects", []);
+    if (Array.isArray(jamb) && jamb.length) return String(jamb[0]);
+    var ssce = readLocalJson("sia_ssce_subjects", null) || [];
+    if (Array.isArray(ssce) && ssce.length) return String(ssce[0]);
+    return "General";
+  }
+
   function addBubble(text, isMe) {
     var box = $("siaChat");
     if (!box) return;
@@ -2227,6 +4221,7 @@
         method: "POST",
         body: {
           question: text,
+          subject: siaDefaultSubject(),
           language: "english",
           education_level: (siaLevelSelect && siaLevelSelect.value) || "SS3",
           conversation_history: siaHistory,
@@ -2243,7 +4238,11 @@
       })
       .catch(function (err) {
         thinking.remove();
-        addBubble("Sorry, I ran into a problem: " + errMsg(err), false);
+        var msg = errMsg(err);
+        if (/Field required|validation/i.test(msg)) {
+          msg = "Sia could not start that chat. Refresh the page and try again.";
+        }
+        addBubble("Sorry, I ran into a problem: " + msg, false);
       });
   }
 
@@ -2360,7 +4359,9 @@
     wrap.innerHTML = loadingHtml("Loading groups…");
     Promise.all([
       api.api("/api/v1/student-groups/mine").catch(function () { return []; }),
-      api.api("/api/v1/student-groups/?is_community_listed=true").catch(function () { return []; }),
+      api.api("/api/v1/student-groups/community-listed").catch(function () {
+        return api.api("/api/v1/student-groups/discover").catch(function () { return []; });
+      }),
     ]).then(function (pair) {
       var mine = firstArray(pair[0], ["items", "groups", "results"]);
       if (Array.isArray(pair[0])) mine = pair[0];
@@ -2504,9 +4505,14 @@
       });
 
     api
-      .api("/api/v1/student-groups/?is_community_listed=true")
+      .api("/api/v1/student-groups/community-listed")
+      .catch(function () {
+        return api.api("/api/v1/student-groups/discover");
+      })
       .then(function (data) {
         var items = firstArray(data, ["items", "results", "groups"]);
+        if (Array.isArray(data)) items = data;
+        items = (items || []).filter(function (g) { return !g.is_member; });
         if (!commWrap) return;
         commWrap.innerHTML = items.length
           ? items.map(function (g) { return renderGroupCard(g, false); }).join("")
@@ -2655,8 +4661,11 @@
   var selectedSubjects = [];
 
   function loadProfile() {
+    var examType = localStorage.getItem("sia_exam_type");
+    if (examType && $("examTypeSelect")) $("examTypeSelect").value = examType;
+
     api
-      .api("/api/v1/students/me")
+      .api("/api/v1/students/me", { preferXhr: true, timeout: 45000, retries: 1 })
       .then(function (me) {
         if (!me) return;
         var name = me.full_name || me.name || user.name;
@@ -2666,28 +4675,33 @@
           if ($("examTypeSelect")) $("examTypeSelect").value = me.exam_type;
         }
         if (me.education_level && $("eduLevelSelect")) $("eduLevelSelect").value = me.education_level;
-        if (Array.isArray(me.subjects)) {
-          selectedSubjects = me.subjects.slice();
-          writeLocalJson("sia_subjects", selectedSubjects);
-        }
+        var loaded =
+          (me.exam_type === "JAMB" && Array.isArray(me.jamb_subjects) && me.jamb_subjects.length
+            ? me.jamb_subjects
+            : null) ||
+          (Array.isArray(me.ssce_subjects) && me.ssce_subjects.length ? me.ssce_subjects : null) ||
+          (Array.isArray(me.selected_subjects) && me.selected_subjects.length ? me.selected_subjects : null) ||
+          (Array.isArray(me.subjects) ? me.subjects : null) ||
+          [];
+        selectedSubjects = loaded.slice();
+        writeLocalJson("sia_subjects", selectedSubjects);
+        if (me.exam_type === "JAMB") writeLocalJson("sia_jamb_subjects", selectedSubjects);
+        if (me.exam_type === "WAEC" || me.exam_type === "NECO") writeLocalJson("sia_ssce_subjects", selectedSubjects);
         refreshLocalExamBadges();
         renderSubjectChips();
       })
       .catch(function () {
+        selectedSubjects = readLocalJson("sia_subjects", []);
+        if (!Array.isArray(selectedSubjects)) selectedSubjects = [];
         refreshLocalExamBadges();
+        renderSubjectChips();
       });
 
-    var examType = localStorage.getItem("sia_exam_type");
-    if (examType && $("examTypeSelect")) $("examTypeSelect").value = examType;
-    selectedSubjects = readLocalJson("sia_subjects", []);
-    if (!Array.isArray(selectedSubjects)) selectedSubjects = [];
-
     api
-      .api("/api/v1/students/subjects")
+      .api("/api/v1/students/subjects", { preferXhr: true, timeout: 35000, retries: 1 })
       .then(function (data) {
         subjectsCatalog = firstArray(data, ["subjects", "items", "results"]);
         if (!subjectsCatalog.length && data && typeof data === "object") {
-          // Flatten grouped shapes e.g. { jamb: [...], waec: [...] }
           Object.keys(data).forEach(function (k) {
             if (Array.isArray(data[k])) subjectsCatalog = subjectsCatalog.concat(data[k]);
           });
@@ -2741,26 +4755,128 @@
     $("profileSaveBtn").addEventListener("click", function () {
       var statusEl = $("profileSaveStatus");
       var examType = (($("examTypeSelect") && $("examTypeSelect").value) || "").toUpperCase().replace(/-/g, "_");
-      var eduLevel = (($("eduLevelSelect") && $("eduLevelSelect").value) || "").toUpperCase();
+      var eduLevel = (($("eduLevelSelect") && $("eduLevelSelect").value) || "SS1").toUpperCase();
       if (!selectedSubjects.length) {
         setStatus(statusEl, "Select at least one subject.", false);
         return;
       }
+      if (examType === "JAMB" && selectedSubjects.length !== 4) {
+        setStatus(statusEl, "JAMB requires exactly 4 subjects (include English Language if you offer it).", false);
+        return;
+      }
+      if ((examType === "WAEC" || examType === "NECO") && selectedSubjects.length !== 9) {
+        setStatus(statusEl, examType + " requires exactly 9 subjects.", false);
+        return;
+      }
+
       var btn = $("profileSaveBtn");
       btn.disabled = true;
       setStatus(statusEl, "Saving…", true);
-      api
-        .api("/api/v1/students/setup-exam", {
-          method: "POST",
-          body: { exam_type: examType, subjects: selectedSubjects, education_level: eduLevel },
+
+      // Always keep a local copy so CBT can use subjects even if the network flakes
+      function commitLocalCache() {
+        localStorage.setItem("sia_exam_type", examType);
+        writeLocalJson("sia_subjects", selectedSubjects.slice());
+        if (examType === "JAMB") writeLocalJson("sia_jamb_subjects", selectedSubjects.slice());
+        if (examType === "WAEC" || examType === "NECO") writeLocalJson("sia_ssce_subjects", selectedSubjects.slice());
+        refreshLocalExamBadges();
+        if (cbtHomeCache) {
+          cbtHomeCache.profile = cbtHomeCache.profile || {};
+          if (examType === "JAMB") cbtHomeCache.profile.jamb_subjects = selectedSubjects.slice();
+          else cbtHomeCache.profile.ssce_subjects = selectedSubjects.slice();
+        }
+      }
+
+      function postSetup(payload) {
+        return new Promise(function (resolve, reject) {
+          var xhr = new XMLHttpRequest();
+          var url = (api.API_BASE || "https://scholaxia1.onrender.com") + "/api/v1/students/setup-exam";
+          xhr.open("POST", url, true);
+          xhr.timeout = 90000;
+          xhr.setRequestHeader("Content-Type", "application/json");
+          xhr.setRequestHeader("Accept", "application/json");
+          var tok = api.getToken ? api.getToken() : localStorage.getItem("sia_token");
+          if (tok) xhr.setRequestHeader("Authorization", "Bearer " + tok);
+          xhr.onload = function () {
+            var data = null;
+            try {
+              data = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+            } catch (e) {
+              data = { detail: xhr.responseText || "Invalid response" };
+            }
+            if (xhr.status >= 200 && xhr.status < 300) {
+              resolve(data);
+              return;
+            }
+            var msg = (data && (data.detail || data.message)) || ("Request failed (" + xhr.status + ")");
+            if (typeof msg === "object") msg = msg.message || JSON.stringify(msg);
+            var err = new Error(String(msg));
+            err.status = xhr.status;
+            err.data = data;
+            reject(err);
+          };
+          xhr.onerror = function () {
+            var err = new Error("NETWORK");
+            err.status = 0;
+            reject(err);
+          };
+          xhr.ontimeout = function () {
+            var err = new Error("TIMEOUT");
+            err.status = 0;
+            reject(err);
+          };
+          xhr.send(JSON.stringify(payload));
+        });
+      }
+
+      // Try simple legacy payload first (most compatible), then dual-board payload
+      var legacyBody = {
+        exam_type: examType,
+        subjects: selectedSubjects.slice(),
+        education_level: eduLevel,
+      };
+      var dualBody = {
+        education_level: eduLevel,
+        exam_type: examType,
+        subjects: selectedSubjects.slice(),
+        enable_jamb: examType === "JAMB",
+        jamb_subjects: examType === "JAMB" ? selectedSubjects.slice() : undefined,
+        enable_ssce: examType === "WAEC" || examType === "NECO",
+        ssce_exam_type: examType === "WAEC" || examType === "NECO" ? examType : undefined,
+        ssce_subjects: examType === "WAEC" || examType === "NECO" ? selectedSubjects.slice() : undefined,
+      };
+
+      function saveToServer() {
+        return postSetup(legacyBody).catch(function () {
+          return postSetup(dualBody);
+        });
+      }
+
+      var wake = api.wakeServer ? api.wakeServer(45000) : Promise.resolve();
+      wake
+        .then(saveToServer)
+        .catch(function () {
+          return saveToServer();
         })
-        .then(function () {
-          localStorage.setItem("sia_exam_type", examType);
-          writeLocalJson("sia_subjects", selectedSubjects);
-          refreshLocalExamBadges();
-          setStatus(statusEl, "Saved!", true);
+        .then(function (res) {
+          commitLocalCache();
+          setStatus(statusEl, "Saved to your account — syncs on every device you log into.", true);
+          if (res && Array.isArray(res.jamb_subjects)) {
+            writeLocalJson("sia_jamb_subjects", res.jamb_subjects);
+          }
+          if (res && Array.isArray(res.ssce_subjects)) {
+            writeLocalJson("sia_ssce_subjects", res.ssce_subjects);
+          }
         })
         .catch(function (err) {
+          if (!err || !err.status || err.message === "NETWORK" || err.message === "TIMEOUT") {
+            setStatus(
+              statusEl,
+              "Could not reach the server. Wait 30 seconds (Render may be waking up) and tap Save again.",
+              false
+            );
+            return;
+          }
           setStatus(statusEl, errMsg(err), false);
         })
         .then(function () {
@@ -2856,5 +4972,15 @@
   pollLiveInvitesForRing();
   setInterval(pollLiveInvitesForRing, 12000);
 
-  loadHome();
+  // Wake Render before first dashboard load so Exam / Live / CBT screens do not flash network errors
+  if (api.wakeServer) {
+    api
+      .wakeServer(60000)
+      .catch(function () { return null; })
+      .finally(function () {
+        loadHome();
+      });
+  } else {
+    loadHome();
+  }
 })();

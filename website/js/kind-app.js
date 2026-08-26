@@ -1,4 +1,4 @@
-/* Scholaxia Kids website — Home, Sia, Live, Saved, CBT, Profile (no games, no search) */
+/* Scholaxia Kids website — Home, Sia, Live, Saved, Library, Videos, Games, CBT, Profile */
 (function () {
   var api = window.ScholaxiaAPI;
   if (!api || typeof api.requireAuth !== "function") {
@@ -12,6 +12,9 @@
     sia: "Sia AI",
     live: "Live Class",
     saved: "Saved",
+    library: "Library",
+    videos: "Videos",
+    games: "Games",
     cbt: "CBT",
     profile: "Profile",
   };
@@ -20,6 +23,9 @@
   var currentPage = "home";
   var siaHistory = [];
   var cbtState = { exam: null, session: null, answers: {}, index: 0 };
+  var kindLibraryCache = [];
+  var kindVideosCache = [];
+  var kindActiveGame = null;
   var shell = document.getElementById("kindShell");
 
   function $(id) {
@@ -103,6 +109,9 @@
       if (id === "home") loadHome();
       else if (id === "live") loadLive();
       else if (id === "saved") loadSaved();
+      else if (id === "library") loadKindLibrary();
+      else if (id === "videos") loadKindVideos();
+      else if (id === "games") loadKindGames();
       else if (id === "cbt") loadCbt();
       else if (id === "profile") loadProfile();
       else if (id === "sia") renderSia();
@@ -115,6 +124,10 @@
   window.kindShowPage = showPage;
 
   function goBack() {
+    if (currentPage === "games" && kindActiveGame) {
+      exitKindGame();
+      return;
+    }
     if (currentPage === "cbt" && $("cbtPlay") && !$("cbtPlay").hidden) {
       exitCbtPlayer();
       return;
@@ -354,6 +367,490 @@
     } catch (e) {
       el.innerHTML = '<div class="empty">' + esc(e.message || "Could not load saved") + "</div>";
     }
+  }
+
+  function firstArray(data, keys) {
+    if (Array.isArray(data)) return data;
+    if (!data || typeof data !== "object") return [];
+    for (var i = 0; i < keys.length; i++) {
+      if (Array.isArray(data[keys[i]])) return data[keys[i]];
+    }
+    return [];
+  }
+
+  function youtubeEmbed(url) {
+    var u = String(url || "").trim();
+    var m = u.match(/(?:youtu\.be\/|v=)([A-Za-z0-9_-]{6,})/);
+    if (m) return "https://www.youtube.com/embed/" + m[1];
+    return u;
+  }
+
+  async function fetchKindLibraryPdf(id) {
+    if (api.fetchBinary) {
+      return api.fetchBinary("/api/v1/library/" + encodeURIComponent(id) + "/file", {
+        timeout: 180000,
+        retries: 3,
+        headers: { Accept: "application/pdf" },
+      });
+    }
+    var token = api.getToken();
+    var url = api.API_BASE + "/api/v1/library/" + encodeURIComponent(id) + "/file";
+    if (api.wakeServer) {
+      try {
+        await api.wakeServer(60000);
+      } catch (e) {}
+    }
+    return new Promise(function (resolve, reject) {
+      var xhr = new XMLHttpRequest();
+      xhr.open("GET", url, true);
+      xhr.responseType = "arraybuffer";
+      xhr.timeout = 180000;
+      xhr.setRequestHeader("Authorization", "Bearer " + token);
+      xhr.setRequestHeader("Accept", "application/pdf");
+      xhr.onload = function () {
+        if (xhr.status === 402) {
+          reject(new Error("Pay to unlock this book."));
+          return;
+        }
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(new Uint8Array(xhr.response));
+          return;
+        }
+        reject(new Error("Could not open this book (" + xhr.status + ")"));
+      };
+      xhr.onerror = function () {
+        reject(new Error("Failed to fetch"));
+      };
+      xhr.ontimeout = function () {
+        reject(new Error("The server took too long. Try again."));
+      };
+      xhr.send();
+    });
+  }
+
+  async function openKindBook(id, btn) {
+    if (!id) return;
+    var prev = btn ? btn.textContent : "";
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Opening…";
+    }
+    try {
+      if (api.wakeServer) {
+        try {
+          await api.wakeServer(45000);
+        } catch (e) {}
+      }
+      var bytes = await fetchKindLibraryPdf(id);
+      var blob = new Blob([bytes], { type: "application/pdf" });
+      var blobUrl = URL.createObjectURL(blob);
+      var win = window.open(blobUrl, "_blank", "noopener");
+      if (!win) alert("Allow pop-ups to read this PDF, or try again.");
+      setTimeout(function () {
+        URL.revokeObjectURL(blobUrl);
+      }, 60000);
+    } catch (e) {
+      var msg = e.message || "Could not open book.";
+      if (/402|pay|unlock/i.test(msg)) {
+        try {
+          var paid = await window.paystackPurchase({
+            productType: "library_book",
+            productId: id,
+            returnPage: "library",
+          });
+          if (paid) openKindBook(id, btn);
+          return;
+        } catch (payErr) {
+          msg = payErr.message || msg;
+        }
+      }
+      alert(msg);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = prev || "Read";
+      }
+    }
+  }
+
+  function renderKindLibrary(items) {
+    var el = $("kindLibraryList");
+    if (!el) return;
+    if (!items.length) {
+      el.innerHTML =
+        '<div class="empty">No kids library books yet. Admin uploads them under Kids Library in the admin panel.</div>';
+      return;
+    }
+    el.innerHTML = items
+      .map(function (it) {
+        var title = it.title || it.name || "Book";
+        var cat = it.category || it.subject || "Library";
+        var desc = it.description || it.author || "";
+        var price = Number(it.price || 0);
+        var hasAccess = !!(it.has_access || it.is_free || price <= 0);
+        var foot;
+        if (hasAccess) {
+          foot =
+            '<button type="button" class="btn btn-primary" data-open-book="' +
+            esc(String(it.id)) +
+            '">Read</button>';
+        } else {
+          foot =
+            "<strong>₦" +
+            price.toLocaleString("en-NG") +
+            '</strong><button type="button" class="btn btn-primary" data-pay-book="' +
+            esc(String(it.id)) +
+            '">Buy with Paystack</button>';
+        }
+        return (
+          '<article class="saved-card"><strong>' +
+          esc(title) +
+          '</strong><span style="color:var(--muted);font-weight:700">' +
+          esc(cat) +
+          "</span>" +
+          (desc ? '<p style="margin:0.35rem 0 0.65rem;color:var(--muted)">' + esc(desc) + "</p>" : "") +
+          foot +
+          "</article>"
+        );
+      })
+      .join("");
+  }
+
+  function filterKindLibrary() {
+    var q = (($("kindLibrarySearch") && $("kindLibrarySearch").value) || "").trim().toLowerCase();
+    if (!q) {
+      renderKindLibrary(kindLibraryCache);
+      return;
+    }
+    var filtered = kindLibraryCache.filter(function (it) {
+      var blob = [it.title, it.author, it.subject, it.description, it.category]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return blob.indexOf(q) >= 0;
+    });
+    renderKindLibrary(filtered);
+  }
+
+  async function loadKindLibrary() {
+    var el = $("kindLibraryList");
+    if (!el) return;
+    el.innerHTML = '<div class="loading">Loading library…</div>';
+    try {
+      if (api.wakeServer) {
+        try {
+          await api.wakeServer(30000);
+        } catch (e) {}
+      }
+      var data = await api.api("/api/v1/library/kind", { timeout: 45000, retries: 1, preferXhr: true });
+      kindLibraryCache = firstArray(data, ["items", "results", "library", "books"]);
+      if (!Array.isArray(kindLibraryCache) && Array.isArray(data)) kindLibraryCache = data;
+      filterKindLibrary();
+    } catch (e) {
+      el.innerHTML = '<div class="empty">' + esc(e.message || "Could not load library") + "</div>";
+    }
+  }
+
+  function renderKindVideos(items) {
+    var el = $("kindVideosList");
+    if (!el) return;
+    if (!items.length) {
+      el.innerHTML =
+        '<div class="empty">No kid videos yet. Admin uploads them under Kids Videos in the admin panel.</div>';
+      return;
+    }
+    el.innerHTML = items
+      .map(function (it) {
+        var src = youtubeEmbed(it.video_url || it.url || "");
+        var tutor = it.tutor_name || it.tutor || "";
+        return (
+          '<article class="saved-card">' +
+          "<strong>" +
+          esc(it.title || "Video lesson") +
+          '</strong><span style="color:var(--muted);font-weight:700">' +
+          esc(it.subject || "Video") +
+          "</span>" +
+          (tutor
+            ? '<p style="margin:0.35rem 0 0.65rem;color:var(--muted)">Tutor: ' + esc(tutor) + "</p>"
+            : "") +
+          (src
+            ? '<div class="video-frame"><iframe src="' +
+              esc(src) +
+              '" title="' +
+              esc(it.title || "Video") +
+              '" allowfullscreen loading="lazy"></iframe></div>'
+            : '<a class="btn btn-primary" href="' +
+              esc(it.video_url || "#") +
+              '" target="_blank" rel="noopener">Watch</a>') +
+          "</article>"
+        );
+      })
+      .join("");
+  }
+
+  function filterKindVideos() {
+    var q = (($("kindVideosSearch") && $("kindVideosSearch").value) || "").trim().toLowerCase();
+    if (!q) {
+      renderKindVideos(kindVideosCache);
+      return;
+    }
+    var filtered = kindVideosCache.filter(function (it) {
+      var blob = [it.title, it.subject, it.tutor_name, it.tutor, it.exam_type]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return blob.indexOf(q) >= 0;
+    });
+    renderKindVideos(filtered);
+  }
+
+  async function loadKindVideos() {
+    var el = $("kindVideosList");
+    if (!el) return;
+    el.innerHTML = '<div class="loading">Loading videos…</div>';
+    try {
+      var data = await api.api("/api/v1/videos/kind", { timeout: 30000, retries: 1, preferXhr: true });
+      kindVideosCache = firstArray(data, ["videos", "items", "results"]);
+      filterKindVideos();
+    } catch (e) {
+      el.innerHTML = '<div class="empty">' + esc(e.message || "Could not load videos") + "</div>";
+    }
+  }
+
+  /* —— Games —— */
+  var KIND_SAMPLE_QUESTIONS = [
+    { prompt: "What color is the sky on a sunny day?", options: ["Green", "Blue", "Red", "Yellow"], correct: 1 },
+    { prompt: "How many legs does a dog have?", options: ["2", "4", "6", "8"], correct: 1 },
+    { prompt: "Which animal says 'Meow'?", options: ["Dog", "Cat", "Cow", "Bird"], correct: 1 },
+    { prompt: "What comes after 5?", options: ["4", "6", "7", "3"], correct: 1 },
+    { prompt: "What do plants need to grow?", options: ["Ice", "Sunlight", "Darkness", "Salt"], correct: 1 },
+  ];
+
+  function kindSpeakText(text) {
+    if (!text || !window.speechSynthesis) return;
+    try {
+      window.speechSynthesis.cancel();
+      var u = new SpeechSynthesisUtterance(String(text));
+      u.rate = 0.95;
+      window.speechSynthesis.speak(u);
+    } catch (e) { /* ignore */ }
+  }
+
+  function kindSpeakQuestion(q) {
+    if (!q) return;
+    var text = q.speak_word || q.prompt || "";
+    kindSpeakText(text);
+  }
+
+  async function loadKindGames() {
+    var grid = $("kind-games-grid");
+    var play = $("kind-game-play");
+    if (!grid) return;
+    if (play) play.classList.add("hidden");
+    kindActiveGame = null;
+    grid.classList.remove("hidden");
+    grid.innerHTML = '<div class="loading">Loading games…</div>';
+    try {
+      var data = await api.api("/api/v1/kind/games/catalog");
+      var games = (data && data.games) || [];
+      if (!games.length) {
+        grid.innerHTML = '<div class="empty">No games available yet.</div>';
+        return;
+      }
+      grid.innerHTML = games
+        .map(function (g) {
+          var leaf = localStorage.getItem("kind_leaf_" + g.id) || "1";
+          return (
+            '<button type="button" class="kind-game-card" data-game-id="' +
+            esc(g.id) +
+            '" data-game-title="' +
+            esc(g.title) +
+            '">' +
+            '<div class="kind-game-ico">🎮</div>' +
+            "<strong>" +
+            esc(g.title) +
+            "</strong>" +
+            '<div class="leaf">🍃 Leaf ' +
+            esc(leaf) +
+            "</div>" +
+            "</button>"
+          );
+        })
+        .join("");
+    } catch (e) {
+      grid.innerHTML = '<div class="empty">' + esc(e.message || "Could not load games") + "</div>";
+    }
+  }
+
+  async function startKindGame(gameId, title) {
+    kindActiveGame = { id: gameId, title: title, qi: 0, score: 0, questions: [], answered: false };
+    var grid = $("kind-games-grid");
+    var play = $("kind-game-play");
+    if (grid) grid.classList.add("hidden");
+    if (play) {
+      play.classList.remove("hidden");
+      play.innerHTML = '<div class="loading">Loading questions…</div>';
+    }
+    try {
+      var data = await api.api("/api/v1/kind/games/" + encodeURIComponent(gameId) + "/questions");
+      var qs = (data && data.questions) || [];
+      kindActiveGame.questions = qs.length
+        ? qs.map(function (q) {
+            return {
+              prompt: q.prompt,
+              options: q.options,
+              correct: q.correct_index,
+              speak_word: q.speak_word || null,
+            };
+          })
+        : KIND_SAMPLE_QUESTIONS.slice();
+    } catch (e) {
+      kindActiveGame.questions = KIND_SAMPLE_QUESTIONS.slice();
+    }
+    showKindGameQuestion();
+  }
+
+  function showKindGameQuestion() {
+    var play = $("kind-game-play");
+    if (!play || !kindActiveGame) return;
+    var qs = kindActiveGame.questions;
+    if (kindActiveGame.qi >= qs.length) {
+      finishKindGame();
+      return;
+    }
+    if (kindActiveGame.answered) return;
+    var q = qs[kindActiveGame.qi];
+    var progress = Math.round(((kindActiveGame.qi + 1) / qs.length) * 100);
+    play.innerHTML =
+      '<div class="kind-game-play-area">' +
+      '<div class="kind-game-play-head">' +
+      "<strong>" +
+      esc(kindActiveGame.title) +
+      "</strong>" +
+      "<span>Question " +
+      (kindActiveGame.qi + 1) +
+      " of " +
+      qs.length +
+      " · Score " +
+      kindActiveGame.score +
+      "</span></div>" +
+      '<div class="kind-game-progress"><div class="kind-game-progress-fill" style="width:' +
+      progress +
+      '%"></div></div>' +
+      '<div class="kind-game-prompt-card">' +
+      '<p class="kind-game-prompt">' +
+      esc(q.prompt) +
+      "</p>" +
+      '<button type="button" class="kind-hear-btn" id="kindHearBtn">🔊 Hear question</button>' +
+      "</div>" +
+      '<div class="kind-game-options">' +
+      q.options
+        .map(function (opt, i) {
+          return (
+            '<button type="button" class="kind-game-opt" data-pick="' +
+            i +
+            '" data-correct="' +
+            q.correct +
+            '">' +
+            esc(opt) +
+            "</button>"
+          );
+        })
+        .join("") +
+      "</div>" +
+      '<button type="button" class="btn btn-secondary" style="margin-top:16px" id="kindExitGame">← Back to games</button></div>';
+    setTimeout(function () {
+      kindSpeakQuestion(q);
+    }, 300);
+  }
+
+  function answerKindGame(picked, correct) {
+    if (!kindActiveGame || kindActiveGame.answered) return;
+    kindActiveGame.answered = true;
+    var ok = picked === correct;
+    if (ok) kindActiveGame.score += 1;
+    var play = $("kind-game-play");
+    if (!play) return;
+    var q = kindActiveGame.questions[kindActiveGame.qi];
+    var feedback = ok ? "🎉 Correct! Great job!" : "💡 Good try!";
+    var optsHtml = q.options
+      .map(function (opt, i) {
+        var cls = "kind-game-opt";
+        if (i === correct) cls += " kind-opt-correct";
+        else if (i === picked && !ok) cls += " kind-opt-wrong";
+        return (
+          '<button type="button" class="' +
+          cls +
+          '" disabled>' +
+          esc(opt) +
+          "</button>"
+        );
+      })
+      .join("");
+    play.innerHTML =
+      '<div class="kind-game-play-area">' +
+      '<div class="kind-game-play-head"><strong>' +
+      esc(kindActiveGame.title) +
+      "</strong></div>" +
+      '<div class="kind-game-prompt-card"><p class="kind-game-prompt">' +
+      esc(q.prompt) +
+      "</p></div>" +
+      '<div class="kind-game-options">' +
+      optsHtml +
+      "</div>" +
+      '<p class="kind-game-feedback' +
+      (ok ? " ok" : "") +
+      '">' +
+      feedback +
+      "</p>" +
+      '<button type="button" class="btn btn-primary" id="kindNextGame">' +
+      (kindActiveGame.qi + 1 >= kindActiveGame.questions.length ? "See my score" : "Next") +
+      "</button></div>";
+  }
+
+  function nextKindGameQuestion() {
+    if (!kindActiveGame) return;
+    kindActiveGame.qi += 1;
+    kindActiveGame.answered = false;
+    showKindGameQuestion();
+  }
+
+  function finishKindGame() {
+    var play = $("kind-game-play");
+    if (!kindActiveGame || !play) return;
+    var leaf = parseInt(localStorage.getItem("kind_leaf_" + kindActiveGame.id) || "1", 10);
+    if (kindActiveGame.score >= Math.ceil(kindActiveGame.questions.length * 0.6)) {
+      leaf = Math.min(30, leaf + 1);
+      localStorage.setItem("kind_leaf_" + kindActiveGame.id, String(leaf));
+    }
+    play.innerHTML =
+      '<div class="kind-game-play-area" style="text-align:center;padding:40px">' +
+      '<div style="font-size:3.5rem">🌟</div>' +
+      '<h2 style="color:#7c3aed;margin:16px 0 8px">Great job!</h2>' +
+      "<p style=\"font-size:1.1rem;margin-bottom:8px\">Score: <strong>" +
+      kindActiveGame.score +
+      "/" +
+      kindActiveGame.questions.length +
+      "</strong></p>" +
+      '<p style="color:#10b981;font-weight:700">🍃 Leaf level ' +
+      leaf +
+      "</p>" +
+      '<button type="button" class="btn btn-primary" style="margin-top:20px" id="kindExitGame">Play more games</button></div>';
+  }
+
+  function exitKindGame() {
+    try {
+      if (window.speechSynthesis) window.speechSynthesis.cancel();
+    } catch (e) { /* ignore */ }
+    kindActiveGame = null;
+    var grid = $("kind-games-grid");
+    var play = $("kind-game-play");
+    if (grid) grid.classList.remove("hidden");
+    if (play) {
+      play.classList.add("hidden");
+      play.innerHTML = "";
+    }
+    loadKindGames();
   }
 
   /* —— CBT —— */
@@ -630,6 +1127,38 @@
       return;
     }
 
+    var gameCard = t.closest(".kind-game-card[data-game-id]");
+    if (gameCard) {
+      e.preventDefault();
+      startKindGame(gameCard.getAttribute("data-game-id"), gameCard.getAttribute("data-game-title") || "Game");
+      return;
+    }
+
+    if (t.closest("#kindHearBtn") && kindActiveGame) {
+      e.preventDefault();
+      kindSpeakQuestion(kindActiveGame.questions[kindActiveGame.qi]);
+      return;
+    }
+
+    var opt = t.closest(".kind-game-opt[data-pick]");
+    if (opt && !opt.disabled) {
+      e.preventDefault();
+      answerKindGame(parseInt(opt.getAttribute("data-pick"), 10), parseInt(opt.getAttribute("data-correct"), 10));
+      return;
+    }
+
+    if (t.closest("#kindNextGame")) {
+      e.preventDefault();
+      nextKindGameQuestion();
+      return;
+    }
+
+    if (t.closest("#kindExitGame")) {
+      e.preventDefault();
+      exitKindGame();
+      return;
+    }
+
     var join = t.closest("[data-join-live]");
     if (join) {
       e.preventDefault();
@@ -641,6 +1170,20 @@
     if (start) {
       e.preventDefault();
       startCbt(start.getAttribute("data-start-cbt"), start);
+      return;
+    }
+
+    var openBook = t.closest("[data-open-book]");
+    if (openBook) {
+      e.preventDefault();
+      openKindBook(openBook.getAttribute("data-open-book"), openBook);
+      return;
+    }
+
+    var payBook = t.closest("[data-pay-book]");
+    if (payBook) {
+      e.preventDefault();
+      openKindBook(payBook.getAttribute("data-pay-book"), payBook);
     }
   });
 
@@ -671,6 +1214,10 @@
   if ($("refreshLiveBtn")) $("refreshLiveBtn").addEventListener("click", loadLive);
   if ($("bookPayBtn")) $("bookPayBtn").addEventListener("click", bookClass);
   if ($("cbtPayBtn")) $("cbtPayBtn").addEventListener("click", payCbt);
+  if ($("kindLibrarySearch")) $("kindLibrarySearch").addEventListener("input", filterKindLibrary);
+  if ($("kindLibraryRefresh")) $("kindLibraryRefresh").addEventListener("click", loadKindLibrary);
+  if ($("kindVideosSearch")) $("kindVideosSearch").addEventListener("input", filterKindVideos);
+  if ($("kindVideosRefresh")) $("kindVideosRefresh").addEventListener("click", loadKindVideos);
 
   if ($("mobileMenuBtn")) {
     $("mobileMenuBtn").addEventListener("click", function () {

@@ -6,7 +6,7 @@
     <title>Scholaxia Kids</title>
     <link rel="icon" type="image/png" href="media/logo-main.png" />
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800;900&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="css/kind.css?v=9" />
+    <link rel="stylesheet" href="css/kind.css?v=11" />
   </head>
   <body class="kind-body">
     <div class="kind-shell" id="kindShell">
@@ -25,13 +25,16 @@
             <button type="button" class="kind-nav-btn" data-page="sia"><span class="ico">✨</span>Sia AI</button>
             <button type="button" class="kind-nav-btn" data-page="live"><span class="ico">📺</span>Live Class</button>
             <button type="button" class="kind-nav-btn" data-page="saved"><span class="ico">▶</span>Saved</button>
+            <button type="button" class="kind-nav-btn" data-page="library"><span class="ico">📚</span>Library</button>
+            <button type="button" class="kind-nav-btn" data-page="videos"><span class="ico">🎬</span>Videos</button>
+            <button type="button" class="kind-nav-btn" data-page="games"><span class="ico">🎮</span>Games</button>
             <button type="button" class="kind-nav-btn" data-page="cbt"><span class="ico">📝</span>CBT</button>
             <button type="button" class="kind-nav-btn" data-page="profile"><span class="ico">👤</span>Profile</button>
           </nav>
 
           <div class="kind-safe-badge">
             <strong>Kid Safe Zone</strong>
-            <p>Friendly AI, live lessons &amp; entrance CBT — no games.</p>
+            <p>Friendly AI, live lessons, educational games &amp; entrance CBT.</p>
           </div>
         </aside>
         <button type="button" class="sidebar-edge-toggle" id="sidebarToggle" aria-label="Hide menu" title="Hide menu">‹</button>
@@ -62,12 +65,12 @@
               <article class="kind-hero">
                 <span class="hero-badge">Kid Safe</span>
                 <h2 id="hello">Hi, Friend!</h2>
-                <p>Learn with Sia, join live classes, save lessons, and practise entrance CBT.</p>
+                <p>Learn with Sia, play educational games, join live classes, and practise entrance CBT.</p>
                 <button type="button" class="btn btn-light" data-goto="sia">Talk to Sia →</button>
               </article>
               <div class="kind-stats">
                 <div class="stat-box"><span>📺</span><div><strong id="statLive">0</strong><em>Live now</em></div></div>
-                <div class="stat-box"><span>✨</span><div><strong>AI</strong><em>Kid tutor</em></div></div>
+                <div class="stat-box"><span>🎮</span><div><strong>Games</strong><em>Learn &amp; play</em></div></div>
                 <div class="stat-box"><span>📝</span><div><strong>CBT</strong><em>Entrance</em></div></div>
               </div>
             </div>
@@ -76,7 +79,10 @@
             <div class="quick-grid">
               <button type="button" class="quick-tile t-sia" data-goto="sia"><span>✨</span><strong>Sia AI</strong><small>Ask anything — kid-safe</small></button>
               <button type="button" class="quick-tile t-live" data-goto="live"><span>📺</span><strong>Live Class</strong><small>Join a teacher lesson</small></button>
+              <button type="button" class="quick-tile t-games" data-goto="games"><span>🎮</span><strong>Games</strong><small>Spelling, math &amp; more</small></button>
               <button type="button" class="quick-tile t-saved" data-goto="saved"><span>▶</span><strong>Saved</strong><small>Replay lessons</small></button>
+              <button type="button" class="quick-tile t-library" data-goto="library"><span>📚</span><strong>Library</strong><small>Fun books &amp; notes</small></button>
+              <button type="button" class="quick-tile t-videos" data-goto="videos"><span>🎬</span><strong>Videos</strong><small>Watch kid lessons</small></button>
               <button type="button" class="quick-tile t-cbt" data-goto="cbt"><span>📝</span><strong>Entrance CBT</strong><small>Pay &amp; practise</small></button>
             </div>
             <div id="homeBanner" class="home-banner"></div>
@@ -176,6 +182,57 @@
             </div>
           </section>
 
+          <!-- LIBRARY -->
+          <section class="page" id="page-library">
+            <div class="library-hub">
+              <header class="page-hero soft">
+                <div>
+                  <span class="kicker">Kids only</span>
+                  <h2>Library</h2>
+                  <p>Books and notes your teacher uploaded just for kids — separate from the student library.</p>
+                </div>
+              </header>
+              <div class="library-toolbar">
+                <input id="kindLibrarySearch" type="search" placeholder="Search books &amp; notes…" autocomplete="off" />
+                <button type="button" class="btn btn-mini" id="kindLibraryRefresh">⟲ Refresh</button>
+              </div>
+              <div class="saved-list" id="kindLibraryList"><div class="loading">Loading library…</div></div>
+            </div>
+          </section>
+
+          <!-- VIDEOS -->
+          <section class="page" id="page-videos">
+            <div class="videos-hub">
+              <header class="page-hero soft">
+                <div>
+                  <span class="kicker">Kids only</span>
+                  <h2>Video Lessons</h2>
+                  <p>Watch fun lessons uploaded for kids — not the same as student video tutorials.</p>
+                </div>
+              </header>
+              <div class="library-toolbar">
+                <input id="kindVideosSearch" type="search" placeholder="Search videos…" autocomplete="off" />
+                <button type="button" class="btn btn-mini" id="kindVideosRefresh">⟲ Refresh</button>
+              </div>
+              <div class="saved-list" id="kindVideosList"><div class="loading">Loading videos…</div></div>
+            </div>
+          </section>
+
+          <!-- GAMES -->
+          <section class="page" id="page-games">
+            <div class="games-hub">
+              <header class="page-hero soft">
+                <div>
+                  <span class="kicker">Play &amp; learn</span>
+                  <h2>Educational Games</h2>
+                  <p>Play to unlock Leaf 2… Leaf 30. Tap a game to start — same games as the kids app.</p>
+                </div>
+              </header>
+              <div id="kind-games-grid" class="kind-games-grid"><div class="loading">Loading games…</div></div>
+              <div id="kind-game-play" class="hidden" style="margin-top:20px"></div>
+            </div>
+          </section>
+
           <!-- CBT -->
           <section class="page" id="page-cbt">
             <div class="cbt-hub">
@@ -230,8 +287,8 @@
       </div>
     </div>
 
-    <script src="js/api.js?v=7"></script>
-    <script src="js/paystack.js?v=7"></script>
-    <script src="js/kind-app.js?v=7"></script>
+    <script src="js/api.js?v=10"></script>
+    <script src="js/paystack.js?v=10"></script>
+    <script src="js/kind-app.js?v=11"></script>
   </body>
 </html>

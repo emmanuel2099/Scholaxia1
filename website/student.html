@@ -3,11 +3,28 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
     <title>Scholaxia — Student</title>
     <link rel="icon" type="image/png" href="media/logo-main.png" />
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="css/app.css?v=12" />
-    <link rel="stylesheet" href="css/student-pretty.css?v=13" />
+    <link rel="stylesheet" href="css/app.css?v=15" />
+    <link rel="stylesheet" href="css/student-pretty.css?v=20260827a" />
+    <script>
+      // Drop stale caches so CBT updates are not stuck on old JS
+      try {
+        if (navigator.serviceWorker) {
+          navigator.serviceWorker.getRegistrations().then(function (regs) {
+            regs.forEach(function (r) { r.unregister(); });
+          });
+        }
+        if (window.caches && caches.keys) {
+          caches.keys().then(function (keys) {
+            keys.forEach(function (k) { caches.delete(k); });
+          });
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body class="app-body student-shell">
     <div class="app-shell" id="appShell">
@@ -19,15 +36,16 @@
         </div>
         <nav class="side-nav" id="studentNav">
           <button class="side-link is-active" data-page="home" type="button"><span class="ico">⌂</span>Home</button>
-          <button class="side-link" data-page="study-materials" type="button"><span class="ico">📘</span>Study Materials</button>
+          <button class="side-link" data-page="study-materials" type="button"><span class="ico">▶</span>Video Tutorials</button>
           <button class="side-link" data-page="past-questions" type="button"><span class="ico">📄</span>Past Questions</button>
-          <button class="side-link" data-page="cbt" type="button"><span class="ico">📝</span>CBT Practice</button>
+          <button class="side-link" data-page="cbt" type="button"><span class="ico">📝</span>My CBT</button>
+          <button class="side-link" data-page="school-portal" type="button"><span class="ico">🏫</span>Examinations</button>
           <button class="side-link" data-page="school" type="button"><span class="ico">⏱</span>Scholaxia Exam</button>
           <button class="side-link" data-page="live" type="button"><span class="ico">📺</span>Live Class</button>
-          <button class="side-link" data-page="school-portal" type="button"><span class="ico">🏫</span>External School Exam</button>
           <button class="side-link" data-page="subscription" type="button"><span class="ico">💳</span>Subscription</button>
           <button class="side-link" data-page="skills" type="button"><span class="ico">🎓</span>Skills</button>
           <button class="side-link" data-page="library" type="button"><span class="ico">📚</span>Library</button>
+          <button class="side-link" data-page="games" type="button"><span class="ico">🎮</span>Games</button>
           <button class="side-link" data-page="assignments" type="button"><span class="ico">📋</span>Assignments</button>
           <button class="side-link" data-page="sia" type="button"><span class="ico">✨</span>Tutor AI</button>
           <button class="side-link" data-page="community" type="button"><span class="ico">💬</span>Community</button>
@@ -111,8 +129,9 @@
               <button type="button" class="quick action qa-past" data-goto="past-questions"><span>📘</span><strong>Past Questions</strong><small>JAMB, WAEC &amp; NECO</small></button>
               <button type="button" class="quick action qa-assign" data-goto="assignments"><span>📋</span><strong>Assignments</strong><small>Submit work &amp; notices</small></button>
               <button type="button" class="quick action qa-cbt" data-goto="cbt"><span>📝</span><strong>CBT Packages</strong><small>Annual CBT access</small></button>
-              <button type="button" class="quick action qa-school" data-goto="school-portal"><span>🏫</span><strong>External School Exam</strong><small>Download &amp; submit later</small></button>
+              <button type="button" class="quick action qa-school" data-goto="school-portal"><span>🏫</span><strong>Examinations</strong><small>Papers your school published for your class</small></button>
               <button type="button" class="quick action qa-library" data-goto="library"><span>📚</span><strong>Library</strong><small>Notes &amp; resources</small></button>
+              <button type="button" class="quick action qa-games" data-goto="games"><span>🎮</span><strong>Games</strong><small>Brain Breakers — 30 levels</small></button>
             </div>
           </section>
 
@@ -121,12 +140,21 @@
             <div class="panel">
               <div class="panel-head">
                 <div>
-                  <h2>Study Materials</h2>
-                  <p>Recommended notes, PDFs, and subject packs for your exam track.</p>
+                  <h2>Video Tutorials</h2>
+                  <p>YouTube lessons from Admin → Video Tutorials. PDF lesson notes are under <strong>Library</strong>.</p>
                 </div>
                 <button type="button" class="btn btn-mini" data-refresh="study-materials">⟲ Refresh</button>
               </div>
-              <div class="card-grid" id="studyMaterialsList"><div class="loading-state">Loading recommendations…</div></div>
+              <div class="form-field" style="margin:0.75rem 0 1rem">
+                <label for="lessonNotesSearch">Search</label>
+                <input
+                  id="lessonNotesSearch"
+                  type="search"
+                  placeholder="Search by topic or tutor name…"
+                  autocomplete="off"
+                />
+              </div>
+              <div class="card-grid" id="studyMaterialsList"><div class="loading-state">Loading video tutorials…</div></div>
             </div>
           </section>
 
@@ -134,7 +162,7 @@
           <section class="page" id="page-past-questions">
             <div class="panel">
               <h2>Past Questions</h2>
-              <p>JAMB, WAEC &amp; NECO papers for focused revision.</p>
+              <p>Buy and download past-question <strong>PDFs</strong> here. Admin uploads them under <strong>Library → Past Questions</strong>. These are not timed CBT — use <strong>CBT Practice</strong> for interactive exams.</p>
               <div class="tabs" id="pqFilterTabs">
                 <button type="button" class="tab is-active" data-cat="all">All</button>
                 <button type="button" class="tab" data-cat="jamb">JAMB</button>
@@ -151,36 +179,31 @@
             <div class="hub">
               <header class="hub-hero pay-hero">
                 <div>
-                  <span class="hub-kicker">Paystack</span>
+                  <span class="hub-kicker">CBT</span>
                   <h2>CBT Practice</h2>
-                  <p>Choose a CBT package to unlock downloads, then practice timed exams — same as the desktop app.</p>
-                </div>
-                <div class="hub-hero-actions">
-                  <button type="button" class="btn btn-secondary" data-goto="subscription">Live subscriptions</button>
+                  <p>Choose your exam type. Questions are drawn from the question bank using admin CBT settings — not every uploaded question.</p>
                 </div>
               </header>
 
-              <div id="cbtPageAccessBanner" class="info-banner" style="display:none"></div>
-
-              <div class="section-title">
-                <h2>CBT packages</h2>
-                <button type="button" class="btn btn-mini" id="refreshCbtPackagesBtn">⟲ Refresh</button>
-              </div>
-              <div class="card-grid" id="cbtPagePackagesGrid"><div class="loading-state">Loading CBT packages…</div></div>
-
-              <div class="panel" style="margin-top:0.25rem">
+              <div class="panel" style="margin-top:0.25rem" id="cbtHomePanel">
                 <div class="panel-head">
                   <div>
-                    <h2>Practice exams</h2>
-                    <p>Download a paper first, then start your timed CBT session.</p>
+                    <h2>Choose exam</h2>
+                    <p>Select <strong>JAMB</strong>, <strong>WAEC</strong>, or <strong>NECO</strong> to continue.</p>
                   </div>
                 </div>
-                <div class="tabs" id="cbtBoardTabs">
-                  <button type="button" class="tab is-active" data-board="practice_exams">General Practice</button>
-                  <button type="button" class="tab" data-board="jamb_exams">JAMB</button>
-                  <button type="button" class="tab" data-board="ssce_exams">WAEC / NECO</button>
+                <div class="card-grid" id="cbtExamTypeList"><div class="loading-state">Loading…</div></div>
+              </div>
+
+              <div class="panel" id="cbtBoardPanel" hidden>
+                <div class="panel-head">
+                  <div>
+                    <button type="button" class="btn btn-mini" id="cbtBackToTypes">← Exam types</button>
+                    <h2 id="cbtBoardTitle" style="margin-top:0.75rem">Exam</h2>
+                    <p id="cbtBoardHint"></p>
+                  </div>
                 </div>
-                <div class="card-grid" id="cbtExamList"><div class="loading-state">Loading exams…</div></div>
+                <div id="cbtBoardBody"></div>
               </div>
             </div>
           </section>
@@ -263,9 +286,11 @@
           <!-- ================= EXTERNAL SCHOOL EXAM ================= -->
           <section class="page" id="page-school-portal">
             <div class="panel">
-              <h2>External School Exam</h2>
-              <p>Download offline school exams and submit answers when you’re ready.</p>
-              <div class="card-grid" id="schoolPortalList"><div class="loading-state">Loading external exams…</div></div>
+              <h2>Examinations</h2>
+              <p>Your school and class are already on your account. You only see exams published for you.</p>
+              <div id="examIdentityCard" class="info-banner" style="display:none"></div>
+              <div class="card-grid" id="schoolPortalList"><div class="loading-state">Loading exams…</div></div>
+              <div id="examConfirmBox" class="panel" hidden></div>
             </div>
           </section>
 
@@ -303,14 +328,34 @@
               <div class="panel-head">
                 <div>
                   <h2>Library</h2>
-                  <p>Browse curated notes, ebooks, and revision resources.</p>
+                  <p>PDF materials by category: <strong>Books</strong>, <strong>Study Materials</strong>, <strong>Scheme of Work</strong>, and <strong>Lesson Notes</strong>.</p>
                 </div>
+                <button type="button" class="btn btn-mini" data-refresh="library">⟲ Refresh</button>
               </div>
               <div class="btn-row lib-toolbar">
                 <input type="search" id="libSearch" placeholder="Search library…" />
-                <select id="libFilter"><option value="">All categories</option></select>
+                <select id="libFilter">
+                  <option value="">All categories</option>
+                  <option value="Books">Books</option>
+                  <option value="Study Materials">Study Materials</option>
+                  <option value="Scheme of Work">Scheme of Work</option>
+                  <option value="Lesson Notes">Lesson Notes</option>
+                </select>
               </div>
               <div class="card-grid" id="libraryGrid"><div class="loading-state">Loading library…</div></div>
+            </div>
+          </section>
+
+          <!-- ================= GAMES ================= -->
+          <section class="page" id="page-games">
+            <div class="games-hub">
+              <div class="games-hero">
+                <h2>🎮 Brain Breakers</h2>
+                <p>Three hard games — <strong>30 levels each</strong>, no repeated questions. Same as the Scholaxia student app.</p>
+              </div>
+              <h3 class="section-title" style="margin-bottom:14px">Pick a challenge</h3>
+              <div id="games-list" class="games-grid games-tile-list"></div>
+              <div id="games-play-area" class="hidden"></div>
             </div>
           </section>
 
@@ -604,6 +649,33 @@
       </div>
     </div>
 
+    <!-- ================= CBT UNLOCK MODAL ================= -->
+    <div class="modal-overlay" id="cbtUnlockModal">
+      <div class="modal">
+        <div class="modal-head">
+          <h3>Start this exam</h3>
+          <button type="button" class="modal-close" id="cbtUnlockClose">✕</button>
+        </div>
+        <p class="modal-sub">Do you have a coupon code, or do you want to pay?</p>
+        <div class="btn-row" id="cbtUnlockChoice" style="display:flex;gap:8px;flex-wrap:wrap;margin:12px 0">
+          <button type="button" class="btn btn-secondary" id="cbtUnlockPickCoupon">I have a coupon</button>
+          <button type="button" class="btn btn-primary" id="cbtUnlockPickPay">I want to pay</button>
+        </div>
+        <div id="cbtUnlockCoupon" hidden>
+          <div class="form-field">
+            <label>Coupon code</label>
+            <input id="cbtUnlockCode" placeholder="SX-XXXX" autocomplete="off" />
+          </div>
+          <button type="button" class="btn btn-primary" id="cbtUnlockRedeem">Redeem &amp; continue</button>
+        </div>
+        <div id="cbtUnlockPay" hidden>
+          <p class="modal-sub">Choose a CBT package and pay with Paystack.</p>
+          <div id="cbtUnlockPayList"></div>
+        </div>
+        <span class="form-status" id="cbtUnlockStatus"></span>
+      </div>
+    </div>
+
     <!-- ================= SKILL ENROLL MODAL ================= -->
     <div class="modal-overlay" id="skillEnrollModal">
       <div class="modal">
@@ -660,7 +732,18 @@
         <div class="exam-timer" id="examTimer">20:00</div>
         <button type="button" class="btn btn-danger btn-mini" id="examQuitBtn">Quit</button>
       </div>
-      <div class="exam-body">
+      <div class="exam-section-bar" id="examSectionBar" hidden>
+        <span class="exam-section-label">Subjects</span>
+        <div class="exam-section-tabs" id="examSectionTabs"></div>
+      </div>
+      <div class="exam-section-chooser" id="examSectionChooser" hidden>
+        <div class="exam-section-chooser-card">
+          <h3 id="examChooserTitle">Choose where to start</h3>
+          <p class="muted" id="examChooserHint">Pick a subject section. Questions stay separate by subject.</p>
+          <div class="exam-section-chooser-grid" id="examChooserGrid"></div>
+        </div>
+      </div>
+      <div class="exam-body" id="examBody">
         <aside class="exam-nav">
           <p class="exam-nav-label">Questions</p>
           <div class="exam-nav-grid" id="examQuestionNav"></div>
@@ -691,13 +774,43 @@
         <p class="muted" id="resultSub"></p>
         <div class="result-stats" id="resultStats"></div>
         <div class="btn-row result-actions">
+          <button type="button" class="btn btn-primary" id="resultReviewBtn">Review all answers</button>
           <button type="button" class="btn btn-secondary" id="resultCloseBtn">Close</button>
         </div>
       </div>
     </div>
 
-    <script src="js/api.js?v=20260805c"></script>
+    <div class="review-screen" id="review-screen">
+      <div class="review-page">
+        <header class="review-page-head">
+          <div>
+            <span class="hub-kicker">CBT Review</span>
+            <h2 id="reviewPageTitle">Your answers &amp; explanations</h2>
+            <p class="muted" id="reviewPageSub">Every question with the correct answer. Ask Sia for a deeper explanation and book tips.</p>
+          </div>
+          <button type="button" class="btn btn-secondary" id="reviewCloseBtn">Close</button>
+        </header>
+        <div class="review-books-panel" id="reviewBooksPanel" hidden>
+          <h3>Books to read for similar questions</h3>
+          <div id="reviewBooksList" class="review-books-list"></div>
+        </div>
+        <div class="review-list" id="reviewList"></div>
+      </div>
+    </div>
+
+    <div id="libReader" class="lib-reader" hidden>
+      <div class="lib-reader-panel">
+        <div class="lib-reader-bar">
+          <strong id="libReaderTitle">Reading</strong>
+          <button type="button" class="btn btn-secondary btn-mini" id="libReaderClose">Close</button>
+        </div>
+        <div id="libReaderPages" class="lib-reader-pages"></div>
+      </div>
+    </div>
+
+    <script src="js/api.js?v=20260826c"></script>
     <script src="js/paystack.js?v=9"></script>
-    <script src="js/student.js?v=20260805c"></script>
+    <script src="js/games.js?v=20260827a"></script>
+    <script src="js/student.js?v=20260827a"></script>
   </body>
 </html>
