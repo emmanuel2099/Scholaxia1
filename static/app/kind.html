@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Scholaxia Kids</title>
+    <link rel="icon" type="image/png" href="media/logo-main.png" />
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@500;600;700;800;900&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="css/kind.css?v=11" />
+  </head>
+  <body class="kind-body">
+    <div class="kind-shell" id="kindShell">
+      <div class="sidebar-wrap">
+        <aside class="kind-side" aria-label="Kids navigation">
+          <div class="kind-brand">
+            <img class="side-logo-main" src="media/logo-main.png" alt="Scholaxia" />
+            <div>
+              <span>Kids</span>
+            </div>
+            <button type="button" class="side-close-btn" id="sidebarCloseBtn" aria-label="Hide menu">✕</button>
+          </div>
+
+          <nav class="kind-nav">
+            <button type="button" class="kind-nav-btn is-active" data-page="home"><span class="ico">⌂</span>Home</button>
+            <button type="button" class="kind-nav-btn" data-page="sia"><span class="ico">✨</span>Sia AI</button>
+            <button type="button" class="kind-nav-btn" data-page="live"><span class="ico">📺</span>Live Class</button>
+            <button type="button" class="kind-nav-btn" data-page="saved"><span class="ico">▶</span>Saved</button>
+            <button type="button" class="kind-nav-btn" data-page="library"><span class="ico">📚</span>Library</button>
+            <button type="button" class="kind-nav-btn" data-page="videos"><span class="ico">🎬</span>Videos</button>
+            <button type="button" class="kind-nav-btn" data-page="games"><span class="ico">🎮</span>Games</button>
+            <button type="button" class="kind-nav-btn" data-page="cbt"><span class="ico">📝</span>CBT</button>
+            <button type="button" class="kind-nav-btn" data-page="profile"><span class="ico">👤</span>Profile</button>
+          </nav>
+
+          <div class="kind-safe-badge">
+            <strong>Kid Safe Zone</strong>
+            <p>Friendly AI, live lessons, educational games &amp; entrance CBT.</p>
+          </div>
+        </aside>
+        <button type="button" class="sidebar-edge-toggle" id="sidebarToggle" aria-label="Hide menu" title="Hide menu">‹</button>
+      </div>
+
+      <div class="kind-main">
+        <div class="sidebar-backdrop" id="sidebarBackdrop" hidden></div>
+        <header class="kind-top">
+          <button type="button" class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Open menu">☰</button>
+          <button type="button" class="back-btn" id="backBtn" aria-label="Go back" hidden>←</button>
+          <span class="kind-pill">Kids</span>
+          <strong class="page-title" id="pageTitle">Home</strong>
+          <div class="topbar-spacer"></div>
+          <div class="user-chip">
+            <span class="user-av" id="userAv">K</span>
+            <div class="user-meta">
+              <strong id="userName">Friend</strong>
+              <span id="userAge">Ages 6–8</span>
+            </div>
+            <button type="button" class="btn-out" id="logoutBtn">Log out</button>
+          </div>
+        </header>
+
+        <div class="kind-content">
+          <!-- HOME -->
+          <section class="page is-on" id="page-home">
+            <div class="kind-hero-row">
+              <article class="kind-hero">
+                <span class="hero-badge">Kid Safe</span>
+                <h2 id="hello">Hi, Friend!</h2>
+                <p>Learn with Sia, play educational games, join live classes, and practise entrance CBT.</p>
+                <button type="button" class="btn btn-light" data-goto="sia">Talk to Sia →</button>
+              </article>
+              <div class="kind-stats">
+                <div class="stat-box"><span>📺</span><div><strong id="statLive">0</strong><em>Live now</em></div></div>
+                <div class="stat-box"><span>🎮</span><div><strong>Games</strong><em>Learn &amp; play</em></div></div>
+                <div class="stat-box"><span>📝</span><div><strong>CBT</strong><em>Entrance</em></div></div>
+              </div>
+            </div>
+
+            <h3 class="section-label">Quick access</h3>
+            <div class="quick-grid">
+              <button type="button" class="quick-tile t-sia" data-goto="sia"><span>✨</span><strong>Sia AI</strong><small>Ask anything — kid-safe</small></button>
+              <button type="button" class="quick-tile t-live" data-goto="live"><span>📺</span><strong>Live Class</strong><small>Join a teacher lesson</small></button>
+              <button type="button" class="quick-tile t-games" data-goto="games"><span>🎮</span><strong>Games</strong><small>Spelling, math &amp; more</small></button>
+              <button type="button" class="quick-tile t-saved" data-goto="saved"><span>▶</span><strong>Saved</strong><small>Replay lessons</small></button>
+              <button type="button" class="quick-tile t-library" data-goto="library"><span>📚</span><strong>Library</strong><small>Fun books &amp; notes</small></button>
+              <button type="button" class="quick-tile t-videos" data-goto="videos"><span>🎬</span><strong>Videos</strong><small>Watch kid lessons</small></button>
+              <button type="button" class="quick-tile t-cbt" data-goto="cbt"><span>📝</span><strong>Entrance CBT</strong><small>Pay &amp; practise</small></button>
+            </div>
+            <div id="homeBanner" class="home-banner"></div>
+          </section>
+
+          <!-- SIA -->
+          <section class="page" id="page-sia">
+            <div class="sia-hub">
+              <header class="sia-hero">
+                <div class="sia-orb">S</div>
+                <div>
+                  <span class="kicker">Kid tutor</span>
+                  <h2>Sia AI</h2>
+                  <p>Ask me anything! I explain in a fun, easy way just for kids.</p>
+                </div>
+              </header>
+              <div class="sia-suggestions" id="siaSuggestions">
+                <button type="button" class="chip" data-sia-q="Teach me nouns with examples">Nouns</button>
+                <button type="button" class="chip" data-sia-q="Help me with simple addition">Maths add</button>
+                <button type="button" class="chip" data-sia-q="Tell me a short science fact about water">Science fact</button>
+                <button type="button" class="chip" data-sia-q="Help me practise spelling easy words">Spelling</button>
+              </div>
+              <div class="sia-chat" id="siaChat">
+                <div class="sia-welcome">
+                  <div class="sia-orb sm">S</div>
+                  <div>
+                    <strong>Hi friend!</strong>
+                    <p>What do you want to learn today?</p>
+                  </div>
+                </div>
+              </div>
+              <form class="sia-compose" id="siaForm">
+                <input id="siaInput" placeholder="Ask Sia a question…" autocomplete="off" />
+                <button type="submit" class="btn btn-primary">Send</button>
+              </form>
+              <p class="form-status" id="siaError"></p>
+            </div>
+          </section>
+
+          <!-- LIVE -->
+          <section class="page" id="page-live">
+            <div class="live-hub">
+              <header class="live-hero">
+                <div>
+                  <span class="kicker">Live learning</span>
+                  <h2>Live Class</h2>
+                  <p>Join a lesson happening now, or book a one-on-one package with Paystack.</p>
+                </div>
+              </header>
+
+              <div class="live-layout">
+                <div>
+                  <div class="section-title">
+                    <h3><span class="pulse"></span> Happening now</h3>
+                    <button type="button" class="btn btn-mini" id="refreshLiveBtn">⟲ Refresh</button>
+                  </div>
+                  <div class="live-list" id="liveList"><div class="loading">Loading live classes…</div></div>
+                </div>
+
+                <aside class="book-panel">
+                  <h3>Book one-on-one</h3>
+                  <p>Pick a package, tell us the subject, then pay securely.</p>
+                  <label>
+                    Package
+                    <select id="bookPackage">
+                      <option value="nursery_standard">Nursery — ₦50,000</option>
+                      <option value="primary_standard">Primary — ₦55,000</option>
+                      <option value="holiday_primary">Primary Holiday — ₦15,000</option>
+                    </select>
+                  </label>
+                  <label>
+                    Subject
+                    <input id="bookSubject" placeholder="e.g. Mathematics" />
+                  </label>
+                  <label>
+                    Topic <em>(optional)</em>
+                    <input id="bookTopic" placeholder="What to cover" />
+                  </label>
+                  <button type="button" class="btn btn-primary" id="bookPayBtn">Pay &amp; book with Paystack</button>
+                  <span class="form-status" id="bookStatus"></span>
+                </aside>
+              </div>
+            </div>
+          </section>
+
+          <!-- SAVED -->
+          <section class="page" id="page-saved">
+            <div class="saved-hub">
+              <header class="page-hero soft">
+                <div>
+                  <span class="kicker">Replay</span>
+                  <h2>Saved Lessons</h2>
+                  <p>Lessons you saved from live classes appear here.</p>
+                </div>
+              </header>
+              <div class="saved-list" id="savedList"><div class="loading">Loading saved lessons…</div></div>
+            </div>
+          </section>
+
+          <!-- LIBRARY -->
+          <section class="page" id="page-library">
+            <div class="library-hub">
+              <header class="page-hero soft">
+                <div>
+                  <span class="kicker">Kids only</span>
+                  <h2>Library</h2>
+                  <p>Books and notes your teacher uploaded just for kids — separate from the student library.</p>
+                </div>
+              </header>
+              <div class="library-toolbar">
+                <input id="kindLibrarySearch" type="search" placeholder="Search books &amp; notes…" autocomplete="off" />
+                <button type="button" class="btn btn-mini" id="kindLibraryRefresh">⟲ Refresh</button>
+              </div>
+              <div class="saved-list" id="kindLibraryList"><div class="loading">Loading library…</div></div>
+            </div>
+          </section>
+
+          <!-- VIDEOS -->
+          <section class="page" id="page-videos">
+            <div class="videos-hub">
+              <header class="page-hero soft">
+                <div>
+                  <span class="kicker">Kids only</span>
+                  <h2>Video Lessons</h2>
+                  <p>Watch fun lessons uploaded for kids — not the same as student video tutorials.</p>
+                </div>
+              </header>
+              <div class="library-toolbar">
+                <input id="kindVideosSearch" type="search" placeholder="Search videos…" autocomplete="off" />
+                <button type="button" class="btn btn-mini" id="kindVideosRefresh">⟲ Refresh</button>
+              </div>
+              <div class="saved-list" id="kindVideosList"><div class="loading">Loading videos…</div></div>
+            </div>
+          </section>
+
+          <!-- GAMES -->
+          <section class="page" id="page-games">
+            <div class="games-hub">
+              <header class="page-hero soft">
+                <div>
+                  <span class="kicker">Play &amp; learn</span>
+                  <h2>Educational Games</h2>
+                  <p>Play to unlock Leaf 2… Leaf 30. Tap a game to start — same games as the kids app.</p>
+                </div>
+              </header>
+              <div id="kind-games-grid" class="kind-games-grid"><div class="loading">Loading games…</div></div>
+              <div id="kind-game-play" class="hidden" style="margin-top:20px"></div>
+            </div>
+          </section>
+
+          <!-- CBT -->
+          <section class="page" id="page-cbt">
+            <div class="cbt-hub">
+              <header class="page-hero cbt-hero">
+                <div>
+                  <span class="kicker">CBT</span>
+                  <h2>Common Entrance CBT</h2>
+                  <p>Redeem a coupon or pay ₦2,000 / year, then take all 3 papers together.</p>
+                </div>
+              </header>
+              <div id="cbtAccessBanner" class="info-banner" style="display:none"></div>
+              <div class="cbt-pay-card" id="cbtPayCard">
+                <h3>Unlock Entrance CBT</h3>
+                <p>Use an admin coupon, or pay with Paystack for annual access.</p>
+                <div class="form-field" style="margin:0.75rem 0">
+                  <label for="cbtCouponCode">Coupon code</label>
+                  <input id="cbtCouponCode" placeholder="SX-XXXX" autocomplete="off" />
+                </div>
+                <div class="cbt-pay-row" style="flex-wrap:wrap;gap:8px">
+                  <button type="button" class="btn btn-secondary" id="cbtCouponBtn">Redeem coupon</button>
+                  <strong>₦2,000 / year</strong>
+                  <button type="button" class="btn btn-primary" id="cbtPayBtn">Pay with Paystack</button>
+                </div>
+                <p class="form-status" id="cbtUnlockStatus"></p>
+              </div>
+              <div id="cbtBrowse">
+                <div class="section-title"><h3>Practice exams</h3></div>
+                <div class="cbt-grid" id="cbtExamList"><div class="loading">Loading exams…</div></div>
+              </div>
+              <div id="cbtPlay" class="cbt-play" hidden></div>
+            </div>
+          </section>
+
+          <!-- PROFILE -->
+          <section class="page" id="page-profile">
+            <div class="profile-hub">
+              <header class="page-hero soft">
+                <div>
+                  <span class="kicker">Account</span>
+                  <h2>Profile</h2>
+                  <p>Your kid account details</p>
+                </div>
+              </header>
+              <div class="profile-card" id="profileCard">
+                <div class="profile-av" id="profileAv">K</div>
+                <div>
+                  <h3 id="profileName">Friend</h3>
+                  <p id="profileText">Loading…</p>
+                </div>
+              </div>
+              <div class="quick-grid">
+                <button type="button" class="quick-tile t-cbt" data-goto="cbt"><span>📝</span><strong>CBT package</strong><small>Manage entrance access</small></button>
+                <button type="button" class="quick-tile t-live" data-goto="live"><span>📺</span><strong>Class packages</strong><small>Book nursery / primary</small></button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <script src="js/api.js?v=20260827e"></script>
+    <script src="js/paystack.js?v=10"></script>
+    <script src="js/kind-app.js?v=14"></script>
+  </body>
+</html>
