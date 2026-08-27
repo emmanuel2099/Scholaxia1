@@ -438,7 +438,13 @@
         params.get("switch") === "1" ||
         params.get("reason") === "session" ||
         params.get("reason") === "auth" ||
-        params.get("reason") === "role";
+        params.get("reason") === "role" ||
+        params.get("reason") === "logout";
+      if (params.get("force") === "1" || params.get("reason") === "logout") {
+        try {
+          api.clearSession();
+        } catch (clearErr) {}
+      }
       // Allow market signup for a different role (e.g. vendor) by clearing the old session
       if (
         marketMode &&

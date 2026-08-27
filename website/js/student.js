@@ -122,7 +122,7 @@
         localStorage.removeItem(k);
       });
     } catch (e2) {}
-    window.location.href = "portal.html?v=20260827p&force=1&reason=session";
+    window.location.href = "portal.html?v=20260827q&force=1&reason=session";
   }
 
   document.addEventListener("click", function (e) {
@@ -268,9 +268,14 @@
 
   var logoutBtn = $("logoutBtn");
   if (logoutBtn) {
-    logoutBtn.addEventListener("click", function () {
-      api.clearSession();
-      window.location.href = "auth.html";
+    logoutBtn.addEventListener("click", function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        if (api && api.clearSession) api.clearSession();
+      } catch (err) {}
+      // force=1 stops auth/portal from bouncing straight back into the dashboard
+      window.location.replace("portal.html?force=1&reason=logout&v=20260827q");
     });
   }
 

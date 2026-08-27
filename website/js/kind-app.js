@@ -1378,9 +1378,12 @@
   });
 
   if ($("logoutBtn")) {
-    $("logoutBtn").addEventListener("click", function () {
-      api.clearSession();
-      window.location.href = "auth.html";
+    $("logoutBtn").addEventListener("click", function (e) {
+      e.preventDefault();
+      try {
+        api.clearSession();
+      } catch (err) {}
+      window.location.replace("portal.html?force=1&reason=logout");
     });
   }
 

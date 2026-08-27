@@ -300,14 +300,23 @@
       "sia_token",
       "sia_teacher_token",
       "sia_school_token",
+      "sia_admin_token",
       "sia_role",
       "sia_name",
       "sia_email",
       "sia_exam_type",
       "sia_subjects",
       "sia_age_group",
+      "sia_user_school_id",
+      "sia_user_school_name",
+      "sia_class",
+      "sia_school_student_id",
+      "live_session",
+      "sia_stop_live_ring",
     ].forEach(function (k) {
-      localStorage.removeItem(k);
+      try {
+        localStorage.removeItem(k);
+      } catch (e) {}
     });
   }
 
