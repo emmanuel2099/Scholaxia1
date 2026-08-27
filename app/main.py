@@ -1,7 +1,8 @@
 from pathlib import Path
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, Query, Depends
+from fastapi import FastAPI, WebSocket, Query, Depends, HTTPException
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -169,12 +170,15 @@ async def live_class_ws(
 @app.get("/health")
 async def health():
     ready = database_ready() or await probe_database()
+    app_dir = WEBSITE_STATIC_DIR if WEBSITE_STATIC_DIR.is_dir() else None
     return {
         "status": "ok" if ready else "degraded",
         "app": settings.APP_NAME,
         "database": "connected" if ready else "unavailable",
         "database_host": settings.database_host,
         "admin_ui": "/admin/" if ADMIN_STATIC_DIR.is_dir() else None,
+        "student_ui": "/app/student.html" if app_dir and (app_dir / "student.html").is_file() else None,
+        "student_ui_dir": str(app_dir) if app_dir else None,
         "hint": (
             None
             if ready
@@ -222,14 +226,40 @@ async def debug_sia(db: AsyncSession = Depends(get_db)):
         return {"status": "error", "detail": str(e), "trace": traceback.format_exc()}
 
 
-# Student/teacher website on same host as API (avoids GitHub Pages → API CORS failures):
-# https://scholaxia1.onrender.com/app/student.html
-if WEBSITE_STATIC_DIR.is_dir():
-    app.mount(
-        "/app",
-        StaticFiles(directory=str(WEBSITE_STATIC_DIR), html=True),
-        name="website_ui",
-    )
+from fastapi.responses import FileResponse  # noqa: F811 — kept near routes for clarity
+
+# Explicit routes so /app works even if StaticFiles mount order is flaky on Render.
+@app.get("/app")
+@app.get("/app/")
+async def app_home():
+    if not WEBSITE_STATIC_DIR.is_dir():
+        raise HTTPException(status_code=404, detail="Student app folder missing on this deploy")
+    index = WEBSITE_STATIC_DIR / "index.html"
+    student = WEBSITE_STATIC_DIR / "student.html"
+    target = index if index.is_file() else student
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="Student app not packaged on this deploy")
+    return FileResponse(target)
+
+
+@app.get("/app/{asset_path:path}")
+async def app_assets(asset_path: str):
+    if not WEBSITE_STATIC_DIR.is_dir():
+        raise HTTPException(status_code=404, detail="Student app folder missing on this deploy")
+    # Prevent path traversal
+    safe = Path(asset_path)
+    if ".." in safe.parts:
+        raise HTTPException(status_code=400, detail="Invalid path")
+    full = (WEBSITE_STATIC_DIR / safe).resolve()
+    root = WEBSITE_STATIC_DIR.resolve()
+    try:
+        full.relative_to(root)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Not found")
+    if not full.is_file():
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(full)
+
 
 # Admin website (same host as API): https://scholaxia1.onrender.com/admin/
 if ADMIN_STATIC_DIR.is_dir():
