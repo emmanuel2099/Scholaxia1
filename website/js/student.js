@@ -4467,6 +4467,15 @@
   function renderGroupCard(g, mine) {
     var name = g.name || g.title || "Study group";
     var initial = name.charAt(0).toUpperCase();
+    var isOwner = !!(mine && (g.is_creator || g.is_owner || g.role === "admin" || g.yours));
+    var actions = mine
+      ? '<span class="badge badge-green">Joined</span>'
+      : '<button type="button" class="btn btn-primary btn-mini" data-join-group="' + esc(g.id) + '">Request to join</button>';
+    if (isOwner || mine) {
+      actions +=
+        ' <button type="button" class="btn btn-secondary btn-mini" data-edit-group="' + esc(g.id) + '" data-group-name="' + esc(name) + '" data-group-desc="' + esc(g.description || "") + '">Edit</button>' +
+        ' <button type="button" class="btn btn-danger btn-mini" data-delete-group="' + esc(g.id) + '">Delete</button>';
+    }
     return (
       '<article class="group-card">' +
       '<div class="group-avatar">' + esc(initial) + "</div>" +
@@ -4477,12 +4486,36 @@
       " members</span>" +
       (mine ? '<span class="badge badge-purple">Yours</span>' : "") +
       "</div>" +
-      '<div class="card-foot">' +
-      (mine
-        ? '<span class="badge badge-green">Joined</span>'
-        : '<button type="button" class="btn btn-primary btn-mini" data-join-group="' + esc(g.id) + '">Request to join</button>') +
-      "</div></article>"
+      '<div class="card-foot">' + actions + "</div></article>"
     );
+  }
+
+  async function editMyGroup(id, oldName, oldDesc) {
+    var name = prompt("Group name", oldName || "");
+    if (name == null) return;
+    name = String(name).trim();
+    if (name.length < 2) return alert("Name is too short.");
+    var description = prompt("Description", oldDesc || "");
+    if (description == null) return;
+    try {
+      await api.api("/api/v1/student-groups/" + encodeURIComponent(id), {
+        method: "PATCH",
+        body: { name: name, description: String(description).trim() },
+      });
+      loadGroups();
+    } catch (e) {
+      alert(e.message || "Could not update group");
+    }
+  }
+
+  async function deleteMyGroup(id) {
+    if (!confirm("Delete this group permanently?")) return;
+    try {
+      await api.api("/api/v1/student-groups/" + encodeURIComponent(id), { method: "DELETE" });
+      loadGroups();
+    } catch (e) {
+      alert(e.message || "Could not delete group");
+    }
   }
 
   function loadGroups() {
@@ -4524,6 +4557,22 @@
   }
 
   document.addEventListener("click", function (e) {
+    var editG = e.target.closest("[data-edit-group]");
+    if (editG) {
+      e.preventDefault();
+      editMyGroup(
+        editG.getAttribute("data-edit-group"),
+        editG.getAttribute("data-group-name"),
+        editG.getAttribute("data-group-desc")
+      );
+      return;
+    }
+    var delG = e.target.closest("[data-delete-group]");
+    if (delG) {
+      e.preventDefault();
+      deleteMyGroup(delG.getAttribute("data-delete-group"));
+      return;
+    }
     var joinBtn = e.target.closest("[data-join-group]");
     if (!joinBtn) return;
     var id = joinBtn.dataset.joinGroup;

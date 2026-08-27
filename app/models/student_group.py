@@ -30,6 +30,7 @@ class StudentGroup(Base):
     is_public: Mapped[bool] = mapped_column(Boolean, default=True)
     is_community_listed: Mapped[bool] = mapped_column(Boolean, default=False)
     is_approved: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_restricted: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

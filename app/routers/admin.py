@@ -18,6 +18,7 @@ from app.models.community import CommunityPost, CommunityChannel
 from app.models.student_group import (
     StudentGroup,
     StudentGroupMember,
+    StudentGroupMemberRole,
     StudentGroupJoinRequest,
     StudentGroupMessage,
 )
@@ -2373,6 +2374,7 @@ def _student_group_admin_row(grp: StudentGroup, creator: User, member_count: int
         "is_public": grp.is_public,
         "is_community_listed": grp.is_community_listed,
         "is_approved": grp.is_approved,
+        "is_restricted": bool(getattr(grp, "is_restricted", False)),
         "member_count": member_count,
         "created_at": grp.created_at.isoformat() if grp.created_at else None,
     }
@@ -2580,6 +2582,78 @@ async def admin_delete_student_group(
     return {"message": f'Group "{name}" was deleted.'}
 
 
+class AdminCreateStudentGroupBody(BaseModel):
+    name: str
+    description: Optional[str] = None
+    is_public: bool = True
+    is_community_listed: bool = True
+
+
+@router.post("/student-groups", status_code=201)
+async def admin_create_student_group(
+    payload: AdminCreateStudentGroupBody,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin creates an approved group students can join immediately."""
+    name = (payload.name or "").strip()
+    if len(name) < 2:
+        raise HTTPException(status_code=400, detail="Group name is required.")
+    admin_id = uuid.UUID(str(current_user["sub"]))
+    group = StudentGroup(
+        creator_id=admin_id,
+        name=name[:200],
+        description=(payload.description or "").strip() or None,
+        is_public=bool(payload.is_public),
+        is_community_listed=bool(payload.is_community_listed),
+        is_approved=True,
+        is_restricted=False,
+    )
+    db.add(group)
+    await db.flush()
+    db.add(
+        StudentGroupMember(
+            group_id=group.id,
+            user_id=admin_id,
+            role=StudentGroupMemberRole.admin,
+        )
+    )
+    await db.flush()
+    return {
+        "id": str(group.id),
+        "name": group.name,
+        "description": group.description or "",
+        "is_approved": True,
+        "is_restricted": False,
+        "message": "Group created and listed for students.",
+    }
+
+
+@router.post("/student-groups/{group_id}/restrict")
+async def admin_restrict_student_group(
+    group_id: str,
+    restricted: bool = Query(True),
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    gid = uuid.UUID(group_id)
+    res = await db.execute(select(StudentGroup).where(StudentGroup.id == gid))
+    group = res.scalar_one_or_none()
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found.")
+    group.is_restricted = bool(restricted)
+    await db.flush()
+    return {
+        "id": str(group.id),
+        "is_restricted": group.is_restricted,
+        "message": (
+            "Group restricted — students cannot chat or post."
+            if group.is_restricted
+            else "Group unrestricted — chat and posts enabled again."
+        ),
+    }
+
+
 # ── Kind (Kids) Learners ──────────────────────────────────────────────────────
 
 class KindAdminResponse(BaseModel):
@@ -2620,3 +2694,46 @@ async def list_kind_learners(
         )
         for user, profile in rows
     ]
+
+
+@router.post("/kind-learners/{kind_id}/restrict")
+async def restrict_kind_learner(
+    kind_id: str,
+    restricted: bool = Query(True),
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    uid = uuid.UUID(kind_id)
+    res = await db.execute(select(User).where(User.id == uid, User.role == UserRole.kind))
+    user = res.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Kind learner not found")
+    user.is_active = not bool(restricted)
+    await db.flush()
+    return {
+        "id": str(user.id),
+        "is_active": user.is_active,
+        "message": "Kind learner restricted." if restricted else "Kind learner unrestricted.",
+    }
+
+
+@router.delete("/kind-learners/{kind_id}", status_code=status.HTTP_200_OK)
+async def delete_kind_learner(
+    kind_id: str,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    uid = uuid.UUID(kind_id)
+    res = await db.execute(select(User).where(User.id == uid, User.role == UserRole.kind))
+    user = res.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Kind learner not found")
+    try:
+        deleted = await delete_student_user(db, uid)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("delete_kind_learner failed for %s", kind_id)
+        raise HTTPException(status_code=500, detail="Could not delete kind learner")
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Kind learner not found")
+    return {"message": "Kind learner deleted"}

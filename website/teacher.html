@@ -168,11 +168,12 @@
               <div>
                 <span class="kicker">Assessment</span>
                 <h2>Scholaxia Exams</h2>
-                <p>Publish JSON exams — students take them and you review scores here.</p>
+                <p>Publish exams — students take them and you review scores here.</p>
               </div>
             </header>
             <div class="host-card">
               <h3>Publish exam</h3>
+              <p class="muted" style="margin-bottom:12px">Add questions one by one (recommended). JSON upload is optional for advanced users.</p>
               <div class="form-grid">
                 <label>Title <input id="texamTitle" placeholder="e.g. Maths — Week 4 test" /></label>
                 <label>Subject <input id="texamSubject" list="texamSubjectList" placeholder="Mathematics" /></label>
@@ -180,20 +181,44 @@
                 <label>Duration (min) <input type="number" id="texamDuration" value="30" min="5" max="180" /></label>
                 <label>Open from <input type="datetime-local" id="texamStart" /></label>
                 <label>Close at <input type="datetime-local" id="texamEnd" /></label>
-                <div class="file-field">
-                  <span class="file-label">Questions JSON</span>
+              </div>
+              <div class="texam-builder" style="margin-top:14px;padding:14px;border:1px dashed #c4b5fd;border-radius:14px;background:#faf5ff">
+                <h4 style="margin:0 0 10px">Add a question</h4>
+                <label>Question text
+                  <textarea id="tqPrompt" rows="2" placeholder="What is 2 + 2?"></textarea>
+                </label>
+                <div class="form-grid" style="margin-top:8px">
+                  <label>Option A <input id="tqA" placeholder="Option A" /></label>
+                  <label>Option B <input id="tqB" placeholder="Option B" /></label>
+                  <label>Option C <input id="tqC" placeholder="Option C" /></label>
+                  <label>Option D <input id="tqD" placeholder="Option D" /></label>
+                  <label>Correct answer
+                    <select id="tqCorrect">
+                      <option value="0">A</option>
+                      <option value="1">B</option>
+                      <option value="2">C</option>
+                      <option value="3">D</option>
+                    </select>
+                  </label>
+                </div>
+                <button type="button" class="btn btn-secondary" id="tqAddBtn" style="margin-top:10px">+ Add question</button>
+                <div id="tqList" style="margin-top:12px"></div>
+              </div>
+              <details style="margin-top:14px">
+                <summary style="cursor:pointer;font-weight:700">Optional: upload JSON file</summary>
+                <div class="file-field" style="margin-top:10px">
                   <label class="file-drop" for="texamFile">
                     <input type="file" id="texamFile" accept=".json,application/json" hidden />
                     <span class="file-drop-ico">📄</span>
                     <span class="file-drop-text">
                       <strong id="texamFileName">Choose JSON file</strong>
-                      <small>or drag &amp; drop · .json only</small>
+                      <small>advanced · optional</small>
                     </span>
                   </label>
                 </div>
-              </div>
-              <div class="btn-row">
-                <button type="button" class="btn btn-ghost" id="texamTemplateBtn">Download sample JSON</button>
+                <button type="button" class="btn btn-ghost" id="texamTemplateBtn" style="margin-top:8px">Download sample JSON</button>
+              </details>
+              <div class="btn-row" style="margin-top:14px">
                 <button type="button" class="btn btn-primary" id="texamPublishBtn">Publish exam</button>
               </div>
               <p class="form-status" id="texamError"></p>
@@ -279,15 +304,14 @@
                 <datalist id="aiSubjectList"></datalist>
                 <label>Level <input id="aiLevel" placeholder="SS2" value="SS2" /></label>
               </div>
-              <label>Details
-                <textarea id="aiDetails" rows="4" placeholder="What do you need help with?"></textarea>
-              </label>
-              <button type="button" class="btn btn-primary" id="aiAskBtn">Ask Teacher AI</button>
-              <p class="form-status" id="aiError"></p>
-              <div class="ai-result" id="aiResultWrap" hidden>
-                <h4>Result</h4>
-                <pre id="aiResult"></pre>
+              <div class="ai-chat-log" id="aiChatLog" hidden></div>
+              <div class="ai-composer" id="aiComposer">
+                <label class="ai-composer-label">Message Teacher AI
+                  <textarea id="aiDetails" rows="3" placeholder="What do you need help with? You can keep chatting here after the reply."></textarea>
+                </label>
+                <button type="button" class="btn btn-primary" id="aiAskBtn">Ask Teacher AI</button>
               </div>
+              <p class="form-status" id="aiError"></p>
             </div>
           </section>
 
@@ -300,6 +324,10 @@
                 <p>Your teacher account details</p>
               </div>
             </header>
+            <div class="panel" id="teacherPendingBanner" hidden>
+              <strong>Pending admin approval</strong>
+              <p class="muted">You signed up successfully. Admin can see your name, email, WhatsApp and subjects — teaching tools unlock after approval.</p>
+            </div>
             <div class="profile-card">
               <div class="profile-av" id="profileAv">T</div>
               <div>
@@ -307,7 +335,16 @@
                 <p id="profileText">Loading…</p>
               </div>
             </div>
-            <div class="quick-grid">
+            <div class="panel">
+              <h3>Your signup details</h3>
+              <div class="form-grid">
+                <label>Full name <input id="tpName" readonly /></label>
+                <label>Email <input id="tpEmail" readonly /></label>
+                <label>WhatsApp <input id="tpPhone" readonly /></label>
+                <label>Subjects <input id="tpSubjects" readonly /></label>
+              </div>
+            </div>
+            <div class="quick-grid" id="teacherQuickActions">
               <button type="button" class="quick" data-goto="live"><span>📹</span><strong>Host a class</strong><small>Go live or schedule</small></button>
               <button type="button" class="quick" data-goto="exams"><span>📝</span><strong>Publish exam</strong><small>Upload JSON questions</small></button>
               <button type="button" class="quick" data-goto="materials"><span>📚</span><strong>Add material</strong><small>Share notes &amp; PDFs</small></button>
@@ -389,6 +426,6 @@
     </div>
 
     <script src="js/api.js?v=7"></script>
-    <script src="js/teacher-app.js?v=9"></script>
+    <script src="js/teacher-app.js?v=20260827a"></script>
   </body>
 </html>

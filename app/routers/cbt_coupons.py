@@ -39,7 +39,7 @@ def _as_uuid(value) -> uuid.UUID:
         raise HTTPException(status_code=400, detail="Invalid account id") from exc
 
 
-def _coupon_dict(row: CbtCoupon) -> dict:
+def _coupon_dict(row: CbtCoupon, redeemers: list | None = None) -> dict:
     return {
         "id": str(row.id),
         "code": row.code,
@@ -48,8 +48,10 @@ def _coupon_dict(row: CbtCoupon) -> dict:
         "used_count": row.used_count,
         "is_active": row.is_active,
         "note": row.note,
+        "assigned_email": (row.note or "").replace("for:", "").strip() if (row.note or "").lower().startswith("for:") else None,
         "expires_at": row.expires_at.isoformat() if row.expires_at else None,
         "created_at": row.created_at.isoformat() if row.created_at else None,
+        "redeemed_by": redeemers or [],
     }
 
 
@@ -118,6 +120,7 @@ class GenerateCouponRequest(BaseModel):
     count: int = Field(1, ge=1, le=50)
     max_uses: int = Field(1, ge=1, le=10000)
     note: Optional[str] = None
+    student_email: Optional[str] = None
     days_valid: Optional[int] = Field(None, ge=1, le=730)
 
 
@@ -131,10 +134,38 @@ async def list_coupons(
     db: AsyncSession = Depends(get_db),
 ):
     await _ensure_coupon_tables()
+    from app.models.user import User
+    from app.models.cbt_coupon import CbtCouponRedemption
+
     rows = (
         await db.execute(select(CbtCoupon).order_by(CbtCoupon.created_at.desc()).limit(200))
     ).scalars().all()
-    return {"coupons": [_coupon_dict(r) for r in rows], "packages": all_cbt_packages_dict()}
+    coupon_ids = [r.id for r in rows]
+    redeemers_by_coupon: dict = {str(cid): [] for cid in coupon_ids}
+    if coupon_ids:
+        red_rows = (
+            await db.execute(
+                select(CbtCouponRedemption, User)
+                .join(User, User.id == CbtCouponRedemption.student_id)
+                .where(CbtCouponRedemption.coupon_id.in_(coupon_ids))
+                .order_by(CbtCouponRedemption.created_at.desc())
+            )
+        ).all()
+        for red, user in red_rows:
+            redeemers_by_coupon.setdefault(str(red.coupon_id), []).append(
+                {
+                    "name": user.full_name or user.email,
+                    "email": user.email,
+                    "at": red.created_at.isoformat() if red.created_at else None,
+                }
+            )
+    return {
+        "coupons": [
+            _coupon_dict(r, redeemers_by_coupon.get(str(r.id), []))
+            for r in rows
+        ],
+        "packages": all_cbt_packages_dict(),
+    }
 
 
 @router.post("/admin/cbt-coupons", status_code=201)
@@ -154,13 +185,17 @@ async def generate_coupons(
         created_by = _as_uuid(current_user["sub"])
     except HTTPException:
         created_by = None
+    note = (payload.note or "").strip() or None
+    email = (payload.student_email or "").strip().lower()
+    if email:
+        note = f"for:{email}" + (f" | {note}" if note else "")
     created = []
     for _ in range(payload.count):
         row = CbtCoupon(
             code=_new_code(),
             package_id=payload.package_id.strip().lower(),
             max_uses=payload.max_uses,
-            note=payload.note,
+            note=note,
             expires_at=expires,
             created_by=created_by,
         )

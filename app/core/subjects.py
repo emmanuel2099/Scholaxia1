@@ -16,6 +16,20 @@ AVAILABLE_SUBJECTS = [
     "Islamic Religious Studies",
     "Further Mathematics",
     "Citizenship and Heritage Studies (Civic)",
+    "Physical Education",
+    "Office Practice",
+    "Home Management",
+    "Fine Arts",
+    "Animal Husbandry",
+    "Book Keeping",
+    "Data Processing",
+]
+
+# Common Entrance CBT — three papers taken together (like JAMB).
+COMMON_ENTRANCE_SUBJECTS = [
+    "Mathematics / Quantitative Reasoning",
+    "English Language / Verbal Reasoning",
+    "General Knowledge",
 ]
 
 
@@ -49,6 +63,21 @@ def subject_matches(exam_subject: str, selected_subjects: list[str]) -> bool:
         "econs": "economics",
         "govt": "government",
         "geo": "geography",
+        "pe": "physical education",
+        "p.e": "physical education",
+        "physical and health education": "physical education",
+        "phe": "physical education",
+        "bookkeeping": "book keeping",
+        "book-keeping": "book keeping",
+        "fine art": "fine arts",
+        "visual arts": "fine arts",
+        "home economics": "home management",
+        "animal husbandry": "animal husbandry",
+        "livestock farming": "animal husbandry",
+        "data processing": "data processing",
+        "computer studies": "data processing",
+        "computer studies/ict": "data processing",
+        "office practice": "office practice",
     }
     exam_norm = aliases.get(exam_s, exam_s)
     for s in selected_subjects:

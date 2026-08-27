@@ -825,7 +825,9 @@ async def _fetch_channel_posts(
     result = await db.execute(query)
     posts = result.scalars().all()
     posts = [p for p in posts if not POST_COMMENT_RE.match(p.content or "")]
-    posts = await _sweep_flagged_posts(db, posts)
+    # Never auto-delete teacher announcements for links/phones — students must see them.
+    if not is_announcement:
+        posts = await _sweep_flagged_posts(db, posts)
 
     author_ids = list({str(p.author_id) for p in posts})
     users_map: dict = {}

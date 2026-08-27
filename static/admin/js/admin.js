@@ -139,7 +139,8 @@ function showAdminPage(page) {
   else if (page === "live-subs") loadLiveSubscriptions();
   else if (page === "skills-enroll") loadSkillsEnrollments();
   else if (page === "cbt-settings") { loadCbtSettings(); }
-  else if (page === "cbt") { cbtMode = "practice"; initCbtBuilder(); loadCbt(); loadCbtCoupons(); }
+  else if (page === "cbt") { cbtMode = "practice"; initCbtBuilder(); loadCbt(); }
+  else if (page === "coupons") loadCbtCoupons();
   else if (page === "past-questions") { cbtMode = "past"; loadPastQuestionsAdmin(); }
   else if (page === "library") loadLibraryAdmin();
   else if (page === "videos") loadAdminVideos();
@@ -364,19 +365,38 @@ async function loadKind() {
     var rows = await adminApi("/api/v1/admin/kind-learners");
     if (!rows) return;
     if (!rows.length) { el.innerHTML = '<div class="empty-state">No kind learners yet.</div>'; return; }
-    el.innerHTML = '<table class="data-table"><thead><tr><th>Name</th><th>Email</th><th>Age</th><th>Grade</th><th>Parent</th><th>Interests</th></tr></thead><tbody>' +
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Name</th><th>Email</th><th>Age</th><th>Grade</th><th>Parent</th><th>Status</th><th>Actions</th></tr></thead><tbody>' +
       rows.map(function (k) {
-        var subs = (k.favorite_subjects || []).map(function (x) {
-          return '<span class="subj-tag">' + escHtml(x) + '</span>';
-        }).join("");
+        var active = k.is_active !== false;
         return '<tr><td>' + escHtml(k.full_name) + '</td><td>' + escHtml(k.email) + '</td>' +
           '<td>' + escHtml(k.age_group || "—") + '</td><td>' + escHtml(k.grade_level || "—") + '</td>' +
           '<td>' + escHtml(k.parent_email || "—") + '</td>' +
-          '<td><div class="subj-tags">' + (subs || "—") + '</div></td></tr>';
+          '<td>' + (active ? "Active" : '<span style="color:#b91c1c;font-weight:700">Restricted</span>') + '</td>' +
+          '<td>' +
+          (active
+            ? '<button class="btn-sm" onclick="restrictKindLearner(\'' + k.id + '\', true)">Restrict</button> '
+            : '<button class="btn-sm primary" onclick="restrictKindLearner(\'' + k.id + '\', false)">Unrestrict</button> ') +
+          '<button class="btn-sm danger" onclick="deleteKindLearner(\'' + k.id + '\', ' + JSON.stringify(k.full_name || k.email || "learner") + ')">Delete</button>' +
+          '</td></tr>';
       }).join("") + '</tbody></table>';
   } catch (e) {
     el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + '</div>';
   }
+}
+
+async function restrictKindLearner(id, restricted) {
+  try {
+    await adminApi("/api/v1/admin/kind-learners/" + id + "/restrict?restricted=" + (restricted ? "true" : "false"), { method: "POST" });
+    loadKind();
+  } catch (e) { alert(e.message); }
+}
+
+async function deleteKindLearner(id, name) {
+  if (!confirm("Permanently delete kind learner \"" + name + "\"?")) return;
+  try {
+    await adminApi("/api/v1/admin/kind-learners/" + id, { method: "DELETE" });
+    loadKind();
+  } catch (e) { alert(e.message); }
 }
 
 /* ── Kids game questions (admin) ── */
@@ -1840,6 +1860,7 @@ function renderStudentGroupsTable(rows) {
       var status = g.is_approved
         ? '<span style="color:#15803d;font-weight:700">Approved</span>'
         : '<span style="color:#b45309;font-weight:700">Pending</span>';
+      if (g.is_restricted) status += '<br><span style="color:#b91c1c;font-weight:700">Restricted</span>';
       var actions =
         '<button class="btn-sm" onclick="viewGroupChat(\'' + g.id + '\', ' + JSON.stringify(g.name || "Group") + ')">View chat</button> ';
       if (!g.is_approved) {
@@ -1847,6 +1868,9 @@ function renderStudentGroupsTable(rows) {
           '<button class="btn-sm primary" onclick="approveStudentGroup(\'' + g.id + '\')">Approve</button> ' +
           '<button class="btn-sm" onclick="rejectStudentGroup(\'' + g.id + '\')">Reject</button> ';
       }
+      actions += g.is_restricted
+        ? '<button class="btn-sm primary" onclick="restrictStudentGroup(\'' + g.id + '\', false)">Unrestrict</button> '
+        : '<button class="btn-sm" onclick="restrictStudentGroup(\'' + g.id + '\', true)">Restrict</button> ';
       actions += '<button class="btn-sm danger" onclick="deleteStudentGroup(\'' + g.id + '\', ' + JSON.stringify(g.name || "Group") + ')">Delete</button>';
       return (
         '<tr><td><strong>' + escHtml(g.name) + '</strong><br><span style="font-size:.8rem;color:#8aa896">' +
@@ -1860,6 +1884,34 @@ function renderStudentGroupsTable(rows) {
       );
     }).join("") +
     "</tbody></table>";
+}
+
+async function adminCreateStudentGroup() {
+  var msg = document.getElementById("sg-create-msg");
+  var nameEl = document.getElementById("sg-create-name");
+  var descEl = document.getElementById("sg-create-desc");
+  var name = ((nameEl && nameEl.value) || "").trim();
+  var desc = ((descEl && descEl.value) || "").trim();
+  if (msg) msg.textContent = "";
+  try {
+    await adminApi("/api/v1/admin/student-groups", {
+      method: "POST",
+      body: JSON.stringify({ name: name, description: desc, is_public: true, is_community_listed: true }),
+    });
+    if (nameEl) nameEl.value = "";
+    if (descEl) descEl.value = "";
+    if (msg) msg.textContent = "Group created and listed for students.";
+    loadStudentGroupsAdmin();
+  } catch (e) {
+    if (msg) msg.textContent = e.message;
+  }
+}
+
+async function restrictStudentGroup(id, restricted) {
+  try {
+    await adminApi("/api/v1/admin/student-groups/" + id + "/restrict?restricted=" + (restricted ? "true" : "false"), { method: "POST" });
+    loadStudentGroupsAdmin();
+  } catch (e) { alert(e.message); }
 }
 
 async function loadStudentGroupsAdmin() {
@@ -3031,14 +3083,17 @@ async function deleteLibraryBook(id) {
 
 async function generateCbtCoupons() {
   var msg = document.getElementById("coupon-msg");
+  var email = ((document.getElementById("coupon-student-email") || {}).value || "").trim();
   try {
+    var body = {
+      package_id: document.getElementById("coupon-package").value,
+      count: parseInt(document.getElementById("coupon-count").value || "1", 10),
+      max_uses: parseInt(document.getElementById("coupon-uses").value || "1", 10),
+    };
+    if (email) body.student_email = email;
     var data = await adminApi("/api/v1/admin/cbt-coupons", {
       method: "POST",
-      body: JSON.stringify({
-        package_id: document.getElementById("coupon-package").value,
-        count: parseInt(document.getElementById("coupon-count").value || "1", 10),
-        max_uses: parseInt(document.getElementById("coupon-uses").value || "1", 10),
-      }),
+      body: JSON.stringify(body),
     });
     var codes = ((data && data.coupons) || []).map(function (c) { return c.code; }).join(", ");
     if (msg) msg.textContent = "Created: " + codes;
@@ -3051,15 +3106,24 @@ async function generateCbtCoupons() {
 async function loadCbtCoupons() {
   var el = document.getElementById("coupon-table");
   if (!el) return;
+  el.innerHTML = '<div class="loading">Loading coupons…</div>';
   try {
     var data = await adminApi("/api/v1/admin/cbt-coupons");
     var rows = (data && data.coupons) || [];
     if (!rows.length) { el.innerHTML = '<div class="empty-state">No coupons yet.</div>'; return; }
-    el.innerHTML = '<table class="data-table"><thead><tr><th>Code</th><th>Package</th><th>Used</th><th>Active</th><th></th></tr></thead><tbody>' +
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Code</th><th>Package</th><th>Student / Redeemed by</th><th>Used</th><th>Active</th><th></th></tr></thead><tbody>' +
       rows.map(function (c) {
+        var who = "";
+        if (c.assigned_email) who += "Assigned: " + escHtml(c.assigned_email);
+        var red = (c.redeemed_by || []).map(function (r) {
+          return escHtml((r.name || "") + (r.email ? (" (" + r.email + ")") : ""));
+        }).join("<br>");
+        if (red) who += (who ? "<br>" : "") + "Used by: " + red;
+        if (!who) who = "—";
         return '<tr><td><strong>' + escHtml(c.code) + '</strong></td><td>' + escHtml(c.package_id) + '</td><td>' +
+          who + '</td><td>' +
           escHtml(c.used_count + " / " + c.max_uses) + '</td><td>' + (c.is_active ? "Yes" : "No") +
-          '</td><td>' + (c.is_active ? '<button class="btn-sm danger" onclick="deactivateCbtCoupon(\'' + c.id + '\')">Disable</button>' : "") + "</td></tr>";
+          '</td><td>' + (c.is_active ? '<button class="btn-sm danger" onclick="deactivateCbtCoupon('' + c.id + '')">Disable</button>' : "") + "</td></tr>";
       }).join("") + "</tbody></table>";
   } catch (e) {
     el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";

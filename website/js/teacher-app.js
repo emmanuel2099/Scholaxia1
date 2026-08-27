@@ -763,6 +763,47 @@
     URL.revokeObjectURL(url);
   }
 
+  var texamQuestions = [];
+
+  function renderTexamQuestionList() {
+    var list = $("tqList");
+    if (!list) return;
+    if (!texamQuestions.length) {
+      list.innerHTML = '<p class="muted">No questions added yet.</p>';
+      return;
+    }
+    list.innerHTML = texamQuestions.map(function (q, i) {
+      return (
+        '<div class="panel-card" style="margin-bottom:8px;padding:10px">' +
+        "<strong>Q" + (i + 1) + ".</strong> " + esc(q.prompt) +
+        ' <button type="button" class="btn btn-mini" data-rm-tq="' + i + '">Remove</button></div>'
+      );
+    }).join("");
+  }
+
+  function addTexamQuestion() {
+    var prompt = (($("tqPrompt") && $("tqPrompt").value) || "").trim();
+    var opts = [
+      (($("tqA") && $("tqA").value) || "").trim(),
+      (($("tqB") && $("tqB").value) || "").trim(),
+      (($("tqC") && $("tqC").value) || "").trim(),
+      (($("tqD") && $("tqD").value) || "").trim(),
+    ];
+    var correct = parseInt(($("tqCorrect") && $("tqCorrect").value) || "0", 10);
+    if (!prompt || opts.filter(Boolean).length < 2) {
+      alert("Enter the question and at least two options.");
+      return;
+    }
+    texamQuestions.push({
+      prompt: prompt,
+      options: opts,
+      correct_index: isNaN(correct) ? 0 : correct,
+    });
+    if ($("tqPrompt")) $("tqPrompt").value = "";
+    ["tqA", "tqB", "tqC", "tqD"].forEach(function (id) { if ($(id)) $(id).value = ""; });
+    renderTexamQuestionList();
+  }
+
   async function publishExam() {
     var err = $("texamError");
     if (err) {
@@ -782,9 +823,23 @@
       }
       return;
     }
-    if (!fileInput || !fileInput.files || !fileInput.files[0]) {
+    var questions = texamQuestions.slice();
+    if ((!questions.length) && fileInput && fileInput.files && fileInput.files[0]) {
+      try {
+        var text = await fileInput.files[0].text();
+        var data = JSON.parse(text);
+        questions = Array.isArray(data) ? data : data.questions || [];
+      } catch (e) {
+        if (err) {
+          err.textContent = "Could not read JSON file.";
+          err.className = "form-status err";
+        }
+        return;
+      }
+    }
+    if (!questions.length) {
       if (err) {
-        err.textContent = "Choose a JSON questions file.";
+        err.textContent = "Add questions one by one, or upload an optional JSON file.";
         err.className = "form-status err";
       }
       return;
@@ -795,16 +850,12 @@
       btn.textContent = "Publishing…";
     }
     try {
-      var text = await fileInput.files[0].text();
-      var data = JSON.parse(text);
-      var questions = Array.isArray(data) ? data : data.questions || [];
-      if (!questions.length) throw new Error("The JSON file has no questions.");
       await api.api("/api/v1/cbt/school-exams", {
         method: "POST",
         body: {
-          title: title || data.title,
-          subject: subject || data.subject,
-          duration_minutes: data.duration_minutes || duration,
+          title: title,
+          subject: subject,
+          duration_minutes: duration,
           scheduled_start: startVal ? new Date(startVal).toISOString() : new Date().toISOString(),
           scheduled_end: endVal
             ? new Date(endVal).toISOString()
@@ -815,10 +866,10 @@
           block_minimize: true,
         },
       });
-      fileInput.value = "";
+      texamQuestions = [];
+      renderTexamQuestionList();
+      if (fileInput) fileInput.value = "";
       if ($("texamFileName")) $("texamFileName").textContent = "Choose JSON file";
-      var drop = fileInput.closest(".file-drop");
-      if (drop) drop.classList.remove("has-file");
       alert("Exam published! Students were notified.");
       loadExams();
     } catch (e) {
@@ -1108,11 +1159,29 @@
   }
 
   /* AI */
+  var aiHistory = [];
+
   function initAI() {
     populateSubjectFilters();
     if ($("aiSubject") && !$("aiSubject").value && subjects()[0]) {
       $("aiSubject").value = subjects()[0];
     }
+  }
+
+  function appendAiBubble(role, text) {
+    var log = $("aiChatLog");
+    if (!log) return;
+    log.hidden = false;
+    var div = document.createElement("div");
+    div.className = "ai-bubble ai-bubble-" + role;
+    var label = document.createElement("strong");
+    label.textContent = role === "user" ? "You" : "Teacher AI";
+    var body = document.createElement("pre");
+    body.textContent = text || "";
+    div.appendChild(label);
+    div.appendChild(body);
+    log.appendChild(div);
+    log.scrollTop = log.scrollHeight;
   }
 
   async function askAI() {
@@ -1127,20 +1196,32 @@
     var details = (($("aiDetails") && $("aiDetails").value) || "").trim();
     if (!subject || !details) {
       if (err) {
-        err.textContent = "Subject and details are required.";
+        err.textContent = "Subject and a message are required.";
         err.className = "form-status err";
       }
       return;
     }
     var btn = $("aiAskBtn");
-    var wrap = $("aiResultWrap");
-    var out = $("aiResult");
     if (btn) {
       btn.disabled = true;
       btn.textContent = "Working…";
     }
-    if (wrap) wrap.hidden = false;
-    if (out) out.textContent = "Teacher AI is thinking…";
+    appendAiBubble("user", details);
+    if ($("aiDetails")) $("aiDetails").value = "";
+    aiHistory.push({ role: "user", text: details });
+    var detailsPayload = details;
+    if (aiHistory.length > 1) {
+      detailsPayload =
+        "Previous conversation:\n" +
+        aiHistory
+          .slice(0, -1)
+          .map(function (m) {
+            return (m.role === "user" ? "Teacher" : "AI") + ": " + m.text;
+          })
+          .join("\n\n") +
+        "\n\nTeacher follow-up: " +
+        details;
+    }
     try {
       var res = await api.api("/api/v1/teacher-ai/ask", {
         method: "POST",
@@ -1148,21 +1229,25 @@
           task: task,
           subject: subject,
           education_level: level || "SS2",
-          details: details,
+          details: detailsPayload,
         },
       });
-      if (out) out.textContent = (res && res.result) || "No response.";
+      var result = (res && res.result) || "No response.";
+      appendAiBubble("ai", result);
+      aiHistory.push({ role: "ai", text: result });
+      if ($("aiDetails")) {
+        $("aiDetails").placeholder = "Reply here (e.g. Yes — make it friendlier, or add date/time)…";
+        $("aiDetails").focus();
+      }
+      if (btn) btn.textContent = "Send reply";
     } catch (e) {
       if (err) {
         err.textContent = e.message || "AI request failed.";
         err.className = "form-status err";
       }
-      if (wrap) wrap.hidden = true;
     } finally {
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = "Ask Teacher AI";
-      }
+      if (btn) btn.disabled = false;
+      if (btn && btn.textContent === "Working…") btn.textContent = "Ask Teacher AI";
     }
   }
 
@@ -1174,6 +1259,8 @@
       $("profileText").textContent =
         (user.name || "Teacher") + " · " + (user.email || "") + " · Teacher";
     }
+    if ($("tpName")) $("tpName").value = user.name || "";
+    if ($("tpEmail")) $("tpEmail").value = user.email || "";
     try {
       var me = await api.api("/api/v1/teachers/me");
       if (me) {
@@ -1182,14 +1269,23 @@
           setUserChip(me.full_name, me.email || user.email);
         }
         if (me.subjects) localStorage.setItem("sia_teacher_subjects", JSON.stringify(me.subjects));
+        var approved = me.is_approved === true;
+        if ($("teacherPendingBanner")) $("teacherPendingBanner").hidden = approved;
+        if ($("teacherQuickActions")) $("teacherQuickActions").hidden = !approved;
+        if ($("tpName")) $("tpName").value = me.full_name || user.name || "";
+        if ($("tpEmail")) $("tpEmail").value = me.email || user.email || "";
+        if ($("tpPhone")) $("tpPhone").value = me.phone || "";
+        if ($("tpSubjects")) $("tpSubjects").value = (me.subjects || []).join(", ");
         if ($("profileText")) {
           $("profileText").textContent =
             (me.full_name || user.name) +
             " · " +
             (me.email || user.email) +
-            " · Teacher" +
+            " · " +
+            (approved ? "Approved teacher" : "Pending approval") +
             (me.subjects && me.subjects.length ? " · " + me.subjects.join(", ") : "");
         }
+        localStorage.setItem("sia_teacher_pending_approval", approved ? "0" : "1");
       }
     } catch (e) {
       /* keep session */
@@ -1249,10 +1345,17 @@
     }
     var book = t.closest("[data-open-book]");
     if (book) {
-      api
-        .api("/api/v1/library/" + encodeURIComponent(book.getAttribute("data-open-book")) + "/read")
-        .then(function (data) {
-          if (data && data.read_url) window.open(data.read_url, "_blank", "noopener");
+      var bookId = book.getAttribute("data-open-book");
+      fetch(api.API_BASE + "/api/v1/library/" + encodeURIComponent(bookId) + "/file", {
+        headers: { Authorization: "Bearer " + api.getToken() },
+        credentials: "omit",
+      })
+        .then(function (res) {
+          if (!res.ok) throw new Error("Could not open this material");
+          return res.blob();
+        })
+        .then(function (blob) {
+          window.open(URL.createObjectURL(blob), "_blank");
         })
         .catch(function (err) {
           alert(err.message);
@@ -1340,6 +1443,13 @@
 
   if ($("texamTemplateBtn")) $("texamTemplateBtn").addEventListener("click", downloadExamTemplate);
   if ($("texamPublishBtn")) $("texamPublishBtn").addEventListener("click", publishExam);
+  if ($("tqAddBtn")) $("tqAddBtn").addEventListener("click", addTexamQuestion);
+  document.addEventListener("click", function (e) {
+    var rm = e.target && e.target.closest && e.target.closest("[data-rm-tq]");
+    if (!rm) return;
+    var i = parseInt(rm.getAttribute("data-rm-tq"), 10);
+    if (!isNaN(i)) { texamQuestions.splice(i, 1); renderTexamQuestionList(); }
+  });
   if ($("studentsRefreshBtn")) $("studentsRefreshBtn").addEventListener("click", loadStudents);
   if ($("gradingRefreshBtn")) $("gradingRefreshBtn").addEventListener("click", loadGrading);
   if ($("announceSendBtn")) $("announceSendBtn").addEventListener("click", sendAnnouncement);

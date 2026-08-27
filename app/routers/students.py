@@ -146,7 +146,11 @@ def _setup_complete(profile: StudentProfile | None) -> bool:
 @router.get("/subjects")
 async def list_available_subjects():
     """Subjects students can pick during exam setup."""
-    return {"subjects": AVAILABLE_SUBJECTS}
+    from app.core.subjects import COMMON_ENTRANCE_SUBJECTS
+    return {
+        "subjects": AVAILABLE_SUBJECTS,
+        "common_entrance_subjects": list(COMMON_ENTRANCE_SUBJECTS),
+    }
 
 
 @router.get("/setup-status")
@@ -179,11 +183,17 @@ async def setup_exam(
     current_user: dict = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ):
-    # Common Entrance — 9 subjects, one CBT subject at a time.
+    # Common Entrance — 3 fixed subjects, taken together like JAMB.
     if _is_common_entrance_level(payload.education_level):
+        from app.core.subjects import COMMON_ENTRANCE_SUBJECTS
         subjects = _uniq(payload.ssce_subjects or payload.subjects or [])
-        if len(subjects) != 9:
-            raise HTTPException(status_code=400, detail="Common Entrance requires exactly 9 subjects")
+        if not subjects:
+            subjects = list(COMMON_ENTRANCE_SUBJECTS)
+        if len(subjects) != 3:
+            raise HTTPException(
+                status_code=400,
+                detail="Common Entrance requires exactly 3 subjects: Mathematics/Quantitative Reasoning, English Language/Verbal Reasoning, and General Knowledge",
+            )
         result = await db.execute(select(StudentProfile).where(StudentProfile.user_id == current_user["sub"]))
         profile = result.scalar_one_or_none()
         if not profile:
@@ -390,35 +400,64 @@ async def get_my_profile(
     current_user: dict = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(User).where(User.id == current_user["sub"])
-    )
-    user = result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    try:
+        result = await db.execute(
+            select(User).where(User.id == current_user["sub"])
+        )
+        user = result.scalar_one_or_none()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
 
-    # Get or create student profile
-    p_result = await db.execute(
-        select(StudentProfile).where(StudentProfile.user_id == user.id)
-    )
-    profile = p_result.scalar_one_or_none()
-    if not profile:
-        profile = StudentProfile(user_id=user.id, selected_subjects=[])
-        db.add(profile)
-        await db.flush()
+        # Get or create student profile
+        p_result = await db.execute(
+            select(StudentProfile).where(StudentProfile.user_id == user.id)
+        )
+        profile = p_result.scalar_one_or_none()
+        if not profile:
+            profile = StudentProfile(user_id=user.id, selected_subjects=[])
+            db.add(profile)
+            await db.flush()
 
-    boards = _profile_boards(profile)
-    return ProfileResponse(
-        user_id=str(user.id),
-        full_name=user.full_name,
-        email=user.email,
-        exam_type=profile.exam_type.value if profile.exam_type else None,
-        selected_subjects=profile.selected_subjects or [],
-        education_level=profile.education_level,
-        has_active_subscription=profile.has_active_subscription,
-        setup_complete=_setup_complete(profile),
-        profile_picture=user.profile_picture,
-        jamb_subjects=boards["jamb_subjects"],
-        ssce_subjects=boards["ssce_subjects"],
-        ssce_exam_type=boards["ssce_exam_type"],
-    )
+        boards = _profile_boards(profile)
+        exam_type = None
+        if profile.exam_type is not None:
+            exam_type = (
+                profile.exam_type.value
+                if hasattr(profile.exam_type, "value")
+                else str(profile.exam_type)
+            )
+            exam_type = exam_type.replace("ExamType.", "").replace("EXAMTYPE.", "")
+        return ProfileResponse(
+            user_id=str(user.id),
+            full_name=str(user.full_name or "Student"),
+            email=str(user.email or ""),
+            exam_type=exam_type,
+            selected_subjects=list(profile.selected_subjects or []),
+            education_level=profile.education_level,
+            has_active_subscription=bool(getattr(profile, "has_active_subscription", False)),
+            setup_complete=_setup_complete(profile),
+            profile_picture=user.profile_picture,
+            jamb_subjects=list(boards.get("jamb_subjects") or []),
+            ssce_subjects=list(boards.get("ssce_subjects") or []),
+            ssce_exam_type=boards.get("ssce_exam_type"),
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("students/me failed for %s", current_user.get("sub"))
+        # Never 500 the profile page — return a safe empty profile so the app can still save subjects.
+        return ProfileResponse(
+            user_id=str(current_user.get("sub") or ""),
+            full_name="Student",
+            email="",
+            exam_type=None,
+            selected_subjects=[],
+            education_level=None,
+            has_active_subscription=False,
+            setup_complete=False,
+            profile_picture=None,
+            jamb_subjects=[],
+            ssce_subjects=[],
+            ssce_exam_type=None,
+        )

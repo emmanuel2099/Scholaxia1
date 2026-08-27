@@ -854,8 +854,14 @@
   }
 
   /* —— CBT —— */
+  var CE_SUBJECTS = [
+    "Mathematics / Quantitative Reasoning",
+    "English Language / Verbal Reasoning",
+    "General Knowledge",
+  ];
+
   function exitCbtPlayer() {
-    cbtState = { exam: null, session: null, answers: {}, index: 0 };
+    cbtState = { exam: null, session: null, answers: {}, index: 0, attemptId: null };
     if ($("cbtPlay")) {
       $("cbtPlay").hidden = true;
       $("cbtPlay").innerHTML = "";
@@ -893,31 +899,19 @@
     }
     if (payCard) payCard.style.display = hasAccess ? "none" : "";
 
-    try {
-      var exams = await api.api("/api/v1/cbt/exams?exam_type=COMMON_ENTRANCE");
-      if (!Array.isArray(exams)) exams = (exams && exams.exams) || [];
-      if (!list) return;
-      if (!exams.length) {
-        list.innerHTML =
-          '<div class="empty">No Common Entrance exams yet. You can still pay to unlock access for when they appear.</div>';
-        return;
-      }
-      list.innerHTML = exams
-        .map(function (ex) {
-          return (
-            '<article class="cbt-card"><strong>' +
-            esc(ex.title || "Common Entrance") +
-            "</strong><span style='color:var(--muted);font-weight:700'>" +
-            esc(ex.subject || "") +
-            '</span><button type="button" class="btn btn-primary" data-start-cbt="' +
-            esc(String(ex.id || "")) +
-            '">Start practice</button></article>'
-          );
-        })
-        .join("");
-    } catch (e) {
-      if (list) list.innerHTML = '<div class="empty">' + esc(e.message || "Could not load exams") + "</div>";
-    }
+    if (!list) return;
+    list.innerHTML =
+      '<article class="cbt-card"><strong>Common Entrance CBT</strong>' +
+      '<p style="color:var(--muted);margin:0.4rem 0 0.85rem;font-weight:600">One combined exam · all 3 papers together (like JAMB)</p>' +
+      '<ol style="margin:0 0 1rem;padding-left:1.2rem;color:var(--muted);font-weight:600">' +
+      CE_SUBJECTS.map(function (s) {
+        return "<li>" + esc(s) + "</li>";
+      }).join("") +
+      "</ol>" +
+      (hasAccess
+        ? ""
+        : '<p style="margin:0 0 0.85rem;font-size:0.9rem;color:#065f46">Unlock with coupon or Paystack when you tap Start.</p>') +
+      '<button type="button" class="btn btn-primary" data-start-ce="1">Start Common Entrance</button></article>';
   }
 
   async function payCbt() {
@@ -933,6 +927,86 @@
       }
     } catch (e) {
       alert(e.message || "Could not start payment.");
+    }
+  }
+
+  function _optKey(opt, oi) {
+    if (opt && typeof opt === "object") {
+      if (opt.key != null) return String(opt.key);
+      if (opt.id != null) return String(opt.id);
+    }
+    return String.fromCharCode(65 + oi);
+  }
+
+  function _optText(opt) {
+    if (opt && typeof opt === "object") return opt.text || opt.label || opt.value || "";
+    return opt;
+  }
+
+  async function startCombinedCe(btn) {
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Starting…";
+    }
+    try {
+      var attempt = await api.api("/api/v1/cbt/practice/start", {
+        method: "POST",
+        body: { exam_type: "COMMON_ENTRANCE", subjects: CE_SUBJECTS.slice() },
+        timeout: 55000,
+        retries: 0,
+      });
+      var attemptId = attempt && attempt.attempt_id;
+      if (!attemptId) throw new Error("Could not start Common Entrance CBT.");
+      var sections = attempt.sections || [];
+      var allQs = [];
+      for (var i = 0; i < sections.length; i++) {
+        var sec = sections[i];
+        if (!sec || !(sec.questions && sec.questions.length)) {
+          sec = await api.api(
+            "/api/v1/cbt/practice/attempts/" +
+              encodeURIComponent(attemptId) +
+              "/sections/" +
+              i,
+            { timeout: 55000, retries: 0 }
+          );
+        }
+        (sec.questions || []).forEach(function (q) {
+          allQs.push({
+            id: q.id,
+            question: q.question_text || q.question || q.prompt,
+            options: (q.options || []).map(function (opt, oi) {
+              return { id: _optKey(opt, oi), text: _optText(opt) };
+            }),
+            subject: sec.subject,
+          });
+        });
+      }
+      if (!allQs.length) {
+        throw new Error(
+          "No questions in the bank yet. Ask admin to upload COMMON_ENTRANCE practice papers for the 3 subjects."
+        );
+      }
+      cbtState.exam = {
+        title: "Common Entrance CBT",
+        questions: allQs,
+      };
+      cbtState.session = { attempt_id: attemptId };
+      cbtState.attemptId = attemptId;
+      cbtState.answers = {};
+      cbtState.index = 0;
+      renderCbtPlayer();
+    } catch (e) {
+      var msg = e.message || "Could not start exam.";
+      if (/402|cbt_package|package|paid|required/i.test(msg) || (e.status === 402)) {
+        await payCbt();
+      } else {
+        alert(msg);
+      }
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "Start Common Entrance";
+      }
     }
   }
 
@@ -952,6 +1026,7 @@
       }
       cbtState.exam = pack;
       cbtState.session = session;
+      cbtState.attemptId = null;
       cbtState.answers = {};
       cbtState.index = 0;
       renderCbtPlayer();
@@ -984,7 +1059,7 @@
     var opts = q.options || q.choices || [];
     if (!Array.isArray(opts) && typeof opts === "object") {
       opts = Object.keys(opts).map(function (k) {
-        return opts[k];
+        return { id: k, text: opts[k] };
       });
     }
     var qid = String(q.id != null ? q.id : i);
@@ -1002,8 +1077,8 @@
       '</div><div class="cbt-opts">' +
       opts
         .map(function (opt, oi) {
-          var val = typeof opt === "object" ? opt.text || opt.label || opt.value || oi : opt;
-          var key = typeof opt === "object" && opt.id != null ? String(opt.id) : String(oi);
+          var val = _optText(opt);
+          var key = _optKey(opt, oi);
           var on = String(selected) === key || String(selected) === String(val);
           return (
             '<button type="button" class="cbt-opt' +
@@ -1053,17 +1128,28 @@
 
   async function submitCbt() {
     try {
-      var sessionId =
-        (cbtState.session && (cbtState.session.id || cbtState.session.session_id)) || "";
-      var body = {
-        answers: cbtState.answers,
-        session_id: sessionId,
-      };
-      var result = await api.api("/api/v1/cbt/sessions/submit", {
-        method: "POST",
-        body: body,
-      });
-      var score = result && (result.score != null ? result.score : result.percentage);
+      var attemptId = cbtState.attemptId || (cbtState.session && cbtState.session.attempt_id);
+      var result;
+      if (attemptId) {
+        result = await api.api(
+          "/api/v1/cbt/practice/attempts/" + encodeURIComponent(attemptId) + "/submit",
+          { method: "POST", body: { answers: cbtState.answers } }
+        );
+      } else {
+        var sessionId =
+          (cbtState.session && (cbtState.session.id || cbtState.session.session_id)) || "";
+        result = await api.api("/api/v1/cbt/sessions/submit", {
+          method: "POST",
+          body: { answers: cbtState.answers, session_id: sessionId },
+        });
+      }
+      var score =
+        result &&
+        (result.percent != null
+          ? result.percent
+          : result.score != null
+            ? result.score
+            : result.percentage);
       alert(
         score != null
           ? "Great job! Score: " + score + (String(score).indexOf("%") >= 0 ? "" : "%")
@@ -1163,6 +1249,13 @@
     if (join) {
       e.preventDefault();
       joinLive(join.getAttribute("data-join-live"));
+      return;
+    }
+
+    var startCe = t.closest("[data-start-ce]");
+    if (startCe) {
+      e.preventDefault();
+      startCombinedCe(startCe);
       return;
     }
 

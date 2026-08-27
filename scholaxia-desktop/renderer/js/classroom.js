@@ -2421,3 +2421,27 @@ window.onload = function () {
     }
   })();
 };
+
+
+function toggleClassroomChrome() {
+  var on = document.body.classList.toggle("classroom-chrome-hidden");
+  try { sessionStorage.setItem("sx_classroom_chrome_hidden", on ? "1" : "0"); } catch (e) {}
+  var btn = document.getElementById("classroom-chrome-toggle");
+  if (btn) btn.textContent = on ? "Show panels" : "Hide panels";
+}
+window.toggleClassroomChrome = toggleClassroomChrome;
+(function initClassroomChrome() {
+  try {
+    var pref = sessionStorage.getItem("sx_classroom_chrome_hidden");
+    if (pref === "0") document.body.classList.remove("classroom-chrome-hidden");
+    else document.body.classList.add("classroom-chrome-hidden");
+  } catch (e) {
+    document.body.classList.add("classroom-chrome-hidden");
+  }
+  var btn = document.getElementById("classroom-chrome-toggle");
+  if (btn) {
+    btn.textContent = document.body.classList.contains("classroom-chrome-hidden")
+      ? "Show panels"
+      : "Hide panels";
+  }
+})();

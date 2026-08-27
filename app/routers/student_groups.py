@@ -673,6 +673,8 @@ async def create_group_post(
         raise HTTPException(status_code=403, detail="Join this group to post.")
     if not group.is_approved:
         raise HTTPException(status_code=403, detail="This group is waiting for admin approval.")
+    if getattr(group, "is_restricted", False):
+        raise HTTPException(status_code=403, detail="This group is temporarily restricted — posting is paused.")
 
     text = (payload.content or "").strip()
     if not text and not payload.media_url:
@@ -801,6 +803,8 @@ async def send_group_message(
     group = await _get_group_or_404(db, gid)
     if not group.is_approved:
         raise HTTPException(status_code=403, detail="This group is waiting for admin approval.")
+    if getattr(group, "is_restricted", False):
+        raise HTTPException(status_code=403, detail="This group is temporarily restricted — chat is paused.")
     text = (payload.content or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="Message cannot be empty.")

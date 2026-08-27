@@ -484,8 +484,41 @@ body {
   display: flex; flex-direction: column; background: #0d1110;
 }
 .board-overlay.view-only .whiteboard-canvas { cursor: default; pointer-events: none; }
+.board-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+  -webkit-overflow-scrolling: touch;
+}
 .whiteboard-canvas {
-  flex: 1; width: 100%; background: #1a2420; cursor: crosshair; touch-action: none;
+  display: block; width: 100%; min-height: 100%;
+  background: #1a2420; cursor: crosshair; touch-action: none;
+}
+.reaction-bar {
+  display: inline-flex; align-items: center; gap: 2px;
+  margin-left: 4px;
+}
+.reaction-btn {
+  min-width: 36px; padding: 6px 8px !important; font-size: 1rem !important;
+}
+.reaction-overlay {
+  pointer-events: none;
+  position: absolute; inset: 0; z-index: 8;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+.reaction-burst {
+  position: absolute;
+  font-size: 2.6rem;
+  animation: reaction-fly 1.6s ease-out forwards;
+  filter: drop-shadow(0 4px 10px rgba(0,0,0,0.45));
+}
+@keyframes reaction-fly {
+  0% { opacity: 0; transform: translateY(28px) scale(0.6); }
+  20% { opacity: 1; transform: translateY(0) scale(1.15); }
+  100% { opacity: 0; transform: translateY(-70px) scale(1); }
 }
 .board-toolbar {
   background: #1a1228; border-top: 1px solid #2e1f4a; padding: 10px 12px;
@@ -571,4 +604,29 @@ body {
 @media (max-width: 900px) {
   .classroom-main { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
   .chat-panel { max-height: 240px; border-left: none; border-top: 1px solid #2e1f4a; }
+}
+
+
+/* Immersive teaching mode — panels/toolbar hidden until tapped */
+body.classroom-chrome-hidden .participants-panel,
+body.classroom-chrome-hidden .attendance-panel,
+body.classroom-chrome-hidden .classroom-toolbar {
+  display: none !important;
+}
+.classroom-chrome-toggle {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 40;
+  border: none;
+  border-radius: 999px;
+  padding: 12px 16px;
+  font-weight: 800;
+  background: #7c3aed;
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(124, 58, 237, 0.35);
+  cursor: pointer;
+}
+body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
+  background: #111827;
 }

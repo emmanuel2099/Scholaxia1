@@ -73,6 +73,7 @@
       <button class="nav-btn" data-page="skills-enroll" onclick="showAdminPage('skills-enroll')">Skills Enrollments</button>
       <button class="nav-btn" data-page="cbt-settings" onclick="showAdminPage('cbt-settings')">CBT Settings</button>
       <button class="nav-btn" data-page="cbt" onclick="showAdminPage('cbt')">CBT Question Bank</button>
+      <button class="nav-btn" data-page="coupons" onclick="showAdminPage('coupons')">CBT Coupons</button>
       <button class="nav-btn" data-page="past-questions" onclick="showAdminPage('past-questions')">Past Questions</button>
       <button class="nav-btn" data-page="school-office" onclick="showAdminPage('school-office')">School office</button>
       <button class="nav-btn" data-page="videos" onclick="showAdminPage('videos')">Video Tutorials</button>
@@ -157,7 +158,39 @@
 
     <section id="page-kind" class="admin-page">
       <div class="page-head"><h2>Kind Learners (Kids)</h2><button class="btn-sm" onclick="loadKind()">Refresh</button></div>
+      <p class="cbt-hint small">Restrict blocks login. Delete permanently removes the kid account.</p>
       <div id="kind-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+    </section>
+
+    <section id="page-coupons" class="admin-page">
+      <div class="page-head">
+        <h2>CBT Coupons</h2>
+        <button class="btn-sm" onclick="loadCbtCoupons()">Refresh</button>
+      </div>
+      <p class="page-desc">Generate package codes for students. Optionally tag a student email so you can find their code later. Redeemers appear after a student uses a code.</p>
+      <div class="panel" style="margin-bottom:16px">
+        <h3>Generate coupon</h3>
+        <div class="form-grid">
+          <label><span>Coupon type</span>
+            <select id="coupon-package">
+              <option value="jamb">JAMB</option>
+              <option value="waec">WAEC</option>
+              <option value="neco">NECO</option>
+              <option value="all">ALL (JAMB + WAEC + NECO)</option>
+              <option value="junior_waec">Junior WAEC</option>
+              <option value="common_entrance">Common Entrance</option>
+            </select>
+          </label>
+          <label><span>Student email (optional)</span><input id="coupon-student-email" type="email" placeholder="student@email.com" /></label>
+          <label><span>How many codes</span><input id="coupon-count" type="number" min="1" max="50" value="1" /></label>
+          <label><span>Max uses each</span><input id="coupon-uses" type="number" min="1" value="1" /></label>
+        </div>
+        <div class="form-row" style="margin:8px 0">
+          <button type="button" class="btn-primary" style="width:auto;padding:12px 22px" onclick="generateCbtCoupons()">Generate coupon</button>
+        </div>
+        <p id="coupon-msg" class="cbt-hint small"></p>
+      </div>
+      <div id="coupon-table" class="data-table-wrap"><div class="loading">Open this page to load coupons…</div></div>
     </section>
 
     <section id="page-kind-games" class="admin-page">
@@ -304,32 +337,7 @@
           <button class="btn-sm" onclick="loadCbt()">Refresh list</button>
         </div>
       </div>
-      <p class="page-desc">Upload questions into the bank. How many each student sees is controlled in <strong>CBT Settings</strong>, not by upload size.</p>
-
-      <div class="panel" style="margin-bottom:16px">
-        <h3>Practice coupon codes</h3>
-        <p class="cbt-hint small">Coupon type unlocks an exam package (JAMB / WAEC / NECO / ALL), not a single subject paper.</p>
-        <div class="form-grid">
-          <label><span>Coupon type</span>
-            <select id="coupon-package">
-              <option value="jamb">JAMB</option>
-              <option value="waec">WAEC</option>
-              <option value="neco">NECO</option>
-              <option value="all">ALL (JAMB + WAEC + NECO)</option>
-              <option value="junior_waec">Junior WAEC</option>
-              <option value="common_entrance">Common Entrance</option>
-            </select>
-          </label>
-          <label><span>How many codes</span><input id="coupon-count" type="number" min="1" max="50" value="1" /></label>
-          <label><span>Max uses each</span><input id="coupon-uses" type="number" min="1" value="1" /></label>
-        </div>
-        <div class="form-row" style="margin:8px 0">
-          <button type="button" class="btn-primary" style="width:auto;padding:12px 22px" onclick="generateCbtCoupons()">Generate coupon</button>
-          <button type="button" class="btn-sm" onclick="loadCbtCoupons()">Refresh list</button>
-        </div>
-        <p id="coupon-msg" class="cbt-hint small"></p>
-        <div id="coupon-table" class="data-table-wrap"></div>
-      </div>
+      <p class="page-desc">Upload questions into the bank. How many each student sees is controlled in <strong>CBT Settings</strong>, not by upload size. Coupon codes are under <strong>CBT Coupons</strong> in the menu.</p>
 
       <div class="panel" style="margin-bottom:16px">
         <h3>Upload CBT practice questions</h3>
@@ -390,6 +398,13 @@
               <option>Music</option>
               <option>Nigerian History</option>
               <option>Physical and Health Education</option>
+              <option>Animal Husbandry</option>
+              <option>Book Keeping</option>
+              <option>Data Processing</option>
+              <option>Fine Arts</option>
+              <option>Home Management</option>
+              <option>Office Practice</option>
+              <option>Physical Education</option>
               <option>Physics</option>
               <option>Social Studies</option>
               <option>Solar Photovoltaic Installation</option>
@@ -489,6 +504,13 @@
               <option>Music</option>
               <option>Nigerian History</option>
               <option>Physical and Health Education</option>
+              <option>Animal Husbandry</option>
+              <option>Book Keeping</option>
+              <option>Data Processing</option>
+              <option>Fine Arts</option>
+              <option>Home Management</option>
+              <option>Office Practice</option>
+              <option>Physical Education</option>
               <option>Physics</option>
               <option>Social Studies</option>
               <option>Solar Photovoltaic Installation</option>
@@ -597,6 +619,13 @@
               <option>Music</option>
               <option>Nigerian History</option>
               <option>Physical and Health Education</option>
+              <option>Animal Husbandry</option>
+              <option>Book Keeping</option>
+              <option>Data Processing</option>
+              <option>Fine Arts</option>
+              <option>Home Management</option>
+              <option>Office Practice</option>
+              <option>Physical Education</option>
               <option>Physics</option>
               <option>Social Studies</option>
               <option>Solar Photovoltaic Installation</option>
@@ -709,6 +738,13 @@
               <option>Music</option>
               <option>Nigerian History</option>
               <option>Physical and Health Education</option>
+              <option>Animal Husbandry</option>
+              <option>Book Keeping</option>
+              <option>Data Processing</option>
+              <option>Fine Arts</option>
+              <option>Home Management</option>
+              <option>Office Practice</option>
+              <option>Physical Education</option>
               <option>Physics</option>
               <option>Social Studies</option>
               <option>Solar Photovoltaic Installation</option>
@@ -890,6 +926,13 @@
               <option>English Language</option>
               <option>Biology</option>
               <option>Chemistry</option>
+              <option>Animal Husbandry</option>
+              <option>Book Keeping</option>
+              <option>Data Processing</option>
+              <option>Fine Arts</option>
+              <option>Home Management</option>
+              <option>Office Practice</option>
+              <option>Physical Education</option>
               <option>Physics</option>
               <option>Economics</option>
               <option>Government</option>
@@ -964,7 +1007,16 @@
         <h2>Manage Student Groups</h2>
         <button class="btn-sm" onclick="loadStudentGroupsAdmin()">Refresh</button>
       </div>
-      <p class="cbt-hint small">See who created each group, approve new groups, read group chat, or delete a group.</p>
+      <p class="cbt-hint small">Create groups for students to join, approve new groups, restrict chat/posts, or delete a group.</p>
+      <div class="panel" style="margin-bottom:1rem;padding:1rem">
+        <h3>Create group (admin)</h3>
+        <div class="form-grid">
+          <label><span>Name *</span><input id="sg-create-name" placeholder="e.g. Holiday SS1–3" /></label>
+          <label><span>Description</span><input id="sg-create-desc" placeholder="What this group is for" /></label>
+        </div>
+        <button type="button" class="btn-sm primary" style="margin-top:8px" onclick="adminCreateStudentGroup()">Create &amp; list for students</button>
+        <p id="sg-create-msg" class="cbt-hint small"></p>
+      </div>
       <div class="form-row" style="margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem">
         <select id="sg-filter" onchange="loadStudentGroupsAdmin()">
           <option value="all">All groups</option>

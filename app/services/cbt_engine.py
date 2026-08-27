@@ -441,6 +441,8 @@ async def ensure_section_built(
             if is_english_subject(subject)
             else int(settings["jamb_questions_per_subject"] or 40)
         )
+    elif board == "COMMON_ENTRANCE":
+        count = int(settings.get("jamb_questions_per_subject") or 40)
     elif board == "WAEC":
         count = int(settings["waec_questions_per_subject"] or 50)
     else:
@@ -481,8 +483,8 @@ async def start_practice_attempt(
     from app.models.user import StudentProfile
 
     board = normalize_board(exam_type)
-    if board not in {"JAMB", "WAEC", "NECO"}:
-        raise ValueError("Exam type must be JAMB, WAEC, or NECO")
+    if board not in {"JAMB", "WAEC", "NECO", "COMMON_ENTRANCE"}:
+        raise ValueError("Exam type must be JAMB, WAEC, NECO, or COMMON_ENTRANCE")
 
     sid = uuid.UUID(str(student_id))
 
@@ -562,6 +564,30 @@ async def start_practice_attempt(
                 else int(settings["jamb_questions_per_subject"] or 40)
             )
             sections.append(section_stub(sub, n))
+    elif board == "COMMON_ENTRANCE":
+        from app.core.subjects import COMMON_ENTRANCE_SUBJECTS
+
+        need = 3
+        profile_ce = list(
+            (profile.ssce_subjects if profile else None)
+            or (profile.selected_subjects if profile else None)
+            or []
+        )
+        if len(subjects_clean) != need:
+            if len(profile_ce) == need:
+                subjects_clean = [str(s).strip() for s in profile_ce if str(s).strip()]
+            else:
+                subjects_clean = list(COMMON_ENTRANCE_SUBJECTS)
+        if len(subjects_clean) != need:
+            raise ValueError(
+                "Common Entrance is one combined CBT with exactly 3 subjects "
+                "(Mathematics/Quantitative Reasoning, English Language/Verbal Reasoning, "
+                "and General Knowledge)."
+            )
+        # Same timing pattern as JAMB: one sitting for all papers
+        duration = int(settings.get("jamb_duration_minutes") or 90)
+        per = int(settings.get("jamb_questions_per_subject") or 40)
+        sections = [section_stub(sub, per) for sub in subjects_clean]
     else:
         profile_ssce = list(
             (profile.ssce_subjects if profile else None)

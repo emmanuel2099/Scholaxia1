@@ -6,12 +6,12 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; script-src-attr 'unsafe-inline'; connect-src * blob: data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src * data: blob:; media-src * blob: data:; worker-src 'self' blob:; frame-src 'self' blob:;" />
   <title>Live Classroom — Scholaxia</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/classroom.css?v=20260826a" />
-  <link rel="stylesheet" href="css/responsive.css?v=20260826a" />
+  <link rel="stylesheet" href="css/classroom.css?v=20260804i" />
+  <link rel="stylesheet" href="css/responsive.css?v=20260804i" />
 </head>
-<body>
+<body class="classroom-chrome-hidden">
 
-<div class="classroom-shell">
+<div class="classroom-shell" id="classroom">
   <div id="audio-unlock-banner" class="audio-unlock-banner hidden" role="alert">
     <strong>Tap to hear audio</strong>
     <button type="button" class="btn-sm" onclick="unlockClassAudio()">Enable sound</button>
@@ -151,13 +151,17 @@
       <button type="button" class="btn-sm host-only hidden" id="btn-give-access-all" onclick="giveAccessToWaitingStudents()">Allow raised hands to speak</button>
     </div>
   </footer>
+
+  <button type="button" id="classroom-chrome-toggle" class="classroom-chrome-toggle" onclick="toggleClassroomChrome()" aria-controls="participants-panel" title="Show or hide classroom panels">
+    Show panels
+  </button>
 </div>
 
-<script src="js/api.js?v=20260826a"></script>
-<script src="js/classroom-bridge.js?v=20260826a"></script>
-<script src="js/saved-live.js?v=20260826a"></script>
+<script src="js/api.js?v=20260804i"></script>
+<script src="js/classroom-bridge.js?v=20260804i"></script>
+<script src="js/saved-live.js?v=20260804i"></script>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.9.3/dist/livekit-client.umd.js"></script>
-<script src="js/classroom-livekit.js?v=20260826a"></script>
-<script src="js/classroom.js?v=20260826a"></script>
+<script src="js/classroom-livekit.js?v=20260804i"></script>
+<script src="js/classroom.js?v=20260804i"></script>
 </body>
 </html>

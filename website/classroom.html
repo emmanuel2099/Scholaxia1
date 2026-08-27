@@ -9,9 +9,9 @@
   <link rel="stylesheet" href="css/classroom.css?v=20260804i" />
   <link rel="stylesheet" href="css/responsive.css?v=20260804i" />
 </head>
-<body>
+<body class="classroom-chrome-hidden">
 
-<div class="classroom-shell">
+<div class="classroom-shell" id="classroom">
   <div id="audio-unlock-banner" class="audio-unlock-banner hidden" role="alert">
     <strong>Tap to hear audio</strong>
     <button type="button" class="btn-sm" onclick="unlockClassAudio()">Enable sound</button>
@@ -151,6 +151,10 @@
       <button type="button" class="btn-sm host-only hidden" id="btn-give-access-all" onclick="giveAccessToWaitingStudents()">Allow raised hands to speak</button>
     </div>
   </footer>
+
+  <button type="button" id="classroom-chrome-toggle" class="classroom-chrome-toggle" onclick="toggleClassroomChrome()" aria-controls="participants-panel" title="Show or hide classroom panels">
+    Show panels
+  </button>
 </div>
 
 <script src="js/api.js?v=20260804i"></script>

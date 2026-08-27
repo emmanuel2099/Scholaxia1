@@ -605,3 +605,28 @@ body {
   .classroom-main { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
   .chat-panel { max-height: 240px; border-left: none; border-top: 1px solid #2e1f4a; }
 }
+
+
+/* Immersive teaching mode — panels/toolbar hidden until tapped */
+body.classroom-chrome-hidden .participants-panel,
+body.classroom-chrome-hidden .attendance-panel,
+body.classroom-chrome-hidden .classroom-toolbar {
+  display: none !important;
+}
+.classroom-chrome-toggle {
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 40;
+  border: none;
+  border-radius: 999px;
+  padding: 12px 16px;
+  font-weight: 800;
+  background: #7c3aed;
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(124, 58, 237, 0.35);
+  cursor: pointer;
+}
+body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
+  background: #111827;
+}
