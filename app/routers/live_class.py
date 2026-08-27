@@ -843,55 +843,63 @@ async def join_class(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """Join a live class and return LiveKit credentials.
+
+    Snapshots ORM fields into plain values early so rollback / expired instances
+    cannot trigger SQLAlchemy async greenlet errors (xd2s).
+    """
     import logging
+    from sqlalchemy import text as sql_text
 
     log = logging.getLogger(__name__)
     try:
-        result = await db.execute(select(LiveClass).where(LiveClass.id == parse_uuid(class_id)))
+        class_uuid = parse_uuid(class_id)
+        student_uid = parse_uuid(current_user["sub"])
+        sid = str(student_uid)
+
+        result = await db.execute(select(LiveClass).where(LiveClass.id == class_uuid))
         live_class = result.scalar_one_or_none()
         now = naive_utc_now()
         if not live_class or not _class_is_active(live_class, now):
             raise HTTPException(status_code=404, detail="Class not live")
 
+        # Snapshot before any later rollback can expire the ORM row
+        room_id = str(live_class.room_id or "")
+        title = live_class.title or "Live class"
+        subject = live_class.subject or ""
+        teacher_id = str(live_class.teacher_id)
+        visibility = _class_visibility(live_class)
+        is_live = bool(live_class.is_live)
+        end_time_iso = live_class.end_time.isoformat() if live_class.end_time else None
+
+        profile = None
         try:
             prof_res = await db.execute(
-                select(StudentProfile).where(StudentProfile.user_id == parse_uuid(current_user["sub"]))
+                select(StudentProfile).where(StudentProfile.user_id == student_uid)
             )
             profile = prof_res.scalar_one_or_none()
-        except Exception:
-            try:
-                await db.rollback()
-            except Exception:
-                pass
-            profile = None
+        except Exception as prof_exc:
+            log.warning("student profile load skipped: %s", prof_exc)
 
-        can_access, detail = await _student_can_access_class(
-            db, current_user["sub"], live_class, profile
-        )
+        can_access, detail = await _student_can_access_class(db, sid, live_class, profile)
         if not can_access:
-            # Subject-matched classes still allow join when the class is publicly listed as live
-            # and the student can already see it on the Live page.
-            vis = _class_visibility(live_class)
-            if vis not in (
-                LiveClassVisibility.public.value,
-                LiveClassVisibility.private.value,
-                LiveClassVisibility.school_group.value,
-                LiveClassVisibility.class_level.value,
-            ):
-                # Soften subject gate: if class is live, let authenticated students in
-                if live_class.is_live:
-                    can_access = True
-                    detail = ""
+            if visibility == LiveClassVisibility.subject.value and is_live:
+                can_access = True
+                detail = ""
             if not can_access:
                 raise HTTPException(status_code=403, detail=detail or "You cannot join this class.")
 
-        if not live_class.is_live:
-            live_class.is_live = True
+        if not is_live:
+            try:
+                live_class.is_live = True
+                await db.flush()
+                is_live = True
+            except Exception:
+                is_live = True  # still allow token join
 
-        # Private / public / school-group classes are free — never charge students.
-        requires_plan = live_class_requires_subscription(live_class.visibility)
-        if requires_plan and not is_free_live_class(live_class.visibility):
-            access = await get_live_access_info(db, current_user["sub"], class_id)
+        requires_plan = live_class_requires_subscription(visibility)
+        if requires_plan and not is_free_live_class(visibility):
+            access = await get_live_access_info(db, sid, class_id)
             if not access["can_join"]:
                 if access.get("active_plan") and access.get("sessions_left", 0) <= 0:
                     raise HTTPException(
@@ -905,114 +913,124 @@ async def join_class(
         else:
             requires_plan = False
 
-        student_uid = parse_uuid(current_user["sub"])
         from app.models.user import User
-        teacher_res = await db.execute(select(User).where(User.id == live_class.teacher_id))
-        teacher_user = teacher_res.scalar_one_or_none()
-        teacher_meta = {
-            "teacher_id": str(live_class.teacher_id),
-            "teacher_name": teacher_user.full_name if teacher_user else "Teacher",
-        }
 
-        existing_att = None
+        teacher_name = "Teacher"
         try:
-            existing = await db.execute(
-                select(ClassAttendance).where(
-                    ClassAttendance.live_class_id == live_class.id,
-                    ClassAttendance.student_id == student_uid,
-                    ClassAttendance.is_removed == False,  # noqa: E712
-                )
-            )
-            existing_att = existing.scalar_one_or_none()
-        except Exception as att_exc:
-            log.warning("attendance query with is_removed failed: %s", att_exc)
-            try:
-                await db.rollback()
-            except Exception:
-                pass
-            existing = await db.execute(
-                select(ClassAttendance).where(
-                    ClassAttendance.live_class_id == live_class.id,
-                    ClassAttendance.student_id == student_uid,
-                )
-            )
-            existing_att = existing.scalar_one_or_none()
+            teacher_res = await db.execute(select(User).where(User.id == parse_uuid(teacher_id)))
+            teacher_user = teacher_res.scalar_one_or_none()
+            if teacher_user and teacher_user.full_name:
+                teacher_name = teacher_user.full_name
+        except Exception:
+            pass
+        teacher_meta = {"teacher_id": teacher_id, "teacher_name": teacher_name}
 
-        if existing_att is not None:
-            sid = current_user["sub"]
-            existing_att.left_at = None
-            try:
-                existing_att.is_muted = False
-            except Exception:
-                pass
-            await db.flush()
-            try:
-                from app.services.live_class_room import grant_mic, grant_camera
-                grant_mic(live_class.room_id, sid)
-                grant_camera(live_class.room_id, sid)
-            except Exception:
-                pass
-            payload = _livekit_token_payload(
-                live_class.room_id,
-                sid,
-                current_user.get("email") or "student",
-                can_publish=True,
-                role="student",
-            )
-            return {
-                "class_id": str(live_class.id),
-                **payload,
-                **teacher_meta,
-                "title": live_class.title,
-                "subject": live_class.subject,
-                "is_live": live_class.is_live,
-                "end_time": live_class.end_time.isoformat() if live_class.end_time else None,
-                "mic_allowed": True,
-                "camera_allowed": True,
-            }
-
-        if requires_plan:
-            await consume_live_session(db, current_user["sub"])
-
-        attendance = ClassAttendance(
-            live_class_id=live_class.id,
-            student_id=student_uid,
-            is_muted=False,
-        )
-        db.add(attendance)
+        # Attendance via plain SQL — avoids missing is_removed column + ORM expire issues
+        existing_id = None
         try:
-            await db.flush()
-        except Exception as flush_exc:
-            log.warning("attendance insert failed (%s); continuing join without attendance row", flush_exc)
+            row = (
+                await db.execute(
+                    sql_text(
+                        """
+                        SELECT id FROM class_attendances
+                        WHERE live_class_id = :cid AND student_id = :sid
+                          AND COALESCE(is_removed, false) = false
+                        ORDER BY joined_at DESC NULLS LAST
+                        LIMIT 1
+                        """
+                    ),
+                    {"cid": str(class_uuid), "sid": sid},
+                )
+            ).first()
+            if row:
+                existing_id = row[0]
+        except Exception:
             try:
-                await db.rollback()
+                row = (
+                    await db.execute(
+                        sql_text(
+                            """
+                            SELECT id FROM class_attendances
+                            WHERE live_class_id = :cid AND student_id = :sid
+                            ORDER BY joined_at DESC NULLS LAST
+                            LIMIT 1
+                            """
+                        ),
+                        {"cid": str(class_uuid), "sid": sid},
+                    )
+                ).first()
+                if row:
+                    existing_id = row[0]
+            except Exception as att_exc:
+                log.warning("attendance lookup skipped: %s", att_exc)
+
+        if existing_id is not None:
+            try:
+                await db.execute(
+                    sql_text(
+                        """
+                        UPDATE class_attendances
+                        SET left_at = NULL, is_muted = FALSE
+                        WHERE id = :aid
+                        """
+                    ),
+                    {"aid": str(existing_id)},
+                )
+                await db.flush()
+            except Exception as upd_exc:
+                log.warning("attendance rejoin update skipped: %s", upd_exc)
+        else:
+            if requires_plan:
+                await consume_live_session(db, sid)
+            try:
+                await db.execute(
+                    sql_text(
+                        """
+                        INSERT INTO class_attendances (id, live_class_id, student_id, joined_at, is_muted, is_removed)
+                        VALUES (gen_random_uuid(), :cid, :sid, NOW(), FALSE, FALSE)
+                        """
+                    ),
+                    {"cid": str(class_uuid), "sid": sid},
+                )
+                await db.flush()
             except Exception:
-                pass
+                try:
+                    await db.execute(
+                        sql_text(
+                            """
+                            INSERT INTO class_attendances (id, live_class_id, student_id, joined_at, is_muted)
+                            VALUES (gen_random_uuid(), :cid, :sid, NOW(), FALSE)
+                            """
+                        ),
+                        {"cid": str(class_uuid), "sid": sid},
+                    )
+                    await db.flush()
+                except Exception as ins_exc:
+                    log.warning("attendance insert skipped: %s", ins_exc)
 
         try:
             from app.services.live_class_room import grant_mic, grant_camera
-            grant_mic(live_class.room_id, current_user["sub"])
-            grant_camera(live_class.room_id, current_user["sub"])
+            grant_mic(room_id, sid)
+            grant_camera(room_id, sid)
         except Exception:
             pass
 
         payload = _livekit_token_payload(
-            live_class.room_id,
-            current_user["sub"],
+            room_id,
+            sid,
             current_user.get("email") or "student",
             can_publish=True,
             role="student",
         )
-
         return {
-            "class_id": str(live_class.id),
-            "title": live_class.title,
-            "subject": live_class.subject,
+            "class_id": str(class_uuid),
+            "title": title,
+            "subject": subject,
             **teacher_meta,
             **payload,
             "is_muted": False,
-            "is_live": live_class.is_live,
-            "end_time": live_class.end_time.isoformat() if live_class.end_time else None,
+            "is_live": is_live,
+            "end_time": end_time_iso,
             "mic_allowed": True,
             "camera_allowed": True,
         }
@@ -1020,10 +1038,6 @@ async def join_class(
         raise
     except Exception as exc:
         log.exception("join_class failed: %s", exc)
-        try:
-            await db.rollback()
-        except Exception:
-            pass
         raise HTTPException(
             status_code=500,
             detail=f"Could not join live class: {exc}",
