@@ -6,9 +6,10 @@
     <title>Scholaxia — Teacher</title>
     <link rel="icon" type="image/png" href="media/logo-main.png" />
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="css/teacher.css?v=10" />
+    <link rel="stylesheet" href="css/teacher.css?v=20260827w" />
   </head>
   <body class="teacher-body">
+    <div class="sidebar-backdrop" id="sidebarBackdrop" hidden></div>
     <div class="teacher-shell" id="teacherShell">
       <div class="sidebar-wrap">
         <aside class="teacher-side" aria-label="Teacher navigation">
@@ -38,7 +39,6 @@
       </div>
 
       <div class="teacher-main">
-        <div class="sidebar-backdrop" id="sidebarBackdrop" hidden></div>
         <header class="teacher-top">
           <button type="button" class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Open menu">☰</button>
           <button type="button" class="back-btn" id="backBtn" aria-label="Go back" hidden>←</button>
@@ -78,10 +78,11 @@
                 <label class="vis-opt"><input type="radio" name="host-visibility" value="school_group" /> School group</label>
               </div>
               <div id="hostPrivateWrap" class="extra-panel" hidden>
-                <label>Invite by email
+                <strong style="font-size:0.9rem">Private invite</strong>
+                <label>Student emails (one per line)
                   <textarea id="hostInviteEmails" rows="3" placeholder="student1@email.com&#10;student2@email.com"></textarea>
                 </label>
-                <p class="hint">Enter one student email per line. They must already have a Scholaxia student account. Each invited student gets the class access code.</p>
+                <p class="hint">Each invited student must already have a Scholaxia account. They get the class access code.</p>
                 <label>Or pick assigned students
                   <select id="hostInvitedStudents" multiple size="4"></select>
                 </label>
@@ -426,7 +427,7 @@
       </div>
     </div>
 
-    <script src="js/api.js?v=20260827e"></script>
-    <script src="js/teacher-app.js?v=20260827v"></script>
+    <script src="js/api.js?v=20260827w"></script>
+    <script src="js/teacher-app.js?v=20260827w"></script>
   </body>
 </html>

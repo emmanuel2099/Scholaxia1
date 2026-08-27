@@ -250,9 +250,19 @@ button { cursor: pointer; border: 0; background: none; color: inherit; }
 }
 .extra-panel {
   background: #f8fafc; border: 1px dashed #d4d4d8; border-radius: 14px; padding: 0.85rem;
+  display: grid; gap: 0.55rem; margin: 0.65rem 0 0.85rem;
 }
 .extra-panel[hidden] { display: none !important; }
 .hint { color: var(--muted); font-size: 0.78rem; margin-top: 0.35rem; }
+#hostInviteEmails {
+  width: 100%;
+  min-height: 4.5rem;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.65rem 0.75rem;
+  font: inherit;
+}
 
 .form-grid {
   display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.7rem;
@@ -482,7 +492,7 @@ code.join-code {
   pointer-events: none;
 }
 
-.sidebar-backdrop { display: none; }
+.sidebar-backdrop { display: none; pointer-events: none; }
 
 @media (max-width: 1100px) {
   .form-grid, .materials-grid, .quick-grid { grid-template-columns: 1fr 1fr; }
@@ -497,6 +507,7 @@ code.join-code {
     position: relative;
     overflow: visible;
     z-index: 200;
+    pointer-events: none;
   }
   .teacher-main { position: relative; z-index: 1; }
   .teacher-shell, .teacher-shell.sidebar-collapsed { grid-template-columns: 1fr; }
@@ -504,24 +515,42 @@ code.join-code {
     position: fixed; left: 0; top: 0; bottom: 0; width: min(300px, 86vw) !important;
     min-width: min(300px, 86vw) !important;
     z-index: 210; transform: translateX(-105%); transition: transform 0.25s ease;
-    opacity: 1 !important; pointer-events: auto !important;
+    opacity: 1 !important; pointer-events: none !important;
     padding: 1rem 0.85rem !important; overflow: auto !important;
     -webkit-overflow-scrolling: touch;
   }
-  body.nav-open .teacher-side { transform: translateX(0); }
+  body.nav-open .sidebar-wrap { pointer-events: auto; }
+  body.nav-open .teacher-side {
+    transform: translateX(0);
+    pointer-events: auto !important;
+  }
   .teacher-shell.sidebar-collapsed .teacher-side {
     width: min(300px, 86vw) !important;
     min-width: min(300px, 86vw) !important;
     opacity: 1 !important;
+  }
+  /* Only cover the screen while the drawer is open — never block taps when closed */
+  .sidebar-backdrop,
+  .sidebar-backdrop[hidden] {
+    display: none !important;
+    pointer-events: none !important;
+  }
+  body.nav-open .sidebar-backdrop {
+    display: block !important;
+    position: fixed;
+    inset: 0;
+    background: rgba(15,23,42,0.45);
+    z-index: 150;
     pointer-events: auto !important;
   }
-  .sidebar-backdrop {
-    display: block; position: fixed; inset: 0;
-    background: rgba(15,23,42,0.45); z-index: 150;
-  }
-  .sidebar-backdrop[hidden] { display: none !important; }
   .nav-btn { touch-action: manipulation; pointer-events: auto !important; }
   .user-meta, .role-pill { display: none; }
   .form-grid, .materials-grid, .quick-grid { grid-template-columns: 1fr; }
   .teacher-content { padding: 1rem 0.85rem 5rem; }
+  .host-card, .btn-row, .vis-row, .vis-opt, .btn {
+    position: relative;
+    z-index: 2;
+    pointer-events: auto;
+    touch-action: manipulation;
+  }
 }

@@ -1,7 +1,16 @@
 /* Scholaxia Teacher website — full desktop/app feature set */
 (function () {
   var api = window.ScholaxiaAPI;
-  if (!api || typeof api.requireAuth !== "function") return;
+  if (!api || typeof api.requireAuth !== "function") {
+    try {
+      var el = document.querySelector(".teacher-content") || document.body;
+      el.insertAdjacentHTML(
+        "afterbegin",
+        '<div class="empty" style="margin:1rem">Teacher app failed to load. Hard refresh this page.</div>'
+      );
+    } catch (e0) {}
+    return;
+  }
   if (!api.requireAuth(["teacher", "admin"])) return;
 
   var TITLES = {
@@ -62,13 +71,21 @@
   function closeMobileNav() {
     document.body.classList.remove("nav-open");
     var bd = $("sidebarBackdrop");
-    if (bd) bd.hidden = true;
+    if (bd) {
+      bd.hidden = true;
+      bd.setAttribute("hidden", "");
+      bd.style.pointerEvents = "none";
+    }
   }
 
   function openMobileNav() {
     document.body.classList.add("nav-open");
     var bd = $("sidebarBackdrop");
-    if (bd) bd.hidden = false;
+    if (bd) {
+      bd.hidden = false;
+      bd.removeAttribute("hidden");
+      bd.style.pointerEvents = "auto";
+    }
   }
 
   function updateBackBtn() {
@@ -154,8 +171,30 @@
 
   function onVisibilityChange() {
     var vis = (document.querySelector('input[name="host-visibility"]:checked') || {}).value || "public";
-    if ($("hostPrivateWrap")) $("hostPrivateWrap").hidden = vis !== "private";
-    if ($("hostSchoolWrap")) $("hostSchoolWrap").hidden = vis !== "school_group";
+    var priv = $("hostPrivateWrap");
+    var school = $("hostSchoolWrap");
+    if (priv) {
+      if (vis === "private") {
+        priv.hidden = false;
+        priv.removeAttribute("hidden");
+        priv.style.display = "grid";
+      } else {
+        priv.hidden = true;
+        priv.setAttribute("hidden", "");
+        priv.style.display = "none";
+      }
+    }
+    if (school) {
+      if (vis === "school_group") {
+        school.hidden = false;
+        school.removeAttribute("hidden");
+        school.style.display = "grid";
+      } else {
+        school.hidden = true;
+        school.setAttribute("hidden", "");
+        school.style.display = "none";
+      }
+    }
   }
 
   function getHostPayload(goLiveNow) {
@@ -1638,6 +1677,20 @@
 
   document.querySelectorAll('input[name="host-visibility"]').forEach(function (r) {
     r.addEventListener("change", onVisibilityChange);
+    r.addEventListener("click", onVisibilityChange);
+  });
+  document.querySelectorAll(".vis-opt").forEach(function (lab) {
+    lab.addEventListener("click", function () {
+      setTimeout(onVisibilityChange, 0);
+    });
+  });
+  onVisibilityChange();
+
+  document.querySelectorAll(".nav-btn[data-page]").forEach(function (btn) {
+    btn.addEventListener("click", function (e) {
+      e.preventDefault();
+      showPage(btn.getAttribute("data-page"));
+    });
   });
 
   if ($("hostScheduleBtn")) $("hostScheduleBtn").addEventListener("click", function () { hostClass(false); });
@@ -1781,7 +1834,9 @@
   bindFileDrop("texamFile", "texamFileName");
   bindFileDrop("matFile", "matFileName");
 
-  /* boot */
+  /* boot — never leave an invisible drawer overlay blocking taps */
+  closeMobileNav();
+  onVisibilityChange();
   var user = api.getUser();
   setUserChip(user.name, user.email);
   loadProfile();
