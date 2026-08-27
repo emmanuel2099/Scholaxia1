@@ -1177,7 +1177,12 @@
     if (!el) return;
     el.innerHTML = '<div class="loading">Loading…</div>';
     try {
-      var channels = await api.api("/api/v1/community/channels");
+      var channels = await api.api("/api/v1/community/channels", {
+        preferXhr: true,
+        awaitWake: true,
+        timeout: 90000,
+        retries: 3,
+      });
       var ann = (channels || []).find(function (c) {
         return c.type === "teacher_announcement";
       });
@@ -1187,7 +1192,8 @@
       }
       announceChannelId = ann.id;
       var posts = await api.api(
-        "/api/v1/community/posts?channel_id=" + encodeURIComponent(ann.id) + "&limit=30"
+        "/api/v1/community/posts?channel_id=" + encodeURIComponent(ann.id) + "&limit=30",
+        { preferXhr: true, awaitWake: true, timeout: 90000, retries: 3 }
       );
       if (!Array.isArray(posts)) {
         posts = (posts && (posts.posts || posts.items || posts.results)) || [];
@@ -1243,6 +1249,10 @@
     try {
       await api.api("/api/v1/community/posts", {
         method: "POST",
+        preferXhr: true,
+        awaitWake: true,
+        timeout: 90000,
+        retries: 3,
         body: {
           channel_id: announceChannelId,
           content: text,

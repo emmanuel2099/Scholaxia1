@@ -274,11 +274,17 @@
 
   async function joinLive(id) {
     try {
+      if (api.wakeServer) {
+        try {
+          await api.wakeServer(90000);
+        } catch (w) {}
+      }
       var res = await api.api("/api/v1/live-classes/" + encodeURIComponent(id) + "/join", {
         method: "POST",
         preferXhr: true,
-        timeout: 60000,
-        retries: 3,
+        awaitWake: true,
+        timeout: 120000,
+        retries: 4,
       });
       var classId = (res && (res.class_id || res.classId || res.id)) || id;
       var roomId = (res && (res.room_id || res.channel_id)) || "";

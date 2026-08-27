@@ -67,9 +67,42 @@
       return "Server took too long. Wait 30 seconds and try again (Render may be waking up).";
     }
     if (/failed to fetch|networkerror|load failed/i.test(msg)) {
-      return "Cannot reach the Scholaxia API. Wait a minute if the server is restarting, then try again.";
+      return "Cannot reach the Scholaxia API. Wait a minute if the server is waking up, then tap Try again.";
     }
     return msg || "Request failed";
+  }
+
+  function pathNeedsReliableTransport(path) {
+    return /\/auth\/login$|\/cbt\/coupons\/redeem$|\/payments\/paystack\/|\/cbt\/practice\/|\/students\/(setup-exam|me|subjects)$|\/live-classes\/|\/student-groups\/|\/community\//i.test(
+      path || ""
+    );
+  }
+
+  function pathNeedsAwaitWake(path) {
+    return /\/live-classes\/[^/]+\/join|\/live-classes\/join-by-code|\/student-groups\/|\/community\//i.test(
+      path || ""
+    );
+  }
+
+  async function ensureAwakeBlocking(ms) {
+    var budget = ms || 90000;
+    var start = Date.now();
+    // Force a fresh wake — ignore short cache for join/groups/community.
+    wakePromise = null;
+    lastWakeOkAt = 0;
+    var ok = await wakeServer(Math.min(budget, 90000));
+    if (ok) {
+      lastWakeOkAt = Date.now();
+      return true;
+    }
+    // Second attempt if first failed (cold Render).
+    var left = budget - (Date.now() - start);
+    if (left > 5000) {
+      await new Promise(function (r) { setTimeout(r, 1500); });
+      ok = await wakeServer(left);
+      if (ok) lastWakeOkAt = Date.now();
+    }
+    return !!ok;
   }
 
   function formPost(path, fields, timeout) {
@@ -305,43 +338,73 @@
     if (token && !options.noAuth && !headers.Authorization) {
       headers.Authorization = "Bearer " + token;
     }
-    var tries = options.retries == null ? (method === "POST" ? 2 : 2) : options.retries;
+    var reliable = pathNeedsReliableTransport(path);
+    var tries = options.retries == null ? (reliable ? 4 : 2) : options.retries;
     var lastErr = null;
-    var timeoutMs = options.timeout || (method === "GET" ? 45000 : 45000);
+    var timeoutMs =
+      options.timeout ||
+      (reliable ? (method === "POST" ? 120000 : 90000) : 45000);
 
-    // Background wake only — do not await
-    try {
-      ensureAwake();
-    } catch (w) {}
-
-    // Prefer XHR for flaky browser fetch (CBT, profile save, payments)
-    var preferXhr =
-      !!options.preferXhr ||
-      /\/auth\/login$|\/cbt\/coupons\/redeem$|\/payments\/paystack\/initialize$|\/payments\/paystack\/verify$|\/cbt\/practice\/home$|\/cbt\/practice\/start$|\/students\/setup-exam$|\/students\/me$|\/students\/subjects$|\/live-classes\/[^/]+\/join$/i.test(
-        path
-      );
-    if (preferXhr) {
+    var shouldBlockWake =
+      options.awaitWake === true || (options.awaitWake !== false && pathNeedsAwaitWake(path));
+    if (shouldBlockWake) {
       try {
-        return await xhrJson(path, headers, Object.assign({}, options, { method: method, timeout: timeoutMs }));
-      } catch (xhrFirstErr) {
-        var xm = (xhrFirstErr && xhrFirstErr.message) || "";
-        var networkish =
-          !xhrFirstErr.status ||
-          /failed to fetch|networkerror|load failed|aborted/i.test(xm) ||
-          xhrFirstErr.name === "AbortError";
-        if (!networkish) throw xhrFirstErr;
-        lastErr = xhrFirstErr;
+        await ensureAwakeBlocking(Math.max(timeoutMs, 90000));
+      } catch (w0) {}
+    } else {
+      try {
+        ensureAwake();
+      } catch (w) {}
+    }
+
+    var preferXhr = !!options.preferXhr || reliable;
+    // Prefer XHR with its own retry loop — mobile Safari / GitHub Pages often
+    // fail fetch() with "Load failed" even when the API is up.
+    if (preferXhr) {
+      for (var xi = 0; xi <= tries; xi++) {
+        try {
+          if (xi > 0) {
+            wakePromise = null;
+            lastWakeOkAt = 0;
+            try {
+              await ensureAwakeBlocking(Math.min(90000, timeoutMs));
+            } catch (wX) {}
+            await new Promise(function (resolve) {
+              setTimeout(resolve, 800 * xi);
+            });
+          }
+          var xhrData = await xhrJson(
+            path,
+            headers,
+            Object.assign({}, options, { method: method, timeout: timeoutMs })
+          );
+          lastWakeOkAt = Date.now();
+          return xhrData;
+        } catch (xhrFirstErr) {
+          lastErr = xhrFirstErr;
+          var xm = (xhrFirstErr && xhrFirstErr.message) || "";
+          var networkish =
+            !xhrFirstErr.status ||
+            /failed to fetch|networkerror|load failed|aborted/i.test(xm) ||
+            xhrFirstErr.name === "AbortError";
+          if (!networkish) throw xhrFirstErr;
+          if (xi === tries) break;
+        }
       }
     }
 
     for (var i = 0; i <= tries; i++) {
       var t = null;
       try {
-        if (i > 0) {
+        if (i > 0 || preferXhr) {
           wakePromise = null;
           lastWakeOkAt = 0;
-          try { await ensureAwake(); } catch (w2) {}
-          await new Promise(function (resolve) { setTimeout(resolve, 700 * i); });
+          try {
+            await ensureAwakeBlocking(60000);
+          } catch (w2) {}
+          await new Promise(function (resolve) {
+            setTimeout(resolve, 900 * (i + 1));
+          });
         }
         t = fetchTimeout(timeoutMs);
         var res = await fetch(API_BASE + path, {
@@ -366,14 +429,6 @@
         if (t) t.clear();
       }
     }
-    // XHR fallback for any method — some browsers report Failed to fetch on GET too (CBT home, etc.)
-    if (lastErr) {
-      try {
-        return await xhrJson(path, headers, Object.assign({}, options, { method: method, timeout: timeoutMs }));
-      } catch (xhrErr) {
-        lastErr = xhrErr || lastErr;
-      }
-    }
     if (lastErr) {
       var friendly = friendlyFetchError(lastErr);
       if (friendly && friendly !== lastErr.message) {
@@ -384,7 +439,7 @@
         throw wrapped;
       }
     }
-    throw lastErr;
+    throw lastErr || new Error("Request failed");
   }
 
   function xhrJson(path, headers, options) {

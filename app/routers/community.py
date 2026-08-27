@@ -47,13 +47,38 @@ async def list_channels(db: AsyncSession = Depends(get_db)):
       1. General Channel  (Art + Science + Commercial students — all in one)
       2. Teacher Announcement Channel (read-only for students)
     """
+    # Self-heal: ensure both default channels exist
+    for name, ctype, readonly, desc in (
+        ("General Channel", ChannelType.general, False, "Main channel for all students."),
+        (
+            "Teacher Announcements",
+            ChannelType.teacher_announcement,
+            True,
+            "Official announcements. Students read only.",
+        ),
+    ):
+        exists = await db.execute(
+            select(CommunityChannel).where(CommunityChannel.channel_type == ctype)
+        )
+        if not exists.scalar_one_or_none():
+            db.add(
+                CommunityChannel(
+                    name=name,
+                    channel_type=ctype,
+                    description=desc,
+                    is_readonly_for_students=readonly,
+                )
+            )
+            await db.flush()
+    await db.commit()
+
     result = await db.execute(select(CommunityChannel))
     channels = result.scalars().all()
     return [
         {
             "id": str(c.id),
             "name": c.name,
-            "type": c.channel_type,
+            "type": c.channel_type.value if hasattr(c.channel_type, "value") else c.channel_type,
             "is_readonly_for_students": c.is_readonly_for_students,
         }
         for c in channels
@@ -1002,7 +1027,17 @@ async def list_announcements(
     )
     channel = ch_res.scalar_one_or_none()
     if not channel:
-        return []
+        # Self-heal if seed never ran
+        channel = CommunityChannel(
+            name="Announcements",
+            channel_type=ChannelType.teacher_announcement,
+            description="Official announcements. Students read only.",
+            is_readonly_for_students=True,
+        )
+        db.add(channel)
+        await db.flush()
+        await db.commit()
+        await db.refresh(channel)
     return await _fetch_channel_posts(str(channel.id), limit, offset, current_user, db)
 
 

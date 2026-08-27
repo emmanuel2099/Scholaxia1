@@ -3357,7 +3357,12 @@
     if (upWrap) upWrap.innerHTML = loadingHtml("Loading upcoming classes…");
 
     api
-      .api("/api/v1/live-classes/?status=live", { timeout: 60000, retries: 3 })
+      .api("/api/v1/live-classes/?status=live", {
+        preferXhr: true,
+        awaitWake: true,
+        timeout: 90000,
+        retries: 4,
+      })
       .then(function (data) {
         var items = firstArray(data, ["classes", "items", "results", "live_classes"]);
         if (!liveWrap) return;
@@ -3375,7 +3380,12 @@
       });
 
     api
-      .api("/api/v1/live-classes/?status=upcoming", { timeout: 60000, retries: 3 })
+      .api("/api/v1/live-classes/?status=upcoming", {
+        preferXhr: true,
+        awaitWake: true,
+        timeout: 90000,
+        retries: 3,
+      })
       .then(function (data) {
         var items = firstArray(data, ["classes", "items", "results", "live_classes"]);
         if (!upWrap) return;
@@ -3392,14 +3402,24 @@
     var joinBtn = e.target.closest("[data-join-live]");
     if (!joinBtn) return;
     var id = joinBtn.dataset.joinLive;
+    if (!id) return;
+    var originalLabel = joinBtn.textContent || "Join now";
     joinBtn.disabled = true;
-    joinBtn.textContent = "Joining…";
-    api
-      .api("/api/v1/live-classes/" + id + "/join", {
-        method: "POST",
-        preferXhr: true,
-        timeout: 60000,
-        retries: 3,
+    joinBtn.textContent = "Waking server…";
+    var joinPromise = Promise.resolve();
+    if (api.wakeServer) {
+      joinPromise = api.wakeServer(90000).catch(function () { return null; });
+    }
+    joinPromise
+      .then(function () {
+        joinBtn.textContent = "Joining…";
+        return api.api("/api/v1/live-classes/" + encodeURIComponent(id) + "/join", {
+          method: "POST",
+          preferXhr: true,
+          awaitWake: true,
+          timeout: 120000,
+          retries: 4,
+        });
       })
       .then(function (res) {
         showLiveJoinResult(res || {});
@@ -3409,7 +3429,7 @@
       })
       .then(function () {
         joinBtn.disabled = false;
-        joinBtn.textContent = "Join";
+        joinBtn.textContent = /join/i.test(originalLabel) ? originalLabel : "Join now";
       });
   });
 
@@ -4316,9 +4336,10 @@
     var wrap = $("communityFeed");
     if (!wrap) return;
     wrap.innerHTML = loadingHtml("Loading #general…");
+    var opts = { preferXhr: true, awaitWake: true, timeout: 90000, retries: 4 };
     Promise.all([
-      api.api("/api/v1/community/channels").catch(function () { return []; }),
-      api.api("/api/v1/community/feed?limit=50").catch(function (err) { throw err; }),
+      api.api("/api/v1/community/channels", opts).catch(function () { return []; }),
+      api.api("/api/v1/community/feed?limit=50", opts),
     ])
       .then(function (pair) {
         var channels = Array.isArray(pair[0]) ? pair[0] : [];
@@ -4343,8 +4364,22 @@
     var wrap = $("communityAnnouncements");
     if (!wrap) return;
     wrap.innerHTML = loadingHtml("Loading announcements…");
+    var opts = { preferXhr: true, awaitWake: true, timeout: 90000, retries: 4 };
     api
-      .api("/api/v1/community/announcements?limit=40")
+      .api("/api/v1/community/announcements?limit=40", opts)
+      .catch(function () {
+        // Fallback: resolve announcement channel then list posts
+        return api.api("/api/v1/community/channels", opts).then(function (channels) {
+          var ann = (channels || []).find(function (c) {
+            return c.type === "teacher_announcement" || c.type === "announcement";
+          });
+          if (!ann) return [];
+          return api.api(
+            "/api/v1/community/posts?channel_id=" + encodeURIComponent(ann.id) + "&limit=40",
+            opts
+          );
+        });
+      })
       .then(function (data) {
         var items = Array.isArray(data) ? data : firstArray(data, ["items", "results", "posts", "announcements"]);
         if (!items.length) {
@@ -4362,10 +4397,11 @@
     var wrap = $("communityTabGroups");
     if (!wrap) return;
     wrap.innerHTML = loadingHtml("Loading groups…");
+    var opts = { preferXhr: true, awaitWake: true, timeout: 90000, retries: 4 };
     Promise.all([
-      api.api("/api/v1/student-groups/mine").catch(function () { return []; }),
-      api.api("/api/v1/student-groups/community-listed").catch(function () {
-        return api.api("/api/v1/student-groups/discover").catch(function () { return []; });
+      api.api("/api/v1/student-groups/mine", opts).catch(function () { return []; }),
+      api.api("/api/v1/student-groups/community-listed", opts).catch(function () {
+        return api.api("/api/v1/student-groups/discover", opts).catch(function () { return []; });
       }),
     ]).then(function (pair) {
       var mine = firstArray(pair[0], ["items", "groups", "results"]);
@@ -4529,10 +4565,18 @@
     if (mineWrap) mineWrap.innerHTML = loadingHtml("Loading your groups…");
     if (commWrap) commWrap.innerHTML = loadingHtml("Loading community groups…");
 
-    api
-      .api("/api/v1/student-groups/mine")
+    var wake = api.wakeServer ? api.wakeServer(90000).catch(function () { return null; }) : Promise.resolve();
+    wake.then(function () {
+      return api.api("/api/v1/student-groups/mine", {
+        preferXhr: true,
+        awaitWake: true,
+        timeout: 90000,
+        retries: 4,
+      });
+    })
       .then(function (data) {
         var items = firstArray(data, ["items", "results", "groups"]);
+        if (Array.isArray(data)) items = data;
         if (!mineWrap) return;
         mineWrap.innerHTML = items.length
           ? items.map(function (g) { return renderGroupCard(g, true); }).join("")
@@ -4542,10 +4586,23 @@
         if (mineWrap) mineWrap.innerHTML = errorHtml(errMsg(err), "groups");
       });
 
-    api
-      .api("/api/v1/student-groups/community-listed")
-      .catch(function () {
-        return api.api("/api/v1/student-groups/discover");
+    wake
+      .then(function () {
+        return api
+          .api("/api/v1/student-groups/community-listed", {
+            preferXhr: true,
+            awaitWake: true,
+            timeout: 90000,
+            retries: 4,
+          })
+          .catch(function () {
+            return api.api("/api/v1/student-groups/discover", {
+              preferXhr: true,
+              awaitWake: true,
+              timeout: 90000,
+              retries: 3,
+            });
+          });
       })
       .then(function (data) {
         var items = firstArray(data, ["items", "results", "groups"]);

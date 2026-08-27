@@ -833,7 +833,7 @@ async def join_class(
     current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(LiveClass).where(LiveClass.id == class_id))
+    result = await db.execute(select(LiveClass).where(LiveClass.id == parse_uuid(class_id)))
     live_class = result.scalar_one_or_none()
     now = naive_utc_now()
     if not live_class or not _class_is_active(live_class, now):
@@ -1400,16 +1400,25 @@ async def list_live_classes(
             if _class_visibility(c) == LiveClassVisibility.public.value
         ]
 
-    # Fetch teacher names
+    # Fetch teacher names (parse UUIDs — string IN() can miss rows on Postgres)
     teacher_ids = list({str(c.teacher_id) for c in classes if c.teacher_id})
     teachers_map = {}
     if teacher_ids:
         from app.models.user import User
         try:
-            users_res = await db.execute(
-                select(User).where(User.id.in_(teacher_ids))
-            )
-            teachers_map = {str(u.id): u.full_name for u in users_res.scalars().all()}
+            teacher_uuids = []
+            for tid in teacher_ids:
+                try:
+                    teacher_uuids.append(parse_uuid(tid))
+                except Exception:
+                    pass
+            if teacher_uuids:
+                users_res = await db.execute(
+                    select(User).where(User.id.in_(teacher_uuids))
+                )
+                teachers_map = {
+                    str(u.id): (u.full_name or "Teacher") for u in users_res.scalars().all()
+                }
         except Exception:
             teachers_map = {}
 
@@ -1420,7 +1429,7 @@ async def list_live_classes(
             "subject": c.subject,
             "description": c.description,
             "teacher_id": str(c.teacher_id),
-            "teacher_name": teachers_map.get(str(c.teacher_id), "Unknown"),
+            "teacher_name": teachers_map.get(str(c.teacher_id), "Teacher"),
             "start_time": c.start_time,
             "end_time": c.end_time,
             "is_live": c.is_live,
