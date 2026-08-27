@@ -294,6 +294,15 @@
         retries: 2,
       });
       if (res && res.is_live === true) {
+        // One more force attempt — stuck is_live rows flip the banner back to 1
+        res = await api.api("/api/v1/live-classes/" + encodeURIComponent(id) + "/end", {
+          method: "POST",
+          preferXhr: true,
+          timeout: 60000,
+          retries: 1,
+        });
+      }
+      if (res && res.is_live === true) {
         throw new Error("Server did not end the class. Try again.");
       }
       // Optimistic UI: flip this card off LIVE immediately, then refresh from API
@@ -320,6 +329,19 @@
       }
       alert("Class ended.");
       await loadLive();
+      // If list still reports live for this id, force end once more then refresh
+      var still = document.querySelector('[data-end-class="' + id + '"]');
+      if (still) {
+        try {
+          await api.api("/api/v1/live-classes/" + encodeURIComponent(id) + "/end", {
+            method: "POST",
+            preferXhr: true,
+            timeout: 60000,
+            retries: 1,
+          });
+          await loadLive();
+        } catch (e3) { /* ignore */ }
+      }
     } catch (e) {
       alert(e.message || "Could not end class.");
       try {
@@ -376,6 +398,15 @@
         var endMs = new Date(raw).getTime();
         if (!isNaN(endMs) && endMs <= Date.now()) return false;
       } catch (e) { /* ignore */ }
+    }
+    if (c.start_time) {
+      try {
+        var sraw = String(c.start_time).trim();
+        if (sraw && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(sraw)) sraw += "Z";
+        var startMs = new Date(sraw).getTime();
+        // Match server heal: sessions older than 4h are not "live now"
+        if (!isNaN(startMs) && Date.now() - startMs > 4 * 60 * 60 * 1000) return false;
+      } catch (e2) { /* ignore */ }
     }
     return true;
   }

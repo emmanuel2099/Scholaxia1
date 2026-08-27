@@ -3264,8 +3264,37 @@
   var liveRingTimer = null;
   var liveRingLimitTimer = null;
   var knownUnreadCodes = {};
-  var LIVE_RING_MAX_MS = 45000;
+  var LIVE_RING_MAX_MS = 20000;
   var LIVE_RING_BURST_MS = 4000;
+  var LIVE_RING_SILENCE_MS = 24 * 60 * 60 * 1000;
+
+  function loadSilencedInviteIds() {
+    try {
+      var raw = localStorage.getItem("sia_silenced_live_invites");
+      var parsed = raw ? JSON.parse(raw) : {};
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  function rememberSilencedInviteIds(ids) {
+    try {
+      var map = loadSilencedInviteIds();
+      var until = Date.now() + LIVE_RING_SILENCE_MS;
+      (ids || []).forEach(function (id) {
+        if (id) map[String(id)] = until;
+      });
+      localStorage.setItem("sia_silenced_live_invites", JSON.stringify(map));
+    } catch (e) {}
+  }
+
+  function isInviteSilenced(id) {
+    if (!id) return false;
+    var map = loadSilencedInviteIds();
+    var until = Number(map[String(id)] || 0);
+    return until > Date.now();
+  }
 
   function stopLiveClassRing() {
     if (liveRingTimer) {
@@ -3284,6 +3313,30 @@
     } catch (e) {}
     var bar = $("liveInviteRingBar");
     if (bar) bar.hidden = true;
+  }
+
+  function silenceLiveClassRing() {
+    try {
+      localStorage.setItem("sia_stop_live_ring", String(Date.now()));
+    } catch (e) {}
+    stopLiveClassRing();
+    // Mark invites read + remember ids so refresh does not restart the tone
+    api
+      .api("/api/v1/live-classes/access-codes/mine")
+      .then(function (data) {
+        var items = firstArray(data, ["codes", "items", "results"]);
+        var ids = items
+          .map(function (c) {
+            return String(c.id || c.code || c.access_code || "");
+          })
+          .filter(Boolean);
+        rememberSilencedInviteIds(ids);
+        return api.api("/api/v1/live-classes/access-codes/mark-read", {
+          method: "POST",
+          body: {},
+        });
+      })
+      .catch(function () {});
   }
 
   function playLiveClassRingBurst() {
@@ -3306,16 +3359,13 @@
     liveRingTimer = setInterval(playLiveClassRingBurst, LIVE_RING_BURST_MS);
     // Hard stop so ringtone is never endless while a class stays live.
     liveRingLimitTimer = setTimeout(function () {
-      stopLiveClassRing();
-      try {
-        localStorage.setItem("sia_stop_live_ring", String(Date.now()));
-      } catch (e) {}
+      silenceLiveClassRing();
     }, LIVE_RING_MAX_MS);
   }
 
   function pollLiveInvitesForRing() {
     var stopped = Number(localStorage.getItem("sia_stop_live_ring") || "0");
-    if (stopped && Date.now() - stopped < 60000) {
+    if (stopped && Date.now() - stopped < LIVE_RING_SILENCE_MS) {
       stopLiveClassRing();
       return;
     }
@@ -3325,6 +3375,8 @@
         var items = firstArray(data, ["codes", "items", "results"]);
         var unread = items.filter(function (c) {
           if (c.is_class_live === false) return false;
+          var id = String(c.id || c.code || c.access_code || "");
+          if (isInviteSilenced(id)) return false;
           return c.is_read === false || c.read === false;
         });
         var hasNew = false;
@@ -5181,8 +5233,7 @@
 
   if ($("stopLiveRingBtn")) {
     $("stopLiveRingBtn").addEventListener("click", function () {
-      localStorage.setItem("sia_stop_live_ring", String(Date.now()));
-      stopLiveClassRing();
+      silenceLiveClassRing();
     });
   }
   pollLiveInvitesForRing();

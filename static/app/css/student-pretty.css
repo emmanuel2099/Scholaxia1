@@ -1020,15 +1020,29 @@ body.app-body {
   gap: 0.65rem 1rem;
   padding: 0.85rem 1.1rem;
   border-radius: 16px;
-  background: linear-gradient(135deg, #4c1d95, #7c3aed);
+  background: linear-gradient(135deg, #0f766e, #0e7490);
   color: #fff;
   margin-bottom: 1rem;
-  box-shadow: 0 10px 28px rgba(124, 58, 237, 0.28);
+  box-shadow: 0 10px 28px rgba(14, 116, 144, 0.28);
+}
+.live-invite-ring-bar--fixed {
+  position: fixed;
+  left: 50%;
+  bottom: 1.1rem;
+  transform: translateX(-50%);
+  z-index: 12000;
+  width: min(36rem, calc(100vw - 1.5rem));
+  margin: 0;
 }
 .live-invite-ring-bar[hidden] { display: none !important; }
 .live-invite-ring-bar strong { font-size: 0.95rem; }
 .live-invite-ring-bar span { opacity: 0.9; font-size: 0.85rem; flex: 1 1 12rem; }
 .live-invite-ring-bar .btn { border: 0; }
+#stopLiveRingBtn {
+  background: #fff;
+  color: #0f766e;
+  font-weight: 700;
+}
 .sia-hero { background: linear-gradient(135deg, #6d28d9 0%, #7c3aed 40%, #db2777 120%); }
 .community-hero { background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 55%, #0ea5e9 130%); }
 .groups-hero { background: linear-gradient(135deg, #5b21b6 0%, #7c3aed 50%, #ec4899 130%); }

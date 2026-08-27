@@ -9,7 +9,7 @@
     <link rel="icon" type="image/png" href="media/logo-main.png" />
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="css/app.css?v=15" />
-    <link rel="stylesheet" href="css/student-pretty.css?v=20260827a" />
+    <link rel="stylesheet" href="css/student-pretty.css?v=20260827u" />
     <script>
       // Drop stale caches so CBT updates are not stuck on old JS
       try {
@@ -229,13 +229,6 @@
                 <div class="hub-hero-actions">
                   <button type="button" class="btn btn-primary" data-goto="subscription">Get a live plan</button>
                 </div>
-              </div>
-
-              <div id="liveInviteRingBar" class="live-invite-ring-bar" hidden>
-                <strong>Class invitation ringing…</strong>
-                <span>A teacher invited you to a live class.</span>
-                <button type="button" class="btn btn-mini" id="stopLiveRingBtn">Silence</button>
-                <button type="button" class="btn btn-primary btn-mini" data-goto="live">Open Live Class</button>
               </div>
 
               <div id="liveJoinResult" class="live-join-result" style="display:none"></div>
@@ -808,9 +801,17 @@
       </div>
     </div>
 
-    <script src="js/api.js?v=20260827q"></script>
+    <!-- Fixed overlay so Stop sound works from Home / any page, not only Live Class -->
+    <div id="liveInviteRingBar" class="live-invite-ring-bar live-invite-ring-bar--fixed" hidden>
+      <strong>Class invitation ringing…</strong>
+      <span>Tap Stop sound to silence this invite.</span>
+      <button type="button" class="btn btn-mini" id="stopLiveRingBtn">Stop sound</button>
+      <button type="button" class="btn btn-primary btn-mini" data-goto="live" id="openLiveFromRingBtn">Open Live Class</button>
+    </div>
+
+    <script src="js/api.js?v=20260827u"></script>
     <script src="js/paystack.js?v=9"></script>
     <script src="js/games.js?v=20260827a"></script>
-    <script src="js/student.js?v=20260827q"></script>
+    <script src="js/student.js?v=20260827u"></script>
   </body>
 </html>
