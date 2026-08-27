@@ -287,15 +287,22 @@
     if (!id) return;
     if (!confirm("End this class for everyone?")) return;
     try {
-      await api.api("/api/v1/live-classes/" + encodeURIComponent(id) + "/end", {
+      var res = await api.api("/api/v1/live-classes/" + encodeURIComponent(id) + "/end", {
         method: "POST",
         preferXhr: true,
         timeout: 60000,
         retries: 2,
       });
-      loadLive();
+      if (res && res.is_live === true) {
+        throw new Error("Server did not end the class. Try again.");
+      }
+      alert("Class ended.");
+      await loadLive();
     } catch (e) {
       alert(e.message || "Could not end class.");
+      try {
+        await loadLive();
+      } catch (e2) { /* ignore */ }
     }
   }
 

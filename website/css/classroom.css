@@ -620,7 +620,6 @@ body {
   .chat-panel { max-height: 240px; border-left: none; border-top: 1px solid #2e1f4a; }
 }
 
-
 /* Immersive teaching mode — panels/toolbar hidden until tapped */
 body.classroom-chrome-hidden .participants-panel,
 body.classroom-chrome-hidden .attendance-panel,
@@ -643,4 +642,144 @@ body.classroom-chrome-hidden .classroom-toolbar {
 }
 body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
   background: #111827;
+}
+
+/* —— Mobile classroom layout (stop video/panel fighting) —— */
+@media (max-width: 900px) {
+  html, body {
+    height: 100%;
+    height: 100dvh;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+  .classroom-shell {
+    height: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
+  }
+  .classroom-top {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+  .classroom-title-wrap {
+    order: -1;
+    flex: 1 1 100%;
+  }
+  .classroom-title-wrap h1 {
+    font-size: 1rem;
+  }
+  .btn-back,
+  .btn-end-class,
+  .btn-save-class-top {
+    padding: 8px 10px;
+    font-size: 0.82rem;
+  }
+  .classroom-layout {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: minmax(0, 1fr) auto;
+    overflow: hidden;
+  }
+  .participants-panel {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    top: auto;
+    height: min(52vh, 420px);
+    max-height: 52vh;
+    z-index: 35;
+    border-right: none;
+    border-top: 1px solid #2e1f4a;
+    border-radius: 16px 16px 0 0;
+    transform: translateY(110%);
+    transition: transform 0.22s ease;
+    box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.45);
+  }
+  body:not(.classroom-chrome-hidden) .participants-panel {
+    transform: translateY(0);
+    display: flex !important;
+  }
+  body.classroom-chrome-hidden .participants-panel {
+    transform: translateY(110%);
+    display: flex !important; /* keep in DOM for animation, still off-screen */
+    pointer-events: none;
+  }
+  .main-stage-wrap {
+    min-height: 0;
+    overflow: hidden;
+    width: 100%;
+    max-width: 100vw;
+  }
+  .video-stage,
+  #video-stage {
+    position: relative;
+    width: 100% !important;
+    max-width: 100vw !important;
+    height: 100%;
+    min-height: 0;
+    overflow: hidden !important;
+  }
+  .video-remote,
+  #video-remote,
+  .video-tile,
+  #video-local {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    overflow: hidden !important;
+  }
+  .video-remote video,
+  .video-tile video,
+  .remote-user,
+  .remote-user video {
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    object-fit: contain !important;
+    display: block;
+  }
+  .board-overlay {
+    inset: 0;
+    width: 100%;
+    max-width: 100vw;
+    overflow: auto;
+  }
+  .whiteboard-canvas {
+    max-width: 100%;
+  }
+  .classroom-toolbar {
+    position: sticky;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 30;
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    gap: 8px;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+    background: rgba(15, 10, 26, 0.96);
+    border-top: 1px solid #2e1f4a;
+  }
+  body:not(.classroom-chrome-hidden) .classroom-toolbar {
+    display: flex !important;
+  }
+  .classroom-toolbar .vc-btn {
+    flex: 0 0 auto;
+  }
+  .classroom-chrome-toggle {
+    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+    right: 12px;
+    z-index: 45;
+    padding: 10px 14px;
+    font-size: 0.85rem;
+  }
+  body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  }
 }

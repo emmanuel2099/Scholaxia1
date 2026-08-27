@@ -165,7 +165,27 @@ function saveLiveSession(sess) {
 }
 
 function isTeacherRole() {
-  return liveSession && (liveSession.role === "teacher" || liveSession.role === "admin");
+  if (!liveSession) return false;
+  var role = String(liveSession.role || "").toLowerCase();
+  if (role === "teacher" || role === "admin" || role === "host") return true;
+  try {
+    var stored = String(localStorage.getItem("sia_role") || "").toLowerCase().replace(/^userrole\./, "");
+    if ((stored === "teacher" || stored === "admin") && liveSession.teacher_id) {
+      var selfId = String(liveSession.identity || liveSession.user_id || "");
+      if (selfId && String(liveSession.teacher_id) === selfId) return true;
+    }
+    if (stored === "teacher" || stored === "admin") {
+      // Teacher dashboard entry usually sets role=teacher; recover if it was dropped.
+      if (role === "" || role === "student") {
+        var tok = localStorage.getItem("sia_teacher_token") || localStorage.getItem("sia_admin_token") || "";
+        if (tok) {
+          liveSession.role = stored === "admin" ? "admin" : "teacher";
+          return true;
+        }
+      }
+    }
+  } catch (e) { /* ignore */ }
+  return false;
 }
 
 function setStatus(text) {
@@ -863,6 +883,9 @@ function renderClassroomStudents(students) {
   if (typeof window.reattachParticipantVideos === "function") {
     window.reattachParticipantVideos();
   }
+  if (typeof flushPendingStudentVideos === "function") {
+    flushPendingStudentVideos();
+  }
   bindParticipantActionClicks();
 }
 
@@ -894,8 +917,19 @@ function setParticipantCameraOn(studentId, on) {
 
 function attachParticipantCameraVideo(studentId, track) {
   if (!studentId || !track) return;
+  window.__pendingStudentVideos = window.__pendingStudentVideos || {};
   var slot = findParticipantVideoSlot(studentId);
-  if (!slot) return;
+  if (!slot) {
+    // Participant card not rendered yet — keep track and attach after roster refresh
+    window.__pendingStudentVideos[studentId] = track;
+    if (typeof loadClassroomStudents === "function") {
+      try {
+        loadClassroomStudents(true);
+      } catch (e) { /* ignore */ }
+    }
+    return;
+  }
+  delete window.__pendingStudentVideos[studentId];
   // Reuse existing attached video element when possible (avoids flicker at scale).
   var existing = slot.querySelector("video.participant-video-el");
   if (existing && existing.srcObject) {
@@ -925,6 +959,13 @@ function attachParticipantCameraVideo(studentId, track) {
   if (playPromise && playPromise.catch) {
     playPromise.catch(function () { /* autoplay policy */ });
   }
+}
+
+function flushPendingStudentVideos() {
+  var pending = window.__pendingStudentVideos || {};
+  Object.keys(pending).forEach(function (studentId) {
+    attachParticipantCameraVideo(studentId, pending[studentId]);
+  });
 }
 
 function detachParticipantCameraVideo(studentId) {
@@ -1006,6 +1047,9 @@ function refreshLiveKitRoster() {
   loadClassroomStudents(true);
   if (typeof window.reattachParticipantVideos === "function") {
     window.reattachParticipantVideos();
+  }
+  if (typeof flushPendingStudentVideos === "function") {
+    flushPendingStudentVideos();
   }
 }
 
@@ -1256,8 +1300,33 @@ function addChatMessage(name, text, isSystem) {
 }
 
 function sendBoardEvent(action, data) {
+  var payload = JSON.stringify({ event: "whiteboard", action: action, data: data || {} });
+  if (liveSocket && liveSocket.readyState === WebSocket.OPEN) {
+    try {
+      liveSocket.send(payload);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+  // Queue briefly so clear/image/text are not lost while chat reconnects
+  window.__boardEventQueue = window.__boardEventQueue || [];
+  window.__boardEventQueue.push(payload);
+  if (window.__boardEventQueue.length > 80) {
+    window.__boardEventQueue = window.__boardEventQueue.slice(-80);
+  }
+  return false;
+}
+
+function flushBoardEventQueue() {
   if (!liveSocket || liveSocket.readyState !== WebSocket.OPEN) return;
-  liveSocket.send(JSON.stringify({ event: "whiteboard", action: action, data: data }));
+  var q = window.__boardEventQueue || [];
+  window.__boardEventQueue = [];
+  q.forEach(function (payload) {
+    try {
+      liveSocket.send(payload);
+    } catch (e) { /* ignore */ }
+  });
 }
 
 function showBoardForStudent(forceOpen) {
@@ -1377,20 +1446,42 @@ function redrawBoard() {
 }
 
 function loadBoardImage(url, onLoad, onError) {
-  if (board.imageCache[url]) {
-    onLoad(board.imageCache[url]);
+  if (!url) {
+    if (onError) onError();
+    return;
+  }
+  var abs = String(url);
+  if (abs.indexOf("http") !== 0 && abs.indexOf("blob:") !== 0 && abs.indexOf("data:") !== 0) {
+    var base = (typeof API_BASE === "string" && API_BASE) || "https://scholaxia1.onrender.com";
+    if (abs.charAt(0) === "/") abs = base.replace(/\/$/, "") + abs;
+    else abs = base.replace(/\/$/, "") + "/" + abs;
+  }
+  if (board.imageCache[abs] || board.imageCache[url]) {
+    onLoad(board.imageCache[abs] || board.imageCache[url]);
     return;
   }
   var img = new Image();
-  img.crossOrigin = "anonymous";
+  // Prefer without CORS taint first — board display does not need canvas export
   img.onload = function () {
+    board.imageCache[abs] = img;
     board.imageCache[url] = img;
     onLoad(img);
   };
   img.onerror = function () {
-    if (onError) onError();
+    // Retry once with crossOrigin for CDNs that require it
+    var img2 = new Image();
+    img2.crossOrigin = "anonymous";
+    img2.onload = function () {
+      board.imageCache[abs] = img2;
+      board.imageCache[url] = img2;
+      onLoad(img2);
+    };
+    img2.onerror = function () {
+      if (onError) onError();
+    };
+    img2.src = abs;
   };
-  img.src = url;
+  img.src = abs;
 }
 
 function fitImageOnBoard(img) {
@@ -1446,7 +1537,8 @@ function placeBoardImage(url, broadcast) {
   return new Promise(function (resolve, reject) {
     loadBoardImage(url, function (img) {
       var box = fitImageOnBoard(img);
-      addBoardImage({ url: url, x: box.x, y: box.y, w: box.w, h: box.h }, broadcast)
+      var abs = img.src || url;
+      addBoardImage({ url: abs, x: box.x, y: box.y, w: box.w, h: box.h }, broadcast)
         .then(resolve).catch(reject);
     }, function () {
       reject(new Error("Could not load image"));
@@ -1716,10 +1808,24 @@ function clearBoardCanvas(broadcast) {
   if (!board.ctx || !board.canvas) return;
   board.history = [];
   board.liveText = "";
+  board.liveTextId = "";
   var inp = document.getElementById("board-type-input");
   if (inp) inp.value = "";
+  try {
+    board.ctx.clearRect(0, 0, board.canvas.width, board.canvas.height);
+  } catch (e) { /* ignore */ }
   redrawBoard();
-  if (broadcast !== false && board.canDraw) sendBoardEvent("clear", {});
+  if (broadcast !== false && board.canDraw) {
+    sendBoardEvent("clear", { ts: Date.now() });
+    // Also clear any in-progress live typing on remotes
+    sendBoardEvent("text_stream", {
+      id: "cleared",
+      x: board.textX || 40,
+      y: board.textY || 40,
+      text: "",
+      size: board.fontSize,
+    });
+  }
 }
 
 function clearBoard() {
@@ -1842,7 +1948,20 @@ function handleBoardMessage(msg) {
     }).catch(function () { /* ignore */ });
     return;
   }
-  if (msg.action === "clear") clearBoardCanvas(false);
+  if (msg.action === "clear") {
+    board.history = [];
+    board.liveText = "";
+    board.liveTextId = "";
+    var inpClear = document.getElementById("board-type-input");
+    if (inpClear) inpClear.value = "";
+    if (board.ctx && board.canvas) {
+      try {
+        board.ctx.clearRect(0, 0, board.canvas.width, board.canvas.height);
+      } catch (e) { /* ignore */ }
+    }
+    redrawBoard();
+    return;
+  }
 }
 
 function connectChat() {
@@ -1881,6 +2000,7 @@ function connectChat() {
     var videoOk = window.LiveClassMedia && LiveClassMedia.isJoined && LiveClassMedia.isJoined();
     setStatus(videoOk ? "Connected — video + chat" : "Connected — chat ready");
     addChatMessage("", "You joined the class. Use the chat to talk with everyone.", true);
+    flushBoardEventQueue();
     if (!isTeacherRole()) {
       liveSocket.send(JSON.stringify({ event: "request_board_sync" }));
     }

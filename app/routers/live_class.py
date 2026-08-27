@@ -379,10 +379,10 @@ def _user_uid(user_id: str) -> int:
 
 
 def _can_manage_class(current_user: dict, live_class: LiveClass) -> bool:
-    role = current_user.get("role")
+    role = str(current_user.get("role") or "").strip().lower().replace("userrole.", "")
     if role == "admin":
         return True
-    return str(live_class.teacher_id) == current_user["sub"]
+    return str(live_class.teacher_id) == str(current_user.get("sub") or "")
 
 
 async def _active_attendance(
@@ -1820,62 +1820,113 @@ async def end_class(
     Teacher ends the class. Sets is_live=False, records end_time.
     Optionally attach a recording URL.
     """
-    result = await db.execute(select(LiveClass).where(LiveClass.id == class_id))
+    import logging
+    from sqlalchemy import text as sql_text
+
+    log = logging.getLogger(__name__)
+    try:
+        cid = parse_uuid(class_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid class id")
+
+    result = await db.execute(select(LiveClass).where(LiveClass.id == cid))
     live_class = result.scalar_one_or_none()
     if not live_class:
         raise HTTPException(status_code=404, detail="Class not found")
     if not _can_manage_class(current_user, live_class):
         raise HTTPException(status_code=403, detail="Not your class")
 
-    live_class.is_live = False
-    live_class.end_time = naive_utc_now()
+    room_id = str(live_class.room_id or "")
+    subject = live_class.subject or ""
+    title = live_class.title or "Live class"
+    ended_at = naive_utc_now()
+
+    # Force-end via SQL so a later attendance/access-code failure cannot leave the class LIVE
+    try:
+        await db.execute(
+            sql_text(
+                """
+                UPDATE live_classes
+                SET is_live = FALSE, end_time = :ended
+                WHERE id = :cid
+                """
+            ),
+            {"cid": str(cid), "ended": ended_at},
+        )
+        await db.flush()
+    except Exception as upd_exc:
+        log.exception("end_class SQL update failed: %s", upd_exc)
+        live_class.is_live = False
+        live_class.end_time = ended_at
+        await db.flush()
+
     if recording_url:
-        live_class.recording_url = recording_url
+        try:
+            live_class.recording_url = recording_url
+            await db.flush()
+        except Exception:
+            pass
 
-    # Mark all still-in-class students as left
-    att_res = await db.execute(
-        select(ClassAttendance).where(
-            ClassAttendance.live_class_id == class_id,
-            ClassAttendance.left_at.is_(None),
+    try:
+        await db.execute(
+            sql_text(
+                """
+                UPDATE class_attendances
+                SET left_at = :ended
+                WHERE live_class_id = :cid AND left_at IS NULL
+                """
+            ),
+            {"cid": str(cid), "ended": ended_at},
         )
-    )
-    for att in att_res.scalars().all():
-        att.left_at = naive_utc_now()
+        await db.flush()
+    except Exception as att_exc:
+        log.warning("end_class attendance update skipped: %s", att_exc)
 
-    from sqlalchemy import delete as sql_delete
+    try:
+        from sqlalchemy import delete as sql_delete
 
-    await db.execute(
-        sql_delete(LiveClassAccessCodeDelivery).where(
-            LiveClassAccessCodeDelivery.live_class_id == live_class.id
+        await db.execute(
+            sql_delete(LiveClassAccessCodeDelivery).where(
+                LiveClassAccessCodeDelivery.live_class_id == cid
+            )
         )
-    )
+        await db.flush()
+    except Exception as del_exc:
+        log.warning("end_class access-code cleanup skipped: %s", del_exc)
 
     try:
         from app.websockets.live_class_ws import broadcast as ws_broadcast
-        await ws_broadcast(
-            live_class.room_id,
-            {
-                "event": "class_ended",
-                "class_id": class_id,
-                "message": "Class ended by the teacher.",
-            },
-        )
+
+        if room_id:
+            await ws_broadcast(
+                room_id,
+                {
+                    "event": "class_ended",
+                    "class_id": str(cid),
+                    "message": "Class ended by the teacher.",
+                },
+            )
     except Exception:
         pass
 
     try:
         await send_subject_notification(
             db,
-            live_class.subject,
+            subject,
             title="Live class ended",
-            body=f"{live_class.title} has ended.",
+            body=f"{title} has ended.",
             notification_type="live_class",
-            data={"class_id": str(live_class.id), "event": "class_ended"},
+            data={"class_id": str(cid), "event": "class_ended"},
         )
     except Exception:
         pass
 
-    return {"message": "Class ended", "class_id": class_id, "end_time": live_class.end_time}
+    return {
+        "message": "Class ended",
+        "class_id": str(cid),
+        "is_live": False,
+        "end_time": ended_at.isoformat() if ended_at else None,
+    }
 
 
 @router.post("/{class_id}/leave")
