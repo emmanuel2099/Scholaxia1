@@ -1179,9 +1179,9 @@
     try {
       var channels = await api.api("/api/v1/community/channels", {
         preferXhr: true,
-        awaitWake: true,
-        timeout: 90000,
-        retries: 3,
+        awaitWake: false,
+        timeout: 25000,
+        retries: 1,
       });
       var ann = (channels || []).find(function (c) {
         return c.type === "teacher_announcement";
@@ -1193,7 +1193,7 @@
       announceChannelId = ann.id;
       var posts = await api.api(
         "/api/v1/community/posts?channel_id=" + encodeURIComponent(ann.id) + "&limit=30",
-        { preferXhr: true, awaitWake: true, timeout: 90000, retries: 3 }
+        { preferXhr: true, awaitWake: false, timeout: 25000, retries: 1 }
       );
       if (!Array.isArray(posts)) {
         posts = (posts && (posts.posts || posts.items || posts.results)) || [];
@@ -1250,9 +1250,9 @@
       await api.api("/api/v1/community/posts", {
         method: "POST",
         preferXhr: true,
-        awaitWake: true,
-        timeout: 90000,
-        retries: 3,
+        awaitWake: false,
+        timeout: 30000,
+        retries: 1,
         body: {
           channel_id: announceChannelId,
           content: text,

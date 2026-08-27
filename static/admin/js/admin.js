@@ -69,20 +69,35 @@ async function adminLogin(e) {
   }
   btn.disabled = true;
   btn.textContent = "Signing in…";
+  // Wake in background — do not block the login button for 45s
+  if (typeof wakeAdminServer === "function") {
+    try { wakeAdminServer(); } catch (wakeErr) { /* continue */ }
+  }
   try {
-    if (typeof wakeAdminServer === "function") {
-      try { await wakeAdminServer(); } catch (wakeErr) { /* continue */ }
-    }
-    var res = await fetch(API_BASE + "/api/v1/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: email, password: password }),
-      signal: fetchTimeout(90000),
-    });
-    var data = await res.json().catch(function () { return {}; });
-    if (!res.ok) {
-      err.textContent = formatApiError(data.detail) || "Login failed.";
-      return false;
+    var data = null;
+    try {
+      data = await adminXhrJson("/api/v1/auth/login", {
+        method: "POST",
+        timeout: 25000,
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ email: email, password: password }),
+      });
+    } catch (xhrErr) {
+      if (xhrErr && xhrErr.status && xhrErr.status >= 400 && xhrErr.status < 500) throw xhrErr;
+      var res = await fetch(API_BASE + "/api/v1/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email, password: password }),
+        signal: fetchTimeout(25000),
+      });
+      data = await res.json().catch(function () { return {}; });
+      if (!res.ok) {
+        var msg = formatApiError(data.detail) || data.message || ("Login failed (" + res.status + ")");
+        var errObj = new Error(msg);
+        errObj.status = res.status;
+        errObj.data = data;
+        throw errObj;
+      }
     }
     var role = String(data.role || (data.user && data.user.role) || "").toLowerCase().replace(/^userrole\./, "");
     if (role !== "admin" && role !== "school_admin") {

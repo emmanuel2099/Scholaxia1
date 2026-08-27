@@ -93,8 +93,40 @@ function fetchTimeout(ms) {
 
 async function wakeAdminServer() {
   try {
-    await fetch(API_BASE + "/health", { signal: fetchTimeout(45000) });
+    await fetch(API_BASE + "/health", { signal: fetchTimeout(12000), mode: "cors", cache: "no-store" });
   } catch (e) { /* server may still be waking */ }
+}
+
+function adminXhrJson(path, options) {
+  options = options || {};
+  return new Promise(function (resolve, reject) {
+    var xhr = new XMLHttpRequest();
+    xhr.open(options.method || "POST", API_BASE + path, true);
+    xhr.timeout = options.timeout || 25000;
+    var headers = options.headers || {};
+    Object.keys(headers).forEach(function (k) {
+      try { xhr.setRequestHeader(k, headers[k]); } catch (e) {}
+    });
+    xhr.onload = function () {
+      var data = null;
+      try { data = xhr.responseText ? JSON.parse(xhr.responseText) : null; } catch (e) {
+        data = { detail: xhr.responseText || "Invalid response" };
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(data);
+        return;
+      }
+      var msg = (data && (data.detail || data.message)) || ("Request failed (" + xhr.status + ")");
+      if (typeof msg === "object") msg = JSON.stringify(msg);
+      var err = new Error(msg);
+      err.status = xhr.status;
+      err.data = data;
+      reject(err);
+    };
+    xhr.onerror = function () { reject(new Error("Could not reach the server. Check your internet and try again.")); };
+    xhr.ontimeout = function () { reject(new Error("Request timed out. The server may be waking up — try again.")); };
+    xhr.send(options.body || null);
+  });
 }
 
 async function adminApi(path, options) {

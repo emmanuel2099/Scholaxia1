@@ -3359,9 +3359,9 @@
     api
       .api("/api/v1/live-classes/?status=live", {
         preferXhr: true,
-        awaitWake: true,
-        timeout: 90000,
-        retries: 4,
+        awaitWake: false,
+        timeout: 30000,
+        retries: 2,
       })
       .then(function (data) {
         var items = firstArray(data, ["classes", "items", "results", "live_classes"]);
@@ -3382,9 +3382,9 @@
     api
       .api("/api/v1/live-classes/?status=upcoming", {
         preferXhr: true,
-        awaitWake: true,
-        timeout: 90000,
-        retries: 3,
+        awaitWake: false,
+        timeout: 30000,
+        retries: 2,
       })
       .then(function (data) {
         var items = firstArray(data, ["classes", "items", "results", "live_classes"]);
@@ -3405,20 +3405,19 @@
     if (!id) return;
     var originalLabel = joinBtn.textContent || "Join now";
     joinBtn.disabled = true;
-    joinBtn.textContent = "Waking server…";
+    joinBtn.textContent = "Joining…";
     var joinPromise = Promise.resolve();
     if (api.wakeServer) {
-      joinPromise = api.wakeServer(90000).catch(function () { return null; });
+      joinPromise = api.wakeServer(20000).catch(function () { return null; });
     }
     joinPromise
       .then(function () {
-        joinBtn.textContent = "Joining…";
         return api.api("/api/v1/live-classes/" + encodeURIComponent(id) + "/join", {
           method: "POST",
           preferXhr: true,
           awaitWake: true,
-          timeout: 120000,
-          retries: 4,
+          timeout: 45000,
+          retries: 2,
         });
       })
       .then(function (res) {
@@ -4336,7 +4335,7 @@
     var wrap = $("communityFeed");
     if (!wrap) return;
     wrap.innerHTML = loadingHtml("Loading #general…");
-    var opts = { preferXhr: true, awaitWake: true, timeout: 90000, retries: 4 };
+    var opts = { preferXhr: true, awaitWake: false, timeout: 30000, retries: 2 };
     Promise.all([
       api.api("/api/v1/community/channels", opts).catch(function () { return []; }),
       api.api("/api/v1/community/feed?limit=50", opts),
@@ -4364,7 +4363,7 @@
     var wrap = $("communityAnnouncements");
     if (!wrap) return;
     wrap.innerHTML = loadingHtml("Loading announcements…");
-    var opts = { preferXhr: true, awaitWake: true, timeout: 90000, retries: 4 };
+    var opts = { preferXhr: true, awaitWake: false, timeout: 30000, retries: 2 };
     api
       .api("/api/v1/community/announcements?limit=40", opts)
       .catch(function () {
@@ -4397,7 +4396,7 @@
     var wrap = $("communityTabGroups");
     if (!wrap) return;
     wrap.innerHTML = loadingHtml("Loading groups…");
-    var opts = { preferXhr: true, awaitWake: true, timeout: 90000, retries: 4 };
+    var opts = { preferXhr: true, awaitWake: false, timeout: 30000, retries: 2 };
     Promise.all([
       api.api("/api/v1/student-groups/mine", opts).catch(function () { return []; }),
       api.api("/api/v1/student-groups/community-listed", opts).catch(function () {
@@ -4565,15 +4564,9 @@
     if (mineWrap) mineWrap.innerHTML = loadingHtml("Loading your groups…");
     if (commWrap) commWrap.innerHTML = loadingHtml("Loading community groups…");
 
-    var wake = api.wakeServer ? api.wakeServer(90000).catch(function () { return null; }) : Promise.resolve();
-    wake.then(function () {
-      return api.api("/api/v1/student-groups/mine", {
-        preferXhr: true,
-        awaitWake: true,
-        timeout: 90000,
-        retries: 4,
-      });
-    })
+    var opts = { preferXhr: true, awaitWake: false, timeout: 30000, retries: 2 };
+    api
+      .api("/api/v1/student-groups/mine", opts)
       .then(function (data) {
         var items = firstArray(data, ["items", "results", "groups"]);
         if (Array.isArray(data)) items = data;
@@ -4586,23 +4579,10 @@
         if (mineWrap) mineWrap.innerHTML = errorHtml(errMsg(err), "groups");
       });
 
-    wake
-      .then(function () {
-        return api
-          .api("/api/v1/student-groups/community-listed", {
-            preferXhr: true,
-            awaitWake: true,
-            timeout: 90000,
-            retries: 4,
-          })
-          .catch(function () {
-            return api.api("/api/v1/student-groups/discover", {
-              preferXhr: true,
-              awaitWake: true,
-              timeout: 90000,
-              retries: 3,
-            });
-          });
+    api
+      .api("/api/v1/student-groups/community-listed", opts)
+      .catch(function () {
+        return api.api("/api/v1/student-groups/discover", opts);
       })
       .then(function (data) {
         var items = firstArray(data, ["items", "results", "groups"]);

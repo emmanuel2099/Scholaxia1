@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <title>Scholaxia — Sign in</title>
+    <link rel="icon" type="image/png" href="media/logo-main.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/auth.css?v=portal2" />
+    <script>
+      if (navigator.serviceWorker) {
+        navigator.serviceWorker.getRegistrations().then(function (regs) {
+          regs.forEach(function (reg) { reg.unregister(); });
+        });
+      }
+      if (window.caches) {
+        caches.keys().then(function (keys) {
+          keys.forEach(function (k) { caches.delete(k); });
+        });
+      }
+    </script>
+  </head>
+  <body class="auth-body">
+    <div class="auth-fx" aria-hidden="true">
+      <span class="fx-orb fx-1"></span>
+      <span class="fx-orb fx-2"></span>
+      <span class="fx-orb fx-3"></span>
+    </div>
+    <a class="auth-back" href="index.html" id="authBack">← Back to home</a>
+
+    <main class="auth-shell">
+      <section class="auth-stage">
+        <aside class="auth-visual" aria-hidden="true">
+          <img class="auth-visual-bg" src="media/banner-1.png" alt="" id="authVisualImg" />
+          <div class="auth-visual-tint"></div>
+          <div class="auth-visual-copy">
+            <p class="auth-visual-kicker" id="authVisualKicker">Scholaxia Online School</p>
+            <h1 id="authVisualTitle">Learn smarter.<br /><span>Pass stronger.</span></h1>
+            <p id="authVisualLead">Live classes, CBT practice, and Sia AI — ready when you are.</p>
+            <ul class="auth-visual-points" id="authVisualPoints">
+              <li>WAEC · NECO · JAMB</li>
+              <li>Live tutors</li>
+              <li>Instant CBT scores</li>
+            </ul>
+          </div>
+        </aside>
+
+        <div class="auth-card">
+          <div class="auth-brand">
+            <img src="media/logo-main.png" alt="Scholaxia Online School" />
+            <h2 class="auth-title" id="authTitle">Welcome back</h2>
+            <span id="portalSub">Sign in to your account</span>
+          </div>
+
+          <div class="role-row" role="tablist" aria-label="Account type" id="roleRow">
+            <button type="button" class="role-btn is-active" data-role="student" role="tab" aria-selected="true" id="roleStudentBtn">
+              Student
+            </button>
+            <button type="button" class="role-btn" data-role="teacher" role="tab" aria-selected="false" data-hide-market="1">
+              Teacher
+            </button>
+            <button type="button" class="role-btn" data-role="kind" role="tab" aria-selected="false" data-hide-market="1">
+              Kid
+            </button>
+          </div>
+
+          <div class="mode-tabs" role="tablist" aria-label="Auth mode">
+            <button type="button" class="mode-tab is-active" id="tabLogin" role="tab" aria-selected="true" aria-controls="formLogin">
+              Log in
+            </button>
+            <button type="button" class="mode-tab" id="tabSignup" role="tab" aria-selected="false" aria-controls="formSignup">
+              Sign up
+            </button>
+            <span class="mode-ink" id="modeInk" aria-hidden="true"></span>
+          </div>
+
+          <div class="auth-panels">
+            <form id="formLogin" class="auth-form" role="tabpanel" aria-labelledby="tabLogin">
+              <label>
+                Email
+                <input id="loginEmail" type="email" autocomplete="email" required placeholder="you@email.com" />
+              </label>
+              <label>
+                Password
+                <input id="loginPassword" type="password" autocomplete="current-password" required placeholder="••••••••" />
+              </label>
+              <p class="auth-error" id="loginError" hidden></p>
+              <button class="auth-submit" type="submit" id="btnLogin">Log in</button>
+              <p class="auth-switch">
+                <button type="button" class="auth-forgot" id="gotoForgot">Forgot password?</button>
+              </p>
+              <p class="auth-switch" id="loginSwitch">
+                New here?
+                <button type="button" id="gotoSignup">Create an account</button>
+              </p>
+            </form>
+
+            <form id="formReset" class="auth-form is-off" hidden>
+              <label>
+                Email
+                <input id="resetEmail" type="email" autocomplete="email" required placeholder="you@email.com" />
+              </label>
+              <p class="auth-hint" id="resetHint" hidden></p>
+              <button class="auth-linkish" type="button" id="btnResetSend">Send OTP to email</button>
+              <label>
+                OTP code
+                <input id="resetOtp" type="text" inputmode="numeric" maxlength="8" placeholder="6-digit code" />
+              </label>
+              <label>
+                New password
+                <input id="resetPassword" type="password" autocomplete="new-password" minlength="8" required placeholder="At least 8 characters" />
+              </label>
+              <p class="auth-error" id="resetError" hidden></p>
+              <button class="auth-submit" type="submit">Save new password</button>
+              <p class="auth-switch">
+                Remembered it?
+                <button type="button" id="gotoLoginFromReset">Back to log in</button>
+              </p>
+            </form>
+
+            <form id="formSignup" class="auth-form is-off" role="tabpanel" aria-labelledby="tabSignup" hidden novalidate>
+              <div id="signupStepDetails" class="auth-step">
+                <label>
+                  Full name
+                  <input id="signupName" type="text" autocomplete="name" required placeholder="Your full name" />
+                </label>
+                <label>
+                  Email
+                  <input id="signupEmail" type="email" autocomplete="email" required placeholder="you@email.com" />
+                </label>
+                <label>
+                  Password
+                  <input
+                    id="signupPassword"
+                    type="password"
+                    autocomplete="new-password"
+                    required
+                    minlength="8"
+                    placeholder="At least 6 characters"
+                  />
+                </label>
+                <div id="kindFields" hidden>
+                  <label>
+                    Age group
+                    <select id="signupAge">
+                      <option value="3-5">Ages 3–5</option>
+                      <option value="6-8" selected>Ages 6–8</option>
+                      <option value="9-12">Ages 9–12</option>
+                    </select>
+                  </label>
+                  <label>
+                    Parent email (optional)
+                    <input id="signupParent" type="email" placeholder="parent@email.com" />
+                  </label>
+                </div>
+                <div id="teacherFields" hidden>
+                  <label>
+                    WhatsApp number
+                    <input id="signupPhone" type="tel" placeholder="+234..." />
+                  </label>
+                  <label>
+                    Subjects (comma separated)
+                    <input id="signupSubjects" type="text" placeholder="Mathematics, English, Physics" />
+                  </label>
+                </div>
+                <div id="vendorFields" hidden>
+                  <label>
+                    Business name
+                    <input id="signupBusiness" type="text" placeholder="Your shop or brand name" />
+                  </label>
+                  <label>
+                    WhatsApp number
+                    <input id="signupVendorPhone" type="tel" placeholder="+234..." />
+                  </label>
+                  <label>
+                    Location
+                    <input id="signupVendorLocation" type="text" placeholder="City / State" />
+                  </label>
+                  <label>
+                    Business address
+                    <input id="signupVendorAddress" type="text" placeholder="Street, city" />
+                  </label>
+                </div>
+                <p class="auth-hint" id="teacherHint" hidden>
+                  After OTP, you go to your profile. Admin will see your signup and approve you.
+                </p>
+                <p class="auth-hint" id="vendorHint" hidden>
+                  Vendor accounts wait for admin approval before you can list products.
+                </p>
+                <p class="auth-error" id="signupError" hidden></p>
+                <button class="auth-submit" type="submit" id="btnSignup">Create account</button>
+                <p class="auth-switch">
+                  Already have an account?
+                  <button type="button" id="gotoLogin">Log in</button>
+                </p>
+              </div>
+
+              <div id="signupStepOtp" class="auth-step is-off" hidden>
+                <p class="auth-hint">Enter the OTP sent to your email to finish signup.</p>
+                <label>
+                  OTP code
+                  <input id="signupOtp" type="text" inputmode="numeric" maxlength="8" placeholder="6-digit code" />
+                </label>
+                <p class="auth-error" id="otpError" hidden></p>
+                <button class="auth-submit" type="button" id="btnVerify">Verify &amp; continue</button>
+                <button class="auth-linkish" type="button" id="btnBackDetails">← Back</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script src="js/api.js?v=20260827e"></script>
+    <script src="js/auth-page.js?v=20260827e"></script>
+  </body>
+</html>

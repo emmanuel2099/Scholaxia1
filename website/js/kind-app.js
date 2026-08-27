@@ -276,15 +276,15 @@
     try {
       if (api.wakeServer) {
         try {
-          await api.wakeServer(90000);
+          await api.wakeServer(20000);
         } catch (w) {}
       }
       var res = await api.api("/api/v1/live-classes/" + encodeURIComponent(id) + "/join", {
         method: "POST",
         preferXhr: true,
         awaitWake: true,
-        timeout: 120000,
-        retries: 4,
+        timeout: 45000,
+        retries: 2,
       });
       var classId = (res && (res.class_id || res.classId || res.id)) || id;
       var roomId = (res && (res.room_id || res.channel_id)) || "";

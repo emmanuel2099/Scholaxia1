@@ -73,32 +73,48 @@
   }
 
   function pathNeedsReliableTransport(path) {
-    return /\/auth\/login$|\/cbt\/coupons\/redeem$|\/payments\/paystack\/|\/cbt\/practice\/|\/students\/(setup-exam|me|subjects)$|\/live-classes\/|\/student-groups\/|\/community\//i.test(
+    return /\/auth\/(login|signup)|\/cbt\/coupons\/redeem$|\/payments\/paystack\/|\/cbt\/practice\/|\/students\/(setup-exam|me|subjects)$|\/live-classes\/|\/student-groups\/|\/community\//i.test(
       path || ""
     );
   }
 
   function pathNeedsAwaitWake(path) {
-    return /\/live-classes\/[^/]+\/join|\/live-classes\/join-by-code|\/student-groups\/|\/community\//i.test(
-      path || ""
-    );
+    // Only block on wake for join — groups/community/auth must stay snappy.
+    return /\/live-classes\/[^/]+\/join|\/live-classes\/join-by-code/i.test(path || "");
   }
 
   async function ensureAwakeBlocking(ms) {
-    var budget = ms || 90000;
-    var start = Date.now();
-    // Force a fresh wake — ignore short cache for join/groups/community.
-    wakePromise = null;
-    lastWakeOkAt = 0;
-    var ok = await wakeServer(Math.min(budget, 90000));
-    if (ok) {
-      lastWakeOkAt = Date.now();
+    var budget = Math.min(ms || 25000, 45000);
+    // Reuse a recent successful wake — do NOT reset cache every call (that froze Groups).
+    if (Date.now() - lastWakeOkAt < 60000) {
       return true;
     }
-    // Second attempt if first failed (cold Render).
+    if (wakePromise) {
+      try {
+        var cached = await wakePromise;
+        return !!cached;
+      } catch (e) {
+        /* fall through */
+      }
+    }
+    var start = Date.now();
+    wakePromise = wakeServer(budget)
+      .then(function (ok) {
+        if (ok) lastWakeOkAt = Date.now();
+        return ok;
+      })
+      .finally(function () {
+        setTimeout(function () {
+          wakePromise = null;
+        }, 3000);
+      });
+    var ok = await wakePromise;
+    if (ok) return true;
     var left = budget - (Date.now() - start);
-    if (left > 5000) {
-      await new Promise(function (r) { setTimeout(r, 1500); });
+    if (left > 4000) {
+      await new Promise(function (r) {
+        setTimeout(r, 800);
+      });
       ok = await wakeServer(left);
       if (ok) lastWakeOkAt = Date.now();
     }
@@ -153,9 +169,10 @@
         method: "POST",
         noAuth: true,
         body: { email: email, password: password },
-        timeout: 25000,
-        retries: 0,
+        timeout: 20000,
+        retries: 1,
         preferXhr: true,
+        awaitWake: false,
       });
     } catch (err) {
       last = err;
@@ -339,17 +356,20 @@
       headers.Authorization = "Bearer " + token;
     }
     var reliable = pathNeedsReliableTransport(path);
-    var tries = options.retries == null ? (reliable ? 4 : 2) : options.retries;
+    var isAuth = /\/auth\//i.test(path || "");
+    var tries = options.retries == null ? (isAuth ? 1 : reliable ? 2 : 1) : options.retries;
     var lastErr = null;
     var timeoutMs =
       options.timeout ||
-      (reliable ? (method === "POST" ? 120000 : 90000) : 45000);
+      (isAuth ? 20000 : reliable ? (method === "POST" ? 45000 : 30000) : 25000);
 
+    // Fast-first: never block the first attempt on a long health check.
+    // Only join (awaitWake) may pre-wake, and that wake is capped + cached.
     var shouldBlockWake =
       options.awaitWake === true || (options.awaitWake !== false && pathNeedsAwaitWake(path));
     if (shouldBlockWake) {
       try {
-        await ensureAwakeBlocking(Math.max(timeoutMs, 90000));
+        await ensureAwakeBlocking(Math.min(timeoutMs, 25000));
       } catch (w0) {}
     } else {
       try {
@@ -358,55 +378,17 @@
     }
 
     var preferXhr = !!options.preferXhr || reliable;
-    // Prefer XHR with its own retry loop — mobile Safari / GitHub Pages often
-    // fail fetch() with "Load failed" even when the API is up.
-    if (preferXhr) {
-      for (var xi = 0; xi <= tries; xi++) {
-        try {
-          if (xi > 0) {
-            wakePromise = null;
-            lastWakeOkAt = 0;
-            try {
-              await ensureAwakeBlocking(Math.min(90000, timeoutMs));
-            } catch (wX) {}
-            await new Promise(function (resolve) {
-              setTimeout(resolve, 800 * xi);
-            });
-          }
-          var xhrData = await xhrJson(
-            path,
-            headers,
-            Object.assign({}, options, { method: method, timeout: timeoutMs })
-          );
-          lastWakeOkAt = Date.now();
-          return xhrData;
-        } catch (xhrFirstErr) {
-          lastErr = xhrFirstErr;
-          var xm = (xhrFirstErr && xhrFirstErr.message) || "";
-          var networkish =
-            !xhrFirstErr.status ||
-            /failed to fetch|networkerror|load failed|aborted/i.test(xm) ||
-            xhrFirstErr.name === "AbortError";
-          if (!networkish) throw xhrFirstErr;
-          if (xi === tries) break;
-        }
-      }
-    }
 
-    for (var i = 0; i <= tries; i++) {
-      var t = null;
+    async function oneAttempt(useXhr) {
+      if (useXhr) {
+        return await xhrJson(
+          path,
+          headers,
+          Object.assign({}, options, { method: method, timeout: timeoutMs })
+        );
+      }
+      var t = fetchTimeout(timeoutMs);
       try {
-        if (i > 0 || preferXhr) {
-          wakePromise = null;
-          lastWakeOkAt = 0;
-          try {
-            await ensureAwakeBlocking(60000);
-          } catch (w2) {}
-          await new Promise(function (resolve) {
-            setTimeout(resolve, 900 * (i + 1));
-          });
-        }
-        t = fetchTimeout(timeoutMs);
         var res = await fetch(API_BASE + path, {
           method: method,
           mode: "cors",
@@ -416,19 +398,52 @@
           cache: "no-store",
           signal: t.signal,
         });
-        lastWakeOkAt = Date.now();
         return await parseResponse(res);
-      } catch (err) {
-        lastErr = err;
-        var msg = (err && err.message) || "";
-        var retryable =
-          /failed to fetch|networkerror|load failed|aborted/i.test(msg) ||
-          err.name === "AbortError";
-        if (!retryable || i === tries) break;
       } finally {
-        if (t) t.clear();
+        t.clear();
       }
     }
+
+    function isNetworkish(err) {
+      if (!err) return false;
+      if (err.status) return false;
+      var msg = (err.message || "") + "";
+      return (
+        err.name === "AbortError" ||
+        /failed to fetch|networkerror|load failed|aborted/i.test(msg)
+      );
+    }
+
+    for (var i = 0; i <= tries; i++) {
+      if (i > 0) {
+        try {
+          await ensureAwakeBlocking(20000);
+        } catch (w2) {}
+        await new Promise(function (resolve) {
+          setTimeout(resolve, 400 * i);
+        });
+      }
+      try {
+        var data = await oneAttempt(preferXhr || i > 0);
+        lastWakeOkAt = Date.now();
+        return data;
+      } catch (err) {
+        lastErr = err;
+        if (!isNetworkish(err)) throw err;
+      }
+      // After XHR network failure, try fetch once in the same attempt slot
+      if (preferXhr) {
+        try {
+          var data2 = await oneAttempt(false);
+          lastWakeOkAt = Date.now();
+          return data2;
+        } catch (err2) {
+          lastErr = err2;
+          if (!isNetworkish(err2)) throw err2;
+        }
+      }
+    }
+
     if (lastErr) {
       var friendly = friendlyFetchError(lastErr);
       if (friendly && friendly !== lastErr.message) {
