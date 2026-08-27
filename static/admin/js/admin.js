@@ -1,12 +1,14 @@
 var currentAdminPage = "dashboard";
 
 document.addEventListener("DOMContentLoaded", function () {
-  if (localStorage.getItem("sia_admin_role") === "school_admin") {
-    clearAdminSession();
-  }
   if (getAdminToken()) {
     showApp();
-    loadDashboard();
+    var role = localStorage.getItem("sia_admin_role") || "admin";
+    if (role === "school_admin") {
+      showAdminPage("school-office");
+    } else {
+      loadDashboard();
+    }
   } else {
     showAuth();
   }
@@ -65,17 +67,23 @@ async function adminLogin(e) {
     var data = await res.json().catch(function () { return {}; });
     if (!res.ok) { err.textContent = formatApiError(data.detail) || "Login failed."; return; }
     var role = String(data.role || (data.user && data.user.role) || "").toLowerCase().replace(/^userrole\./, "");
-    if (role === "school_admin") {
-      err.textContent = "School admins log in on the Schools website tab, not this main admin.";
-      return;
-    }
-    if (role !== "admin") {
-      err.textContent = "This email is a " + (role || "unknown") + " account, not an admin.";
+    if (role !== "admin" && role !== "school_admin") {
+      err.textContent = "This email is a " + (role || "unknown") + " account, not an admin. Use the student/teacher sign-in on the website.";
       return;
     }
     saveAdminSession(data, email, (data.user && data.user.full_name) || email);
+    if (data.user && data.user.school_id) {
+      localStorage.setItem("sia_school_id", data.user.school_id);
+    }
+    if (data.user && data.user.school_name) {
+      localStorage.setItem("sia_school_name", data.user.school_name);
+    }
     showApp();
-    loadDashboard();
+    if (role === "school_admin") {
+      showAdminPage("school-office");
+    } else {
+      loadDashboard();
+    }
   } catch (ex) {
     if (ex && ex.name === "AbortError") {
       err.textContent = "Server took too long (waking up). Wait 20 seconds and try again.";
