@@ -593,6 +593,36 @@ async def ensure_videos_table() -> None:
         logger.warning("ensure_videos_table failed: %s", exc)
 
 
+async def ensure_community_posts_columns() -> None:
+    """Guarantee Community/Groups feed columns land even if the bulk migration rolled back.
+
+    Each ALTER runs in its own transaction so one failure cannot undo the others.
+    """
+    stmts = (
+        "ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS group_id UUID NULL",
+        "ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS like_count INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS media_url VARCHAR(500) NULL",
+        "ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS media_type VARCHAR(50) NULL",
+        "ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NULL",
+        "ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS is_anonymous BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) NOT NULL DEFAULT 'everyone'",
+        "ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS cbt_exam_id UUID NULL",
+        "ALTER TABLE student_groups ADD COLUMN IF NOT EXISTS is_approved BOOLEAN NOT NULL DEFAULT TRUE",
+        "ALTER TABLE student_groups ADD COLUMN IF NOT EXISTS is_restricted BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE student_groups ADD COLUMN IF NOT EXISTS image_url VARCHAR(1000)",
+        "ALTER TABLE student_group_members ALTER COLUMN role TYPE VARCHAR(20) USING role::text",
+        "ALTER TABLE student_group_join_requests ALTER COLUMN status TYPE VARCHAR(20) USING status::text",
+    )
+    for stmt in stmts:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text(stmt))
+        except Exception as exc:
+            logger.warning("community/groups column migrate skipped: %s (%s)", stmt, exc)
+
+
 async def initialize_database() -> bool:
     """Create tables, run migrations, and seed. Returns False if DATABASE_URL is invalid."""
     global _db_initialized
@@ -626,6 +656,10 @@ async def initialize_database() -> bool:
         await ensure_videos_table()
     except Exception as exc:
         logger.warning("ensure_videos_table: %s", exc)
+    try:
+        await ensure_community_posts_columns()
+    except Exception as exc:
+        logger.warning("ensure_community_posts_columns: %s", exc)
     try:
         from app.services.cbt_access import ensure_student_entitlements_schema
         await ensure_student_entitlements_schema()

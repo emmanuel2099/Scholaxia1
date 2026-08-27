@@ -24,9 +24,16 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 def _role_str(role: Union[str, object]) -> str:
+    if role is None:
+        return ""
     if isinstance(role, str):
-        return role
-    return str(getattr(role, "value", role))
+        s = role
+    else:
+        s = str(getattr(role, "value", role))
+    s = s.strip().lower()
+    if s.startswith("userrole."):
+        s = s[len("userrole.") :]
+    return s
 
 
 def create_access_token(

@@ -6,10 +6,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import decode_token, _role_str as security_role_str
+from app.core.security import decode_token, _role_str
 from app.models.user import User, TeacherProfile
 
 bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def _norm_role(role) -> str:
+    return _role_str(role)
 
 
 async def get_current_user(
@@ -54,20 +58,21 @@ async def get_current_user(
         )
 
     payload["sub"] = str(user.id)
-    payload["role"] = security_role_str(getattr(user, "role", payload.get("role") or "student"))
+    # Always prefer DB role and normalize (fixes UserRole.student / case mismatches → false 403s)
+    payload["role"] = _norm_role(getattr(user, "role", None) or payload.get("role") or "student")
     payload["school_id"] = str(user.school_id) if getattr(user, "school_id", None) else None
     payload["_db"] = db
     return payload
 
 
 async def require_student(current_user: dict = Depends(get_current_user)):
-    if current_user.get("role") != "student":
+    if _norm_role(current_user.get("role")) != "student":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Students only")
     return current_user
 
 
 async def require_student_or_kind(current_user: dict = Depends(get_current_user)):
-    if current_user.get("role") not in ("student", "kind"):
+    if _norm_role(current_user.get("role")) not in ("student", "kind"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Students or kid learners only",
@@ -76,13 +81,13 @@ async def require_student_or_kind(current_user: dict = Depends(get_current_user)
 
 
 async def require_kind(current_user: dict = Depends(get_current_user)):
-    if current_user.get("role") != "kind":
+    if _norm_role(current_user.get("role")) != "kind":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Kind learners only")
     return current_user
 
 
 async def require_teacher(current_user: dict = Depends(get_current_user)):
-    if current_user.get("role") != "teacher":
+    if _norm_role(current_user.get("role")) != "teacher":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Teachers only")
     db = current_user.get("_db")
     if db is None:
@@ -97,12 +102,13 @@ async def require_teacher(current_user: dict = Depends(get_current_user)):
 
 
 async def require_teacher_or_admin(current_user: dict = Depends(get_current_user)):
-    if current_user.get("role") not in ("teacher", "admin"):
+    role = _norm_role(current_user.get("role"))
+    if role not in ("teacher", "admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Teachers or admins only",
         )
-    if current_user.get("role") == "teacher":
+    if role == "teacher":
         db = current_user.get("_db")
         if db is None:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database context missing")
@@ -114,26 +120,26 @@ async def require_teacher_or_admin(current_user: dict = Depends(get_current_user
 
 
 async def require_vendor(current_user: dict = Depends(get_current_user)):
-    if current_user.get("role") != "vendor":
+    if _norm_role(current_user.get("role")) != "vendor":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Vendors only")
     return current_user
 
 
 async def require_vendor_or_admin(current_user: dict = Depends(get_current_user)):
-    if current_user.get("role") not in ("vendor", "admin"):
+    if _norm_role(current_user.get("role")) not in ("vendor", "admin"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Vendors or admins only")
     return current_user
 
 
 async def require_admin(current_user: dict = Depends(get_current_user)):
-    if current_user.get("role") != "admin":
+    if _norm_role(current_user.get("role")) != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Main Scholaxia admin only")
     return current_user
 
 
 async def require_school_staff(current_user: dict = Depends(get_current_user)):
     """Main admin (all schools) or a school admin (their campus only)."""
-    role = current_user.get("role")
+    role = _norm_role(current_user.get("role"))
     if role == "admin":
         return current_user
     if role != "school_admin":
@@ -150,6 +156,6 @@ async def require_school_staff(current_user: dict = Depends(get_current_user)):
 
 
 async def require_developer(current_user: dict = Depends(get_current_user)):
-    if current_user.get("role") not in ("developer", "admin"):
+    if _norm_role(current_user.get("role")) not in ("developer", "admin"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Developer account required")
     return current_user

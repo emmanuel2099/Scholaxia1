@@ -41,6 +41,9 @@
     if (err && (err.status === 401 || err.status === 403)) {
       return "Your session expired. Log out and log in again, then open Groups/Community.";
     }
+    if (err && err.status >= 500) {
+      return "Server error loading this section. Tap Try again — if it keeps failing, wait a minute for a redeploy.";
+    }
     if (/failed to fetch|networkerror|load failed/i.test(msg)) {
       return "Cannot reach the Scholaxia API. Wait a minute if the server is waking up, then tap Try again.";
     }
@@ -105,7 +108,7 @@
         localStorage.removeItem(k);
       });
     } catch (e2) {}
-    window.location.href = "portal.html?v=20260827i&reason=session";
+    window.location.href = "portal.html?v=20260827k&force=1&reason=session";
   }
 
   document.addEventListener("click", function (e) {
@@ -115,9 +118,10 @@
     }
   });
 
-  function runApiPing() {
+  function runApiPing(lastErr) {
     var nodes = document.querySelectorAll("[data-api-ping]");
     if (!nodes.length) return;
+    var status = lastErr && lastErr.status;
     var base = (api && api.API_BASE) || "https://scholaxia1.onrender.com";
     var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
     var timer = setTimeout(function () {
@@ -139,16 +143,19 @@
       .then(function (out) {
         clearTimeout(timer);
         var online = out.ok && out.data && out.data.status === "ok";
-        var text = online
-          ? "API is online. Your login session is likely broken — tap Log in again."
-          : "API health returned an unexpected response.";
+        var text;
+        if (!online) {
+          text = "API health returned an unexpected response.";
+        } else if (status === 401 || status === 403) {
+          text = "API is online. Your login session is broken — tap Log in again.";
+        } else if (status >= 500) {
+          text = "API is online, but this page hit a server error. Tap Try again in a moment.";
+        } else {
+          text = "API is online. Tap Try again. If it still fails, tap Log in again.";
+        }
         nodes.forEach(function (n) {
           n.textContent = text;
         });
-        // Auto-offer session fix once health proves the network works.
-        if (online && !window.__scholaxiaSessionPrompted) {
-          window.__scholaxiaSessionPrompted = true;
-        }
       })
       .catch(function () {
         clearTimeout(timer);
@@ -4409,7 +4416,7 @@
     var token = api.getToken ? api.getToken() : localStorage.getItem("sia_token");
     if (!token) {
       wrap.innerHTML = errorHtml("You are not logged in.", "community");
-      runApiPing();
+      runApiPing({ status: 401 });
       return;
     }
     // Sequential — parallel auth requests fail as "Failed to fetch" on some browsers.
@@ -4434,7 +4441,7 @@
       })
       .catch(function (err) {
         wrap.innerHTML = errorHtml(errMsg(err), "community");
-        runApiPing();
+        runApiPing(err);
       });
   }
 
@@ -4468,8 +4475,7 @@
       })
       .catch(function (err) {
         wrap.innerHTML = errorHtml(errMsg(err), "community");
-      runApiPing();
-        runApiPing();
+        runApiPing(err);
       });
   }
 
@@ -4504,7 +4510,7 @@
         : emptyHtml("👥", "No groups yet. Open Groups to create or join one.");
     }).catch(function (err) {
       wrap.innerHTML = errorHtml(errMsg(err), "community");
-      runApiPing();
+      runApiPing(err);
     });
   }
 
@@ -4659,7 +4665,7 @@
       })
       .catch(function (err) {
         if (mineWrap) mineWrap.innerHTML = errorHtml(errMsg(err), "groups");
-        runApiPing();
+        runApiPing(err);
       });
 
     api
@@ -4678,7 +4684,7 @@
       })
       .catch(function (err) {
         if (commWrap) commWrap.innerHTML = errorHtml(errMsg(err), "groups");
-        runApiPing();
+        runApiPing(err);
       });
   }
 

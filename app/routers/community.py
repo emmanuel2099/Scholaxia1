@@ -710,8 +710,13 @@ def _role_str(role) -> str:
     if role is None:
         return ""
     if hasattr(role, "value"):
-        return str(role.value)
-    return str(role)
+        s = str(role.value)
+    else:
+        s = str(role)
+    s = s.strip().lower()
+    if s.startswith("userrole."):
+        s = s[len("userrole.") :]
+    return s
 
 
 ALLOWED_REACTION_EMOJIS = frozenset({"👍", "❤️", "😂", "🔥", "🎉"})
@@ -781,8 +786,8 @@ def _serialize_post(
         "is_anonymous": p.is_anonymous,
         "visibility": _visibility_str(p.visibility),
         "cbt_exam_id": str(p.cbt_exam_id) if p.cbt_exam_id else None,
-        "is_pinned": p.is_pinned,
-        "like_count": p.like_count or 0,
+        "is_pinned": bool(getattr(p, "is_pinned", False) or False),
+        "like_count": int(getattr(p, "like_count", 0) or 0),
         "liked_by_me": str(p.id) in liked_ids,
         "reactions": reactions or {},
         "my_reaction": my_reaction or "",
@@ -849,29 +854,61 @@ async def _fetch_channel_posts(
 
     try:
         result = await db.execute(query)
-        posts = result.scalars().all()
+        posts = list(result.scalars().all())
     except Exception as exc:
         import logging
+        from sqlalchemy import text as sql_text
+
         logging.getLogger(__name__).exception("feed query failed: %s", exc)
-        # Retry without group_id filter if schema is mid-migration
-        fallback = (
-            select(CommunityPost)
-            .where(
-                CommunityPost.channel_id == channel_uuid,
-                CommunityPost.is_deleted == False,  # noqa: E712
-            )
-            .order_by(CommunityPost.created_at.desc())
-            .limit(limit)
-            .offset(offset)
+        # Mid-migration: ORM mapped missing columns (is_pinned / is_deleted / group_id).
+        # Raw select of core columns keeps Community usable until schema catches up.
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        raw = await db.execute(
+            sql_text(
+                """
+                SELECT id, channel_id, author_id, content, media_url, media_type,
+                       created_at
+                FROM community_posts
+                WHERE channel_id = CAST(:cid AS uuid)
+                ORDER BY created_at DESC
+                LIMIT :lim OFFSET :off
+                """
+            ),
+            {"cid": str(channel_uuid), "lim": int(limit), "off": int(offset)},
         )
-        if role_name not in ("teacher", "admin") and not is_announcement:
-            fallback = fallback.where(CommunityPost.visibility.in_(["everyone", "class_only"]))
-        result = await db.execute(fallback)
-        posts = result.scalars().all()
+        rows = raw.mappings().all()
+
+        class _RowPost:
+            def __init__(self, r):
+                self.id = r["id"]
+                self.channel_id = r["channel_id"]
+                self.author_id = r["author_id"]
+                self.content = r["content"]
+                self.media_url = r.get("media_url")
+                self.media_type = r.get("media_type")
+                self.is_anonymous = False
+                self.visibility = "everyone"
+                self.cbt_exam_id = None
+                self.is_pinned = False
+                self.is_deleted = False
+                self.like_count = 0
+                self.group_id = None
+                self.created_at = r.get("created_at")
+
+        posts = [_RowPost(r) for r in rows]
     posts = [p for p in posts if not POST_COMMENT_RE.match(p.content or "")]
     # Never auto-delete teacher announcements for links/phones — students must see them.
     if not is_announcement:
-        posts = await _sweep_flagged_posts(db, posts)
+        try:
+            posts = await _sweep_flagged_posts(db, posts)
+        except Exception:
+            try:
+                await db.rollback()
+            except Exception:
+                pass
 
     author_ids = list({str(p.author_id) for p in posts})
     users_map: dict = {}
