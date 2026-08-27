@@ -108,7 +108,7 @@
         localStorage.removeItem(k);
       });
     } catch (e2) {}
-    window.location.href = "portal.html?v=20260827k&force=1&reason=session";
+    window.location.href = "portal.html?v=20260827m&force=1&reason=session";
   }
 
   document.addEventListener("click", function (e) {
@@ -377,6 +377,19 @@
     });
   });
 
+  // Delegate so dynamically rendered [data-goto] buttons (home cards, etc.) work
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-goto]");
+    if (!btn || btn.closest(".side-link")) return;
+    // Side nav already handled above / capture handler
+    if (btn.closest(".student-side")) return;
+    var page = btn.getAttribute("data-goto") || btn.dataset.goto;
+    if (!page) return;
+    e.preventDefault();
+    showPage(page);
+    if (window.matchMedia("(max-width: 900px)").matches) closeMobileNav();
+  });
+
   // Capture-phase fallback so mobile taps on icons/text still switch pages
   var sideNav = document.querySelector(".student-side");
   if (sideNav) {
@@ -437,6 +450,7 @@
   function renderLiveCardMini(c) {
     var title = c.title || c.topic || c.subject || "Live class";
     var teacher = c.teacher_name || c.host_name || c.teacher || "";
+    var id = c.id || c.class_id || "";
     return (
       '<div class="card">' +
       '<span class="card-tag">🔴 LIVE</span>' +
@@ -444,7 +458,9 @@
       esc(title) +
       "</h4>" +
       (teacher ? '<p class="muted">' + esc(teacher) + "</p>" : "") +
-      '<div class="card-foot"><button type="button" class="btn btn-primary btn-mini" data-goto="live">Join now</button></div>' +
+      '<div class="card-foot"><button type="button" class="btn btn-primary btn-mini" data-join-live="' +
+      esc(id) +
+      '">Join now</button></div>' +
       "</div>"
     );
   }

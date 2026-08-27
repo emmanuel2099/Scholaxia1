@@ -220,7 +220,7 @@ async def clear_access_codes(
 @router.post("/join-by-code")
 async def join_class_by_code(
     payload: JoinByCodeRequest,
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Join a live class using the unique access code for that class."""
@@ -830,7 +830,7 @@ async def start_class(
 @router.post("/{class_id}/join")
 async def join_class(
     class_id: str,
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(LiveClass).where(LiveClass.id == parse_uuid(class_id)))

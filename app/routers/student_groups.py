@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from typing import Optional
 
 from app.core.database import get_db
-from app.core.deps import require_student_or_kind
+from app.core.deps import get_current_user
 from app.services.live_class_access import parse_uuid
 from app.services.group_community import ensure_group_feed_post
 from app.services.moderation_service import check_message_content, contains_link_or_phone
@@ -113,7 +113,7 @@ def _group_dict(grp: StudentGroup, mem, pending, member_count: int, creator_name
 @router.get("/")
 async def list_groups_root(
     is_community_listed: Optional[bool] = Query(None),
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Compat alias — website used to call GET /student-groups/?is_community_listed=true (405)."""
@@ -125,7 +125,7 @@ async def list_groups_root(
 @router.post("/")
 async def create_group(
     payload: CreateGroupRequest,
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     name = (payload.name or "").strip()
@@ -168,7 +168,7 @@ async def create_group(
 
 @router.get("/mine")
 async def my_groups(
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
@@ -180,7 +180,11 @@ async def my_groups(
         )
         groups = []
         for mem, grp in mem_res.all():
-            role_raw = mem.role.value if hasattr(mem.role, "value") else str(mem.role or "member")
+            try:
+                role_raw = mem.role.value if hasattr(mem.role, "value") else str(mem.role or "member")
+            except Exception:
+                role_raw = "member"
+            role_raw = str(role_raw).replace("StudentGroupMemberRole.", "").lower()
             groups.append({
                 "id": str(grp.id),
                 "name": grp.name,
@@ -190,19 +194,60 @@ async def my_groups(
                 "is_public": bool(getattr(grp, "is_public", True)),
                 "is_community_listed": bool(getattr(grp, "is_community_listed", False)),
                 "is_approved": bool(getattr(grp, "is_approved", True)),
-                "is_admin": str(role_raw).lower() == "admin",
+                "is_admin": role_raw == "admin",
                 "member_count": await _member_count(db, grp.id),
             })
         return groups
     except Exception as exc:
         import logging
+        from sqlalchemy import text as sql_text
+
         logging.getLogger(__name__).exception("my_groups failed: %s", exc)
-        raise HTTPException(status_code=500, detail=f"Could not load your groups: {exc}") from exc
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        # Fallback: plain SQL if ORM/enum mapping is broken
+        try:
+            uid = parse_uuid(current_user["sub"])
+            rows = (
+                await db.execute(
+                    sql_text(
+                        """
+                        SELECT g.id, g.name, g.description, g.image_url, g.is_public,
+                               g.is_community_listed, g.is_approved, m.role::text AS role
+                        FROM student_group_members m
+                        JOIN student_groups g ON g.id = m.group_id
+                        WHERE m.user_id = :uid
+                        """
+                    ),
+                    {"uid": str(uid)},
+                )
+            ).mappings().all()
+            out = []
+            for r in rows:
+                role_raw = str(r.get("role") or "member").replace("StudentGroupMemberRole.", "").lower()
+                out.append({
+                    "id": str(r["id"]),
+                    "name": r["name"],
+                    "description": r.get("description"),
+                    "image_url": r.get("image_url"),
+                    "role": role_raw,
+                    "is_public": bool(r.get("is_public", True)),
+                    "is_community_listed": bool(r.get("is_community_listed", False)),
+                    "is_approved": bool(r.get("is_approved", True)),
+                    "is_admin": role_raw == "admin",
+                    "member_count": 0,
+                })
+            return out
+        except Exception as exc2:
+            logging.getLogger(__name__).exception("my_groups SQL fallback failed: %s", exc2)
+            raise HTTPException(status_code=500, detail=f"Could not load your groups: {exc}") from exc
 
 
 @router.get("/community-listed")
 async def community_listed_groups(
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """All groups listed in Community (including ones you created or joined)."""
@@ -259,7 +304,7 @@ async def community_listed_groups(
 
 @router.get("/discover")
 async def discover_groups(
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     uid = parse_uuid(current_user["sub"])
@@ -301,7 +346,7 @@ async def discover_groups(
 async def request_join_group(
     group_id: str,
     payload: JoinRequestBody,
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -345,7 +390,7 @@ async def request_join_group(
 @router.get("/{group_id}/join-requests")
 async def list_join_requests(
     group_id: str,
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -376,7 +421,7 @@ async def list_join_requests(
 async def approve_join_request(
     group_id: str,
     request_id: str,
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -409,7 +454,7 @@ async def approve_join_request(
 async def reject_join_request(
     group_id: str,
     request_id: str,
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -435,7 +480,7 @@ async def reject_join_request(
 async def update_group(
     group_id: str,
     payload: UpdateGroupRequest,
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -473,7 +518,7 @@ async def update_group(
 @router.delete("/{group_id}")
 async def delete_group(
     group_id: str,
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -496,7 +541,7 @@ async def delete_group(
 async def promote_to_community(
     group_id: str,
     payload: PromoteGroupRequest,
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -524,7 +569,7 @@ async def promote_to_community(
 @router.get("/{group_id}")
 async def get_group(
     group_id: str,
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -551,7 +596,7 @@ async def get_group(
 @router.get("/{group_id}/members")
 async def list_group_members(
     group_id: str,
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -580,7 +625,7 @@ async def list_group_members(
 async def add_group_member(
     group_id: str,
     payload: AddMemberBody,
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -612,7 +657,7 @@ async def add_group_member(
 async def list_group_posts(
     group_id: str,
     limit: int = 50,
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -677,7 +722,7 @@ async def list_group_posts(
 async def create_group_post(
     group_id: str,
     payload: GroupPostBody,
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -761,7 +806,7 @@ async def create_group_post(
 async def list_group_messages(
     group_id: str,
     limit: int = 80,
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -807,7 +852,7 @@ async def list_group_messages(
 async def send_group_message(
     group_id: str,
     payload: GroupMessageBody,
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -917,7 +962,7 @@ async def _notify_group_members_call(
 @router.post("/{group_id}/calls/start")
 async def start_group_voice_call(
     group_id: str,
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -971,7 +1016,7 @@ async def start_group_voice_call(
 @router.get("/{group_id}/calls/active")
 async def get_active_group_call(
     group_id: str,
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -995,7 +1040,7 @@ async def get_active_group_call(
 @router.post("/{group_id}/calls/join")
 async def join_group_voice_call(
     group_id: str,
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -1027,7 +1072,7 @@ async def join_group_voice_call(
 @router.post("/{group_id}/calls/end")
 async def end_group_voice_call(
     group_id: str,
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     gid = parse_uuid(group_id)
@@ -1045,7 +1090,7 @@ async def end_group_voice_call(
 @router.post("/{group_id}/calls/decline")
 async def decline_group_voice_call(
     group_id: str,
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     # Decline is local — we just acknowledge; ring stops on client.
