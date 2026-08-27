@@ -3395,7 +3395,12 @@
     joinBtn.disabled = true;
     joinBtn.textContent = "Joining…";
     api
-      .api("/api/v1/live-classes/" + id + "/join", { method: "POST" })
+      .api("/api/v1/live-classes/" + id + "/join", {
+        method: "POST",
+        preferXhr: true,
+        timeout: 60000,
+        retries: 3,
+      })
       .then(function (res) {
         showLiveJoinResult(res || {});
       })

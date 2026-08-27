@@ -1065,6 +1065,9 @@ async def create_post(
     )
     db.add(post)
     await db.flush()
+    # Commit before response so immediate "Recent posts" reload sees the new announcement.
+    await db.commit()
+    await db.refresh(post)
 
     author_res = await db.execute(select(User).where(User.id == current_user["sub"]))
     author = author_res.scalar_one_or_none()

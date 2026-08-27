@@ -765,6 +765,36 @@
 
   var texamQuestions = [];
 
+  function letters() { return ["A", "B", "C", "D"]; }
+
+  function normalizeTexamQuestion(q) {
+    if (!q || typeof q !== "object") return null;
+    if (q.question_text && q.option_a != null) {
+      return {
+        question_text: String(q.question_text || "").trim(),
+        option_a: String(q.option_a || "").trim(),
+        option_b: String(q.option_b || "").trim(),
+        option_c: String(q.option_c || "").trim(),
+        option_d: String(q.option_d || "").trim(),
+        correct_option: String(q.correct_option || "A").trim().charAt(0).toUpperCase() || "A",
+        explanation: q.explanation || null,
+        topic: q.topic || null,
+      };
+    }
+    var opts = Array.isArray(q.options) ? q.options : [];
+    var idx = typeof q.correct_index === "number" ? q.correct_index : 0;
+    return {
+      question_text: String(q.prompt || q.question || q.question_text || "").trim(),
+      option_a: String(opts[0] || q.option_a || "").trim(),
+      option_b: String(opts[1] || q.option_b || "").trim(),
+      option_c: String(opts[2] || q.option_c || "").trim(),
+      option_d: String(opts[3] || q.option_d || "").trim(),
+      correct_option: letters()[idx] || "A",
+      explanation: q.explanation || null,
+      topic: q.topic || null,
+    };
+  }
+
   function renderTexamQuestionList() {
     var list = $("tqList");
     if (!list) return;
@@ -773,9 +803,10 @@
       return;
     }
     list.innerHTML = texamQuestions.map(function (q, i) {
+      var n = normalizeTexamQuestion(q) || q;
       return (
         '<div class="panel-card" style="margin-bottom:8px;padding:10px">' +
-        "<strong>Q" + (i + 1) + ".</strong> " + esc(q.prompt) +
+        "<strong>Q" + (i + 1) + ".</strong> " + esc(n.question_text || q.prompt || "") +
         ' <button type="button" class="btn btn-mini" data-rm-tq="' + i + '">Remove</button></div>'
       );
     }).join("");
@@ -795,13 +826,75 @@
       return;
     }
     texamQuestions.push({
-      prompt: prompt,
-      options: opts,
-      correct_index: isNaN(correct) ? 0 : correct,
+      question_text: prompt,
+      option_a: opts[0],
+      option_b: opts[1],
+      option_c: opts[2],
+      option_d: opts[3],
+      correct_option: letters()[isNaN(correct) ? 0 : correct] || "A",
     });
     if ($("tqPrompt")) $("tqPrompt").value = "";
     ["tqA", "tqB", "tqC", "tqD"].forEach(function (id) { if ($(id)) $(id).value = ""; });
     renderTexamQuestionList();
+  }
+
+  async function parseTexamFile() {
+    var err = $("texamError");
+    var fileInput = $("texamFile");
+    if (!fileInput || !fileInput.files || !fileInput.files[0]) {
+      if (err) {
+        err.textContent = "Choose a PDF, Word, or JSON file first.";
+        err.className = "form-status err";
+      }
+      return;
+    }
+    var btn = $("texamParseBtn");
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Extracting…";
+    }
+    if (err) {
+      err.textContent = "";
+      err.className = "form-status";
+    }
+    try {
+      var fd = new FormData();
+      fd.append("file", fileInput.files[0]);
+      var preview = await (api.apiUpload
+        ? api.apiUpload("/api/v1/cbt/school-exams/import-preview", fd, { timeout: 120000 })
+        : api.api("/api/v1/cbt/school-exams/import-preview", {
+            method: "POST",
+            body: fd,
+            timeout: 120000,
+            retries: 0,
+          }));
+      var qs = (preview && preview.questions) || [];
+      var mapped = qs.map(normalizeTexamQuestion).filter(function (q) {
+        return q && q.question_text && (q.option_a || q.option_b);
+      });
+      if (!mapped.length) throw new Error("No usable questions found in that file.");
+      texamQuestions = mapped;
+      renderTexamQuestionList();
+      if (err) {
+        err.textContent =
+          "Loaded " +
+          mapped.length +
+          " question(s) from " +
+          ((preview && preview.source) || "file") +
+          ". Review the list, then Publish.";
+        err.className = "form-status ok";
+      }
+    } catch (e) {
+      if (err) {
+        err.textContent = e.message || "Could not extract questions.";
+        err.className = "form-status err";
+      }
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "Extract questions from file";
+      }
+    }
   }
 
   async function publishExam() {
@@ -823,15 +916,14 @@
       }
       return;
     }
-    var questions = texamQuestions.slice();
+    var questions = texamQuestions.map(normalizeTexamQuestion).filter(Boolean);
     if ((!questions.length) && fileInput && fileInput.files && fileInput.files[0]) {
       try {
-        var text = await fileInput.files[0].text();
-        var data = JSON.parse(text);
-        questions = Array.isArray(data) ? data : data.questions || [];
+        await parseTexamFile();
+        questions = texamQuestions.map(normalizeTexamQuestion).filter(Boolean);
       } catch (e) {
         if (err) {
-          err.textContent = "Could not read JSON file.";
+          err.textContent = e.message || "Could not read exam file.";
           err.className = "form-status err";
         }
         return;
@@ -839,7 +931,7 @@
     }
     if (!questions.length) {
       if (err) {
-        err.textContent = "Add questions one by one, or upload an optional JSON file.";
+        err.textContent = "Add questions one by one, or upload a PDF and extract them.";
         err.className = "form-status err";
       }
       return;
@@ -869,7 +961,7 @@
       texamQuestions = [];
       renderTexamQuestionList();
       if (fileInput) fileInput.value = "";
-      if ($("texamFileName")) $("texamFileName").textContent = "Choose JSON file";
+      if ($("texamFileName")) $("texamFileName").textContent = "Choose PDF / Word / JSON";
       alert("Exam published! Students were notified.");
       loadExams();
     } catch (e) {
@@ -1090,7 +1182,10 @@
       var posts = await api.api(
         "/api/v1/community/posts?channel_id=" + encodeURIComponent(ann.id) + "&limit=30"
       );
-      if (!Array.isArray(posts) || !posts.length) {
+      if (!Array.isArray(posts)) {
+        posts = (posts && (posts.posts || posts.items || posts.results)) || [];
+      }
+      if (!posts.length) {
         el.innerHTML = '<div class="empty">No announcements yet. Send one above.</div>';
         return;
       }
@@ -1148,8 +1243,18 @@
         },
       });
       if ($("announceInput")) $("announceInput").value = "";
-      loadCommunity();
-      alert("Announcement sent — students were notified.");
+      if (err) {
+        err.textContent = "Announcement sent.";
+        err.className = "form-status ok";
+      }
+      // Wait briefly then reload so recent posts includes the new row after DB commit.
+      await new Promise(function (r) { setTimeout(r, 400); });
+      await loadCommunity();
+      var list = $("announceList");
+      if (list && /No announcements yet/i.test(list.textContent || "")) {
+        await new Promise(function (r) { setTimeout(r, 800); });
+        await loadCommunity();
+      }
     } catch (e) {
       if (err) {
         err.textContent = e.message || "Send failed.";
@@ -1442,6 +1547,7 @@
   if ($("matTypeFilter")) $("matTypeFilter").addEventListener("change", loadMaterials);
 
   if ($("texamTemplateBtn")) $("texamTemplateBtn").addEventListener("click", downloadExamTemplate);
+  if ($("texamParseBtn")) $("texamParseBtn").addEventListener("click", parseTexamFile);
   if ($("texamPublishBtn")) $("texamPublishBtn").addEventListener("click", publishExam);
   if ($("tqAddBtn")) $("tqAddBtn").addEventListener("click", addTexamQuestion);
   document.addEventListener("click", function (e) {

@@ -238,19 +238,25 @@
             <div class="cbt-hub">
               <header class="page-hero cbt-hero">
                 <div>
-                  <span class="kicker">Paystack</span>
+                  <span class="kicker">CBT</span>
                   <h2>Common Entrance CBT</h2>
-                  <p>Pay ₦2,000 / year, then practise Common Entrance exams — same as the kids app.</p>
+                  <p>Redeem a coupon or pay ₦2,000 / year, then take all 3 papers together.</p>
                 </div>
               </header>
               <div id="cbtAccessBanner" class="info-banner" style="display:none"></div>
               <div class="cbt-pay-card" id="cbtPayCard">
                 <h3>Unlock Entrance CBT</h3>
-                <p>Annual access for Common Entrance practice papers.</p>
-                <div class="cbt-pay-row">
+                <p>Use an admin coupon, or pay with Paystack for annual access.</p>
+                <div class="form-field" style="margin:0.75rem 0">
+                  <label for="cbtCouponCode">Coupon code</label>
+                  <input id="cbtCouponCode" placeholder="SX-XXXX" autocomplete="off" />
+                </div>
+                <div class="cbt-pay-row" style="flex-wrap:wrap;gap:8px">
+                  <button type="button" class="btn btn-secondary" id="cbtCouponBtn">Redeem coupon</button>
                   <strong>₦2,000 / year</strong>
                   <button type="button" class="btn btn-primary" id="cbtPayBtn">Pay with Paystack</button>
                 </div>
+                <p class="form-status" id="cbtUnlockStatus"></p>
               </div>
               <div id="cbtBrowse">
                 <div class="section-title"><h3>Practice exams</h3></div>
@@ -287,8 +293,8 @@
       </div>
     </div>
 
-    <script src="js/api.js?v=10"></script>
+    <script src="js/api.js?v=20260827c"></script>
     <script src="js/paystack.js?v=10"></script>
-    <script src="js/kind-app.js?v=12"></script>
+    <script src="js/kind-app.js?v=13"></script>
   </body>
 </html>

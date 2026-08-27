@@ -276,14 +276,41 @@
     try {
       var res = await api.api("/api/v1/live-classes/" + encodeURIComponent(id) + "/join", {
         method: "POST",
+        preferXhr: true,
+        timeout: 60000,
+        retries: 3,
       });
-      var url =
-        (res && (res.join_url || res.meeting_url || res.room_url || res.url)) || "";
-      if (url) {
-        window.open(url, "_blank", "noopener");
-        return;
+      var classId = (res && (res.class_id || res.classId || res.id)) || id;
+      var roomId = (res && (res.room_id || res.channel_id)) || "";
+      var token = (res && (res.livekit_token || res.token)) || "";
+      var url = (res && res.livekit_url) || "";
+      if (!roomId || !token) {
+        var joinUrl = (res && (res.join_url || res.meeting_url || res.room_url || res.url)) || "";
+        if (joinUrl) {
+          window.open(joinUrl, "_blank", "noopener");
+          return;
+        }
+        throw new Error("Joined, but classroom media was not ready. Ask the teacher to restart the class.");
       }
-      alert("You're in! Open the class from your teacher link when it appears.");
+      var user = api.getUser ? api.getUser() : {};
+      localStorage.setItem(
+        "live_session",
+        JSON.stringify({
+          class_id: classId,
+          classId: classId,
+          room_id: roomId,
+          channel_id: roomId,
+          livekit_token: token,
+          livekit_url: url,
+          identity: (res && res.identity) || "",
+          title: (res && res.title) || "Live Class",
+          subject: (res && res.subject) || "",
+          teacher_name: (res && res.teacher_name) || "",
+          role: "student",
+          student_name: (user && user.name) || "Student",
+        })
+      );
+      window.location.href = "classroom.html";
     } catch (e) {
       alert(e.message || "Could not join class.");
     }
@@ -930,6 +957,70 @@
     }
   }
 
+  async function redeemCbtCoupon() {
+    var status = $("cbtUnlockStatus");
+    var code = (($("cbtCouponCode") && $("cbtCouponCode").value) || "").trim();
+    if (!code) {
+      if (status) {
+        status.textContent = "Enter a coupon code.";
+        status.className = "form-status err";
+      }
+      return;
+    }
+    var btn = $("cbtCouponBtn");
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "Redeeming…";
+    }
+    if (status) {
+      status.textContent = "Redeeming…";
+      status.className = "form-status";
+    }
+    try {
+      var res = await api.api("/api/v1/cbt/coupons/redeem", {
+        method: "POST",
+        body: { code: code },
+        timeout: 90000,
+        retries: 2,
+        preferXhr: true,
+      });
+      if (status) {
+        status.textContent = "Coupon redeemed — Common Entrance unlocked.";
+        status.className = "form-status ok";
+      }
+      if ($("cbtCouponCode")) $("cbtCouponCode").value = "";
+      await loadCbt();
+      return res;
+    } catch (e) {
+      if (status) {
+        status.textContent = e.message || "Could not redeem coupon.";
+        status.className = "form-status err";
+      }
+      throw e;
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "Redeem coupon";
+      }
+    }
+  }
+
+  async function unlockCbtThen(run) {
+    var payCard = $("cbtPayCard");
+    if (payCard) {
+      payCard.style.display = "";
+      payCard.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    var status = $("cbtUnlockStatus");
+    if (status) {
+      status.textContent = "Unlock with a coupon or Paystack, then Start again.";
+      status.className = "form-status err";
+    }
+    if (typeof run === "function") {
+      /* caller retries after unlock via loadCbt Start button */
+    }
+  }
+
   function _optKey(opt, oi) {
     if (opt && typeof opt === "object") {
       if (opt.key != null) return String(opt.key);
@@ -998,7 +1089,7 @@
     } catch (e) {
       var msg = e.message || "Could not start exam.";
       if (/402|cbt_package|package|paid|required/i.test(msg) || (e.status === 402)) {
-        await payCbt();
+        await unlockCbtThen();
       } else {
         alert(msg);
       }
@@ -1033,7 +1124,7 @@
     } catch (e) {
       var msg = e.message || "Could not start exam.";
       if (/402|cbt_package|package|paid|required/i.test(msg)) {
-        await payCbt();
+        await unlockCbtThen();
       } else {
         alert(msg);
       }
@@ -1307,6 +1398,9 @@
   if ($("refreshLiveBtn")) $("refreshLiveBtn").addEventListener("click", loadLive);
   if ($("bookPayBtn")) $("bookPayBtn").addEventListener("click", bookClass);
   if ($("cbtPayBtn")) $("cbtPayBtn").addEventListener("click", payCbt);
+  if ($("cbtCouponBtn")) $("cbtCouponBtn").addEventListener("click", function () {
+    redeemCbtCoupon().catch(function () {});
+  });
   if ($("kindLibrarySearch")) $("kindLibrarySearch").addEventListener("input", filterKindLibrary);
   if ($("kindLibraryRefresh")) $("kindLibraryRefresh").addEventListener("click", loadKindLibrary);
   if ($("kindVideosSearch")) $("kindVideosSearch").addEventListener("input", filterKindVideos);

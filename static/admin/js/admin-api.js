@@ -34,6 +34,9 @@ function getAdminUser() {
 }
 
 function saveAdminSession(data, email, name) {
+  if (!data || !data.access_token) {
+    throw new Error("Login response missing access token.");
+  }
   localStorage.setItem("sia_admin_token", data.access_token);
   localStorage.setItem("sia_admin_role", data.role || "admin");
   if (email) localStorage.setItem("sia_admin_email", email);
@@ -44,6 +47,26 @@ function clearAdminSession() {
   ["sia_admin_token", "sia_admin_role", "sia_admin_name", "sia_admin_email", "sia_school_id", "sia_school_name"].forEach(function (k) {
     localStorage.removeItem(k);
   });
+}
+
+function kickAdminToLogin(message) {
+  clearAdminSession();
+  try {
+    if (typeof showAuth === "function") {
+      showAuth();
+      var err = document.getElementById("login-error");
+      if (err && message) err.textContent = message;
+      var emailEl = document.getElementById("login-email");
+      var saved = localStorage.getItem("sia_admin_email_last") || "";
+      if (emailEl && saved && !emailEl.value) emailEl.value = saved;
+      return;
+    }
+  } catch (e) { /* fall through */ }
+  try {
+    window.location.replace(adminHomeUrl());
+  } catch (e2) {
+    window.location.href = adminHomeUrl();
+  }
 }
 
 function formatApiError(detail) {
@@ -62,13 +85,15 @@ function formatApiError(detail) {
 
 function fetchTimeout(ms) {
   var ctrl = new AbortController();
-  setTimeout(function () { ctrl.abort(); }, ms);
-  return ctrl.signal;
+  var t = setTimeout(function () { ctrl.abort(); }, ms);
+  var signal = ctrl.signal;
+  signal.addEventListener("abort", function () { clearTimeout(t); });
+  return signal;
 }
 
 async function wakeAdminServer() {
   try {
-    await fetch(API_BASE + "/health", { signal: fetchTimeout(120000) });
+    await fetch(API_BASE + "/health", { signal: fetchTimeout(45000) });
   } catch (e) { /* server may still be waking */ }
 }
 
@@ -94,8 +119,8 @@ async function adminApi(path, options) {
   if (res.status === 204) return null;
   var data = await res.json().catch(function () { return {}; });
   if (res.status === 401) {
-    clearAdminSession();
-    window.location.href = adminHomeUrl();
+    // Never hard-reload here — that wipes the login form and looks like "login failed".
+    kickAdminToLogin(formatApiError(data.detail) || "Session expired. Please sign in again.");
     return null;
   }
   if (!res.ok) throw new Error(formatApiError(data.detail) || "Request failed (" + res.status + ")");
@@ -151,8 +176,7 @@ async function uploadCbtExamFile(file, fields) {
   });
   var data = await res.json().catch(function () { return {}; });
   if (res.status === 401) {
-    clearAdminSession();
-    window.location.href = adminHomeUrl();
+    kickAdminToLogin(formatApiError(data.detail) || "Session expired. Please sign in again.");
     return null;
   }
   if (!res.ok) throw new Error(formatApiError(data.detail) || "CBT import failed (" + res.status + ")");
@@ -170,8 +194,7 @@ async function previewCbtFile(file) {
   });
   var data = await res.json().catch(function () { return {}; });
   if (res.status === 401) {
-    clearAdminSession();
-    window.location.href = adminHomeUrl();
+    kickAdminToLogin(formatApiError(data.detail) || "Session expired. Please sign in again.");
     return null;
   }
   if (!res.ok) throw new Error(formatApiError(data.detail) || "Could not read the file (" + res.status + ")");
@@ -197,8 +220,7 @@ async function uploadAdminFile(url, file) {
   });
   var data = await res.json().catch(function () { return {}; });
   if (res.status === 401) {
-    clearAdminSession();
-    window.location.href = adminHomeUrl();
+    kickAdminToLogin(formatApiError(data.detail) || "Session expired. Please sign in again.");
     return null;
   }
   if (!res.ok) throw new Error(formatApiError(data.detail) || "Upload failed (" + res.status + ")");

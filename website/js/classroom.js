@@ -1924,6 +1924,11 @@ function connectChat() {
         }
       } else if (msg.event === "raise_hand") {
         if (isTeacherRole()) {
+          try {
+            document.body.classList.remove("classroom-chrome-hidden");
+            var chromeBtn = document.getElementById("classroom-chrome-toggle");
+            if (chromeBtn) chromeBtn.textContent = "Hide panels";
+          } catch (eChrome) {}
           addRaisedHand(msg.user_id, msg.name);
           addChatMessage("", (msg.name || "A student") + " raised their hand.", true);
           showClassroomToast((msg.name || "A student") + " raised their hand");
@@ -2016,6 +2021,8 @@ function raiseHand() {
   addChatMessage("", "You raised your hand. Wait for the teacher to allow you to speak.", true);
   showClassroomToast("Hand raised — waiting for teacher");
 }
+
+window.raiseHand = raiseHand;
 
 function sendReaction(emoji) {
   if (!emoji) return;

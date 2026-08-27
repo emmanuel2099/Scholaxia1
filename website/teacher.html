@@ -204,18 +204,19 @@
                 <button type="button" class="btn btn-secondary" id="tqAddBtn" style="margin-top:10px">+ Add question</button>
                 <div id="tqList" style="margin-top:12px"></div>
               </div>
-              <details style="margin-top:14px">
-                <summary style="cursor:pointer;font-weight:700">Optional: upload JSON file</summary>
+              <details style="margin-top:14px" open>
+                <summary style="cursor:pointer;font-weight:700">Upload questions (PDF recommended)</summary>
                 <div class="file-field" style="margin-top:10px">
                   <label class="file-drop" for="texamFile">
-                    <input type="file" id="texamFile" accept=".json,application/json" hidden />
+                    <input type="file" id="texamFile" accept=".pdf,.docx,.json,application/pdf,application/json" hidden />
                     <span class="file-drop-ico">📄</span>
                     <span class="file-drop-text">
-                      <strong id="texamFileName">Choose JSON file</strong>
-                      <small>advanced · optional</small>
+                      <strong id="texamFileName">Choose PDF / Word / JSON</strong>
+                      <small>PDF preferred · questions extracted automatically</small>
                     </span>
                   </label>
                 </div>
+                <button type="button" class="btn btn-secondary" id="texamParseBtn" style="margin-top:8px">Extract questions from file</button>
                 <button type="button" class="btn btn-ghost" id="texamTemplateBtn" style="margin-top:8px">Download sample JSON</button>
               </details>
               <div class="btn-row" style="margin-top:14px">
@@ -425,7 +426,7 @@
       </div>
     </div>
 
-    <script src="js/api.js?v=7"></script>
-    <script src="js/teacher-app.js?v=20260827a"></script>
+    <script src="js/api.js?v=20260827c"></script>
+    <script src="js/teacher-app.js?v=20260827c"></script>
   </body>
 </html>

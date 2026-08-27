@@ -5,11 +5,146 @@
 
   function fetchTimeout(ms) {
     var ctrl = new AbortController();
-    setTimeout(function () { ctrl.abort(); }, ms || 45000);
-    return ctrl.signal;
+    var timer = setTimeout(function () {
+      try { ctrl.abort(); } catch (e) {}
+    }, ms || 25000);
+    return { signal: ctrl.signal, clear: function () { clearTimeout(timer); } };
+  }
+
+  async function readHealth(ms) {
+    var timeout = ms || 45000;
+    // XHR first — more reliable than fetch on some mobile browsers / GitHub Pages
+    try {
+      var data = await new Promise(function (resolve, reject) {
+        var xhr = new XMLHttpRequest();
+        xhr.open("GET", API_BASE + "/health", true);
+        xhr.timeout = timeout;
+        xhr.onload = function () {
+          try {
+            resolve(xhr.responseText ? JSON.parse(xhr.responseText) : { status: xhr.status === 200 ? "ok" : "error" });
+          } catch (e) {
+            resolve({ status: xhr.status === 200 ? "ok" : "error" });
+          }
+        };
+        xhr.onerror = function () { reject(new Error("Failed to fetch")); };
+        xhr.ontimeout = function () { reject(new Error("The user aborted a request.")); };
+        xhr.send();
+      });
+      return data;
+    } catch (xhrErr) {
+      var t = fetchTimeout(timeout);
+      try {
+        var res = await fetch(API_BASE + "/health", {
+          method: "GET",
+          mode: "cors",
+          credentials: "omit",
+          cache: "no-store",
+          signal: t.signal,
+        });
+        try {
+          return await res.json();
+        } catch (e) {
+          return { status: res.ok ? "ok" : "error" };
+        }
+      } finally {
+        t.clear();
+      }
+    }
+  }
+
+  async function wakeServer(ms) {
+    try {
+      return await readHealth(ms || 45000);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function friendlyFetchError(err) {
+    var name = (err && err.name) || "";
+    var msg = (err && err.message) || "";
+    if (name === "AbortError" || /aborted|abort/i.test(msg)) {
+      return "Server took too long. Wait 30 seconds and try again (Render may be waking up).";
+    }
+    if (/failed to fetch|networkerror|load failed/i.test(msg)) {
+      return "Cannot reach the Scholaxia API. Wait a minute if the server is restarting, then try again.";
+    }
+    return msg || "Request failed";
+  }
+
+  function formPost(path, fields, timeout) {
+    return new Promise(function (resolve, reject) {
+      var body = Object.keys(fields)
+        .map(function (k) {
+          return encodeURIComponent(k) + "=" + encodeURIComponent(fields[k] == null ? "" : String(fields[k]));
+        })
+        .join("&");
+      var xhr = new XMLHttpRequest();
+      xhr.open("POST", API_BASE + path, true);
+      xhr.timeout = timeout || 60000;
+      xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+      xhr.onload = function () {
+        var data = null;
+        try {
+          data = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+        } catch (e) {
+          data = { detail: xhr.responseText || "Invalid response" };
+        }
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(data);
+          return;
+        }
+        var msg = (data && (data.detail || data.message)) || ("Request failed (" + xhr.status + ")");
+        if (typeof msg === "object") msg = JSON.stringify(msg);
+        var err = new Error(msg);
+        err.status = xhr.status;
+        reject(err);
+      };
+      xhr.onerror = function () {
+        var err = new Error("Failed to fetch");
+        err.status = 0;
+        reject(err);
+      };
+      xhr.ontimeout = function () {
+        var err = new Error("The user aborted a request.");
+        reject(err);
+      };
+      xhr.send(body);
+    });
+  }
+
+  async function loginApi(email, password) {
+    var last = null;
+    try {
+      return await api("/api/v1/auth/login", {
+        method: "POST",
+        noAuth: true,
+        body: { email: email, password: password },
+        timeout: 25000,
+        retries: 0,
+        preferXhr: true,
+      });
+    } catch (err) {
+      last = err;
+      // Wrong password / locked account — do not fall through to a second long attempt
+      if (err && err.status && err.status >= 400 && err.status < 500) {
+        throw err;
+      }
+    }
+    try {
+      return await formPost("/api/v1/auth/login", { email: email, password: password }, 20000);
+    } catch (formErr) {
+      var e = last || formErr;
+      var friendly = friendlyFetchError(e);
+      var out = new Error(friendly || (e && e.message) || "Login failed");
+      out.status = e && e.status;
+      out.data = e && e.data;
+      throw out;
+    }
   }
 
   function getToken() {
+    var schoolTok = localStorage.getItem("sia_school_token") || "";
     var teacherTok = localStorage.getItem("sia_teacher_token") || localStorage.getItem("sia_admin_token") || "";
     var studentTok = localStorage.getItem("sia_token") || "";
     var role = "";
@@ -18,6 +153,12 @@
     } catch (e) {}
     try {
       var path = String(window.location.pathname || "");
+      if (/external-exam(\.html)?$/i.test(path) || /exam(\.html)?$/i.test(path)) {
+        return studentTok;
+      }
+      if (/schools(\.html)?$/i.test(path) || /office(\.html)?$/i.test(path)) {
+        return schoolTok || teacherTok;
+      }
       var onClassroom = /classroom(\.html)?$/i.test(path) || /\/classroom/i.test(path);
       var sess = null;
       try {
@@ -26,21 +167,26 @@
         sess = null;
       }
       var sessRole = (sess && sess.role) || "";
-      // Host classroom must never send a leftover student JWT — presence/students will 403.
       if (onClassroom && (sessRole === "teacher" || sessRole === "admin")) {
-        return teacherTok || studentTok;
+        return teacherTok || schoolTok || studentTok;
       }
       if (onClassroom && sessRole === "student") {
         return studentTok || teacherTok;
       }
+      if (role === "school_admin") {
+        return schoolTok || teacherTok || studentTok;
+      }
       if (role === "teacher" || role === "admin") {
         return teacherTok || studentTok;
+      }
+      if (role === "vendor") {
+        return studentTok || teacherTok;
       }
       if (role === "student" || role === "kind") {
         return studentTok || teacherTok;
       }
     } catch (e) {}
-    return teacherTok || studentTok;
+    return schoolTok || teacherTok || studentTok;
   }
 
   function getUser() {
@@ -57,7 +203,10 @@
     var token = data && data.access_token;
     if (!token) return;
 
-    if (role === "teacher" || role === "admin") {
+    if (role === "school_admin") {
+      localStorage.setItem("sia_school_token", token);
+      localStorage.setItem("sia_teacher_token", token);
+    } else if (role === "teacher" || role === "admin") {
       localStorage.setItem("sia_teacher_token", token);
     } else {
       localStorage.setItem("sia_token", token);
@@ -71,12 +220,19 @@
       email ||
       "User";
     localStorage.setItem("sia_name", name);
+    if (data.user) {
+      if (data.user.school_id) localStorage.setItem("sia_user_school_id", data.user.school_id);
+      if (data.user.school_name) localStorage.setItem("sia_user_school_name", data.user.school_name);
+      if (data.user.education_level) localStorage.setItem("sia_class", data.user.education_level);
+      if (data.user.school_student_id) localStorage.setItem("sia_school_student_id", data.user.school_student_id);
+    }
   }
 
   function clearSession() {
     [
       "sia_token",
       "sia_teacher_token",
+      "sia_school_token",
       "sia_role",
       "sia_name",
       "sia_email",
@@ -109,23 +265,162 @@
     return data;
   }
 
+  var wakePromise = null;
+  var lastWakeOkAt = 0;
+
+  function ensureAwake() {
+    // Never block UI/API calls on a long health check — wake in the background only
+    if (Date.now() - lastWakeOkAt < 45000) {
+      return Promise.resolve({ status: "ok", cached: true });
+    }
+    if (!wakePromise) {
+      wakePromise = wakeServer(12000)
+        .then(function (res) {
+          if (res) lastWakeOkAt = Date.now();
+          return res;
+        })
+        .finally(function () {
+          setTimeout(function () {
+            wakePromise = null;
+          }, 5000);
+        });
+    }
+    return Promise.resolve({ status: "waking" });
+  }
+
   async function api(path, options) {
     options = options || {};
-    var headers = Object.assign(
-      { "Content-Type": "application/json", Accept: "application/json" },
-      options.headers || {}
-    );
+    var method = (options.method || "GET").toUpperCase();
+    var hasBody = !!options.body;
+    var isFormData = typeof FormData !== "undefined" && options.body instanceof FormData;
+    var headers = Object.assign({ Accept: "application/json" }, options.headers || {});
+    if (hasBody && !isFormData && !headers["Content-Type"] && !headers["content-type"]) {
+      headers["Content-Type"] = "application/json";
+    }
+    if (isFormData) {
+      delete headers["Content-Type"];
+      delete headers["content-type"];
+    }
     var token = getToken();
     if (token && !options.noAuth && !headers.Authorization) {
       headers.Authorization = "Bearer " + token;
     }
-    var res = await fetch(API_BASE + path, {
-      method: options.method || "GET",
-      headers: headers,
-      body: options.body ? JSON.stringify(options.body) : undefined,
-      signal: options.signal || fetchTimeout(45000),
+    var tries = options.retries == null ? (method === "POST" ? 2 : 2) : options.retries;
+    var lastErr = null;
+    var timeoutMs = options.timeout || (method === "GET" ? 45000 : 45000);
+
+    // Background wake only — do not await
+    try {
+      ensureAwake();
+    } catch (w) {}
+
+    // Prefer XHR for flaky browser fetch (CBT, profile save, payments)
+    var preferXhr =
+      !!options.preferXhr ||
+      /\/auth\/login$|\/cbt\/coupons\/redeem$|\/payments\/paystack\/initialize$|\/payments\/paystack\/verify$|\/cbt\/practice\/home$|\/cbt\/practice\/start$|\/students\/setup-exam$|\/students\/me$|\/students\/subjects$|\/live-classes\/[^/]+\/join$/i.test(
+        path
+      );
+    if (preferXhr) {
+      try {
+        return await xhrJson(path, headers, Object.assign({}, options, { method: method, timeout: timeoutMs }));
+      } catch (xhrFirstErr) {
+        var xm = (xhrFirstErr && xhrFirstErr.message) || "";
+        var networkish =
+          !xhrFirstErr.status ||
+          /failed to fetch|networkerror|load failed|aborted/i.test(xm) ||
+          xhrFirstErr.name === "AbortError";
+        if (!networkish) throw xhrFirstErr;
+        lastErr = xhrFirstErr;
+      }
+    }
+
+    for (var i = 0; i <= tries; i++) {
+      var t = null;
+      try {
+        if (i > 0) {
+          wakePromise = null;
+          lastWakeOkAt = 0;
+          try { await ensureAwake(); } catch (w2) {}
+          await new Promise(function (resolve) { setTimeout(resolve, 700 * i); });
+        }
+        t = fetchTimeout(timeoutMs);
+        var res = await fetch(API_BASE + path, {
+          method: method,
+          mode: "cors",
+          headers: headers,
+          body: hasBody ? (isFormData ? options.body : JSON.stringify(options.body)) : undefined,
+          credentials: "omit",
+          cache: "no-store",
+          signal: t.signal,
+        });
+        lastWakeOkAt = Date.now();
+        return await parseResponse(res);
+      } catch (err) {
+        lastErr = err;
+        var msg = (err && err.message) || "";
+        var retryable =
+          /failed to fetch|networkerror|load failed|aborted/i.test(msg) ||
+          err.name === "AbortError";
+        if (!retryable || i === tries) break;
+      } finally {
+        if (t) t.clear();
+      }
+    }
+    // XHR fallback for any method — some browsers report Failed to fetch on GET too (CBT home, etc.)
+    if (lastErr) {
+      try {
+        return await xhrJson(path, headers, Object.assign({}, options, { method: method, timeout: timeoutMs }));
+      } catch (xhrErr) {
+        lastErr = xhrErr || lastErr;
+      }
+    }
+    if (lastErr) {
+      var friendly = friendlyFetchError(lastErr);
+      if (friendly && friendly !== lastErr.message) {
+        var wrapped = new Error(friendly);
+        wrapped.status = lastErr.status;
+        wrapped.data = lastErr.data;
+        wrapped.name = lastErr.name;
+        throw wrapped;
+      }
+    }
+    throw lastErr;
+  }
+
+  function xhrJson(path, headers, options) {
+    return new Promise(function (resolve, reject) {
+      var xhr = new XMLHttpRequest();
+      xhr.open(options.method || "POST", API_BASE + path, true);
+      xhr.timeout = options.timeout || 60000;
+      Object.keys(headers || {}).forEach(function (k) {
+        try { xhr.setRequestHeader(k, headers[k]); } catch (e) {}
+      });
+      xhr.onload = function () {
+        var data = null;
+        try { data = xhr.responseText ? JSON.parse(xhr.responseText) : null; } catch (e) {
+          data = { detail: xhr.responseText || "Invalid response" };
+        }
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(data);
+          return;
+        }
+        var msg = (data && (data.detail || data.message)) || ("Request failed (" + xhr.status + ")");
+        if (typeof msg === "object") msg = JSON.stringify(msg);
+        var err = new Error(msg);
+        err.status = xhr.status;
+        err.data = data;
+        reject(err);
+      };
+      xhr.onerror = function () { reject(new Error("Failed to fetch")); };
+      xhr.ontimeout = function () { reject(new Error("The user aborted a request.")); };
+      xhr.send(
+        options.body
+          ? options.body instanceof FormData
+            ? options.body
+            : JSON.stringify(options.body)
+          : null
+      );
     });
-    return parseResponse(res);
   }
 
   async function apiUpload(path, formData, options) {
@@ -135,19 +430,26 @@
     if (token && !options.noAuth && !headers.Authorization) {
       headers.Authorization = "Bearer " + token;
     }
+    var t = options.signal ? null : fetchTimeout(options.timeout || 90000);
     var res = await fetch(API_BASE + path, {
       method: options.method || "POST",
       headers: headers,
       body: formData,
-      signal: options.signal || fetchTimeout(90000),
+      credentials: "omit",
+      signal: options.signal || (t && t.signal),
     });
-    return parseResponse(res);
+    try {
+      return await parseResponse(res);
+    } finally {
+      if (t) t.clear();
+    }
   }
 
   function dashboardForRole(role) {
+    if (role === "school_admin") return "office.html";
     if (role === "teacher" || role === "admin") return "teacher.html";
     if (role === "kind") return "kind.html";
-    if (role === "vendor") return "marketplace.html?vendor=pending";
+    if (role === "vendor") return "vendor.html";
     return "student.html";
   }
 
@@ -155,7 +457,7 @@
     var role = localStorage.getItem("sia_role") || "";
     var token = getToken();
     if (!token) {
-      window.location.href = "auth.html";
+      window.location.href = "portal.html";
       return false;
     }
     if (expectedRoles && expectedRoles.indexOf(role) < 0) {
@@ -165,16 +467,99 @@
     return true;
   }
 
+  async function fetchBinary(path, options) {
+    options = options || {};
+    var token = getToken();
+    var headers = Object.assign({ Accept: "application/octet-stream,*/*" }, options.headers || {});
+    if (token && !options.noAuth && !headers.Authorization) {
+      headers.Authorization = "Bearer " + token;
+    }
+    var timeoutMs = options.timeout || 180000;
+    var tries = options.retries == null ? 3 : options.retries;
+    var lastErr = null;
+    var url = API_BASE + path;
+
+    for (var i = 0; i <= tries; i++) {
+      if (i > 0) {
+        wakePromise = null;
+        lastWakeOkAt = 0;
+        try {
+          await wakeServer(60000);
+        } catch (w) {}
+        await new Promise(function (resolve) {
+          setTimeout(resolve, 1500 * i);
+        });
+      } else {
+        try {
+          await wakeServer(45000);
+        } catch (w2) {}
+      }
+      try {
+        var bytes = await new Promise(function (resolve, reject) {
+          var xhr = new XMLHttpRequest();
+          xhr.open("GET", url, true);
+          xhr.responseType = "arraybuffer";
+          xhr.timeout = timeoutMs;
+          Object.keys(headers).forEach(function (k) {
+            xhr.setRequestHeader(k, headers[k]);
+          });
+          xhr.onload = function () {
+            if (xhr.status === 402) {
+              var err402 = new Error("Pay to unlock this material.");
+              err402.status = 402;
+              reject(err402);
+              return;
+            }
+            if (xhr.status === 403) {
+              var err403 = new Error("This file is not downloadable.");
+              err403.status = 403;
+              reject(err403);
+              return;
+            }
+            if (xhr.status >= 200 && xhr.status < 300) {
+              lastWakeOkAt = Date.now();
+              resolve(new Uint8Array(xhr.response));
+              return;
+            }
+            var err = new Error("Request failed (" + xhr.status + ")");
+            err.status = xhr.status;
+            reject(err);
+          };
+          xhr.onerror = function () {
+            reject(new Error("Failed to fetch"));
+          };
+          xhr.ontimeout = function () {
+            reject(new Error("The user aborted a request."));
+          };
+          xhr.send();
+        });
+        return bytes;
+      } catch (err) {
+        lastErr = err;
+        var msg = (err && err.message) || "";
+        var retryable =
+          !err.status || err.status >= 500 || /failed to fetch|networkerror|load failed|aborted/i.test(msg);
+        if (!retryable || i === tries) break;
+      }
+    }
+    throw new Error(friendlyFetchError(lastErr) || "Could not download file.");
+  }
+
   global.ScholaxiaAPI = {
     API_BASE: API_BASE,
     api: api,
     apiUpload: apiUpload,
+    fetchBinary: fetchBinary,
+    wakeServer: wakeServer,
+    loginApi: loginApi,
+    friendlyFetchError: friendlyFetchError,
+    fetchTimeout: fetchTimeout,
     getToken: getToken,
     getUser: getUser,
     saveSession: saveSession,
     clearSession: clearSession,
     dashboardForRole: dashboardForRole,
     requireAuth: requireAuth,
-    fetchTimeout: fetchTimeout,
   };
+  global.api = global.ScholaxiaAPI;
 })(window);

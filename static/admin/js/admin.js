@@ -16,7 +16,14 @@ document.addEventListener("DOMContentLoaded", function () {
   document.getElementById("tab-login").addEventListener("click", function () { switchAuthTab("login"); });
   document.getElementById("tab-register").addEventListener("click", function () { switchAuthTab("register"); });
   document.getElementById("form-login").addEventListener("submit", adminLogin);
+  document.getElementById("btn-login").addEventListener("click", adminLogin);
   document.getElementById("form-register").addEventListener("submit", adminRegister);
+  try {
+    var lastEmail = localStorage.getItem("sia_admin_email_last");
+    if (lastEmail && document.getElementById("login-email") && !document.getElementById("login-email").value) {
+      document.getElementById("login-email").value = lastEmail;
+    }
+  } catch (e) {}
   syncMarketplaceFileFields();
 });
 
@@ -46,12 +53,20 @@ function switchAuthTab(tab) {
 }
 
 async function adminLogin(e) {
-  e.preventDefault();
+  if (e && e.preventDefault) e.preventDefault();
+  if (e && e.stopPropagation) e.stopPropagation();
   var email = document.getElementById("login-email").value.trim();
   var password = document.getElementById("login-password").value;
   var err = document.getElementById("login-error");
   var btn = document.getElementById("btn-login");
   err.textContent = "";
+  if (email) {
+    try { localStorage.setItem("sia_admin_email_last", email); } catch (e0) {}
+  }
+  if (!email || !password) {
+    err.textContent = "Enter email and password.";
+    return false;
+  }
   btn.disabled = true;
   btn.textContent = "Signing in…";
   try {
@@ -65,11 +80,18 @@ async function adminLogin(e) {
       signal: fetchTimeout(90000),
     });
     var data = await res.json().catch(function () { return {}; });
-    if (!res.ok) { err.textContent = formatApiError(data.detail) || "Login failed."; return; }
+    if (!res.ok) {
+      err.textContent = formatApiError(data.detail) || "Login failed.";
+      return false;
+    }
     var role = String(data.role || (data.user && data.user.role) || "").toLowerCase().replace(/^userrole\./, "");
     if (role !== "admin" && role !== "school_admin") {
       err.textContent = "This email is a " + (role || "unknown") + " account, not an admin. Use the student/teacher sign-in on the website.";
-      return;
+      return false;
+    }
+    if (!data.access_token) {
+      err.textContent = "Login succeeded but no token was returned. Try again.";
+      return false;
     }
     saveAdminSession(data, email, (data.user && data.user.full_name) || email);
     if (data.user && data.user.school_id) {
@@ -78,9 +100,19 @@ async function adminLogin(e) {
     if (data.user && data.user.school_name) {
       localStorage.setItem("sia_school_name", data.user.school_name);
     }
+    if (role === "school_admin" && !(data.user && data.user.school_id)) {
+      err.textContent = "This school admin is not linked to a school yet. Ask the main Scholaxia admin to assign the school.";
+      clearAdminSession();
+      return false;
+    }
     showApp();
     if (role === "school_admin") {
-      showAdminPage("school-office");
+      try {
+        showAdminPage("school-office");
+      } catch (pageErr) {
+        err.textContent = pageErr.message || "Signed in, but School office failed to open.";
+        showAuth();
+      }
     } else {
       loadDashboard();
     }
@@ -88,12 +120,13 @@ async function adminLogin(e) {
     if (ex && ex.name === "AbortError") {
       err.textContent = "Server took too long (waking up). Wait 20 seconds and try again.";
     } else {
-      err.textContent = "Network error. Check your connection and try again.";
+      err.textContent = (ex && ex.message) || "Network error. Check your connection and try again.";
     }
   } finally {
     btn.disabled = false;
     btn.textContent = "LOG IN";
   }
+  return false;
 }
 
 async function adminRegister(e) {

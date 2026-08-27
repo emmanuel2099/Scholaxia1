@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel
@@ -981,6 +981,72 @@ async def get_active_students(
 
 
 # ── Teacher: Schedule School Exam ─────────────────────────────────────────────
+
+@router.post("/school-exams/import-preview")
+async def teacher_preview_exam_file(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(require_teacher),
+):
+    """Parse PDF/DOCX/JSON questions for teacher exam publish (does not save)."""
+    from app.services.cbt_pdf_parser import (
+        LOW_CONFIDENCE_THRESHOLD,
+        PDFParseError,
+        parse_docx_questions,
+        parse_pdf_questions,
+    )
+    from app.services.cbt_import import parse_cbt_file
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+    if len(content) > 15 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large. Maximum size is 15MB.")
+
+    name = (file.filename or "").lower()
+    is_pdf = name.endswith(".pdf") or content[:5] == b"%PDF-"
+    is_docx = name.endswith(".docx")
+
+    if is_pdf or is_docx:
+        try:
+            result = parse_docx_questions(content) if is_docx else parse_pdf_questions(content)
+        except PDFParseError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        questions = result.get("questions") or []
+        if not questions:
+            raise HTTPException(status_code=400, detail="No questions found in that file.")
+        low_conf = sum(
+            1 for q in questions if float(q.get("confidence") or 0) < LOW_CONFIDENCE_THRESHOLD
+        )
+        return {
+            "source": "docx" if is_docx else "pdf",
+            "questions": questions,
+            "total_questions": len(questions),
+            "answer_key_found": result.get("answer_key_found"),
+            "warnings": result.get("warnings") or [],
+            "low_confidence_count": low_conf,
+        }
+
+    try:
+        exams = parse_cbt_file(file.filename or "upload.json", content, {"title": "Preview", "subject": "Preview", "year": 2000})
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Could not read file: {exc}") from exc
+    qs = []
+    for ex in exams or []:
+        for q in ex.get("questions") or []:
+            qs.append(q)
+    if not qs:
+        raise HTTPException(status_code=400, detail="No questions found in that file.")
+    return {
+        "source": "json",
+        "questions": qs,
+        "total_questions": len(qs),
+        "answer_key_found": True,
+        "warnings": [],
+        "low_confidence_count": 0,
+    }
+
 
 @router.post("/school-exams", status_code=201)
 async def teacher_create_school_exam(
