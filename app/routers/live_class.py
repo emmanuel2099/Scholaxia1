@@ -137,7 +137,10 @@ async def my_access_codes(
     try:
         sid = parse_uuid(current_user["sub"])
         now = naive_utc_now()
-        await _heal_stale_live_flags(db, now)
+        try:
+            await _heal_stale_live_flags(db, now)
+        except Exception:
+            pass
         result = await db.execute(
             select(LiveClassAccessCodeDelivery, LiveClass)
             .join(LiveClass, LiveClass.id == LiveClassAccessCodeDelivery.live_class_id)
@@ -485,32 +488,29 @@ def _class_is_active(live_class: LiveClass, now: datetime) -> bool:
 
 
 async def _heal_stale_live_flags(db: AsyncSession, now: datetime | None = None) -> None:
-    """Force is_live=false for rows past end_time (or absurdly long sessions)."""
+    """Best-effort clear of stuck is_live rows (savepoint — never poisons list SELECT)."""
     from sqlalchemy import text as sql_text
 
     now = now or naive_utc_now()
     try:
-        await db.execute(
-            sql_text(
-                """
-                UPDATE live_classes
-                SET is_live = FALSE,
-                    end_time = COALESCE(end_time, :now)
-                WHERE COALESCE(is_live, false) = true
-                  AND (
-                    (end_time IS NOT NULL AND end_time <= :now)
-                    OR (start_time IS NOT NULL AND start_time <= :cutoff)
-                  )
-                """
-            ),
-            {"now": now, "cutoff": now - timedelta(hours=4)},
-        )
-        await db.flush()
+        async with db.begin_nested():
+            await db.execute(
+                sql_text(
+                    """
+                    UPDATE live_classes
+                    SET is_live = FALSE,
+                        end_time = COALESCE(end_time, :now)
+                    WHERE COALESCE(is_live, false) = true
+                      AND (
+                        (end_time IS NOT NULL AND end_time <= :now)
+                        OR (start_time IS NOT NULL AND start_time <= :cutoff)
+                      )
+                    """
+                ),
+                {"now": now, "cutoff": now - timedelta(hours=4)},
+            )
     except Exception:
-        try:
-            await db.rollback()
-        except Exception:
-            pass
+        return
 
 
 def _parse_id_list(raw: str | None) -> list[str]:
@@ -1464,7 +1464,11 @@ async def list_live_classes(
     - omit status      â†’ all classes
     """
     now = naive_utc_now()
-    await _heal_stale_live_flags(db, now)
+    # Never let heal block listing — coerce flags in the response either way.
+    try:
+        await _heal_stale_live_flags(db, now)
+    except Exception:
+        pass
     query = select(LiveClass)
 
     if subject:
@@ -1554,20 +1558,12 @@ async def list_live_classes(
 
     out = []
     for c in classes:
-        # Heal stuck LIVE rows: past end or >4h since start must never stay live in the API
+        # Coerce response only — DB heal is best-effort above (savepoint).
         live_flag = bool(c.is_live)
         stale_end = bool(c.end_time and c.end_time <= now)
         stale_long = bool(c.start_time and c.start_time <= (now - timedelta(hours=4)))
         if stale_end or stale_long:
             live_flag = False
-            if c.is_live:
-                try:
-                    c.is_live = False
-                    if not c.end_time or c.end_time > now:
-                        c.end_time = now
-                    await db.flush()
-                except Exception:
-                    pass
         status_label = "live" if live_flag else (
             "past" if (c.end_time and c.end_time <= now) else "upcoming"
         )

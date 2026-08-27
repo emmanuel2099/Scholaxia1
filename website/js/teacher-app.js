@@ -414,13 +414,26 @@
   async function loadLive() {
     var el = $("liveList");
     if (!el) return;
+    var reqId = (loadLive._reqId = (loadLive._reqId || 0) + 1);
     el.innerHTML = '<div class="loading">Loading classes…</div>';
+    var timedOut = false;
+    var watchdog = setTimeout(function () {
+      if (loadLive._reqId !== reqId) return;
+      timedOut = true;
+      el.innerHTML =
+        '<div class="empty">Still loading… <button type="button" class="btn-sm" id="liveRetryBtn">Retry</button></div>';
+      var btn = $("liveRetryBtn");
+      if (btn) btn.onclick = function () { loadLive(); };
+    }, 12000);
     try {
       var status = ($("liveFilter") && $("liveFilter").value) || "";
       var url = "/api/v1/live-classes/?limit=50";
       if (status) url += "&status=" + encodeURIComponent(status);
-      var rows = await api.api(url);
-      if (!Array.isArray(rows)) rows = rows.items || rows.classes || [];
+      var rows = await api.api(url, { timeout: 20000, retries: 1, awaitWake: false });
+      if (loadLive._reqId !== reqId) return;
+      clearTimeout(watchdog);
+      if (!Array.isArray(rows)) rows = (rows && (rows.items || rows.classes)) || [];
+      if (!Array.isArray(rows)) rows = [];
       var liveN = rows.filter(classLooksLive).length;
       var upN = rows.filter(function (c) {
         return !classLooksLive(c) && c.status !== "ended" && c.status !== "past";
@@ -490,7 +503,17 @@
         })
         .join("");
     } catch (e) {
-      el.innerHTML = '<div class="empty">' + esc(e.message || "Could not load classes") + "</div>';
+      if (loadLive._reqId !== reqId) return;
+      clearTimeout(watchdog);
+      if (timedOut) return;
+      el.innerHTML =
+        '<div class="empty">' +
+        esc(e.message || "Could not load classes") +
+        ' <button type="button" class="btn-sm" id="liveRetryBtn">Retry</button></div>';
+      var btn2 = $("liveRetryBtn");
+      if (btn2) btn2.onclick = function () { loadLive(); };
+    } finally {
+      clearTimeout(watchdog);
     }
   }
 
