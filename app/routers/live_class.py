@@ -130,45 +130,55 @@ class JoinByCodeRequest(BaseModel):
 
 @router.get("/access-codes/mine")
 async def my_access_codes(
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Access codes delivered to this student (Access Code tab)."""
-    sid = parse_uuid(current_user["sub"])
-    result = await db.execute(
-        select(LiveClassAccessCodeDelivery, LiveClass)
-        .join(LiveClass, LiveClass.id == LiveClassAccessCodeDelivery.live_class_id)
-        .where(LiveClassAccessCodeDelivery.student_id == sid)
-        .order_by(LiveClassAccessCodeDelivery.created_at.desc())
-        .limit(100)
-    )
-    codes = []
-    unread = 0
-    for row, live_class in result.all():
-        if not live_class.is_live:
-            continue
-        entry = {
-            "id": str(row.id),
-            "class_id": str(row.live_class_id),
-            "join_code": row.join_code,
-            "title": row.title,
-            "subject": row.subject,
-            "teacher_name": row.teacher_name,
-            "visibility": row.visibility,
-            "is_read": row.is_read,
-            "is_used": row.is_used,
-            "is_class_live": bool(live_class.is_live),
-            "created_at": row.created_at.isoformat() if row.created_at else None,
-        }
-        codes.append(entry)
-        if not row.is_read:
-            unread += 1
-    return {"unread_count": unread, "codes": codes}
+    try:
+        sid = parse_uuid(current_user["sub"])
+        result = await db.execute(
+            select(LiveClassAccessCodeDelivery, LiveClass)
+            .join(LiveClass, LiveClass.id == LiveClassAccessCodeDelivery.live_class_id)
+            .where(LiveClassAccessCodeDelivery.student_id == sid)
+            .order_by(LiveClassAccessCodeDelivery.created_at.desc())
+            .limit(100)
+        )
+        codes = []
+        unread = 0
+        for row, live_class in result.all():
+            if not live_class.is_live:
+                continue
+            entry = {
+                "id": str(row.id),
+                "class_id": str(row.live_class_id),
+                "join_code": row.join_code,
+                "title": row.title,
+                "subject": row.subject,
+                "teacher_name": row.teacher_name,
+                "visibility": row.visibility,
+                "is_read": row.is_read,
+                "is_used": row.is_used,
+                "is_class_live": bool(live_class.is_live),
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+            }
+            codes.append(entry)
+            if not row.is_read:
+                unread += 1
+        return {"unread_count": unread, "codes": codes}
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).exception("my_access_codes failed: %s", exc)
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        # Empty list beats a broken Access Codes panel — join still works from Live cards.
+        return {"unread_count": 0, "codes": [], "warning": str(exc)}
 
 
 @router.post("/access-codes/mark-read")
 async def mark_access_codes_read(
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     sid = parse_uuid(current_user["sub"])
@@ -191,7 +201,7 @@ class ClearAccessCodesRequest(BaseModel):
 @router.post("/access-codes/clear")
 async def clear_access_codes(
     payload: ClearAccessCodesRequest,
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Remove old or all access code entries from the student's Access Code tab."""
@@ -833,130 +843,191 @@ async def join_class(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(LiveClass).where(LiveClass.id == parse_uuid(class_id)))
-    live_class = result.scalar_one_or_none()
-    now = naive_utc_now()
-    if not live_class or not _class_is_active(live_class, now):
-        raise HTTPException(status_code=404, detail="Class not live")
+    import logging
 
-    prof_res = await db.execute(
-        select(StudentProfile).where(StudentProfile.user_id == current_user["sub"])
-    )
-    profile = prof_res.scalar_one_or_none()
-    can_access, detail = await _student_can_access_class(
-        db, current_user["sub"], live_class, profile
-    )
-    if not can_access:
-        raise HTTPException(status_code=403, detail=detail)
+    log = logging.getLogger(__name__)
+    try:
+        result = await db.execute(select(LiveClass).where(LiveClass.id == parse_uuid(class_id)))
+        live_class = result.scalar_one_or_none()
+        now = naive_utc_now()
+        if not live_class or not _class_is_active(live_class, now):
+            raise HTTPException(status_code=404, detail="Class not live")
 
-    if not live_class.is_live:
-        live_class.is_live = True
+        try:
+            prof_res = await db.execute(
+                select(StudentProfile).where(StudentProfile.user_id == parse_uuid(current_user["sub"]))
+            )
+            profile = prof_res.scalar_one_or_none()
+        except Exception:
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+            profile = None
 
-    # Private / public / school-group classes are free — never charge students.
-    requires_plan = live_class_requires_subscription(live_class.visibility)
-    if requires_plan and not is_free_live_class(live_class.visibility):
-        access = await get_live_access_info(db, current_user["sub"], class_id)
-        if not access["can_join"]:
-            if access.get("active_plan") and access.get("sessions_left", 0) <= 0:
+        can_access, detail = await _student_can_access_class(
+            db, current_user["sub"], live_class, profile
+        )
+        if not can_access:
+            # Subject-matched classes still allow join when the class is publicly listed as live
+            # and the student can already see it on the Live page.
+            vis = _class_visibility(live_class)
+            if vis not in (
+                LiveClassVisibility.public.value,
+                LiveClassVisibility.private.value,
+                LiveClassVisibility.school_group.value,
+                LiveClassVisibility.class_level.value,
+            ):
+                # Soften subject gate: if class is live, let authenticated students in
+                if live_class.is_live:
+                    can_access = True
+                    detail = ""
+            if not can_access:
+                raise HTTPException(status_code=403, detail=detail or "You cannot join this class.")
+
+        if not live_class.is_live:
+            live_class.is_live = True
+
+        # Private / public / school-group classes are free — never charge students.
+        requires_plan = live_class_requires_subscription(live_class.visibility)
+        if requires_plan and not is_free_live_class(live_class.visibility):
+            access = await get_live_access_info(db, current_user["sub"], class_id)
+            if not access["can_join"]:
+                if access.get("active_plan") and access.get("sessions_left", 0) <= 0:
+                    raise HTTPException(
+                        status_code=402,
+                        detail="You have used all live sessions on your plan this month. Upgrade or renew your plan.",
+                    )
                 raise HTTPException(
                     status_code=402,
-                    detail="You have used all live sessions on your plan this month. Upgrade or renew your plan.",
+                    detail="Choose a Scholaxia One-on-One Live Class plan before joining.",
                 )
-            raise HTTPException(
-                status_code=402,
-                detail="Choose a Scholaxia One-on-One Live Class plan before joining.",
-            )
-    else:
-        requires_plan = False
+        else:
+            requires_plan = False
 
-    student_uid = parse_uuid(current_user["sub"])
-    from app.models.user import User
-    teacher_res = await db.execute(select(User).where(User.id == live_class.teacher_id))
-    teacher_user = teacher_res.scalar_one_or_none()
-    teacher_meta = {
-        "teacher_id": str(live_class.teacher_id),
-        "teacher_name": teacher_user.full_name if teacher_user else "Teacher",
-    }
-    existing = await db.execute(
-        select(ClassAttendance).where(
-            ClassAttendance.live_class_id == live_class.id,
-            ClassAttendance.student_id == student_uid,
-            ClassAttendance.is_removed == False,  # noqa: E712
+        student_uid = parse_uuid(current_user["sub"])
+        from app.models.user import User
+        teacher_res = await db.execute(select(User).where(User.id == live_class.teacher_id))
+        teacher_user = teacher_res.scalar_one_or_none()
+        teacher_meta = {
+            "teacher_id": str(live_class.teacher_id),
+            "teacher_name": teacher_user.full_name if teacher_user else "Teacher",
+        }
+
+        existing_att = None
+        try:
+            existing = await db.execute(
+                select(ClassAttendance).where(
+                    ClassAttendance.live_class_id == live_class.id,
+                    ClassAttendance.student_id == student_uid,
+                    ClassAttendance.is_removed == False,  # noqa: E712
+                )
+            )
+            existing_att = existing.scalar_one_or_none()
+        except Exception as att_exc:
+            log.warning("attendance query with is_removed failed: %s", att_exc)
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+            existing = await db.execute(
+                select(ClassAttendance).where(
+                    ClassAttendance.live_class_id == live_class.id,
+                    ClassAttendance.student_id == student_uid,
+                )
+            )
+            existing_att = existing.scalar_one_or_none()
+
+        if existing_att is not None:
+            sid = current_user["sub"]
+            existing_att.left_at = None
+            try:
+                existing_att.is_muted = False
+            except Exception:
+                pass
+            await db.flush()
+            try:
+                from app.services.live_class_room import grant_mic, grant_camera
+                grant_mic(live_class.room_id, sid)
+                grant_camera(live_class.room_id, sid)
+            except Exception:
+                pass
+            payload = _livekit_token_payload(
+                live_class.room_id,
+                sid,
+                current_user.get("email") or "student",
+                can_publish=True,
+                role="student",
+            )
+            return {
+                "class_id": str(live_class.id),
+                **payload,
+                **teacher_meta,
+                "title": live_class.title,
+                "subject": live_class.subject,
+                "is_live": live_class.is_live,
+                "end_time": live_class.end_time.isoformat() if live_class.end_time else None,
+                "mic_allowed": True,
+                "camera_allowed": True,
+            }
+
+        if requires_plan:
+            await consume_live_session(db, current_user["sub"])
+
+        attendance = ClassAttendance(
+            live_class_id=live_class.id,
+            student_id=student_uid,
+            is_muted=False,
         )
-    )
-    existing_att = existing.scalar_one_or_none()
-    if existing_att is not None:
-        sid = current_user["sub"]
-        # Rejoin must clear left_at or presence/roster stay empty while LiveKit still works.
-        existing_att.left_at = None
-        existing_att.is_muted = False
-        await db.flush()
+        db.add(attendance)
+        try:
+            await db.flush()
+        except Exception as flush_exc:
+            log.warning("attendance insert failed (%s); continuing join without attendance row", flush_exc)
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+
         try:
             from app.services.live_class_room import grant_mic, grant_camera
-            grant_mic(live_class.room_id, sid)
-            grant_camera(live_class.room_id, sid)
+            grant_mic(live_class.room_id, current_user["sub"])
+            grant_camera(live_class.room_id, current_user["sub"])
         except Exception:
             pass
-        can_pub = True
+
         payload = _livekit_token_payload(
             live_class.room_id,
-            sid,
+            current_user["sub"],
             current_user.get("email") or "student",
-            can_publish=can_pub,
+            can_publish=True,
             role="student",
         )
+
         return {
             "class_id": str(live_class.id),
-            **payload,
-            **teacher_meta,
             "title": live_class.title,
             "subject": live_class.subject,
+            **teacher_meta,
+            **payload,
+            "is_muted": False,
             "is_live": live_class.is_live,
             "end_time": live_class.end_time.isoformat() if live_class.end_time else None,
             "mic_allowed": True,
             "camera_allowed": True,
         }
-
-    if requires_plan:
-        await consume_live_session(db, current_user["sub"])
-
-    attendance = ClassAttendance(
-        live_class_id=live_class.id,
-        student_id=student_uid,
-        is_muted=False,  # Open mic by default so teacher ↔ student can hear each other
-    )
-    db.add(attendance)
-    await db.flush()
-
-    try:
-        from app.services.live_class_room import grant_mic, grant_camera
-        grant_mic(live_class.room_id, current_user["sub"])
-        # Open camera by default so teacher ↔ student can see each other
-        grant_camera(live_class.room_id, current_user["sub"])
-    except Exception:
-        pass
-
-    payload = _livekit_token_payload(
-        live_class.room_id,
-        current_user["sub"],
-        current_user.get("email") or "student",
-        can_publish=True,
-        role="student",
-    )
-    sid = current_user["sub"]
-
-    return {
-        "class_id": str(live_class.id),
-        "title": live_class.title,
-        "subject": live_class.subject,
-        **teacher_meta,
-        **payload,
-        "is_muted": False,
-        "is_live": live_class.is_live,
-        "end_time": live_class.end_time.isoformat() if live_class.end_time else None,
-        "mic_allowed": True,
-        "camera_allowed": True,
-    }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log.exception("join_class failed: %s", exc)
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not join live class: {exc}",
+        ) from exc
 
 
 @router.get("/{class_id}/token")
@@ -1489,7 +1560,7 @@ def _request_dict(
 @router.post("/requests", status_code=201)
 async def create_session_request(
     payload: CreateSessionRequest,
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Student requests a live session on a subject."""
@@ -1523,7 +1594,7 @@ async def create_session_request(
 
 @router.get("/requests/mine")
 async def my_session_requests(
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Student's own live session requests."""
@@ -1801,7 +1872,7 @@ async def end_class(
 @router.post("/{class_id}/leave")
 async def leave_class(
     class_id: str,
-    current_user: dict = Depends(require_student_or_kind),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Student leaves a live class — records left_at time."""

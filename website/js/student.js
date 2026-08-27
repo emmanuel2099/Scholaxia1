@@ -38,10 +38,26 @@
 
   function errMsg(err) {
     var msg = (err && err.message) || "Something went wrong. Please try again.";
+    // Prefer real API detail when present (join/live/groups)
+    if (err && err.data) {
+      var d0 = err.data.detail || err.data.message || err.data;
+      if (typeof d0 === "object" && d0) {
+        var detail0 = d0.message || d0.detail || "";
+        if (detail0) msg = String(detail0);
+      } else if (typeof d0 === "string" && d0.trim()) {
+        msg = d0;
+      }
+    }
     if (err && (err.status === 401 || err.status === 403)) {
+      if (/not invited|private class|subjects|plan|Students only|kid learners/i.test(msg)) {
+        return msg;
+      }
       return "Your session expired. Log out and log in again, then open Groups/Community.";
     }
     if (err && err.status >= 500) {
+      if (msg && !/^Request failed|^Internal Server Error$/i.test(msg) && msg.length < 220) {
+        return msg;
+      }
       return "Server error loading this section. Tap Try again — if it keeps failing, wait a minute for a redeploy.";
     }
     if (/failed to fetch|networkerror|load failed/i.test(msg)) {
@@ -59,11 +75,6 @@
         }
       }
     } catch (e) { /* ignore */ }
-    if (err && err.data) {
-      var d = err.data.detail || err.data.message || err.data;
-      if (typeof d === "object" && d) return d.message || d.detail || JSON.stringify(d);
-      if (typeof d === "string") return d;
-    }
     return msg;
   }
 
@@ -108,7 +119,7 @@
         localStorage.removeItem(k);
       });
     } catch (e2) {}
-    window.location.href = "portal.html?v=20260827m&force=1&reason=session";
+    window.location.href = "portal.html?v=20260827n&force=1&reason=session";
   }
 
   document.addEventListener("click", function (e) {

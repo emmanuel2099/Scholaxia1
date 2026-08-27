@@ -72,12 +72,30 @@ async def require_student(current_user: dict = Depends(get_current_user)):
 
 
 async def require_student_or_kind(current_user: dict = Depends(get_current_user)):
-    if _norm_role(current_user.get("role")) not in ("student", "kind"):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Students or kid learners only",
-        )
-    return current_user
+    role = _norm_role(current_user.get("role"))
+    if role in ("student", "kind"):
+        return current_user
+    # Fallback: user may have a student/kind profile even if role string is odd
+    db = current_user.get("_db")
+    if db is not None:
+        try:
+            from app.models.user import StudentProfile, KindProfile
+
+            uid = current_user.get("sub")
+            sp = await db.execute(select(StudentProfile).where(StudentProfile.user_id == uid))
+            if sp.scalar_one_or_none():
+                current_user["role"] = "student"
+                return current_user
+            kp = await db.execute(select(KindProfile).where(KindProfile.user_id == uid))
+            if kp.scalar_one_or_none():
+                current_user["role"] = "kind"
+                return current_user
+        except Exception:
+            pass
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Students or kid learners only",
+    )
 
 
 async def require_kind(current_user: dict = Depends(get_current_user)):

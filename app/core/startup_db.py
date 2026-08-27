@@ -623,6 +623,40 @@ async def ensure_community_posts_columns() -> None:
             logger.warning("community/groups column migrate skipped: %s (%s)", stmt, exc)
 
 
+async def ensure_live_class_schema() -> None:
+    """Columns/tables required for Join live + Access codes (avoids Internal Server Error)."""
+    stmts = (
+        "ALTER TABLE class_attendances ADD COLUMN IF NOT EXISTS is_removed BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE class_attendances ADD COLUMN IF NOT EXISTS is_muted BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE class_attendances ADD COLUMN IF NOT EXISTS left_at TIMESTAMP NULL",
+        """
+        CREATE TABLE IF NOT EXISTS live_class_access_codes (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            student_id UUID NOT NULL REFERENCES users(id),
+            live_class_id UUID NOT NULL REFERENCES live_classes(id),
+            join_code VARCHAR(32) NOT NULL,
+            title VARCHAR(255) NOT NULL,
+            subject VARCHAR(120) NULL,
+            teacher_name VARCHAR(200) NULL,
+            visibility VARCHAR(32) NOT NULL DEFAULT 'public',
+            is_read BOOLEAN NOT NULL DEFAULT FALSE,
+            is_used BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT NOW(),
+            UNIQUE (student_id, live_class_id)
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_live_class_access_codes_student_id ON live_class_access_codes (student_id)",
+        "CREATE INDEX IF NOT EXISTS ix_live_class_access_codes_live_class_id ON live_class_access_codes (live_class_id)",
+        "CREATE INDEX IF NOT EXISTS ix_live_class_access_codes_join_code ON live_class_access_codes (join_code)",
+    )
+    for stmt in stmts:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text(stmt))
+        except Exception as exc:
+            logger.warning("live class schema skipped: %s (%s)", stmt, exc)
+
+
 async def initialize_database() -> bool:
     """Create tables, run migrations, and seed. Returns False if DATABASE_URL is invalid."""
     global _db_initialized
@@ -660,6 +694,10 @@ async def initialize_database() -> bool:
         await ensure_community_posts_columns()
     except Exception as exc:
         logger.warning("ensure_community_posts_columns: %s", exc)
+    try:
+        await ensure_live_class_schema()
+    except Exception as exc:
+        logger.warning("ensure_live_class_schema: %s", exc)
     try:
         from app.services.cbt_access import ensure_student_entitlements_schema
         await ensure_student_entitlements_schema()
