@@ -55,8 +55,11 @@
       return "Your session expired. Log out and log in again, then open Groups/Community.";
     }
     if (err && err.status >= 500) {
-      if (msg && !/^Request failed|^Internal Server Error$/i.test(msg) && msg.length < 220) {
-        return msg;
+      if (msg && !/^Request failed$/i.test(msg)) {
+        var clean = String(msg).replace(/\s*\(Background on this error[\s\S]*$/i, "").trim();
+        if (clean && !/^Internal Server Error$/i.test(clean)) {
+          return clean.length > 240 ? clean.slice(0, 240) + "…" : clean;
+        }
       }
       return "Server error loading this section. Tap Try again — if it keeps failing, wait a minute for a redeploy.";
     }
@@ -119,7 +122,7 @@
         localStorage.removeItem(k);
       });
     } catch (e2) {}
-    window.location.href = "portal.html?v=20260827n&force=1&reason=session";
+    window.location.href = "portal.html?v=20260827p&force=1&reason=session";
   }
 
   document.addEventListener("click", function (e) {

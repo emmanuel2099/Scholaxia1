@@ -1,4 +1,4 @@
-import uuid
+﻿import uuid
 import hashlib
 import json
 import secrets
@@ -36,7 +36,7 @@ router = APIRouter(prefix="/live-classes", tags=["Live Classes"])
 
 @router.get("/livekit/status")
 async def livekit_video_status():
-    """Public health check — does not expose secrets, only whether LiveKit is configured."""
+    """Public health check â€” does not expose secrets, only whether LiveKit is configured."""
     configured = _livekit_configured()
     return {
         "livekit_url": settings.LIVEKIT_URL if configured else "",
@@ -52,7 +52,7 @@ async def livekit_video_status():
 
 @router.get("/agora/status")
 async def agora_video_status():
-    """Deprecated alias — use /livekit/status."""
+    """Deprecated alias â€” use /livekit/status."""
     return await livekit_video_status()
 
 
@@ -172,7 +172,7 @@ async def my_access_codes(
             await db.rollback()
         except Exception:
             pass
-        # Empty list beats a broken Access Codes panel — join still works from Live cards.
+        # Empty list beats a broken Access Codes panel â€” join still works from Live cards.
         return {"unread_count": 0, "codes": [], "warning": str(exc)}
 
 
@@ -241,7 +241,7 @@ async def join_class_by_code(
     result = await db.execute(select(LiveClass).where(LiveClass.join_code == normalized))
     live_class = result.scalar_one_or_none()
     if not live_class:
-        raise HTTPException(status_code=404, detail="Invalid code. Each class has its own code — check Access Code tab.")
+        raise HTTPException(status_code=404, detail="Invalid code. Each class has its own code â€” check Access Code tab.")
 
     sid = parse_uuid(current_user["sub"])
     delivery = await db.execute(
@@ -259,7 +259,7 @@ async def join_class_by_code(
     can_access, detail = await _student_can_access_class(
         db, current_user["sub"], live_class, profile
     )
-    # Private class access code IS the invite — student joins free (no subscription).
+    # Private class access code IS the invite â€” student joins free (no subscription).
     if not can_access and _class_visibility(live_class) == LiveClassVisibility.private.value:
         can_access, detail = True, ""
         try:
@@ -301,7 +301,7 @@ async def join_class_by_code(
     return await join_class(str(live_class.id), current_user, db)
 
 
-# ── LiveKit token helper ────────────────────────────────────────────────────────
+# â”€â”€ LiveKit token helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _livekit_configured() -> bool:
     return bool(
@@ -561,7 +561,7 @@ async def _notify_for_class(
                 await send_all_students_notification(
                     db=db,
                     title="Live class starting now",
-                    body=f"«{live_class.title}» is live — copy your code from the app popup.",
+                    body=f"Â«{live_class.title}Â» is live â€” copy your code from the app popup.",
                     notification_type="live_class",
                     data=data,
                 )
@@ -570,14 +570,14 @@ async def _notify_for_class(
                 await send_all_students_notification(
                     db=db,
                     title="Upcoming platform live class",
-                    body=f"«{live_class.title}» is scheduled for {when}.",
+                    body=f"Â«{live_class.title}Â» is scheduled for {when}.",
                     notification_type="live_class",
                     data={**data, "start_time": (start or live_class.start_time).isoformat()},
                 )
         elif vis == LiveClassVisibility.private.value:
             title = "Private live class starting now" if live_now else "Private live class scheduled"
-            body_live = f"«{live_class.title}» — code {live_class.join_code} is in your Access Code tab."
-            body_up = f"«{live_class.title}» is scheduled. Only invited students can join."
+            body_live = f"Â«{live_class.title}Â» â€” code {live_class.join_code} is in your Access Code tab."
+            body_up = f"Â«{live_class.title}Â» is scheduled. Only invited students can join."
             for sid in _parse_id_list(live_class.invited_student_ids):
                 await send_user_notification(db, sid, title, body_live if live_now else body_up, "live_class", data)
         elif vis == LiveClassVisibility.school_group.value and live_class.school_group_id:
@@ -586,11 +586,11 @@ async def _notify_for_class(
             )
             group = group_res.scalar_one_or_none()
             if group:
-                title = f"{group.school_name} — class is live" if live_now else f"{group.name} — upcoming class"
+                title = f"{group.school_name} â€” class is live" if live_now else f"{group.name} â€” upcoming class"
                 body = (
-                    f"«{live_class.title}» is live — code {live_class.join_code} in Access Code tab."
+                    f"Â«{live_class.title}Â» is live â€” code {live_class.join_code} in Access Code tab."
                     if live_now
-                    else f"«{live_class.title}» scheduled for {group.name}."
+                    else f"Â«{live_class.title}Â» scheduled for {group.name}."
                 )
                 for sid in group.member_ids():
                     await send_user_notification(db, sid, title, body, "live_class", data)
@@ -600,7 +600,7 @@ async def _notify_for_class(
                     db=db,
                     subject=live_class.subject,
                     title="Live class starting now",
-                    body=f"Your {live_class.subject} class «{live_class.title}» is live. Join from your dashboard.",
+                    body=f"Your {live_class.subject} class Â«{live_class.title}Â» is live. Join from your dashboard.",
                     notification_type="live_class",
                     data=data,
                 )
@@ -610,7 +610,7 @@ async def _notify_for_class(
                     db=db,
                     subject=live_class.subject,
                     title=f"Upcoming {live_class.subject} class",
-                    body=f"«{live_class.title}» is scheduled for {when}.",
+                    body=f"Â«{live_class.title}Â» is scheduled for {when}.",
                     notification_type="live_class_upcoming",
                     data={
                         **data,
@@ -652,7 +652,7 @@ async def _notify_assigned_students_for_class(
                 db,
                 sid,
                 "Your teacher is live now",
-                f"«{live_class.title}» ({live_class.subject}) — join from Live Class.",
+                f"Â«{live_class.title}Â» ({live_class.subject}) â€” join from Live Class.",
                 "live_class",
                 {"class_id": str(live_class.id), "room_id": live_class.room_id},
             )
@@ -817,7 +817,7 @@ async def start_class(
     if not was_live:
         await _notify_for_class(db, live_class, live_now=True)
         await _notify_assigned_students_for_class(db, str(live_class.teacher_id), live_class)
-    # Open mics for everyone already in the room so teacher ↔ students hear each other.
+    # Open mics for everyone already in the room so teacher â†” students hear each other.
     att_res = await db.execute(
         select(ClassAttendance).where(
             ClassAttendance.live_class_id == live_class.id,
@@ -845,13 +845,21 @@ async def join_class(
 ):
     """Join a live class and return LiveKit credentials.
 
-    Snapshots ORM fields into plain values early so rollback / expired instances
-    cannot trigger SQLAlchemy async greenlet errors (xd2s).
+    Keep DB work minimal and always rollback after a failed SQL statement so the
+    async session is never left aborted (that caused greenlet_spawn / xd2s).
     """
     import logging
+    import uuid as uuid_lib
     from sqlalchemy import text as sql_text
 
     log = logging.getLogger(__name__)
+
+    async def _safe_rollback():
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+
     try:
         class_uuid = parse_uuid(class_id)
         student_uid = parse_uuid(current_user["sub"])
@@ -863,7 +871,7 @@ async def join_class(
         if not live_class or not _class_is_active(live_class, now):
             raise HTTPException(status_code=404, detail="Class not live")
 
-        # Snapshot before any later rollback can expire the ORM row
+        # Snapshot immediately â€” never read ORM attrs after a rollback
         room_id = str(live_class.room_id or "")
         title = live_class.title or "Live class"
         subject = live_class.subject or ""
@@ -871,36 +879,56 @@ async def join_class(
         visibility = _class_visibility(live_class)
         is_live = bool(live_class.is_live)
         end_time_iso = live_class.end_time.isoformat() if live_class.end_time else None
+        invited_raw = live_class.invited_student_ids
+        school_group_id = str(live_class.school_group_id) if live_class.school_group_id else None
 
-        profile = None
-        try:
-            prof_res = await db.execute(
-                select(StudentProfile).where(StudentProfile.user_id == student_uid)
-            )
-            profile = prof_res.scalar_one_or_none()
-        except Exception as prof_exc:
-            log.warning("student profile load skipped: %s", prof_exc)
-
-        can_access, detail = await _student_can_access_class(db, sid, live_class, profile)
-        if not can_access:
-            if visibility == LiveClassVisibility.subject.value and is_live:
-                can_access = True
-                detail = ""
-            if not can_access:
-                raise HTTPException(status_code=403, detail=detail or "You cannot join this class.")
+        if visibility == LiveClassVisibility.private.value:
+            invited = _parse_id_list(invited_raw)
+            if sid not in invited:
+                raise HTTPException(status_code=403, detail="This is a private class. You were not invited.")
+        elif visibility == LiveClassVisibility.school_group.value and school_group_id:
+            try:
+                group_res = await db.execute(
+                    select(SchoolGroup).where(SchoolGroup.id == parse_uuid(school_group_id))
+                )
+                group = group_res.scalar_one_or_none()
+                members = group.member_ids() if group else []
+                if sid not in members:
+                    raise HTTPException(
+                        status_code=403,
+                        detail="This class is only for students in the school group.",
+                    )
+            except HTTPException:
+                raise
+            except Exception as gexc:
+                log.warning("school group check skipped: %s", gexc)
 
         if not is_live:
             try:
-                live_class.is_live = True
+                await db.execute(
+                    sql_text("UPDATE live_classes SET is_live = TRUE WHERE id = :cid"),
+                    {"cid": str(class_uuid)},
+                )
                 await db.flush()
                 is_live = True
             except Exception:
-                is_live = True  # still allow token join
+                await _safe_rollback()
+                is_live = True
 
-        requires_plan = live_class_requires_subscription(visibility)
-        if requires_plan and not is_free_live_class(visibility):
-            access = await get_live_access_info(db, sid, class_id)
-            if not access["can_join"]:
+        # Live board cards are joinable without a plan (matches Join now UX).
+        requires_plan = (
+            (not is_live)
+            and live_class_requires_subscription(visibility)
+            and not is_free_live_class(visibility)
+        )
+        if requires_plan:
+            try:
+                access = await get_live_access_info(db, sid, class_id)
+            except Exception as access_exc:
+                log.warning("live access check failed: %s", access_exc)
+                await _safe_rollback()
+                access = {"can_join": True}
+            if not access.get("can_join"):
                 if access.get("active_plan") and access.get("sessions_left", 0) <= 0:
                     raise HTTPException(
                         status_code=402,
@@ -910,31 +938,28 @@ async def join_class(
                     status_code=402,
                     detail="Choose a Scholaxia One-on-One Live Class plan before joining.",
                 )
-        else:
-            requires_plan = False
-
-        from app.models.user import User
 
         teacher_name = "Teacher"
         try:
+            from app.models.user import User
+
             teacher_res = await db.execute(select(User).where(User.id == parse_uuid(teacher_id)))
             teacher_user = teacher_res.scalar_one_or_none()
             if teacher_user and teacher_user.full_name:
-                teacher_name = teacher_user.full_name
+                teacher_name = str(teacher_user.full_name)
         except Exception:
-            pass
+            await _safe_rollback()
         teacher_meta = {"teacher_id": teacher_id, "teacher_name": teacher_name}
 
-        # Attendance via plain SQL — avoids missing is_removed column + ORM expire issues
-        existing_id = None
+        # Best-effort attendance â€” never block the LiveKit token
+        att_id = str(uuid_lib.uuid4())
         try:
-            row = (
+            existing = (
                 await db.execute(
                     sql_text(
                         """
-                        SELECT id FROM class_attendances
-                        WHERE live_class_id = :cid AND student_id = :sid
-                          AND COALESCE(is_removed, false) = false
+                        SELECT id::text FROM class_attendances
+                        WHERE live_class_id = CAST(:cid AS uuid) AND student_id = CAST(:sid AS uuid)
                         ORDER BY joined_at DESC NULLS LAST
                         LIMIT 1
                         """
@@ -942,78 +967,46 @@ async def join_class(
                     {"cid": str(class_uuid), "sid": sid},
                 )
             ).first()
-            if row:
-                existing_id = row[0]
-        except Exception:
-            try:
-                row = (
-                    await db.execute(
-                        sql_text(
-                            """
-                            SELECT id FROM class_attendances
-                            WHERE live_class_id = :cid AND student_id = :sid
-                            ORDER BY joined_at DESC NULLS LAST
-                            LIMIT 1
-                            """
-                        ),
-                        {"cid": str(class_uuid), "sid": sid},
-                    )
-                ).first()
-                if row:
-                    existing_id = row[0]
-            except Exception as att_exc:
-                log.warning("attendance lookup skipped: %s", att_exc)
-
-        if existing_id is not None:
-            try:
+            if existing:
                 await db.execute(
                     sql_text(
                         """
                         UPDATE class_attendances
-                        SET left_at = NULL, is_muted = FALSE
-                        WHERE id = :aid
+                        SET left_at = NULL
+                        WHERE id = CAST(:aid AS uuid)
                         """
                     ),
-                    {"aid": str(existing_id)},
+                    {"aid": str(existing[0])},
                 )
                 await db.flush()
-            except Exception as upd_exc:
-                log.warning("attendance rejoin update skipped: %s", upd_exc)
-        else:
-            if requires_plan:
-                await consume_live_session(db, sid)
-            try:
+            else:
                 await db.execute(
                     sql_text(
                         """
-                        INSERT INTO class_attendances (id, live_class_id, student_id, joined_at, is_muted, is_removed)
-                        VALUES (gen_random_uuid(), :cid, :sid, NOW(), FALSE, FALSE)
+                        INSERT INTO class_attendances (id, live_class_id, student_id, joined_at, is_muted)
+                        VALUES (CAST(:aid AS uuid), CAST(:cid AS uuid), CAST(:sid AS uuid), NOW(), FALSE)
                         """
                     ),
-                    {"cid": str(class_uuid), "sid": sid},
+                    {"aid": att_id, "cid": str(class_uuid), "sid": sid},
                 )
                 await db.flush()
-            except Exception:
-                try:
-                    await db.execute(
-                        sql_text(
-                            """
-                            INSERT INTO class_attendances (id, live_class_id, student_id, joined_at, is_muted)
-                            VALUES (gen_random_uuid(), :cid, :sid, NOW(), FALSE)
-                            """
-                        ),
-                        {"cid": str(class_uuid), "sid": sid},
-                    )
-                    await db.flush()
-                except Exception as ins_exc:
-                    log.warning("attendance insert skipped: %s", ins_exc)
+        except Exception as att_exc:
+            log.warning("attendance write skipped: %s", att_exc)
+            await _safe_rollback()
 
         try:
             from app.services.live_class_room import grant_mic, grant_camera
+
             grant_mic(room_id, sid)
             grant_camera(room_id, sid)
         except Exception:
             pass
+
+        if not room_id:
+            raise HTTPException(
+                status_code=500,
+                detail="This class has no room id. Ask the teacher to restart it.",
+            )
 
         payload = _livekit_token_payload(
             room_id,
@@ -1038,9 +1031,11 @@ async def join_class(
         raise
     except Exception as exc:
         log.exception("join_class failed: %s", exc)
+        await _safe_rollback()
+        short = str(exc).split("(Background")[0].strip()[:180]
         raise HTTPException(
             status_code=500,
-            detail=f"Could not join live class: {exc}",
+            detail=f"Could not join live class: {short}",
         ) from exc
 
 
@@ -1166,7 +1161,7 @@ async def list_class_students(
     current_user: dict = Depends(require_teacher_or_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """List students currently in (or who joined) a live class — for mic management."""
+    """List students currently in (or who joined) a live class â€” for mic management."""
     class_uuid = parse_uuid(class_id)
     result = await db.execute(select(LiveClass).where(LiveClass.id == class_uuid))
     live_class = result.scalar_one_or_none()
@@ -1403,7 +1398,7 @@ async def remove_student(
     return {"message": "Student removed"}
 
 
-# ── Session Listing Endpoints ─────────────────────────────────────────────────
+# â”€â”€ Session Listing Endpoints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @router.get("/")
 async def list_live_classes(
@@ -1417,10 +1412,10 @@ async def list_live_classes(
     """
     GET /api/v1/live-classes/
     Returns live class sessions filterable by subject and status.
-    - status=live      → only currently live classes
-    - status=upcoming  → scheduled in the future, not yet live
-    - status=past      → already ended (is_live=False and end_time is set)
-    - omit status      → all classes
+    - status=live      â†’ only currently live classes
+    - status=upcoming  â†’ scheduled in the future, not yet live
+    - status=past      â†’ already ended (is_live=False and end_time is set)
+    - omit status      â†’ all classes
     """
     now = naive_utc_now()
     query = select(LiveClass)
@@ -1485,7 +1480,7 @@ async def list_live_classes(
             if _class_visibility(c) == LiveClassVisibility.public.value
         ]
 
-    # Fetch teacher names (parse UUIDs — string IN() can miss rows on Postgres)
+    # Fetch teacher names (parse UUIDs â€” string IN() can miss rows on Postgres)
     teacher_ids = list({str(c.teacher_id) for c in classes if c.teacher_id})
     teachers_map = {}
     if teacher_ids:
@@ -1531,7 +1526,7 @@ async def list_live_classes(
     ]
 
 
-# ── Live Session Requests ─────────────────────────────────────────────────────
+# â”€â”€ Live Session Requests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class CreateSessionRequest(BaseModel):
     subject: str
@@ -1596,7 +1591,7 @@ async def create_session_request(
             db,
             "New live class request",
             f"{student_label} requested help with {req.subject}"
-            + (f" — {req.topic}" if req.topic else ""),
+            + (f" â€” {req.topic}" if req.topic else ""),
             "live_class_request",
             {"request_id": str(req.id), "subject": req.subject},
         )
@@ -1706,7 +1701,7 @@ async def assign_session_request(
             db,
             str(teacher.id),
             "New student assigned to you",
-            f"{student_name} — {req.subject}"
+            f"{student_name} â€” {req.subject}"
             + (f" ({req.topic})" if req.topic else "")
             + ". Open My Students to host their class.",
             "live_class_request",
@@ -1744,7 +1739,7 @@ async def update_session_request(
         raise HTTPException(status_code=404, detail="Request not found")
 
     if role == "teacher":
-        # Teachers may approve/host for requests assigned to them — no admin gate.
+        # Teachers may approve/host for requests assigned to them â€” no admin gate.
         # They may also claim an unassigned request by approving it for themselves.
         if req.assigned_teacher_id and str(req.assigned_teacher_id) != current_user["sub"]:
             raise HTTPException(status_code=403, detail="Not assigned to you")
@@ -1889,7 +1884,7 @@ async def leave_class(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Student leaves a live class — records left_at time."""
+    """Student leaves a live class â€” records left_at time."""
     result = await db.execute(
         select(ClassAttendance).where(
             ClassAttendance.live_class_id == class_id,
