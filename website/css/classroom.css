@@ -35,6 +35,20 @@ body {
   padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 0.9rem;
 }
 .btn-back:hover { background: #2e1065; }
+.btn-end-class {
+  border: none;
+  background: #dc2626;
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.btn-end-class:hover { background: #b91c1c; }
+.btn-end-class:disabled { opacity: 0.6; cursor: wait; }
+.btn-end-class.hidden { display: none !important; }
 .classroom-title-wrap { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
 .live-pill {
   background: #e74c3c; color: #fff; font-size: 0.7rem; font-weight: 700;

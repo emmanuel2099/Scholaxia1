@@ -6,7 +6,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; script-src-attr 'unsafe-inline'; connect-src * blob: data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src * data: blob:; media-src * blob: data:; worker-src 'self' blob:; frame-src 'self' blob:;" />
   <title>Live Classroom — Scholaxia</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/classroom.css?v=20260827a" />
+  <link rel="stylesheet" href="css/classroom.css?v=20260827d" />
   <link rel="stylesheet" href="css/responsive.css?v=20260804i" />
 </head>
 <body class="classroom-chrome-hidden">
@@ -35,6 +35,7 @@
       </div>
     </div>
     <span id="audience-badge" class="audience-badge">Joining…</span>
+    <button type="button" id="btn-end-class" class="btn-end-class host-only hidden" onclick="endLiveClass()" title="End class for everyone">End class</button>
     <button type="button" id="btn-save-class-top" class="btn-save-class-top student-only hidden" onclick="toggleSaveLive()" title="Save this class on your device">&#128190; Save class</button>
     <span id="cr-status" class="cr-status">Connecting…</span>
   </header>
@@ -162,6 +163,6 @@
 <script src="js/saved-live.js?v=20260804i"></script>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.9.3/dist/livekit-client.umd.js"></script>
 <script src="js/classroom-livekit.js?v=20260804i"></script>
-<script src="js/classroom.js?v=20260827c"></script>
+<script src="js/classroom.js?v=20260827d"></script>
 </body>
 </html>

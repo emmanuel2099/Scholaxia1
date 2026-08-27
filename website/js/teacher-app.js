@@ -284,8 +284,15 @@
   }
 
   async function endClass(id) {
+    if (!id) return;
+    if (!confirm("End this class for everyone?")) return;
     try {
-      await api.api("/api/v1/live-classes/" + encodeURIComponent(id) + "/end", { method: "POST" });
+      await api.api("/api/v1/live-classes/" + encodeURIComponent(id) + "/end", {
+        method: "POST",
+        preferXhr: true,
+        timeout: 60000,
+        retries: 2,
+      });
       loadLive();
     } catch (e) {
       alert(e.message || "Could not end class.");

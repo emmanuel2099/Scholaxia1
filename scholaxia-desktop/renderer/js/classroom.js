@@ -2234,19 +2234,74 @@ async function autoEndClassSession() {
   if (!isTeacherRole() || !liveSession) return;
   var classId = liveSession.class_id || liveSession.classId;
   try {
-    await api("/api/v1/live-classes/" + classId + "/end", { method: "POST" });
+    await api("/api/v1/live-classes/" + classId + "/end", {
+      method: "POST",
+      preferXhr: true,
+      timeout: 60000,
+      retries: 2,
+    });
     setStatus("Class ended");
     addChatMessage("", "Scheduled end time reached — class closed for all students.", true);
-    setTimeout(function () { leaveClassroom(); }, 2500);
+    setTimeout(function () { leaveClassroom({ skipConfirm: true, ended: true }); }, 2500);
   } catch (e) {
     addChatMessage("", "Could not auto-end: " + e.message, true);
   }
 }
 
+async function endLiveClass() {
+  if (!isTeacherRole() || !liveSession) return;
+  var classId = liveSession.class_id || liveSession.classId;
+  if (!classId) {
+    showClassroomToast("Missing class id — cannot end.", true);
+    return;
+  }
+  if (!confirm("End this class for everyone? Students will be disconnected.")) return;
+  var btn = document.getElementById("btn-end-class");
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Ending…";
+  }
+  setStatus("Ending class…");
+  try {
+    await api("/api/v1/live-classes/" + encodeURIComponent(classId) + "/end", {
+      method: "POST",
+      preferXhr: true,
+      timeout: 60000,
+      retries: 2,
+    });
+    try {
+      if (liveSocket && liveSocket.readyState === WebSocket.OPEN) {
+        liveSocket.send(JSON.stringify({
+          event: "class_ended",
+          message: "Class ended by the teacher.",
+        }));
+      }
+    } catch (wsErr) { /* server broadcast is primary */ }
+    showClassroomToast("Class ended");
+    setStatus("Class ended");
+    addChatMessage("", "You ended the class for everyone.", true);
+    setTimeout(function () { leaveClassroom({ skipConfirm: true, ended: true }); }, 800);
+  } catch (e) {
+    showClassroomToast(e.message || "Could not end class", true);
+    setStatus("Could not end class");
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "End class";
+    }
+  }
+}
 
 window.toggleSaveLive = toggleSaveLive;
+window.endLiveClass = endLiveClass;
 
-async function leaveClassroom() {
+async function leaveClassroom(opts) {
+  opts = opts || {};
+  if (isTeacherRole() && !opts.skipConfirm && !opts.ended) {
+    var justLeave = confirm(
+      "Leave without ending?\n\nOK = Leave (class stays LIVE for students)\nCancel = Stay in class\n\nTo close for everyone, tap the red End class button."
+    );
+    if (!justLeave) return;
+  }
   if (classStudentsPollTimer) {
     clearInterval(classStudentsPollTimer);
     classStudentsPollTimer = null;
@@ -2281,10 +2336,14 @@ async function leaveClassroom() {
   else localStorage.removeItem("live_session");
   if (liveSession && (liveSession.role === "teacher" || liveSession.role === "admin")) {
     window.location.href = "teacher.html#live";
+  } else if (liveSession && liveSession.role === "kind") {
+    window.location.href = "kind.html";
   } else {
     window.location.href = "student.html#live";
   }
 }
+
+window.leaveClassroom = leaveClassroom;
 
 window.onload = function () {
   if (!getAuthToken()) {
