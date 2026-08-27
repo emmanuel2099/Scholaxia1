@@ -13,11 +13,15 @@ document.addEventListener("DOMContentLoaded", function () {
     showAuth();
   }
 
-  document.getElementById("tab-login").addEventListener("click", function () { switchAuthTab("login"); });
-  document.getElementById("tab-register").addEventListener("click", function () { switchAuthTab("register"); });
-  document.getElementById("form-login").addEventListener("submit", adminLogin);
-  document.getElementById("btn-login").addEventListener("click", adminLogin);
-  document.getElementById("form-register").addEventListener("submit", adminRegister);
+  // Login/register click handlers live in admin-auth.js (syntax-isolated).
+  // Keep a fallback only if auth script failed to load.
+  if (typeof window.adminLoginFromAuth !== "function") {
+    document.getElementById("tab-login").addEventListener("click", function () { switchAuthTab("login"); });
+    document.getElementById("tab-register").addEventListener("click", function () { switchAuthTab("register"); });
+    document.getElementById("form-login").addEventListener("submit", adminLogin);
+    document.getElementById("btn-login").addEventListener("click", adminLogin);
+    document.getElementById("form-register").addEventListener("submit", adminRegister);
+  }
   try {
     var lastEmail = localStorage.getItem("sia_admin_email_last");
     if (lastEmail && document.getElementById("login-email") && !document.getElementById("login-email").value) {
@@ -3179,7 +3183,7 @@ async function loadCbtCoupons() {
         return '<tr><td><strong>' + escHtml(c.code) + '</strong></td><td>' + escHtml(c.package_id) + '</td><td>' +
           who + '</td><td>' +
           escHtml(c.used_count + " / " + c.max_uses) + '</td><td>' + (c.is_active ? "Yes" : "No") +
-          '</td><td>' + (c.is_active ? '<button class="btn-sm danger" onclick="deactivateCbtCoupon('' + c.id + '')">Disable</button>' : "") + "</td></tr>";
+          '</td><td>' + (c.is_active ? '<button class="btn-sm danger" onclick="deactivateCbtCoupon(\'' + c.id + '\')">Disable</button>' : "") + "</td></tr>";
       }).join("") + "</tbody></table>";
   } catch (e) {
     el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";

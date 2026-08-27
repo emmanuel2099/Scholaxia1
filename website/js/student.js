@@ -38,6 +38,9 @@
 
   function errMsg(err) {
     var msg = (err && err.message) || "Something went wrong. Please try again.";
+    if (err && (err.status === 401 || err.status === 403)) {
+      return "Please log out and log in again, then open Groups/Community.";
+    }
     if (/failed to fetch|networkerror|load failed/i.test(msg)) {
       return "Cannot reach the Scholaxia API. Wait a minute if the server is waking up, then tap Try again.";
     }
@@ -4335,7 +4338,7 @@
     var wrap = $("communityFeed");
     if (!wrap) return;
     wrap.innerHTML = loadingHtml("Loading #general…");
-    var opts = { preferXhr: true, awaitWake: false, timeout: 30000, retries: 2 };
+    var opts = { preferXhr: false, awaitWake: false, timeout: 30000, retries: 2 };
     Promise.all([
       api.api("/api/v1/community/channels", opts).catch(function () { return []; }),
       api.api("/api/v1/community/feed?limit=50", opts),
@@ -4363,7 +4366,7 @@
     var wrap = $("communityAnnouncements");
     if (!wrap) return;
     wrap.innerHTML = loadingHtml("Loading announcements…");
-    var opts = { preferXhr: true, awaitWake: false, timeout: 30000, retries: 2 };
+    var opts = { preferXhr: false, awaitWake: false, timeout: 30000, retries: 2 };
     api
       .api("/api/v1/community/announcements?limit=40", opts)
       .catch(function () {
@@ -4396,7 +4399,7 @@
     var wrap = $("communityTabGroups");
     if (!wrap) return;
     wrap.innerHTML = loadingHtml("Loading groups…");
-    var opts = { preferXhr: true, awaitWake: false, timeout: 30000, retries: 2 };
+    var opts = { preferXhr: false, awaitWake: false, timeout: 30000, retries: 2 };
     Promise.all([
       api.api("/api/v1/student-groups/mine", opts).catch(function () { return []; }),
       api.api("/api/v1/student-groups/community-listed", opts).catch(function () {
@@ -4564,7 +4567,7 @@
     if (mineWrap) mineWrap.innerHTML = loadingHtml("Loading your groups…");
     if (commWrap) commWrap.innerHTML = loadingHtml("Loading community groups…");
 
-    var opts = { preferXhr: true, awaitWake: false, timeout: 30000, retries: 2 };
+    var opts = { preferXhr: false, awaitWake: false, timeout: 30000, retries: 2 };
     api
       .api("/api/v1/student-groups/mine", opts)
       .then(function (data) {

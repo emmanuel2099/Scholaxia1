@@ -377,7 +377,9 @@
       } catch (w) {}
     }
 
-    var preferXhr = !!options.preferXhr || reliable;
+    var preferXhr = !!options.preferXhr || (reliable && method !== "GET");
+    // GET lists (groups/community) prefer fetch first — same path as working CBT pages.
+    // XHR still used for auth POST / join and as fallback after network failure.
 
     async function oneAttempt(useXhr) {
       if (useXhr) {
@@ -424,23 +426,23 @@
         });
       }
       try {
-        var data = await oneAttempt(preferXhr || i > 0);
+        // Attempt 0: fetch for GET, XHR for POST when preferXhr
+        var useXhrFirst = preferXhr && method !== "GET";
+        var data = await oneAttempt(useXhrFirst);
         lastWakeOkAt = Date.now();
         return data;
       } catch (err) {
         lastErr = err;
         if (!isNetworkish(err)) throw err;
       }
-      // After XHR network failure, try fetch once in the same attempt slot
-      if (preferXhr) {
-        try {
-          var data2 = await oneAttempt(false);
-          lastWakeOkAt = Date.now();
-          return data2;
-        } catch (err2) {
-          lastErr = err2;
-          if (!isNetworkish(err2)) throw err2;
-        }
+      // Alternate transport once per attempt
+      try {
+        var data2 = await oneAttempt(!(preferXhr && method !== "GET"));
+        lastWakeOkAt = Date.now();
+        return data2;
+      } catch (err2) {
+        lastErr = err2;
+        if (!isNetworkish(err2)) throw err2;
       }
     }
 
