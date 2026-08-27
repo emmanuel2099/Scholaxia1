@@ -314,6 +314,10 @@
             '">Start</button>';
         }
       }
+      if ($("statLive")) {
+        var n = parseInt($("statLive").textContent || "0", 10) || 0;
+        $("statLive").textContent = String(Math.max(0, n - 1));
+      }
       alert("Class ended.");
       await loadLive();
     } catch (e) {
@@ -360,6 +364,22 @@
     }
   }
 
+  function classLooksLive(c) {
+    if (!c) return false;
+    if (c.status === "ended" || c.status === "past") return false;
+    if (!c.is_live) return false;
+    if (c.end_time) {
+      try {
+        var raw = String(c.end_time).trim();
+        // Treat naive timestamps from API as UTC
+        if (raw && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(raw)) raw += "Z";
+        var endMs = new Date(raw).getTime();
+        if (!isNaN(endMs) && endMs <= Date.now()) return false;
+      } catch (e) { /* ignore */ }
+    }
+    return true;
+  }
+
   async function loadLive() {
     var el = $("liveList");
     if (!el) return;
@@ -370,11 +390,9 @@
       if (status) url += "&status=" + encodeURIComponent(status);
       var rows = await api.api(url);
       if (!Array.isArray(rows)) rows = rows.items || rows.classes || [];
-      var liveN = rows.filter(function (c) {
-        return c.is_live;
-      }).length;
+      var liveN = rows.filter(classLooksLive).length;
       var upN = rows.filter(function (c) {
-        return !c.is_live && c.status !== "ended" && c.status !== "past";
+        return !classLooksLive(c) && c.status !== "ended" && c.status !== "past";
       }).length;
       if ($("statLive")) $("statLive").textContent = String(liveN);
       if ($("statUpcoming")) $("statUpcoming").textContent = String(upN);
@@ -384,14 +402,8 @@
       }
       el.innerHTML = rows
         .map(function (c) {
-          var endedByTime = false;
-          if (c.end_time) {
-            try {
-              var endMs = new Date(c.end_time).getTime();
-              if (!isNaN(endMs) && endMs <= Date.now()) endedByTime = true;
-            } catch (eTime) { /* ignore */ }
-          }
-          var live = !!c.is_live && !endedByTime && c.status !== "ended" && c.status !== "past";
+          var live = classLooksLive(c);
+          var ended = !live && (c.status === "past" || c.status === "ended" || !!c.end_time);
           var actions = live
             ? '<button type="button" class="btn-sm" data-enter="' +
               esc(c.id) +
@@ -425,7 +437,7 @@
             '">' +
             (live
               ? '<span class="badge live">LIVE</span>'
-              : endedByTime || c.status === "past" || c.status === "ended"
+              : ended
                 ? '<span class="badge muted">Ended</span>'
                 : '<span class="badge muted">Scheduled</span>') +
             "<h4>" +
@@ -447,7 +459,7 @@
         })
         .join("");
     } catch (e) {
-      el.innerHTML = '<div class="empty">' + esc(e.message || "Could not load classes") + "</div>";
+      el.innerHTML = '<div class="empty">' + esc(e.message || "Could not load classes") + "</div>';
     }
   }
 

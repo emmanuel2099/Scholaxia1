@@ -1518,10 +1518,16 @@ async def list_live_classes(
 
     out = []
     for c in classes:
-        # If end_time is in the past, never advertise as LIVE even if is_live got stuck true
+        # Heal stuck LIVE rows: end_time in the past must never stay is_live=true
         live_flag = bool(c.is_live)
         if c.end_time and c.end_time <= now:
             live_flag = False
+            if c.is_live:
+                try:
+                    c.is_live = False
+                    await db.flush()
+                except Exception:
+                    pass
         status_label = "live" if live_flag else (
             "past" if (c.end_time and c.end_time <= now) else "upcoming"
         )
@@ -1532,13 +1538,13 @@ async def list_live_classes(
             "description": c.description,
             "teacher_id": str(c.teacher_id),
             "teacher_name": teachers_map.get(str(c.teacher_id), "Teacher"),
-            "start_time": c.start_time,
-            "end_time": c.end_time,
+            "start_time": c.start_time.isoformat() + "Z" if c.start_time else None,
+            "end_time": c.end_time.isoformat() + "Z" if c.end_time else None,
             "is_live": live_flag,
             "status": status_label,
             "room_id": c.room_id,
             "recording_url": c.recording_url,
-            "created_at": c.created_at,
+            "created_at": c.created_at.isoformat() + "Z" if c.created_at else None,
             "visibility": c.visibility or LiveClassVisibility.subject.value,
             "join_code": c.join_code,
             "is_free": is_free_live_class(c.visibility),
