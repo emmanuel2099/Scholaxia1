@@ -425,12 +425,20 @@
     applyMarketMode();
 
     if (api.getToken() && !params.get("force")) {
-      var existingRole = (localStorage.getItem("sia_role") || "student").toLowerCase();
+      var existingRole = (localStorage.getItem("sia_role") || "student")
+        .toLowerCase()
+        .replace(/^userrole\./, "");
+      try {
+        localStorage.setItem("sia_role", existingRole);
+      } catch (e) {}
       var wantRole = (params.get("role") || "").toLowerCase();
       var wantFreshAuth =
         params.get("mode") === "login" ||
         params.get("mode") === "signup" ||
-        params.get("switch") === "1";
+        params.get("switch") === "1" ||
+        params.get("reason") === "session" ||
+        params.get("reason") === "auth" ||
+        params.get("reason") === "role";
       // Allow market signup for a different role (e.g. vendor) by clearing the old session
       if (
         marketMode &&
@@ -443,13 +451,17 @@
         // User opened Sign in / Sign up on purpose — stay on the form.
         // Keep token until they successfully log in again (saveSession overwrites).
       } else if (existingRole === "vendor") {
-        window.location.href = "vendor.html";
+        window.location.replace("vendor.html");
         return;
       } else if (nextUrl) {
-        window.location.href = nextUrl;
+        window.location.replace(nextUrl);
         return;
       } else {
-        window.location.href = api.dashboardForRole(existingRole);
+        var dest = api.dashboardForRole(existingRole);
+        var here = (location.pathname.split("/").pop() || "").toLowerCase();
+        if (here !== String(dest || "").toLowerCase()) {
+          window.location.replace(dest);
+        }
         return;
       }
     }

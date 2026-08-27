@@ -39,7 +39,7 @@
   function errMsg(err) {
     var msg = (err && err.message) || "Something went wrong. Please try again.";
     if (err && (err.status === 401 || err.status === 403)) {
-      return "Please log out and log in again, then open Groups/Community.";
+      return "Your session expired. Log out and log in again, then open Groups/Community.";
     }
     if (/failed to fetch|networkerror|load failed/i.test(msg)) {
       return "Cannot reach the Scholaxia API. Wait a minute if the server is waking up, then tap Try again.";
@@ -90,8 +90,75 @@
       (retryAttr
         ? '<br /><button type="button" data-retry="' + retryAttr + '">Try again</button>'
         : "") +
+      ' <button type="button" data-fix-session style="margin-left:0.5rem">Log in again</button>' +
+      '<div class="api-ping" style="margin-top:0.65rem;font-size:0.78rem;opacity:.85" data-api-ping>Checking API…</div>' +
       "</div>"
     );
+  }
+
+  function forceRelogin() {
+    try {
+      if (api && api.clearSession) api.clearSession();
+    } catch (e) {}
+    try {
+      ["sia_token", "sia_teacher_token", "sia_school_token", "sia_role", "sia_name", "sia_email"].forEach(function (k) {
+        localStorage.removeItem(k);
+      });
+    } catch (e2) {}
+    window.location.href = "portal.html?v=20260827i&reason=session";
+  }
+
+  document.addEventListener("click", function (e) {
+    if (e.target && e.target.closest && e.target.closest("[data-fix-session]")) {
+      e.preventDefault();
+      forceRelogin();
+    }
+  });
+
+  function runApiPing() {
+    var nodes = document.querySelectorAll("[data-api-ping]");
+    if (!nodes.length) return;
+    var base = (api && api.API_BASE) || "https://scholaxia1.onrender.com";
+    var ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    var timer = setTimeout(function () {
+      try {
+        if (ctrl) ctrl.abort();
+      } catch (e) {}
+    }, 12000);
+    fetch(base + "/health", {
+      method: "GET",
+      mode: "cors",
+      cache: "no-store",
+      signal: ctrl ? ctrl.signal : undefined,
+    })
+      .then(function (res) {
+        return res.json().then(function (data) {
+          return { ok: res.ok, data: data };
+        });
+      })
+      .then(function (out) {
+        clearTimeout(timer);
+        var online = out.ok && out.data && out.data.status === "ok";
+        var text = online
+          ? "API is online. Your login session is likely broken — tap Log in again."
+          : "API health returned an unexpected response.";
+        nodes.forEach(function (n) {
+          n.textContent = text;
+        });
+        // Auto-offer session fix once health proves the network works.
+        if (online && !window.__scholaxiaSessionPrompted) {
+          window.__scholaxiaSessionPrompted = true;
+        }
+      })
+      .catch(function () {
+        clearTimeout(timer);
+        nodes.forEach(function (n) {
+          n.textContent =
+            "This browser cannot reach " +
+            base +
+            ". Try another network, or open https://scholaxia1.onrender.com/app/student.html after Manual Deploy.";
+        });
+      });
   }
 
   function setStatus(el, msg, ok) {
@@ -4339,17 +4406,25 @@
     if (!wrap) return;
     wrap.innerHTML = loadingHtml("Loading #general…");
     var opts = { preferXhr: false, awaitWake: false, timeout: 30000, retries: 2 };
-    Promise.all([
-      api.api("/api/v1/community/channels", opts).catch(function () { return []; }),
-      api.api("/api/v1/community/feed?limit=50", opts),
-    ])
-      .then(function (pair) {
-        var channels = Array.isArray(pair[0]) ? pair[0] : [];
+    var token = api.getToken ? api.getToken() : localStorage.getItem("sia_token");
+    if (!token) {
+      wrap.innerHTML = errorHtml("You are not logged in.", "community");
+      runApiPing();
+      return;
+    }
+    // Sequential — parallel auth requests fail as "Failed to fetch" on some browsers.
+    api
+      .api("/api/v1/community/channels", opts)
+      .catch(function () { return []; })
+      .then(function (channels) {
+        channels = Array.isArray(channels) ? channels : [];
         var general = channels.find(function (c) {
           return c.type === "general";
         });
         if (general) communityGeneralChannelId = general.id;
-        var data = pair[1];
+        return api.api("/api/v1/community/feed?limit=50", opts);
+      })
+      .then(function (data) {
         var items = Array.isArray(data) ? data : firstArray(data, ["items", "results", "posts", "feed"]);
         if (!items.length) {
           wrap.innerHTML = emptyHtml("💬", "No posts in #general yet. Be the first to share something!");
@@ -4359,6 +4434,7 @@
       })
       .catch(function (err) {
         wrap.innerHTML = errorHtml(errMsg(err), "community");
+        runApiPing();
       });
   }
 
@@ -4392,6 +4468,8 @@
       })
       .catch(function (err) {
         wrap.innerHTML = errorHtml(errMsg(err), "community");
+      runApiPing();
+        runApiPing();
       });
   }
 
@@ -4426,6 +4504,7 @@
         : emptyHtml("👥", "No groups yet. Open Groups to create or join one.");
     }).catch(function (err) {
       wrap.innerHTML = errorHtml(errMsg(err), "community");
+      runApiPing();
     });
   }
 
@@ -4580,6 +4659,7 @@
       })
       .catch(function (err) {
         if (mineWrap) mineWrap.innerHTML = errorHtml(errMsg(err), "groups");
+        runApiPing();
       });
 
     api
@@ -4598,6 +4678,7 @@
       })
       .catch(function (err) {
         if (commWrap) commWrap.innerHTML = errorHtml(errMsg(err), "groups");
+        runApiPing();
       });
   }
 
