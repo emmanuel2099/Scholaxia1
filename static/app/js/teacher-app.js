@@ -296,6 +296,24 @@
       if (res && res.is_live === true) {
         throw new Error("Server did not end the class. Try again.");
       }
+      // Optimistic UI: flip this card off LIVE immediately, then refresh from API
+      var cardBtn = document.querySelector('[data-end-class="' + id + '"]');
+      var card = cardBtn && cardBtn.closest ? cardBtn.closest(".item-card") : null;
+      if (card) {
+        card.classList.remove("is-live");
+        var badge = card.querySelector(".badge.live");
+        if (badge) {
+          badge.className = "badge muted";
+          badge.textContent = "Ended";
+        }
+        var actions = card.querySelector(".actions");
+        if (actions) {
+          actions.innerHTML =
+            '<button type="button" class="btn-sm" data-start="' +
+            esc(id) +
+            '">Start</button>';
+        }
+      }
       alert("Class ended.");
       await loadLive();
     } catch (e) {
@@ -366,7 +384,14 @@
       }
       el.innerHTML = rows
         .map(function (c) {
-          var live = !!c.is_live;
+          var endedByTime = false;
+          if (c.end_time) {
+            try {
+              var endMs = new Date(c.end_time).getTime();
+              if (!isNaN(endMs) && endMs <= Date.now()) endedByTime = true;
+            } catch (eTime) { /* ignore */ }
+          }
+          var live = !!c.is_live && !endedByTime && c.status !== "ended" && c.status !== "past";
           var actions = live
             ? '<button type="button" class="btn-sm" data-enter="' +
               esc(c.id) +
@@ -395,8 +420,14 @@
           return (
             '<article class="item-card' +
             (live ? " is-live" : "") +
+            '" data-class-id="' +
+            esc(c.id) +
             '">' +
-            (live ? '<span class="badge live">LIVE</span>' : '<span class="badge muted">Scheduled</span>') +
+            (live
+              ? '<span class="badge live">LIVE</span>'
+              : endedByTime || c.status === "past" || c.status === "ended"
+                ? '<span class="badge muted">Ended</span>'
+                : '<span class="badge muted">Scheduled</span>') +
             "<h4>" +
             esc(c.title || "Live class") +
             "</h4>" +

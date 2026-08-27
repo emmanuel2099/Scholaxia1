@@ -904,9 +904,20 @@ async def join_class(
                 log.warning("school group check skipped: %s", gexc)
 
         if not is_live:
+            # Do not resurrect a class that already has an end_time in the past
+            if end_time_iso:
+                try:
+                    from datetime import datetime as _dt
+                    et = _dt.fromisoformat(str(end_time_iso).replace("Z", ""))
+                    if et <= now:
+                        raise HTTPException(status_code=404, detail="Class has ended")
+                except HTTPException:
+                    raise
+                except Exception:
+                    pass
             try:
                 await db.execute(
-                    sql_text("UPDATE live_classes SET is_live = TRUE WHERE id = :cid"),
+                    sql_text("UPDATE live_classes SET is_live = TRUE WHERE id = :cid AND COALESCE(is_live, false) = false AND (end_time IS NULL OR end_time > NOW())"),
                     {"cid": str(class_uuid)},
                 )
                 await db.flush()
@@ -1438,9 +1449,12 @@ async def list_live_classes(
         )
 
     # Teachers only see their own classes
-    role = current_user.get("role")
+    role = str(current_user.get("role") or "").strip().lower().replace("userrole.", "")
     if role == "teacher":
-        query = query.where(LiveClass.teacher_id == current_user["sub"])
+        try:
+            query = query.where(LiveClass.teacher_id == parse_uuid(current_user["sub"]))
+        except Exception:
+            query = query.where(LiveClass.teacher_id == current_user["sub"])
 
     query = query.order_by(LiveClass.start_time.desc()).limit(limit).offset(offset)
     try:
@@ -1480,7 +1494,7 @@ async def list_live_classes(
             if _class_visibility(c) == LiveClassVisibility.public.value
         ]
 
-    # Fetch teacher names (parse UUIDs â€” string IN() can miss rows on Postgres)
+    # Fetch teacher names (parse UUIDs — string IN() can miss rows on Postgres)
     teacher_ids = list({str(c.teacher_id) for c in classes if c.teacher_id})
     teachers_map = {}
     if teacher_ids:
@@ -1502,8 +1516,16 @@ async def list_live_classes(
         except Exception:
             teachers_map = {}
 
-    return [
-        {
+    out = []
+    for c in classes:
+        # If end_time is in the past, never advertise as LIVE even if is_live got stuck true
+        live_flag = bool(c.is_live)
+        if c.end_time and c.end_time <= now:
+            live_flag = False
+        status_label = "live" if live_flag else (
+            "past" if (c.end_time and c.end_time <= now) else "upcoming"
+        )
+        out.append({
             "id": str(c.id),
             "title": c.title,
             "subject": c.subject,
@@ -1512,7 +1534,8 @@ async def list_live_classes(
             "teacher_name": teachers_map.get(str(c.teacher_id), "Teacher"),
             "start_time": c.start_time,
             "end_time": c.end_time,
-            "is_live": c.is_live,
+            "is_live": live_flag,
+            "status": status_label,
             "room_id": c.room_id,
             "recording_url": c.recording_url,
             "created_at": c.created_at,
@@ -1521,12 +1544,11 @@ async def list_live_classes(
             "is_free": is_free_live_class(c.visibility),
             "requires_payment": not is_free_live_class(c.visibility),
             "school_group_id": str(c.school_group_id) if c.school_group_id else None,
-        }
-        for c in classes
-    ]
+        })
+    return out
 
 
-# â”€â”€ Live Session Requests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Live Session Requests ─────────────────────────────────────────────────────
 
 class CreateSessionRequest(BaseModel):
     subject: str
@@ -1841,31 +1863,30 @@ async def end_class(
     title = live_class.title or "Live class"
     ended_at = naive_utc_now()
 
-    # Force-end via SQL so a later attendance/access-code failure cannot leave the class LIVE
+    # Always mutate the loaded ORM row (guaranteed to persist on session commit).
+    live_class.is_live = False
+    live_class.end_time = ended_at
+    if recording_url:
+        live_class.recording_url = recording_url
+    await db.flush()
+
+    # Belt-and-suspenders SQL update (CAST so UUID bind never silently matches 0 rows).
     try:
-        await db.execute(
+        upd = await db.execute(
             sql_text(
                 """
                 UPDATE live_classes
                 SET is_live = FALSE, end_time = :ended
-                WHERE id = :cid
+                WHERE id = CAST(:cid AS uuid)
                 """
             ),
             {"cid": str(cid), "ended": ended_at},
         )
         await db.flush()
+        if getattr(upd, "rowcount", None) == 0:
+            log.warning("end_class SQL matched 0 rows for %s", cid)
     except Exception as upd_exc:
-        log.exception("end_class SQL update failed: %s", upd_exc)
-        live_class.is_live = False
-        live_class.end_time = ended_at
-        await db.flush()
-
-    if recording_url:
-        try:
-            live_class.recording_url = recording_url
-            await db.flush()
-        except Exception:
-            pass
+        log.warning("end_class SQL update skipped: %s", upd_exc)
 
     try:
         await db.execute(
@@ -1873,7 +1894,7 @@ async def end_class(
                 """
                 UPDATE class_attendances
                 SET left_at = :ended
-                WHERE live_class_id = :cid AND left_at IS NULL
+                WHERE live_class_id = CAST(:cid AS uuid) AND left_at IS NULL
                 """
             ),
             {"cid": str(cid), "ended": ended_at},
@@ -1893,6 +1914,14 @@ async def end_class(
         await db.flush()
     except Exception as del_exc:
         log.warning("end_class access-code cleanup skipped: %s", del_exc)
+
+    # Re-read so response cannot lie about still being live
+    await db.refresh(live_class)
+    if live_class.is_live:
+        live_class.is_live = False
+        live_class.end_time = ended_at
+        await db.flush()
+        await db.refresh(live_class)
 
     try:
         from app.websockets.live_class_ws import broadcast as ws_broadcast
@@ -1924,8 +1953,8 @@ async def end_class(
     return {
         "message": "Class ended",
         "class_id": str(cid),
-        "is_live": False,
-        "end_time": ended_at.isoformat() if ended_at else None,
+        "is_live": bool(live_class.is_live),
+        "end_time": live_class.end_time.isoformat() if live_class.end_time else ended_at.isoformat(),
     }
 
 
