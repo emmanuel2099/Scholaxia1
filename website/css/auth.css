@@ -514,6 +514,8 @@ body.auth-body {
 }
 
 .auth-switch button {
+  position: relative;
+  z-index: 2;
   border: 0;
   background: none;
   color: var(--navy-mid);
@@ -522,6 +524,12 @@ body.auth-body {
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 3px;
+  pointer-events: auto;
+}
+
+.auth-forgot {
+  display: inline-block;
+  padding: 0.35rem 0.5rem;
 }
 
 @media (max-width: 860px) {

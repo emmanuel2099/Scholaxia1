@@ -1,6 +1,15 @@
 /* Scholaxia website API — calls production backend */
 (function (global) {
-  var API_BASE = "https://scholaxia1.onrender.com";
+  var API_BASE = (function () {
+    try {
+      var host = String((global.location && location.hostname) || "");
+      // Same-origin when the site is served from Render — avoids GitHub Pages CORS blocks.
+      if (host === "scholaxia1.onrender.com" || host === "localhost" || host === "127.0.0.1") {
+        return String(location.origin || "").replace(/\/$/, "") || "https://scholaxia1.onrender.com";
+      }
+    } catch (e) {}
+    return "https://scholaxia1.onrender.com";
+  })();
   global.API_BASE = API_BASE;
 
   function fetchTimeout(ms) {

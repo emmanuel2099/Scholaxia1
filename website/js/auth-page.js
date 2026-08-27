@@ -4,6 +4,7 @@
   var mode = "login";
   var pendingEmail = "";
   var nextUrl = "";
+  var marketMode = false;
 
   var ROLE_META = {
     student: {
@@ -24,6 +25,19 @@
     vendor: {
       subLogin: "Vendor portal — sell on Scholaxia Market",
       subSignup: "Register your store (admin approval required)",
+      allowSignup: true,
+    },
+  };
+
+  var MARKET_ROLE_META = {
+    student: {
+      subLogin: "Buyer login — checkout your Scholaxia Market cart",
+      subSignup: "Create a free buyer account to checkout & track orders",
+      allowSignup: true,
+    },
+    vendor: {
+      subLogin: "Vendor login — manage your Scholaxia Market store",
+      subSignup: "Register as a vendor (admin approval required)",
       allowSignup: true,
     },
   };
@@ -55,7 +69,13 @@
       var u = String(url);
       if (u.indexOf("://") >= 0 || u.indexOf("//") === 0) return "";
       if (u.charAt(0) === "/" || u.indexOf("..") >= 0) return "";
-      if (!/\.html(\?|#|$)/.test(u) && u.indexOf("marketplace") < 0) return "";
+      if (
+        !/\.html(\?|#|$)/.test(u) &&
+        u.indexOf("marketplace") < 0 &&
+        u.indexOf("vendor") < 0
+      ) {
+        return "";
+      }
       return u;
     } catch (e) {
       return "";
@@ -71,8 +91,13 @@
   }
 
   function updateCopy() {
-    var meta = ROLE_META[role] || ROLE_META.student;
-    $("portalSub").textContent = mode === "login" ? meta.subLogin : meta.subSignup;
+    var metaMap = marketMode ? MARKET_ROLE_META : ROLE_META;
+    var meta = metaMap[role] || metaMap.student || ROLE_META.student;
+    if (mode === "reset") {
+      $("portalSub").textContent = "We will email an OTP so you can set a new password";
+    } else {
+      $("portalSub").textContent = mode === "login" ? meta.subLogin : meta.subSignup;
+    }
     setVisible($("kindFields"), role === "kind" && mode === "signup");
     setVisible($("teacherFields"), role === "teacher" && mode === "signup");
     setVisible($("vendorFields"), role === "vendor" && mode === "signup");
@@ -81,6 +106,40 @@
     $("btnSignup").disabled = false;
     $("tabSignup").disabled = false;
     $("gotoSignup").disabled = false;
+  }
+
+  function applyMarketMode() {
+    if (!marketMode) return;
+    document.body.classList.add("auth-market");
+    var back = $("authBack");
+    if (back) {
+      back.href = "marketplace.html";
+      back.textContent = "← Back to Market";
+    }
+    var studentBtn = $("roleStudentBtn");
+    if (studentBtn) studentBtn.textContent = "Buyer";
+    document.querySelectorAll("[data-hide-market]").forEach(function (btn) {
+      btn.hidden = true;
+      btn.style.display = "none";
+    });
+    var row = $("roleRow");
+    if (row) {
+      row.classList.add("role-row-market");
+      row.style.gridTemplateColumns = "1fr";
+    }
+    var kicker = $("authVisualKicker");
+    var title = $("authVisualTitle");
+    var lead = $("authVisualLead");
+    var points = $("authVisualPoints");
+    if (kicker) kicker.textContent = "Scholaxia Market";
+    if (title) title.innerHTML = "Buy or sell.<br /><span>Campus ready.</span>";
+    if (lead) lead.textContent = "Join as a buyer to checkout, or as a vendor to list products after approval.";
+    if (points) {
+      points.innerHTML =
+        "<li>Browse free</li><li>Buyer checkout</li><li>Vendor approval</li>";
+    }
+    var img = $("authVisualImg");
+    if (img) img.src = "media/feature-market.png";
   }
 
   function setRole(next) {
@@ -96,22 +155,25 @@
   function switchMode(next) {
     mode = next;
     var login = mode === "login";
+    var reset = mode === "reset";
 
     $("tabLogin").classList.toggle("is-active", login);
-    $("tabSignup").classList.toggle("is-active", !login);
+    $("tabSignup").classList.toggle("is-active", !login && !reset);
     $("tabLogin").setAttribute("aria-selected", login ? "true" : "false");
     $("tabSignup").setAttribute("aria-selected", login ? "false" : "true");
     var tabs = document.querySelector(".mode-tabs");
-    if (tabs) tabs.classList.toggle("is-signup", !login);
+    if (tabs) tabs.classList.toggle("is-signup", !login && !reset);
     var title = $("authTitle");
-    if (title) title.textContent = login ? "Welcome back" : "Create account";
+    if (title) title.textContent = reset ? "Reset password" : login ? "Welcome back" : "Create account";
 
     setVisible($("formLogin"), login);
-    setVisible($("formSignup"), !login);
+    setVisible($("formSignup"), !login && !reset);
+    setVisible($("formReset"), reset);
 
     showErr($("loginError"));
     showErr($("signupError"));
     showErr($("otpError"));
+    showErr($("resetError"));
 
     setVisible($("signupStepDetails"), true);
     setVisible($("signupStepOtp"), false);
@@ -129,7 +191,9 @@
   }
 
   async function afterAuth(data, email, name) {
-    var actual = (data && data.role) || "student";
+    var actual = String((data && data.role) || "student")
+      .replace(/^UserRole\./i, "")
+      .toLowerCase();
     if (role === "teacher" && actual !== "teacher" && actual !== "admin") {
       throw new Error(roleMismatch(role, actual));
     }
@@ -141,43 +205,27 @@
     }
     if (
       role === "student" &&
+      actual &&
+      actual !== "student" &&
       (actual === "teacher" || actual === "kind" || actual === "admin" || actual === "vendor")
     ) {
       throw new Error(roleMismatch(role, actual));
     }
 
-    api.saveSession(data, email, name);
+    if (data) data.role = actual;
 
-    if (actual === "kind") {
-      try {
-        var kd = await api.api("/api/v1/kind/me");
-        if (kd && kd.full_name) localStorage.setItem("sia_name", kd.full_name);
-        if (kd && kd.age_group) localStorage.setItem("sia_age_group", kd.age_group);
-      } catch (e) { /* ignore */ }
-    } else if (actual === "student") {
-      try {
-        var st = await api.api("/api/v1/students/me");
-        if (st && st.full_name) localStorage.setItem("sia_name", st.full_name);
-        if (st && st.exam_type) localStorage.setItem("sia_exam_type", st.exam_type);
-        if (st && st.selected_subjects) {
-          localStorage.setItem("sia_subjects", JSON.stringify(st.selected_subjects));
-        }
-      } catch (e) { /* ignore */ }
-    }
+    api.saveSession(data, email, name);
 
     if (actual === "teacher" && data && data.user && data.user.is_approved === false) {
       localStorage.setItem("sia_teacher_pending_approval", "1");
-      alert("Your teacher account is pending admin approval. You can update profile while waiting.");
-      if (nextUrl) {
-        window.location.href = nextUrl;
-        return;
-      }
       window.location.href = "teacher.html#profile";
       return;
     }
 
     if (actual === "vendor") {
-      if (!nextUrl) nextUrl = "marketplace.html?vendor=pending";
+      if (!nextUrl || nextUrl.indexOf("marketplace") >= 0) {
+        nextUrl = "vendor.html";
+      }
       redirectAfterAuth(actual);
       return;
     }
@@ -190,18 +238,69 @@
     var email = $("loginEmail").value.trim();
     var password = $("loginPassword").value;
     var btn = $("btnLogin");
-    showErr($("loginError"));
+    var errEl = $("loginError");
+    showErr(errEl);
+    if (!email || !password) {
+      showErr(errEl, "Enter email and password.");
+      return;
+    }
     btn.disabled = true;
     btn.textContent = "Logging in…";
+    showErr(errEl, "Connecting to server…");
+    if (errEl) {
+      errEl.hidden = false;
+      errEl.style.color = "#334155";
+    }
+
+    var finished = false;
+    var watchdog = setTimeout(function () {
+      if (finished) return;
+      finished = true;
+      btn.disabled = false;
+      btn.textContent = "Log in";
+      showErr(errEl, "Login is taking too long. Check your internet, wait 20 seconds, then try again.");
+      if (errEl) errEl.style.color = "";
+    }, 30000);
+
+    // Wake API in background (do not block login)
+    if (api.wakeServer) {
+      try {
+        api.wakeServer(12000);
+      } catch (w) {}
+    }
+
     try {
-      var data = await api.api("/api/v1/auth/login", {
-        method: "POST",
-        noAuth: true,
-        body: { email: email, password: password },
-      });
+      var data = api.loginApi
+        ? await api.loginApi(email, password)
+        : await api.api("/api/v1/auth/login", {
+            method: "POST",
+            noAuth: true,
+            body: { email: email, password: password },
+            timeout: 25000,
+            retries: 0,
+            preferXhr: true,
+          });
+      if (finished) return;
+      finished = true;
+      clearTimeout(watchdog);
+      if (!data || !data.access_token) {
+        throw new Error("Login did not return a session. Try again.");
+      }
+      showErr(errEl, "Success — opening your portal…");
+      if (errEl) errEl.style.color = "#166534";
       await afterAuth(data, email, data.user && data.user.full_name);
     } catch (err) {
-      showErr($("loginError"), err.message || "Login failed");
+      if (finished) return;
+      finished = true;
+      clearTimeout(watchdog);
+      var msg = (err && err.message) || "Login failed";
+      if (err && err.data && err.data.detail) {
+        var d = err.data.detail;
+        if (typeof d === "string") msg = d;
+        else if (d && d.message) msg = d.message;
+      }
+      showErr(errEl, msg);
+      if (errEl) errEl.style.color = "";
       btn.disabled = false;
       btn.textContent = "Log in";
     }
@@ -209,11 +308,24 @@
 
   async function onSignup(e) {
     e.preventDefault();
+    e.stopPropagation();
     var email = $("signupEmail").value.trim();
     var password = $("signupPassword").value;
     var fullName = $("signupName").value.trim();
     var btn = $("btnSignup");
     showErr($("signupError"));
+    if (!fullName) {
+      showErr($("signupError"), "Enter your full name");
+      return;
+    }
+    if (!email) {
+      showErr($("signupError"), "Enter your email");
+      return;
+    }
+    if (!password || password.length < 8) {
+      showErr($("signupError"), "Password must be at least 8 characters");
+      return;
+    }
     btn.disabled = true;
     btn.textContent = "Sending OTP…";
     try {
@@ -229,18 +341,26 @@
         if (parent) body.parent_email = parent;
       } else if (role === "teacher") {
         body.phone = $("signupPhone").value.trim();
-        body.location = $("signupLocation").value.trim();
         var subjects = $("signupSubjects").value
           .split(",")
           .map(function (s) { return s.trim(); })
           .filter(Boolean);
         body.subjects = subjects;
+        if (!body.phone || body.phone.length < 7) {
+          throw new Error("WhatsApp number is required");
+        }
+        if (!subjects.length) {
+          throw new Error("Add at least one subject");
+        }
       } else if (role === "vendor") {
         body.business_name = $("signupBusiness").value.trim();
         body.phone = $("signupVendorPhone").value.trim();
         body.location = $("signupVendorLocation").value.trim();
         body.address = $("signupVendorAddress").value.trim();
         if (!body.business_name) throw new Error("Business name is required");
+        if (!body.phone || body.phone.length < 7) {
+          throw new Error("WhatsApp number is required");
+        }
         if (!body.location) throw new Error("Location is required");
         if (!body.address) throw new Error("Business address is required");
       }
@@ -290,17 +410,48 @@
   }
 
   document.addEventListener("DOMContentLoaded", function () {
+    if (!api || typeof api.api !== "function") {
+      showErr($("loginError"), "Auth scripts failed to load. Refresh the page.");
+      showErr($("signupError"), "Auth scripts failed to load. Refresh the page.");
+      return;
+    }
+
     var params = new URLSearchParams(window.location.search);
     nextUrl = safeNext(params.get("next") || "");
+    marketMode =
+      params.get("market") === "1" ||
+      (nextUrl && nextUrl.indexOf("marketplace") >= 0);
 
-    if (api.getToken()) {
-      var existingRole = localStorage.getItem("sia_role") || "student";
-      if (nextUrl) {
+    applyMarketMode();
+
+    if (api.getToken() && !params.get("force")) {
+      var existingRole = (localStorage.getItem("sia_role") || "student").toLowerCase();
+      var wantRole = (params.get("role") || "").toLowerCase();
+      var wantFreshAuth =
+        params.get("mode") === "login" ||
+        params.get("mode") === "signup" ||
+        params.get("switch") === "1";
+      // Allow market signup for a different role (e.g. vendor) by clearing the old session
+      if (
+        marketMode &&
+        params.get("mode") === "signup" &&
+        wantRole &&
+        wantRole !== existingRole
+      ) {
+        api.clearSession();
+      } else if (wantFreshAuth) {
+        // User opened Sign in / Sign up on purpose — stay on the form.
+        // Keep token until they successfully log in again (saveSession overwrites).
+      } else if (existingRole === "vendor") {
+        window.location.href = "vendor.html";
+        return;
+      } else if (nextUrl) {
         window.location.href = nextUrl;
         return;
+      } else {
+        window.location.href = api.dashboardForRole(existingRole);
+        return;
       }
-      window.location.href = api.dashboardForRole(existingRole);
-      return;
     }
 
     document.querySelectorAll(".role-btn").forEach(function (btn) {
@@ -321,6 +472,69 @@
     $("gotoLogin").addEventListener("click", function () {
       switchMode("login");
     });
+    if ($("gotoForgot")) {
+      $("gotoForgot").addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        switchMode("reset");
+        var em = ($("loginEmail") && $("loginEmail").value.trim()) || "";
+        if (em && $("resetEmail")) $("resetEmail").value = em;
+      });
+    }
+    if ($("gotoLoginFromReset")) {
+      $("gotoLoginFromReset").addEventListener("click", function () {
+        switchMode("login");
+      });
+    }
+    if ($("btnResetSend")) {
+      $("btnResetSend").addEventListener("click", async function () {
+        var email = $("resetEmail").value.trim();
+        var hint = $("resetHint");
+        showErr($("resetError"));
+        if (!email) {
+          showErr($("resetError"), "Enter your email");
+          return;
+        }
+        try {
+          var data = await api.api("/api/v1/auth/otp/send", {
+            method: "POST",
+            noAuth: true,
+            body: { email: email, purpose: "reset_password" },
+          });
+          if (hint) {
+            hint.hidden = false;
+            hint.textContent = (data && data.message) || "OTP sent to your email.";
+          }
+        } catch (err) {
+          showErr($("resetError"), err.message || "Could not send OTP");
+        }
+      });
+    }
+    if ($("formReset")) {
+      $("formReset").addEventListener("submit", async function (e) {
+        e.preventDefault();
+        var email = $("resetEmail").value.trim();
+        var otp = $("resetOtp").value.trim();
+        var password = $("resetPassword").value;
+        showErr($("resetError"));
+        if (!email || !otp || !password) {
+          showErr($("resetError"), "Email, OTP and new password are required");
+          return;
+        }
+        try {
+          await api.api("/api/v1/auth/password/reset", {
+            method: "POST",
+            noAuth: true,
+            body: { email: email, otp: otp, new_password: password },
+          });
+          switchMode("login");
+          showErr($("loginError"), "Password updated. Log in with your new password.");
+          $("loginError").hidden = false;
+        } catch (err) {
+          showErr($("resetError"), err.message || "Could not reset password");
+        }
+      });
+    }
 
     $("formLogin").addEventListener("submit", onLogin);
     $("formSignup").addEventListener("submit", onSignup);
@@ -331,8 +545,12 @@
     });
 
     var roleParam = params.get("role");
-    if (roleParam && ROLE_META[roleParam]) setRole(roleParam);
-    if (params.get("mode") === "signup") {
+    if (roleParam && (ROLE_META[roleParam] || MARKET_ROLE_META[roleParam])) {
+      setRole(roleParam);
+    } else if (marketMode) {
+      setRole("student");
+    }
+    if (params.get("mode") === "signup" || (marketMode && params.get("mode") !== "login")) {
       switchMode("signup");
     } else {
       switchMode("login");

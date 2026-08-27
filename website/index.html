@@ -15,7 +15,7 @@
       href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="css/site.css?v=15" />
+    <link rel="stylesheet" href="css/site.css?v=20" />
   </head>
   <body>
     <header class="topbar" id="topbar">
@@ -25,8 +25,10 @@
 
       <nav class="nav" aria-label="Primary">
         <a href="#top" class="is-active">Home</a>
-        <a href="auth.html">CBT Practice</a>
-        <a href="auth.html">Past questions</a>
+        <a href="portal.html">CBT Practice</a>
+        <a href="portal.html">Past questions</a>
+        <a href="exam.html">External exam</a>
+        <a href="office.html">Schools</a>
         <a href="marketplace.html">Marketplace</a>
         <a href="#affiliate">Affiliate</a>
         <a href="#contact">Contact</a>
@@ -34,23 +36,27 @@
       </nav>
 
       <div class="top-actions">
-        <a class="btn btn-ghost" href="auth.html">Sign in</a>
-        <a class="btn btn-red btn-pill" href="auth.html">Join <span aria-hidden="true">→</span></a>
+        <a class="btn btn-red btn-pill" href="marketplace.html">Marketplace</a>
+        <a class="btn btn-ghost" href="portal.html?mode=signup&role=student&switch=1">Join</a>
         <button class="icon-btn menu-btn" type="button" aria-label="Menu" id="menuBtn">
-          <svg viewBox="0 0 24 24" fill="none" width="18" height="18"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" width="20" height="20" aria-hidden="true">
+            <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+          </svg>
         </button>
       </div>
     </header>
 
     <div class="mobile-nav" id="mobileNav" hidden>
       <a href="#top">Home</a>
-      <a href="auth.html">CBT Practice</a>
-      <a href="auth.html">Past questions</a>
+      <a href="portal.html">CBT Practice</a>
+      <a href="portal.html">Past questions</a>
+      <a href="office.html">Schools</a>
       <a href="marketplace.html">Marketplace</a>
+      <a href="exam.html">External exam</a>
       <a href="#affiliate">Affiliate</a>
       <a href="#contact">Contact</a>
       <a href="#about">About</a>
-      <a class="btn btn-red" href="auth.html">Join</a>
+      <a class="btn btn-red" href="portal.html">Join</a>
     </div>
 
     <main id="top">
@@ -88,11 +94,11 @@
               Live classes, CBT practice, and Sia AI — built for WAEC, NECO &amp; JAMB students.
             </p>
             <div class="hero-actions">
-              <a class="btn btn-join" href="auth.html">
-                Join
+              <a class="btn btn-join" href="marketplace.html">
+                Marketplace
                 <span class="btn-circle" aria-hidden="true">→</span>
               </a>
-              <a class="btn btn-ai" href="marketplace.html">Marketplace</a>
+              <a class="btn btn-ai" href="portal.html?mode=signup&role=student&switch=1">Join</a>
             </div>
           </div>
         </div>
@@ -183,7 +189,7 @@
             A clean student dashboard for live learning, exams, tutoring, and
             resources — designed to feel simple from day one.
           </p>
-          <a class="btn btn-red btn-cta" href="auth.html">Start free today</a>
+          <a class="btn btn-red btn-cta" href="portal.html">Start free today</a>
         </div>
         <div class="showcase-frame">
           <div class="browser">
@@ -352,7 +358,7 @@
               CBT practice, and skills programs.
             </p>
             <div class="affiliate-actions">
-              <a class="btn btn-gold" href="auth.html">Join to get started</a>
+              <a class="btn btn-gold" href="portal.html">Join to get started</a>
               <a class="btn btn-glass" href="mailto:scholaxia23@gmail.com?subject=Affiliate%20enquiry">Email affiliate team</a>
             </div>
           </div>
@@ -377,7 +383,7 @@
           </p>
         </div>
         <div class="ending-cta-actions">
-          <a class="btn btn-ending-solid" href="auth.html">Explore Courses</a>
+          <a class="btn btn-ending-solid" href="portal.html">Explore Courses</a>
           <a class="btn btn-ending-ghost" href="downloads/Scholaxia-Student-Setup.exe" download>Download Desktop</a>
         </div>
       </div>
@@ -398,6 +404,12 @@
             Download for Windows
           </a>
           <p class="download-note">Windows 10/11 · Setup installer · ~60 MB</p>
+          <p class="download-note">
+            Chrome or Windows may warn “file not commonly downloaded” or SmartScreen.
+            That happens because the installer is new and not yet code-signed — not because it is malware.
+            Choose <strong>Keep</strong> / <strong>More info → Run anyway</strong> if you downloaded it from this official Scholaxia page (HTTPS).
+            We cannot turn Google’s warning off; a purchased Authenticode certificate is required for that.
+          </p>
         </div>
       </div>
     </section>
@@ -424,8 +436,10 @@
         <div class="footer-col">
           <h4>Quick Links</h4>
           <a href="#top">Home</a>
-          <a href="auth.html">CBT Practice</a>
-          <a href="auth.html">Past questions</a>
+          <a href="exam.html">External exam</a>
+          <a href="office.html">Schools</a>
+          <a href="portal.html">CBT Practice</a>
+          <a href="portal.html">Past questions</a>
           <a class="footer-link-hot" href="marketplace.html">
             <span class="hot-ico" aria-hidden="true">▣</span>
             Marketplace

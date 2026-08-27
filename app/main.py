@@ -12,6 +12,7 @@ from app.core.redis import init_redis, close_redis
 from app.core.startup_db import database_ready, ensure_postgres_enums, initialize_database, probe_database
 
 ADMIN_STATIC_DIR = Path(__file__).resolve().parent.parent / "static" / "admin"
+WEBSITE_STATIC_DIR = Path(__file__).resolve().parent.parent / "website"
 
 from app.routers import auth, students, admin, live_class, cbt, community, ai_tutor, notifications, payments, paystack_payments
 from app.routers import developer_auth, developer_keys, public_ai_api, reviews_reports, teacher_ai, library, wallet, materials
@@ -217,6 +218,15 @@ async def debug_sia(db: AsyncSession = Depends(get_db)):
         import traceback
         return {"status": "error", "detail": str(e), "trace": traceback.format_exc()}
 
+
+# Student/teacher website on same host as API (avoids GitHub Pages → API CORS failures):
+# https://scholaxia1.onrender.com/app/student.html
+if WEBSITE_STATIC_DIR.is_dir():
+    app.mount(
+        "/app",
+        StaticFiles(directory=str(WEBSITE_STATIC_DIR), html=True),
+        name="website_ui",
+    )
 
 # Admin website (same host as API): https://scholaxia1.onrender.com/admin/
 if ADMIN_STATIC_DIR.is_dir():
