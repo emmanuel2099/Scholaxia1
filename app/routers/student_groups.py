@@ -171,27 +171,33 @@ async def my_groups(
     current_user: dict = Depends(require_student_or_kind),
     db: AsyncSession = Depends(get_db),
 ):
-    uid = parse_uuid(current_user["sub"])
-    mem_res = await db.execute(
-        select(StudentGroupMember, StudentGroup)
-        .join(StudentGroup, StudentGroup.id == StudentGroupMember.group_id)
-        .where(StudentGroupMember.user_id == uid)
-    )
-    groups = []
-    for mem, grp in mem_res.all():
-        groups.append({
-            "id": str(grp.id),
-            "name": grp.name,
-            "description": grp.description,
-            "image_url": getattr(grp, "image_url", None),
-            "role": mem.role.value,
-            "is_public": grp.is_public,
-            "is_community_listed": grp.is_community_listed,
-            "is_approved": grp.is_approved,
-            "is_admin": mem.role == StudentGroupMemberRole.admin,
-            "member_count": await _member_count(db, grp.id),
-        })
-    return groups
+    try:
+        uid = parse_uuid(current_user["sub"])
+        mem_res = await db.execute(
+            select(StudentGroupMember, StudentGroup)
+            .join(StudentGroup, StudentGroup.id == StudentGroupMember.group_id)
+            .where(StudentGroupMember.user_id == uid)
+        )
+        groups = []
+        for mem, grp in mem_res.all():
+            role_raw = mem.role.value if hasattr(mem.role, "value") else str(mem.role or "member")
+            groups.append({
+                "id": str(grp.id),
+                "name": grp.name,
+                "description": grp.description,
+                "image_url": getattr(grp, "image_url", None),
+                "role": role_raw,
+                "is_public": bool(getattr(grp, "is_public", True)),
+                "is_community_listed": bool(getattr(grp, "is_community_listed", False)),
+                "is_approved": bool(getattr(grp, "is_approved", True)),
+                "is_admin": str(role_raw).lower() == "admin",
+                "member_count": await _member_count(db, grp.id),
+            })
+        return groups
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).exception("my_groups failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Could not load your groups: {exc}") from exc
 
 
 @router.get("/community-listed")
@@ -200,47 +206,55 @@ async def community_listed_groups(
     db: AsyncSession = Depends(get_db),
 ):
     """All groups listed in Community (including ones you created or joined)."""
-    uid = parse_uuid(current_user["sub"])
-    result = await db.execute(
-        select(StudentGroup).where(
-            StudentGroup.is_public == True,  # noqa: E712
-            StudentGroup.is_community_listed == True,  # noqa: E712
-            StudentGroup.is_approved == True,  # noqa: E712
-        )
-    )
-    out = []
-    for grp in result.scalars().all():
-        mem = await db.execute(
-            select(StudentGroupMember).where(
-                StudentGroupMember.group_id == grp.id,
-                StudentGroupMember.user_id == uid,
+    try:
+        uid = parse_uuid(current_user["sub"])
+        result = await db.execute(
+            select(StudentGroup).where(
+                StudentGroup.is_public == True,  # noqa: E712
+                StudentGroup.is_community_listed == True,  # noqa: E712
+                StudentGroup.is_approved == True,  # noqa: E712
             )
         )
-        member = mem.scalar_one_or_none()
-        pending = await db.execute(
-            select(StudentGroupJoinRequest).where(
-                StudentGroupJoinRequest.group_id == grp.id,
-                StudentGroupJoinRequest.user_id == uid,
-                StudentGroupJoinRequest.status == StudentGroupJoinStatus.pending,
+        out = []
+        for grp in result.scalars().all():
+            mem = await db.execute(
+                select(StudentGroupMember).where(
+                    StudentGroupMember.group_id == grp.id,
+                    StudentGroupMember.user_id == uid,
+                )
             )
-        )
-        creator_res = await db.execute(select(User).where(User.id == grp.creator_id))
-        creator = creator_res.scalar_one_or_none()
-        out.append({
-            "id": str(grp.id),
-            "name": grp.name,
-            "description": grp.description,
-            "image_url": getattr(grp, "image_url", None),
-            "is_member": member is not None,
-            "is_admin": member is not None and member.role == StudentGroupMemberRole.admin,
-            "is_approved": grp.is_approved,
-            "pending_request": pending.scalar_one_or_none() is not None,
-            "creator_name": creator.full_name if creator else "Student",
-            "member_count": await _member_count(db, grp.id),
-            "created_at": grp.created_at.isoformat() if grp.created_at else None,
-        })
-    out.sort(key=lambda g: g["name"].lower())
-    return out
+            member = mem.scalar_one_or_none()
+            pending = await db.execute(
+                select(StudentGroupJoinRequest).where(
+                    StudentGroupJoinRequest.group_id == grp.id,
+                    StudentGroupJoinRequest.user_id == uid,
+                    StudentGroupJoinRequest.status == StudentGroupJoinStatus.pending,
+                )
+            )
+            creator_res = await db.execute(select(User).where(User.id == grp.creator_id))
+            creator = creator_res.scalar_one_or_none()
+            role_raw = ""
+            if member is not None:
+                role_raw = member.role.value if hasattr(member.role, "value") else str(member.role or "")
+            out.append({
+                "id": str(grp.id),
+                "name": grp.name,
+                "description": grp.description,
+                "image_url": getattr(grp, "image_url", None),
+                "is_member": member is not None,
+                "is_admin": str(role_raw).lower() == "admin",
+                "is_approved": bool(getattr(grp, "is_approved", True)),
+                "pending_request": pending.scalar_one_or_none() is not None,
+                "creator_name": creator.full_name if creator else "Student",
+                "member_count": await _member_count(db, grp.id),
+                "created_at": grp.created_at.isoformat() if grp.created_at else None,
+            })
+        out.sort(key=lambda g: (g.get("name") or "").lower())
+        return out
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).exception("community_listed_groups failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Could not load community groups: {exc}") from exc
 
 
 @router.get("/discover")

@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import decode_token
+from app.core.security import decode_token, _role_str as security_role_str
 from app.models.user import User, TeacherProfile
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -54,6 +54,7 @@ async def get_current_user(
         )
 
     payload["sub"] = str(user.id)
+    payload["role"] = security_role_str(getattr(user, "role", payload.get("role") or "student"))
     payload["school_id"] = str(user.school_id) if getattr(user, "school_id", None) else None
     payload["_db"] = db
     return payload

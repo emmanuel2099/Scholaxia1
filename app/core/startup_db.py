@@ -310,6 +310,33 @@ async def _run_schema_migrations(conn) -> None:
         "ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS group_id UUID NULL REFERENCES student_groups(id)"
     ))
     await conn.execute(text(
+        "ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS is_pinned BOOLEAN NOT NULL DEFAULT FALSE"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS is_deleted BOOLEAN NOT NULL DEFAULT FALSE"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS like_count INTEGER NOT NULL DEFAULT 0"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS media_url VARCHAR(500) NULL"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS media_type VARCHAR(50) NULL"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NULL"
+    ))
+    # Avoid Postgres enum mismatches on group member/join roles (common Internal Server Error source).
+    for stmt in (
+        "ALTER TABLE student_group_members ALTER COLUMN role TYPE VARCHAR(20) USING role::text",
+        "ALTER TABLE student_group_join_requests ALTER COLUMN status TYPE VARCHAR(20) USING status::text",
+    ):
+        try:
+            await conn.execute(text(stmt))
+        except Exception:
+            pass
+    await conn.execute(text(
         """
         CREATE TABLE IF NOT EXISTS post_reactions (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

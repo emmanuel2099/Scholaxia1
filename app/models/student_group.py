@@ -40,7 +40,11 @@ class StudentGroupMember(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     group_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("student_groups.id"), index=True)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), index=True)
-    role: Mapped[StudentGroupMemberRole] = mapped_column(Enum(StudentGroupMemberRole), default=StudentGroupMemberRole.member)
+    # native_enum=False — store as VARCHAR to avoid Postgres enum name/value 500s
+    role: Mapped[StudentGroupMemberRole] = mapped_column(
+        Enum(StudentGroupMemberRole, values_callable=lambda obj: [e.value for e in obj], native_enum=False),
+        default=StudentGroupMemberRole.member,
+    )
     joined_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -50,7 +54,10 @@ class StudentGroupJoinRequest(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     group_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("student_groups.id"), index=True)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), index=True)
-    status: Mapped[StudentGroupJoinStatus] = mapped_column(Enum(StudentGroupJoinStatus), default=StudentGroupJoinStatus.pending)
+    status: Mapped[StudentGroupJoinStatus] = mapped_column(
+        Enum(StudentGroupJoinStatus, values_callable=lambda obj: [e.value for e in obj], native_enum=False),
+        default=StudentGroupJoinStatus.pending,
+    )
     message: Mapped[str] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 

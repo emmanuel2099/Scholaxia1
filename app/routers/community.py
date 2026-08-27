@@ -847,8 +847,27 @@ async def _fetch_channel_posts(
             CommunityPost.visibility.in_(["everyone", "class_only"])
         )
 
-    result = await db.execute(query)
-    posts = result.scalars().all()
+    try:
+        result = await db.execute(query)
+        posts = result.scalars().all()
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).exception("feed query failed: %s", exc)
+        # Retry without group_id filter if schema is mid-migration
+        fallback = (
+            select(CommunityPost)
+            .where(
+                CommunityPost.channel_id == channel_uuid,
+                CommunityPost.is_deleted == False,  # noqa: E712
+            )
+            .order_by(CommunityPost.created_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        if role_name not in ("teacher", "admin") and not is_announcement:
+            fallback = fallback.where(CommunityPost.visibility.in_(["everyone", "class_only"]))
+        result = await db.execute(fallback)
+        posts = result.scalars().all()
     posts = [p for p in posts if not POST_COMMENT_RE.match(p.content or "")]
     # Never auto-delete teacher announcements for links/phones — students must see them.
     if not is_announcement:
