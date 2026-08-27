@@ -1333,13 +1333,24 @@ function showBoardForStudent(forceOpen) {
   if (isTeacherRole()) return;
   var overlay = document.getElementById("board-overlay");
   if (!overlay) return;
-  if (forceOpen !== false) {
-    board.open = true;
-    overlay.classList.remove("hidden");
-    hideVideoPlaceholder();
-    resizeBoardCanvas();
+  if (forceOpen === false) {
+    hideBoardForStudent();
+    return;
   }
+  board.open = true;
+  overlay.classList.remove("hidden");
+  hideVideoPlaceholder();
+  resizeBoardCanvas();
 }
+
+function hideBoardForStudent() {
+  if (isTeacherRole()) return;
+  board.open = false;
+  var overlay = document.getElementById("board-overlay");
+  if (overlay) overlay.classList.add("hidden");
+}
+window.hideBoardForStudent = hideBoardForStudent;
+window.showBoardForStudent = showBoardForStudent;
 
 function syncBoardToRoom() {
   if (!isTeacherRole() || !liveSocket || liveSocket.readyState !== WebSocket.OPEN) return;
@@ -1896,37 +1907,56 @@ function toggleBoard(forceOpen) {
       if (inp) setTimeout(function () { inp.focus(); }, 100);
     }
   }
-  if (board.canDraw) sendBoardEvent("board_open", { open: open });
+  if (!board.canDraw) return;
+
+  function pushBoardState() {
+    sendBoardEvent("board_open", { open: open });
+    if (open) {
+      // Push current strokes so late / missed students catch up
+      setTimeout(function () { syncBoardToRoom(); }, 250);
+    }
+  }
+
+  if (!liveSocket || liveSocket.readyState !== WebSocket.OPEN) {
+    try { connectChat(); } catch (e) { /* ignore */ }
+    setTimeout(pushBoardState, 600);
+  } else {
+    pushBoardState();
+  }
 }
 
 function handleBoardMessage(msg) {
   if (!msg) return;
+  var data = msg.data || {};
   if (msg.action === "board_open") {
-    board.open = !!msg.data.open;
+    board.open = !!data.open;
     var overlay = document.getElementById("board-overlay");
     if (overlay) overlay.classList.toggle("hidden", !board.open);
     if (board.open) {
       hideVideoPlaceholder();
       resizeBoardCanvas();
+      if (!isTeacherRole()) {
+        addChatMessage("", "Teacher opened the board.", true);
+      }
     }
     return;
   }
-  if (!isTeacherRole()) showBoardForStudent();
+  if (!isTeacherRole()) showBoardForStudent(true);
   if (msg.action === "draw") {
-    applyDrawStroke(msg.data, true);
+    applyDrawStroke(data, true);
     redrawBoard();
     return;
   }
   if (msg.action === "erase") {
-    applyEraseStroke(msg.data, true);
+    applyEraseStroke(data, true);
     redrawBoard();
     return;
   }
   if (msg.action === "text") {
-    applyBoardText(msg.data, true);
+    applyBoardText(data, true);
     board.liveText = "";
-    if (msg.data && typeof msg.data.y === "number") {
-      board.textY = Math.max(board.textY, msg.data.y + board.lineHeight);
+    if (data && typeof data.y === "number") {
+      board.textY = Math.max(board.textY, data.y + board.lineHeight);
     }
     ensureBoardCanvasFitsContent();
     redrawBoard();
@@ -1934,16 +1964,16 @@ function handleBoardMessage(msg) {
     return;
   }
   if (msg.action === "text_stream") {
-    board.textX = msg.data.x;
-    board.textY = msg.data.y;
-    board.liveText = msg.data.text || "";
+    board.textX = data.x;
+    board.textY = data.y;
+    board.liveText = data.text || "";
     ensureBoardCanvasFitsContent();
     redrawBoard();
     scrollBoardToTypingCursor();
     return;
   }
   if (msg.action === "image") {
-    addBoardImage(msg.data, false).then(function () {
+    addBoardImage(data, false).then(function () {
       redrawBoard();
     }).catch(function () { /* ignore */ });
     return;
@@ -2100,6 +2130,19 @@ function connectChat() {
       } else if (msg.event === "camera_access_revoked") {
         if (typeof disableStudentCamera === "function") disableStudentCamera();
         addChatMessage("", msg.message || "Your camera access was removed by the teacher.", true);
+      } else if (msg.event === "screen_share") {
+        if (!isTeacherRole()) {
+          if (msg.active) {
+            hideBoardForStudent();
+            addChatMessage("", "Teacher is sharing their screen…", true);
+          }
+          if (typeof attachExistingRemoteTracks === "function") {
+            attachExistingRemoteTracks();
+          } else if (window.LiveClassMedia && LiveClassMedia.reattachRemoteTracks) {
+            LiveClassMedia.reattachRemoteTracks();
+          }
+          if (typeof reattachTeacherMainStage === "function") reattachTeacherMainStage();
+        }
       } else if (msg.event === "whiteboard") {
         handleBoardMessage(msg);
       } else if (msg.event === "whiteboard_access_granted") {

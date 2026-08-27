@@ -335,20 +335,28 @@ def _generate_livekit_token(
         if display_name:
             token.with_name(display_name)
         # Clients use metadata.role to pin the teacher on the main stage.
+        role_norm = str(role or "student").strip().lower().replace("userrole.", "")
         try:
-            token.with_metadata(json.dumps({"role": role or "student"}))
+            token.with_metadata(json.dumps({"role": role_norm or "student"}))
         except Exception:
             pass
         token.with_ttl(timedelta(hours=6))
-        token.with_grants(
-            VideoGrants(
-                room_join=True,
-                room=room_name,
-                can_publish=can_publish,
-                can_subscribe=True,
-                can_publish_data=True,
-            )
-        )
+        grants_kw = {
+            "room_join": True,
+            "room": room_name,
+            "can_publish": bool(can_publish),
+            "can_subscribe": True,
+            "can_publish_data": True,
+        }
+        # Explicit sources so teacher screen share is never blocked by cloud defaults.
+        if can_publish and role_norm in ("teacher", "admin", "host"):
+            grants_kw["can_publish_sources"] = [
+                "camera",
+                "microphone",
+                "screen_share",
+                "screen_share_audio",
+            ]
+        token.with_grants(VideoGrants(**grants_kw))
         return token.to_jwt()
     except Exception:
         return f"TOKEN_ERROR_{room_name}"

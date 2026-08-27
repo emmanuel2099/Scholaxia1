@@ -73,7 +73,8 @@ async def send_to_user(room_id: str, target_user_id: str, message: dict):
 
 
 def _is_teacher_role(role: str) -> bool:
-    return role in ("teacher", "admin")
+    r = str(role or "").strip().lower().replace("userrole.", "")
+    return r in ("teacher", "admin", "host")
 
 
 async def notify_mic_granted(room_id: str, student_id: str) -> None:
@@ -165,6 +166,19 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
                     "text": message.get("text", ""),
                 })
 
+            elif event == "screen_share":
+                # Relay so students force-subscribe / hide board under the share
+                await broadcast(
+                    room_id,
+                    {
+                        "event": "screen_share",
+                        "user_id": user_id,
+                        "role": role,
+                        "active": bool(message.get("active")),
+                    },
+                    exclude=websocket,
+                )
+
             elif event == "whiteboard":
                 has_access = _is_teacher_role(role) or has_whiteboard_access(room_id, user_id)
                 if not has_access:
@@ -177,7 +191,7 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
                         "event": "whiteboard",
                         "user_id": user_id,
                         "action": message.get("action"),
-                        "data": message.get("data"),
+                        "data": message.get("data") or {},
                     }, exclude=websocket)
 
             elif event == "grant_whiteboard":
