@@ -71,16 +71,24 @@
     $("checkoutModal").hidden = true;
   }
 
-  function goAuth(pick) {
+  function marketAuthUrl(pick, mode) {
+    var base = "portal.html?market=1&mode=" + (mode || "signup");
     if (pick === "vendor") {
-      window.location.href =
-        "auth.html?mode=signup&role=vendor&next=" +
-        encodeURIComponent("marketplace.html?vendor=pending");
-      return;
+      return (
+        base +
+        "&role=vendor&next=" +
+        encodeURIComponent("marketplace.html?vendor=pending")
+      );
     }
-    window.location.href =
-      "auth.html?mode=signup&role=student&next=" +
-      encodeURIComponent("marketplace.html?checkout=1");
+    return (
+      base +
+      "&role=student&next=" +
+      encodeURIComponent("marketplace.html?checkout=1")
+    );
+  }
+
+  function goAuth(pick) {
+    window.location.href = marketAuthUrl(pick, "signup");
   }
 
   async function syncServerCartCount() {
@@ -182,8 +190,8 @@
         var desc = (p.description || "").trim();
         var price = Number(p.price || 0);
         return (
-          '<article class="mkt-item" style="animation-delay:' +
-          Math.min(i, 8) * 0.04 +
+          '<article class="mkt-item mkt-item-enter" style="animation-delay:' +
+          Math.min(i, 14) * 0.09 +
           's">' +
           '<div class="mkt-item-media">' +
           (img
@@ -421,7 +429,7 @@
   async function loadOrders() {
     if (!isBuyerLoggedIn()) {
       window.location.href =
-        "auth.html?mode=login&role=student&next=" +
+        "portal.html?market=1&mode=login&role=student&next=" +
         encodeURIComponent("marketplace.html");
       return;
     }
@@ -529,6 +537,10 @@
     $("btnSell").addEventListener("click", function () {
       goAuth("vendor");
     });
+    var btnJoin = $("btnJoin");
+    if (btnJoin) {
+      btnJoin.addEventListener("click", openRoleModal);
+    }
     $("closeRole").addEventListener("click", closeRoleModal);
     $("roleModal").addEventListener("click", function (e) {
       if (e.target === $("roleModal")) closeRoleModal();

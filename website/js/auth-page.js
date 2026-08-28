@@ -122,10 +122,14 @@
       btn.hidden = true;
       btn.style.display = "none";
     });
+    document.querySelectorAll("[data-show-market]").forEach(function (btn) {
+      btn.hidden = false;
+      btn.style.display = "";
+    });
     var row = $("roleRow");
     if (row) {
       row.classList.add("role-row-market");
-      row.style.gridTemplateColumns = "1fr";
+      row.style.gridTemplateColumns = "1fr 1fr";
     }
     var kicker = $("authVisualKicker");
     var title = $("authVisualTitle");

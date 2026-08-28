@@ -181,23 +181,33 @@
         </div>
       </section>
 
-      <section class="section showcase" id="demo">
-        <div class="showcase-copy">
-          <p class="kicker">Platform</p>
-          <h2>See Scholaxia in action</h2>
-          <p>
-            A clean student dashboard for live learning, exams, tutoring, and
-            resources — designed to feel simple from day one.
-          </p>
-          <a class="btn btn-red btn-cta" href="portal.html">Start free today</a>
-        </div>
-        <div class="showcase-frame">
+      <section class="section showcase showcase-visual-only" id="demo">
+        <div class="showcase-frame showcase-frame-full">
           <div class="browser">
             <div class="browser-bar">
               <span></span><span></span><span></span>
               <p>app.scholaxia.com</p>
             </div>
-            <video src="media/hero.mp4" autoplay muted loop playsinline class="demo-video"></video>
+            <div class="demo-media" id="demoMedia">
+              <video
+                src="media/hero.mp4"
+                autoplay
+                muted
+                loop
+                playsinline
+                preload="auto"
+                class="demo-video"
+                poster="media/hero-classroom.png"
+              ></video>
+              <div class="demo-slide-track" id="demoSlideTrack" aria-hidden="true">
+                <img src="media/feature-live.png" class="demo-slide is-active" alt="" />
+                <img src="media/feature-cbt.png" class="demo-slide" alt="" />
+                <img src="media/feature-ai.png" class="demo-slide" alt="" />
+                <img src="media/feature-library.png" class="demo-slide" alt="" />
+                <img src="media/feature-market.png" class="demo-slide" alt="" />
+                <img src="media/hero-classroom.png" class="demo-slide" alt="" />
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -479,6 +489,6 @@
       </div>
     </footer>
 
-    <script src="js/site.js?v=11"></script>
+    <script src="js/site.js?v=20260828m"></script>
   </body>
 </html>
