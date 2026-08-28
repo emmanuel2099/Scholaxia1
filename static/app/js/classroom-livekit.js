@@ -458,10 +458,13 @@
   }
 
   function attachRemoteVideoToMainStage(track, publication) {
+    var isScreen = isScreenPublication(publication);
+    if (!isTeacherRole() && !isScreen && window.board && window.board.open) {
+      return;
+    }
     if (typeof hideVideoPlaceholder === "function") hideVideoPlaceholder();
     var wrap = document.getElementById("video-remote");
     if (!wrap) return;
-    var isScreen = isScreenPublication(publication);
     // Screen share must not sit under an open board overlay
     if (isScreen && !isTeacherRole()) {
       try {
@@ -540,10 +543,16 @@
 
   function reattachTeacherMainStage() {
     if (isTeacherRole() || !teacherVideoTrack) return;
+    if (window.board && window.board.open && !remoteTeacherScreenActive()) return;
     if (typeof isParticipantVideoLive === "function" && !isParticipantVideoLive(teacherVideoTrack)) {
       teacherVideoTrack = null;
-      clearMainStageVideo();
+      if (!window.board || !window.board.open) clearMainStageVideo();
       return;
+    }
+    var wrap = document.getElementById("video-remote");
+    if (wrap && wrap.querySelector("video")) {
+      var v = wrap.querySelector("video");
+      if (v && v.readyState >= 2 && !v.paused) return;
     }
     if (teacherVideoTrack.track) {
       attachRemoteVideoToMainStage(teacherVideoTrack.track, teacherVideoTrack.publication);
@@ -576,7 +585,9 @@
       if (!isTeacherRole() && isCameraPublication(publication)) {
         if (isTeacherParticipant(participant)) {
           teacherVideoTrack = { track: track, publication: publication, participant: participant };
-          attachRemoteVideoToMainStage(track, publication);
+          if (!window.board || !window.board.open) {
+            attachRemoteVideoToMainStage(track, publication);
+          }
         }
         // Ignore peer student cameras on the student main stage (prevents flicker).
         return;
@@ -617,7 +628,7 @@
 
     if (!isTeacherRole() && isTeacherParticipant(participant) && isCameraPublication(publication)) {
       teacherVideoTrack = null;
-      if (!remoteTeacherScreenActive()) clearMainStageVideo();
+      if (!remoteTeacherScreenActive() && (!window.board || !window.board.open)) clearMainStageVideo();
       return;
     }
 
@@ -636,7 +647,7 @@
       clearStudentParticipantVideo(studentId, publication, participant);
     } else if (isTeacherParticipant(participant)) {
       teacherVideoTrack = null;
-      if (!remoteTeacherScreenActive()) clearMainStageVideo();
+      if (!remoteTeacherScreenActive() && (!window.board || !window.board.open)) clearMainStageVideo();
     }
   }
 
@@ -1147,9 +1158,14 @@
         if (window._sxVideoKeepAlive) clearInterval(window._sxVideoKeepAlive);
         window._sxVideoKeepAlive = setInterval(function () {
           if (!liveVideoJoined) return;
-          attachExistingRemoteTracks();
-          reattachTeacherMainStage();
-        }, 3500);
+          var boardDominates = window.board && window.board.open && !remoteTeacherScreenActive();
+          if (!boardDominates) {
+            attachExistingRemoteTracks();
+            reattachTeacherMainStage();
+          } else {
+            ensureRoomAudioPlayback();
+          }
+        }, 6000);
       }
       var studBadge = document.getElementById("audience-badge");
       if (studBadge && !isTeacherRole()) {

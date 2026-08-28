@@ -274,10 +274,6 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
 
             elif event == "request_board_sync":
                 await replay_board_to_websocket(room_id, websocket)
-                await broadcast(room_id, {
-                    "event": "request_board_sync",
-                    "user_id": user_id,
-                }, exclude=websocket)
 
             elif event == "raise_hand":
                 await broadcast(room_id, {

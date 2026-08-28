@@ -1360,7 +1360,15 @@ function addChatMessage(name, text, isSystem) {
 }
 
 function sendBoardEvent(action, data) {
-  var payload = JSON.stringify({ event: "whiteboard", action: action, data: data || {} });
+  var payloadData = data || {};
+  if (action === "image" && payloadData.url) {
+    var imgUrl = String(payloadData.url);
+    if (imgUrl.indexOf("blob:") === 0 || imgUrl.indexOf("data:") === 0) {
+      return false;
+    }
+    payloadData = Object.assign({}, payloadData, { url: normalizeBoardImageUrl(imgUrl) });
+  }
+  var payload = JSON.stringify({ event: "whiteboard", action: action, data: payloadData });
   if (liveSocket && liveSocket.readyState === WebSocket.OPEN) {
     try {
       liveSocket.send(payload);
@@ -1534,17 +1542,23 @@ function redrawBoard() {
   drawNext();
 }
 
+function normalizeBoardImageUrl(url) {
+  var u = String(url || "").trim();
+  if (!u) return u;
+  if (u.indexOf("blob:") === 0 || u.indexOf("data:") === 0) return u;
+  if (u.indexOf("http") === 0) return u;
+  var base = (typeof API_BASE === "string" && API_BASE) || "https://scholaxia1.onrender.com";
+  base = base.replace(/\/$/, "");
+  if (u.charAt(0) === "/") return base + u;
+  return base + "/" + u;
+}
+
 function loadBoardImage(url, onLoad, onError) {
   if (!url) {
     if (onError) onError();
     return;
   }
-  var abs = String(url);
-  if (abs.indexOf("http") !== 0 && abs.indexOf("blob:") !== 0 && abs.indexOf("data:") !== 0) {
-    var base = (typeof API_BASE === "string" && API_BASE) || "https://scholaxia1.onrender.com";
-    if (abs.charAt(0) === "/") abs = base.replace(/\/$/, "") + abs;
-    else abs = base.replace(/\/$/, "") + "/" + abs;
-  }
+  var abs = normalizeBoardImageUrl(url);
   if (board.imageCache[abs] || board.imageCache[url]) {
     onLoad(board.imageCache[abs] || board.imageCache[url]);
     return;
@@ -1623,12 +1637,14 @@ async function uploadBoardImage(file) {
 }
 
 function placeBoardImage(url, broadcast) {
+  var canonical = normalizeBoardImageUrl(url);
   return new Promise(function (resolve, reject) {
-    loadBoardImage(url, function (img) {
+    loadBoardImage(canonical, function (img) {
       var box = fitImageOnBoard(img);
-      var abs = img.src || url;
-      addBoardImage({ url: abs, x: box.x, y: box.y, w: box.w, h: box.h }, broadcast)
-        .then(resolve).catch(reject);
+      addBoardImage(
+        { url: canonical, x: box.x, y: box.y, w: box.w, h: box.h },
+        broadcast
+      ).then(resolve).catch(reject);
     }, function () {
       reject(new Error("Could not load image"));
     });
@@ -1638,7 +1654,13 @@ function placeBoardImage(url, broadcast) {
 function addBoardImage(data, broadcast) {
   return new Promise(function (resolve, reject) {
     loadBoardImage(data.url, function (img) {
-      board.history.push({ type: "image", data: data });
+      var dup = board.history.some(function (h) {
+        return h.type === "image" && h.data
+          && h.data.url === data.url
+          && h.data.x === data.x && h.data.y === data.y
+          && h.data.w === data.w && h.data.h === data.h;
+      });
+      if (!dup) board.history.push({ type: "image", data: data });
       board.ctx.drawImage(img, data.x, data.y, data.w, data.h);
       if (broadcast !== false) sendBoardEvent("image", data);
       resolve();
@@ -2050,6 +2072,11 @@ function handleBoardMessage(msg) {
           clearInterval(window._sxBoardSyncPoll);
           window._sxBoardSyncPoll = null;
         }
+        if (liveSocket && liveSocket.readyState === WebSocket.OPEN) {
+          try {
+            liveSocket.send(JSON.stringify({ event: "request_board_sync" }));
+          } catch (eSync) { /* ignore */ }
+        }
       }
     }
     return;
@@ -2094,9 +2121,14 @@ function handleBoardMessage(msg) {
     return;
   }
   if (msg.action === "image") {
-    addBoardImage(data, false).then(function () {
+    var imgData = msg.data || {};
+    if (imgData.url) imgData.url = normalizeBoardImageUrl(imgData.url);
+    if (!isTeacherRole()) showBoardForStudent(true);
+    addBoardImage(imgData, false).then(function () {
       redrawBoard();
-    }).catch(function () { /* ignore */ });
+    }).catch(function () {
+      addChatMessage("", "Could not load a board image from the teacher.", true);
+    });
     return;
   }
   if (msg.action === "clear") {
@@ -2115,20 +2147,19 @@ function handleBoardMessage(msg) {
   }
 }
 
-function connectChat() {
+function connectChat(isReconnect) {
   if (!liveSession || !liveSession.room_id) {
     setStatus("No room id — rejoin the class");
     return;
   }
-  // If a socket is stuck CONNECTING, kill it and open a fresh one.
   if (liveSocket) {
     if (liveSocket.readyState === WebSocket.OPEN) return;
-    if (liveSocket.readyState === WebSocket.CONNECTING) {
+    if (liveSocket.readyState === WebSocket.CONNECTING && !isReconnect) {
       var startedAt = liveSocket._siaOpenedAt || 0;
       if (startedAt && Date.now() - startedAt < 8000) return;
-      try { liveSocket.close(); } catch (e) { /* ignore */ }
-      liveSocket = null;
     }
+    try { liveSocket.close(); } catch (e) { /* ignore */ }
+    liveSocket = null;
   }
   var payload = parseJwt(getAuthToken());
   var userId = payload.sub || liveSession.user_id || liveSession.identity || "user";
@@ -2148,11 +2179,23 @@ function connectChat() {
     return;
   }
   liveSocket.onopen = function () {
+    window._sxChatReconnectAttempts = 0;
     var videoOk = window.LiveClassMedia && LiveClassMedia.isJoined && LiveClassMedia.isJoined();
     setStatus(videoOk ? "Connected — video + chat" : "Connected — chat ready");
-    addChatMessage("", "You joined the class. Use the chat to talk with everyone.", true);
+    if (!isReconnect) {
+      addChatMessage("", "You joined the class. Use the chat to talk with everyone.", true);
+    }
     flushBoardEventQueue();
     if (!isTeacherRole()) {
+      if (isReconnect) {
+        board.history = [];
+        board.liveText = "";
+        if (board.ctx && board.canvas) {
+          try {
+            board.ctx.clearRect(0, 0, board.canvas.width, board.canvas.height);
+          } catch (eClr) { /* ignore */ }
+        }
+      }
       liveSocket.send(JSON.stringify({ event: "request_board_sync" }));
       if (window._sxBoardSyncPoll) clearInterval(window._sxBoardSyncPoll);
       window._sxBoardSyncPoll = setInterval(function () {
@@ -2166,6 +2209,8 @@ function connectChat() {
           liveSocket.send(JSON.stringify({ event: "request_board_sync" }));
         } catch (ePoll) { /* ignore */ }
       }, 8000);
+    } else if (board.open) {
+      setTimeout(function () { syncBoardToRoom(); }, 400);
     }
     updateAudienceStats();
     var studBadge = document.getElementById("audience-badge");
@@ -2290,7 +2335,16 @@ function connectChat() {
     } catch (e) { /* ignore */ }
   };
   liveSocket.onclose = function () {
-    setStatus("Chat disconnected");
+    if (!window._sxChatReconnectAttempts) window._sxChatReconnectAttempts = 0;
+    window._sxChatReconnectAttempts += 1;
+    if (window._sxChatReconnectAttempts > 12) {
+      setStatus("Chat disconnected — refresh the page");
+      return;
+    }
+    setStatus(isTeacherRole() ? "Reconnecting chat…" : "Reconnecting…");
+    setTimeout(function () {
+      try { connectChat(true); } catch (eRc) { /* ignore */ }
+    }, Math.min(4000, 800 + window._sxChatReconnectAttempts * 400));
   };
   liveSocket.onerror = function () {
     setStatus("Chat connection error");

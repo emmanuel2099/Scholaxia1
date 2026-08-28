@@ -17,7 +17,11 @@ def record_board_event(room_id: str, action: str, data: dict | None) -> None:
         return
     state = room_board_state.setdefault(room_id, {"open": False, "events": []})
     action = str(action or "")
-    data = data or {}
+    data = dict(data or {})
+    if action == "image":
+        url = str(data.get("url") or "")
+        if url.startswith("blob:") or url.startswith("data:"):
+            return
     if action == "board_open":
         state["open"] = bool(data.get("open"))
         if not state["open"]:
