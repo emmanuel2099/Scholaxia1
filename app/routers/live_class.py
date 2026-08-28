@@ -153,42 +153,42 @@ async def my_access_codes(
 ):
     """Access codes delivered to this student (Access Code tab)."""
     try:
-    sid = parse_uuid(current_user["sub"])
+        sid = parse_uuid(current_user["sub"])
         now = naive_utc_now()
         try:
             await _heal_stale_live_flags(db, now)
         except Exception:
             pass
-    result = await db.execute(
-        select(LiveClassAccessCodeDelivery, LiveClass)
-        .join(LiveClass, LiveClass.id == LiveClassAccessCodeDelivery.live_class_id)
-        .where(LiveClassAccessCodeDelivery.student_id == sid)
-        .order_by(LiveClassAccessCodeDelivery.created_at.desc())
-        .limit(100)
-    )
-    codes = []
-    unread = 0
-    for row, live_class in result.all():
+        result = await db.execute(
+            select(LiveClassAccessCodeDelivery, LiveClass)
+            .join(LiveClass, LiveClass.id == LiveClassAccessCodeDelivery.live_class_id)
+            .where(LiveClassAccessCodeDelivery.student_id == sid)
+            .order_by(LiveClassAccessCodeDelivery.created_at.desc())
+            .limit(100)
+        )
+        codes = []
+        unread = 0
+        for row, live_class in result.all():
             live_flag = bool(live_class.is_live) and _class_is_active(live_class, now)
             if not live_flag:
-            continue
-        entry = {
-            "id": str(row.id),
-            "class_id": str(row.live_class_id),
-            "join_code": row.join_code,
-            "title": row.title,
-            "subject": row.subject,
-            "teacher_name": row.teacher_name,
-            "visibility": row.visibility,
-            "is_read": row.is_read,
-            "is_used": row.is_used,
+                continue
+            entry = {
+                "id": str(row.id),
+                "class_id": str(row.live_class_id),
+                "join_code": row.join_code,
+                "title": row.title,
+                "subject": row.subject,
+                "teacher_name": row.teacher_name,
+                "visibility": row.visibility,
+                "is_read": row.is_read,
+                "is_used": row.is_used,
                 "is_class_live": True,
-            "created_at": row.created_at.isoformat() if row.created_at else None,
-        }
-        codes.append(entry)
-        if not row.is_read:
-            unread += 1
-    return {"unread_count": unread, "codes": codes}
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+            }
+            codes.append(entry)
+            if not row.is_read:
+                unread += 1
+        return {"unread_count": unread, "codes": codes}
     except Exception as exc:
         import logging
         logging.getLogger(__name__).exception("my_access_codes failed: %s", exc)
@@ -196,7 +196,7 @@ async def my_access_codes(
             await db.rollback()
         except Exception:
             pass
-        # Empty list beats a broken Access Codes panel â€” join still works from Live cards.
+        # Empty list beats a broken Access Codes panel — join still works from Live cards.
         return {"unread_count": 0, "codes": [], "warning": str(exc)}
 
 
