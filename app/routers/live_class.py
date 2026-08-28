@@ -1524,12 +1524,12 @@ async def list_live_classes(
         try:
             query = query.where(LiveClass.teacher_id == parse_uuid(current_user["sub"]))
         except Exception:
-        query = query.where(LiveClass.teacher_id == current_user["sub"])
+            query = query.where(LiveClass.teacher_id == current_user["sub"])
 
     query = query.order_by(LiveClass.start_time.desc()).limit(limit).offset(offset)
     try:
-    result = await db.execute(query)
-    classes = result.scalars().all()
+        result = await db.execute(query)
+        classes = result.scalars().all()
     except Exception:
         import logging
         logging.getLogger(__name__).exception("list_live_classes query failed")
@@ -1568,7 +1568,7 @@ async def list_live_classes(
     teacher_ids = list({str(c.teacher_id) for c in classes if c.teacher_id})
     teachers_map = {}
     if teacher_ids:
-    from app.models.user import User
+        from app.models.user import User
         try:
             teacher_uuids = []
             for tid in teacher_ids:
@@ -1577,7 +1577,7 @@ async def list_live_classes(
                 except Exception:
                     pass
             if teacher_uuids:
-    users_res = await db.execute(
+                users_res = await db.execute(
                     select(User).where(User.id.in_(teacher_uuids))
                 )
                 teachers_map = {
@@ -1976,10 +1976,10 @@ async def end_class(
         log.warning("end_class attendance update skipped: %s", att_exc)
 
     try:
-    from sqlalchemy import delete as sql_delete
+        from sqlalchemy import delete as sql_delete
 
-    await db.execute(
-        sql_delete(LiveClassAccessCodeDelivery).where(
+        await db.execute(
+            sql_delete(LiveClassAccessCodeDelivery).where(
                 LiveClassAccessCodeDelivery.live_class_id == cid
             )
         )
@@ -1987,7 +1987,7 @@ async def end_class(
     except Exception as del_exc:
         log.warning("end_class access-code cleanup skipped: %s", del_exc)
 
-  # Commit before refresh/notify so a later failure cannot roll back is_live=false
+    # Commit before refresh/notify so a later failure cannot roll back is_live=false
     try:
         await db.commit()
     except Exception as commit_exc:
@@ -2017,14 +2017,14 @@ async def end_class(
         from app.websockets.live_class_ws import broadcast as ws_broadcast
 
         if room_id:
-        await ws_broadcast(
+            await ws_broadcast(
                 room_id,
-            {
-                "event": "class_ended",
+                {
+                    "event": "class_ended",
                     "class_id": str(cid),
-                "message": "Class ended by the teacher.",
-            },
-        )
+                    "message": "Class ended by the teacher.",
+                },
+            )
     except Exception:
         pass
 
