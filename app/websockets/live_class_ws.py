@@ -8,6 +8,7 @@ WebSocket handler for live class real-time features:
 from fastapi import WebSocket, WebSocketDisconnect
 from typing import Dict, List
 import json
+import asyncio
 
 from app.services.live_class_room import (
     grant_whiteboard,
@@ -24,9 +25,13 @@ from app.services.live_class_room import (
 
 # room_id -> list of connected websockets with metadata
 rooms: Dict[str, List[dict]] = {}
+_pending_room_cleanup: Dict[str, asyncio.Task] = {}
 
 
 async def connect(room_id: str, websocket: WebSocket, user_id: str, role: str, display_name: str = ""):
+    pending = _pending_room_cleanup.pop(room_id, None)
+    if pending and not pending.done():
+        pending.cancel()
     await websocket.accept()
     if room_id not in rooms:
         rooms[room_id] = []
@@ -43,7 +48,16 @@ def disconnect(room_id: str, websocket: WebSocket):
         rooms[room_id] = [c for c in rooms[room_id] if c["ws"] != websocket]
         if not rooms[room_id]:
             del rooms[room_id]
-            cleanup_room(room_id)
+
+            async def _delayed_cleanup() -> None:
+                await asyncio.sleep(120)
+                if room_id not in rooms:
+                    cleanup_room(room_id)
+
+            old = _pending_room_cleanup.pop(room_id, None)
+            if old and not old.done():
+                old.cancel()
+            _pending_room_cleanup[room_id] = asyncio.create_task(_delayed_cleanup())
 
 
 async def broadcast(room_id: str, message: dict, exclude: WebSocket = None):

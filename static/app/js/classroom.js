@@ -115,6 +115,74 @@ var board = {
   lineHeight: 36,
   imageCache: {}
 };
+var boardWsQueue = [];
+
+function queueBoardMessage(msg) {
+  if (!msg) return;
+  if (board.canvas && board.ctx) {
+    handleBoardMessage(msg);
+    return;
+  }
+  boardWsQueue.push(msg);
+  if (boardWsQueue.length > 200) boardWsQueue = boardWsQueue.slice(-200);
+}
+
+function flushBoardWsQueue() {
+  if (!board.canvas || !board.ctx) return;
+  while (boardWsQueue.length) {
+    handleBoardMessage(boardWsQueue.shift());
+  }
+}
+
+function applyBoardReplayMessages(messages) {
+  if (!messages || !messages.length) return;
+  messages.forEach(function (msg) {
+    if (msg && msg.event === "whiteboard") queueBoardMessage(msg);
+  });
+  flushBoardWsQueue();
+  if (!isTeacherRole() && board.open) {
+    showBoardForStudent(true);
+    redrawBoard();
+  }
+}
+
+function pullBoardStateFromServer() {
+  if (!liveSession || !liveSession.room_id || isTeacherRole()) return;
+  var path =
+    "/api/v1/live-classes/board-sync/" + encodeURIComponent(liveSession.room_id);
+  api(path, { preferXhr: true, timeout: 25000, retries: 0 })
+    .then(function (data) {
+      if (!data) return;
+      if (data.open) {
+        if (!board.open) {
+          applyBoardReplayMessages(data.messages || []);
+        } else if (!board.history.length && (data.messages || []).length) {
+          applyBoardReplayMessages(data.messages || []);
+        }
+      } else if (board.open) {
+        hideBoardForStudent();
+      }
+    })
+    .catch(function () { /* ignore */ });
+}
+
+function startStudentBoardHttpSync() {
+  if (isTeacherRole() || window._sxBoardHttpSync) return;
+  pullBoardStateFromServer();
+  window._sxBoardHttpSync = setInterval(pullBoardStateFromServer, 10000);
+}
+
+function startTeacherBoardHeartbeat() {
+  if (!isTeacherRole() || window._sxBoardHeartbeat) return;
+  window._sxBoardHeartbeat = setInterval(function () {
+    if (!board.open) return;
+    if (liveSocket && liveSocket.readyState === WebSocket.OPEN) {
+      syncBoardToRoom();
+    } else {
+      try { connectChat(true); } catch (eHb) { /* ignore */ }
+    }
+  }, 12000);
+}
 
 function newBoardTextId() {
   return "t-" + Date.now().toString(36) + "-" + Math.floor(Math.random() * 1e6).toString(36);
@@ -326,6 +394,7 @@ function showHostTools(show) {
       var strip = document.getElementById("classroom-host-strip");
       if (strip) strip.classList.remove("hidden");
     }
+    startTeacherBoardHeartbeat();
   }
 }
 
@@ -1501,6 +1570,12 @@ function initWhiteboard() {
     renderSymbolPalette();
     setBoardTool("type");
   }
+  flushBoardWsQueue();
+  if (!isTeacherRole()) {
+    var ovStudent = document.getElementById("board-overlay");
+    if (ovStudent) ovStudent.classList.add("view-only");
+    startStudentBoardHttpSync();
+  }
 }
 
 function redrawBoard() {
@@ -2197,6 +2272,7 @@ function connectChat(isReconnect) {
         }
       }
       liveSocket.send(JSON.stringify({ event: "request_board_sync" }));
+      pullBoardStateFromServer();
       if (window._sxBoardSyncPoll) clearInterval(window._sxBoardSyncPoll);
       window._sxBoardSyncPoll = setInterval(function () {
         if (!liveSocket || liveSocket.readyState !== WebSocket.OPEN) return;
@@ -2317,15 +2393,15 @@ function connectChat(isReconnect) {
             addChatMessage("", "Teacher is sharing their screen…", true);
           }
           syncMainStageLayers();
+          hideVideoPlaceholder();
           if (typeof attachExistingRemoteTracks === "function") {
             attachExistingRemoteTracks();
           } else if (window.LiveClassMedia && LiveClassMedia.reattachRemoteTracks) {
             LiveClassMedia.reattachRemoteTracks();
           }
-          if (typeof reattachTeacherMainStage === "function") reattachTeacherMainStage();
         }
       } else if (msg.event === "whiteboard") {
-        handleBoardMessage(msg);
+        queueBoardMessage(msg);
       } else if (msg.event === "whiteboard_access_granted") {
         board.canDraw = true;
         var ov = document.getElementById("board-overlay");
@@ -2423,6 +2499,7 @@ function showVideoPlaceholder(text) {
   if (window.board && board.open) return;
   var remote = document.getElementById("video-remote");
   if (remote && remote.classList.contains("screen-active")) return;
+  if (remote && remote.querySelector("video")) return;
   var ph = document.getElementById("video-placeholder");
   var txt = document.getElementById("video-placeholder-text");
   if (txt) txt.textContent = text;
@@ -2753,7 +2830,11 @@ window.onload = function () {
     showVideoPlaceholder("Joining live video…");
   }
 
-  // Connect media FIRST — whiteboard setup must never block chat/video.
+  // Whiteboard must be ready before chat — early WS replay otherwise misses the canvas.
+  try {
+    initWhiteboard();
+  } catch (boardErr) { /* non-fatal */ }
+
   try {
     connectChat();
   } catch (chatErr) {
@@ -2765,9 +2846,9 @@ window.onload = function () {
     }
   }
 
-  try {
-    initWhiteboard();
-  } catch (boardErr) { /* non-fatal */ }
+  if (!isTeacherRole()) {
+    startStudentBoardHttpSync();
+  }
 
   if (isTeacherRole()) {
     showHostTools(true);

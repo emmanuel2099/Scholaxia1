@@ -1,4 +1,4 @@
-﻿import uuid
+import uuid
 import hashlib
 import json
 import secrets
@@ -24,6 +24,8 @@ from app.services.live_class_room import (
     revoke_mic,
     grant_camera,
     revoke_camera,
+    get_board_replay_messages,
+    room_board_state,
 )
 from app.websockets import live_class_ws
 from app.services.live_class_access import get_live_access_info, parse_uuid, consume_live_session, live_class_requires_subscription, is_free_live_class
@@ -32,6 +34,22 @@ from app.services.access_code_delivery import deliver_access_codes_for_class
 from app.models.live_class_access_code import LiveClassAccessCodeDelivery
 
 router = APIRouter(prefix="/live-classes", tags=["Live Classes"])
+
+
+@router.get("/board-sync/{room_id}")
+async def board_sync_state(
+    room_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """HTTP fallback so students always catch board state even if WebSocket hiccups."""
+    rid = str(room_id or "").strip()
+    if not rid:
+        raise HTTPException(status_code=400, detail="room_id required")
+    state = room_board_state.get(rid) or {}
+    return {
+        "open": bool(state.get("open")),
+        "messages": get_board_replay_messages(rid),
+    }
 
 
 @router.get("/livekit/status")
@@ -135,42 +153,42 @@ async def my_access_codes(
 ):
     """Access codes delivered to this student (Access Code tab)."""
     try:
-        sid = parse_uuid(current_user["sub"])
+    sid = parse_uuid(current_user["sub"])
         now = naive_utc_now()
         try:
             await _heal_stale_live_flags(db, now)
         except Exception:
             pass
-        result = await db.execute(
-            select(LiveClassAccessCodeDelivery, LiveClass)
-            .join(LiveClass, LiveClass.id == LiveClassAccessCodeDelivery.live_class_id)
-            .where(LiveClassAccessCodeDelivery.student_id == sid)
-            .order_by(LiveClassAccessCodeDelivery.created_at.desc())
-            .limit(100)
-        )
-        codes = []
-        unread = 0
-        for row, live_class in result.all():
+    result = await db.execute(
+        select(LiveClassAccessCodeDelivery, LiveClass)
+        .join(LiveClass, LiveClass.id == LiveClassAccessCodeDelivery.live_class_id)
+        .where(LiveClassAccessCodeDelivery.student_id == sid)
+        .order_by(LiveClassAccessCodeDelivery.created_at.desc())
+        .limit(100)
+    )
+    codes = []
+    unread = 0
+    for row, live_class in result.all():
             live_flag = bool(live_class.is_live) and _class_is_active(live_class, now)
             if not live_flag:
-                continue
-            entry = {
-                "id": str(row.id),
-                "class_id": str(row.live_class_id),
-                "join_code": row.join_code,
-                "title": row.title,
-                "subject": row.subject,
-                "teacher_name": row.teacher_name,
-                "visibility": row.visibility,
-                "is_read": row.is_read,
-                "is_used": row.is_used,
+            continue
+        entry = {
+            "id": str(row.id),
+            "class_id": str(row.live_class_id),
+            "join_code": row.join_code,
+            "title": row.title,
+            "subject": row.subject,
+            "teacher_name": row.teacher_name,
+            "visibility": row.visibility,
+            "is_read": row.is_read,
+            "is_used": row.is_used,
                 "is_class_live": True,
-                "created_at": row.created_at.isoformat() if row.created_at else None,
-            }
-            codes.append(entry)
-            if not row.is_read:
-                unread += 1
-        return {"unread_count": unread, "codes": codes}
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+        }
+        codes.append(entry)
+        if not row.is_read:
+            unread += 1
+    return {"unread_count": unread, "codes": codes}
     except Exception as exc:
         import logging
         logging.getLogger(__name__).exception("my_access_codes failed: %s", exc)
@@ -909,10 +927,10 @@ async def join_class(
         sid = str(student_uid)
 
         result = await db.execute(select(LiveClass).where(LiveClass.id == class_uuid))
-        live_class = result.scalar_one_or_none()
-        now = naive_utc_now()
-        if not live_class or not _class_is_active(live_class, now):
-            raise HTTPException(status_code=404, detail="Class not live")
+    live_class = result.scalar_one_or_none()
+    now = naive_utc_now()
+    if not live_class or not _class_is_active(live_class, now):
+        raise HTTPException(status_code=404, detail="Class not live")
 
         # Snapshot immediately â€” never read ORM attrs after a rollback
         room_id = str(live_class.room_id or "")
@@ -983,22 +1001,22 @@ async def join_class(
                 await _safe_rollback()
                 access = {"can_join": True}
             if not access.get("can_join"):
-                if access.get("active_plan") and access.get("sessions_left", 0) <= 0:
-                    raise HTTPException(
-                        status_code=402,
-                        detail="You have used all live sessions on your plan this month. Upgrade or renew your plan.",
-                    )
+            if access.get("active_plan") and access.get("sessions_left", 0) <= 0:
                 raise HTTPException(
                     status_code=402,
-                    detail="Choose a Scholaxia One-on-One Live Class plan before joining.",
+                    detail="You have used all live sessions on your plan this month. Upgrade or renew your plan.",
                 )
+            raise HTTPException(
+                status_code=402,
+                detail="Choose a Scholaxia One-on-One Live Class plan before joining.",
+            )
 
         teacher_name = "Teacher"
         try:
-            from app.models.user import User
+    from app.models.user import User
 
             teacher_res = await db.execute(select(User).where(User.id == parse_uuid(teacher_id)))
-            teacher_user = teacher_res.scalar_one_or_none()
+    teacher_user = teacher_res.scalar_one_or_none()
             if teacher_user and teacher_user.full_name:
                 teacher_name = str(teacher_user.full_name)
         except Exception:
@@ -1032,7 +1050,7 @@ async def join_class(
                     ),
                     {"aid": str(existing[0])},
                 )
-                await db.flush()
+        await db.flush()
             else:
                 await db.execute(
                     sql_text(
@@ -1043,18 +1061,18 @@ async def join_class(
                     ),
                     {"aid": att_id, "cid": str(class_uuid), "sid": sid},
                 )
-                await db.flush()
+    await db.flush()
         except Exception as att_exc:
             log.warning("attendance write skipped: %s", att_exc)
             await _safe_rollback()
 
-        try:
-            from app.services.live_class_room import grant_mic, grant_camera
+    try:
+        from app.services.live_class_room import grant_mic, grant_camera
 
             grant_mic(room_id, sid)
             grant_camera(room_id, sid)
-        except Exception:
-            pass
+    except Exception:
+        pass
 
         if not room_id:
             raise HTTPException(
@@ -1062,25 +1080,25 @@ async def join_class(
                 detail="This class has no room id. Ask the teacher to restart it.",
             )
 
-        payload = _livekit_token_payload(
+    payload = _livekit_token_payload(
             room_id,
             sid,
-            current_user.get("email") or "student",
-            can_publish=True,
-            role="student",
-        )
-        return {
+        current_user.get("email") or "student",
+        can_publish=True,
+        role="student",
+    )
+    return {
             "class_id": str(class_uuid),
             "title": title,
             "subject": subject,
-            **teacher_meta,
-            **payload,
-            "is_muted": False,
+        **teacher_meta,
+        **payload,
+        "is_muted": False,
             "is_live": is_live,
             "end_time": end_time_iso,
-            "mic_allowed": True,
-            "camera_allowed": True,
-        }
+        "mic_allowed": True,
+        "camera_allowed": True,
+    }
     except HTTPException:
         raise
     except Exception as exc:
@@ -1502,12 +1520,12 @@ async def list_live_classes(
         try:
             query = query.where(LiveClass.teacher_id == parse_uuid(current_user["sub"]))
         except Exception:
-            query = query.where(LiveClass.teacher_id == current_user["sub"])
+        query = query.where(LiveClass.teacher_id == current_user["sub"])
 
     query = query.order_by(LiveClass.start_time.desc()).limit(limit).offset(offset)
     try:
-        result = await db.execute(query)
-        classes = result.scalars().all()
+    result = await db.execute(query)
+    classes = result.scalars().all()
     except Exception:
         import logging
         logging.getLogger(__name__).exception("list_live_classes query failed")
@@ -1546,7 +1564,7 @@ async def list_live_classes(
     teacher_ids = list({str(c.teacher_id) for c in classes if c.teacher_id})
     teachers_map = {}
     if teacher_ids:
-        from app.models.user import User
+    from app.models.user import User
         try:
             teacher_uuids = []
             for tid in teacher_ids:
@@ -1555,7 +1573,7 @@ async def list_live_classes(
                 except Exception:
                     pass
             if teacher_uuids:
-                users_res = await db.execute(
+    users_res = await db.execute(
                     select(User).where(User.id.in_(teacher_uuids))
                 )
                 teachers_map = {
@@ -1954,10 +1972,10 @@ async def end_class(
         log.warning("end_class attendance update skipped: %s", att_exc)
 
     try:
-        from sqlalchemy import delete as sql_delete
+    from sqlalchemy import delete as sql_delete
 
-        await db.execute(
-            sql_delete(LiveClassAccessCodeDelivery).where(
+    await db.execute(
+        sql_delete(LiveClassAccessCodeDelivery).where(
                 LiveClassAccessCodeDelivery.live_class_id == cid
             )
         )
@@ -1995,14 +2013,14 @@ async def end_class(
         from app.websockets.live_class_ws import broadcast as ws_broadcast
 
         if room_id:
-            await ws_broadcast(
+        await ws_broadcast(
                 room_id,
-                {
-                    "event": "class_ended",
+            {
+                "event": "class_ended",
                     "class_id": str(cid),
-                    "message": "Class ended by the teacher.",
-                },
-            )
+                "message": "Class ended by the teacher.",
+            },
+        )
     except Exception:
         pass
 
