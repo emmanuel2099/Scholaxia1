@@ -5033,193 +5033,138 @@
     });
   }
 
-  if ($("profileSaveBtn")) {
-    $("profileSaveBtn").addEventListener("click", function () {
-      var statusEl = $("profileSaveStatus");
-      var examType = (($("examTypeSelect") && $("examTypeSelect").value) || "").toUpperCase().replace(/-/g, "_");
-      var eduLevel = (($("eduLevelSelect") && $("eduLevelSelect").value) || "SS1").toUpperCase();
-      if (!selectedSubjects.length) {
-        setStatus(statusEl, "Select at least one subject.", false);
-        return;
-      }
-      if (examType === "JAMB" && selectedSubjects.length !== 4) {
-        setStatus(statusEl, "JAMB requires exactly 4 subjects (include English Language if you offer it).", false);
-        return;
-      }
-      if ((examType === "WAEC" || examType === "NECO") && selectedSubjects.length !== 9) {
-        setStatus(statusEl, examType + " requires exactly 9 subjects.", false);
-        return;
-      }
-
-      var btn = $("profileSaveBtn");
-      btn.disabled = true;
-      setStatus(statusEl, "Saving…", true);
-
-      // Always keep a local copy so CBT can use subjects even if the network flakes
-      function commitLocalCache() {
-        localStorage.setItem("sia_exam_type", examType);
-        writeLocalJson("sia_subjects", selectedSubjects.slice());
-        if (examType === "JAMB") writeLocalJson("sia_jamb_subjects", selectedSubjects.slice());
-        if (examType === "WAEC" || examType === "NECO") writeLocalJson("sia_ssce_subjects", selectedSubjects.slice());
-        refreshLocalExamBadges();
-        if (cbtHomeCache) {
-          cbtHomeCache.profile = cbtHomeCache.profile || {};
-          if (examType === "JAMB") cbtHomeCache.profile.jamb_subjects = selectedSubjects.slice();
-          else cbtHomeCache.profile.ssce_subjects = selectedSubjects.slice();
-        }
-      }
-
-      function postSetup(payload) {
-        return new Promise(function (resolve, reject) {
-          var xhr = new XMLHttpRequest();
-          var url = (api.API_BASE || "https://scholaxia1.onrender.com") + "/api/v1/students/setup-exam";
-          xhr.open("POST", url, true);
-          xhr.timeout = 90000;
-          xhr.setRequestHeader("Content-Type", "application/json");
-          xhr.setRequestHeader("Accept", "application/json");
-          var tok = api.getToken ? api.getToken() : localStorage.getItem("sia_token");
-          if (tok) xhr.setRequestHeader("Authorization", "Bearer " + tok);
-          xhr.onload = function () {
-            var data = null;
-            try {
-              data = xhr.responseText ? JSON.parse(xhr.responseText) : null;
-            } catch (e) {
-              data = { detail: xhr.responseText || "Invalid response" };
-            }
-            if (xhr.status >= 200 && xhr.status < 300) {
-              resolve(data);
-              return;
-            }
-            var msg = (data && (data.detail || data.message)) || ("Request failed (" + xhr.status + ")");
-            if (typeof msg === "object") msg = msg.message || JSON.stringify(msg);
-            var err = new Error(String(msg));
-            err.status = xhr.status;
-            err.data = data;
-            reject(err);
-          };
-          xhr.onerror = function () {
-            var err = new Error("NETWORK");
-            err.status = 0;
-            reject(err);
-          };
-          xhr.ontimeout = function () {
-            var err = new Error("TIMEOUT");
-            err.status = 0;
-            reject(err);
-          };
-          xhr.send(JSON.stringify(payload));
-        });
-      }
-
-      function buildSetupPayload(examType, selectedSubjects, eduLevel) {
-        var body = {
-          education_level: eduLevel,
-          exam_type: examType,
-          subjects: selectedSubjects.slice(),
-        };
-        if (examType === "JAMB") {
-          body.enable_jamb = true;
-          body.enable_ssce = false;
-          body.jamb_subjects = selectedSubjects.slice();
-        } else if (examType === "WAEC" || examType === "NECO") {
-          body.enable_jamb = false;
-          body.enable_ssce = true;
-          body.ssce_exam_type = examType;
-          body.ssce_subjects = selectedSubjects.slice();
-        }
-        return body;
-      }
-
-      function delayMs(ms) {
-        return new Promise(function (resolve) {
-          setTimeout(resolve, ms);
-        });
-      }
-
-      function saveToServerWithRetries() {
-        var payload = buildSetupPayload(examType, selectedSubjects, eduLevel);
-        var attempts = 0;
-        function run() {
-          attempts += 1;
-          return postSetup(payload).catch(function (err) {
-            if (attempts >= 4) throw err;
-            var retryable =
-              !err ||
-              !err.status ||
-              err.status >= 500 ||
-              err.message === "NETWORK" ||
-              err.message === "TIMEOUT";
-            if (!retryable) throw err;
-            return delayMs(1200 * attempts).then(run);
-          });
-        }
-        return run();
-      }
-
-      // Try simple legacy payload first (most compatible), then dual-board payload
-      var legacyBody = {
-        exam_type: examType,
-        subjects: selectedSubjects.slice(),
-        education_level: eduLevel,
-      };
-      var dualBody = buildSetupPayload(examType, selectedSubjects, eduLevel);
-
-      function saveToServer() {
-        return postSetup(legacyBody).catch(function (err) {
-          if (err && err.status && err.status < 500) throw err;
-          return postSetup(dualBody);
-        });
-      }
-
-      var wake = api.wakeServer ? api.wakeServer(60000) : Promise.resolve();
-      wake
-        .then(function () {
-          return saveToServerWithRetries();
-        })
-        .catch(function () {
-          return delayMs(1500).then(function () {
-            return saveToServerWithRetries();
-          });
-        })
-        .then(function (res) {
-          commitLocalCache();
-          setStatus(statusEl, "Saved to your account — syncs on every device you log into.", true);
-          if (res && Array.isArray(res.jamb_subjects)) {
-            writeLocalJson("sia_jamb_subjects", res.jamb_subjects);
-          }
-          if (res && Array.isArray(res.ssce_subjects)) {
-            writeLocalJson("sia_ssce_subjects", res.ssce_subjects);
-          }
-        })
-        .catch(function (err) {
-          commitLocalCache();
-          if (!err || !err.status || err.message === "NETWORK" || err.message === "TIMEOUT") {
-            setStatus(
-              statusEl,
-              "Saved on this device. Server sync failed — wait 30 seconds and tap Save again.",
-              false
-            );
-            return;
-          }
-          if (err.status >= 500) {
-            var serverMsg = errMsg(err);
-            setStatus(
-              statusEl,
-              "Saved on this device. " +
-                (serverMsg && !/server error loading/i.test(serverMsg)
-                  ? serverMsg
-                  : "Server is waking up — wait 30 seconds and tap Save again."),
-              false
-            );
-            return;
-          }
-          setStatus(statusEl, errMsg(err), false);
-        })
-        .then(function () {
-          btn.disabled = false;
-        });
-    });
+  function buildSetupPayload(examType, selectedSubjects, eduLevel) {
+    var body = {
+      education_level: eduLevel,
+      exam_type: examType,
+      subjects: selectedSubjects.slice(),
+    };
+    if (examType === "JAMB") {
+      body.enable_jamb = true;
+      body.enable_ssce = false;
+      body.jamb_subjects = selectedSubjects.slice();
+    } else if (examType === "WAEC" || examType === "NECO") {
+      body.enable_jamb = false;
+      body.enable_ssce = true;
+      body.ssce_exam_type = examType;
+      body.ssce_subjects = selectedSubjects.slice();
+    }
+    return body;
   }
+
+  function saveProfileExamSetup() {
+    var statusEl = $("profileSaveStatus");
+    var examType = (($("examTypeSelect") && $("examTypeSelect").value) || "").toUpperCase().replace(/-/g, "_");
+    var eduLevel = (($("eduLevelSelect") && $("eduLevelSelect").value) || "SS1").toUpperCase();
+    if (!selectedSubjects.length) {
+      setStatus(statusEl, "Select at least one subject.", false);
+      return;
+    }
+    if (examType === "JAMB" && selectedSubjects.length !== 4) {
+      setStatus(statusEl, "JAMB requires exactly 4 subjects (include English Language if you offer it).", false);
+      return;
+    }
+    if ((examType === "WAEC" || examType === "NECO") && selectedSubjects.length !== 9) {
+      setStatus(statusEl, examType + " requires exactly 9 subjects.", false);
+      return;
+    }
+
+    var btn = $("profileSaveBtn");
+    btn.disabled = true;
+    setStatus(statusEl, "Saving…", true);
+
+    function commitLocalCache() {
+      localStorage.setItem("sia_exam_type", examType);
+      writeLocalJson("sia_subjects", selectedSubjects.slice());
+      if (examType === "JAMB") writeLocalJson("sia_jamb_subjects", selectedSubjects.slice());
+      if (examType === "WAEC" || examType === "NECO") writeLocalJson("sia_ssce_subjects", selectedSubjects.slice());
+      refreshLocalExamBadges();
+      if (cbtHomeCache) {
+        cbtHomeCache.profile = cbtHomeCache.profile || {};
+        if (examType === "JAMB") cbtHomeCache.profile.jamb_subjects = selectedSubjects.slice();
+        else cbtHomeCache.profile.ssce_subjects = selectedSubjects.slice();
+      }
+    }
+
+    var payload = buildSetupPayload(examType, selectedSubjects, eduLevel);
+
+    function delayMs(ms) {
+      return new Promise(function (resolve) {
+        setTimeout(resolve, ms);
+      });
+    }
+
+    function postSetupOnce() {
+      return api.api("/api/v1/students/setup-exam", {
+        method: "POST",
+        body: payload,
+        preferXhr: true,
+        timeout: 120000,
+        retries: 1,
+      });
+    }
+
+    function saveWithRetries() {
+      var attempts = 0;
+      function run() {
+        attempts += 1;
+        return postSetupOnce().catch(function (err) {
+          if (attempts >= 6) throw err;
+          var retryable =
+            !err ||
+            !err.status ||
+            err.status >= 500 ||
+            /failed to fetch|network|timeout|abort/i.test((err && err.message) || "");
+          if (!retryable) throw err;
+          return delayMs(2000 * attempts).then(run);
+        });
+      }
+      return run();
+    }
+
+    var wakeChain = api.wakeServer ? api.wakeServer(90000) : Promise.resolve();
+    wakeChain
+      .then(function () {
+        return delayMs(800).then(saveWithRetries);
+      })
+      .catch(function () {
+        return delayMs(2000).then(saveWithRetries);
+      })
+      .then(function (res) {
+        commitLocalCache();
+        setStatus(statusEl, "Saved to your account — syncs on every device you log into.", true);
+        if (res && Array.isArray(res.jamb_subjects)) {
+          writeLocalJson("sia_jamb_subjects", res.jamb_subjects);
+        }
+        if (res && Array.isArray(res.ssce_subjects)) {
+          writeLocalJson("sia_ssce_subjects", res.ssce_subjects);
+        }
+      })
+      .catch(function (err) {
+        commitLocalCache();
+        if (!err || !err.status || /failed to fetch|network|timeout|abort/i.test((err && err.message) || "")) {
+          setStatus(
+            statusEl,
+            "Saved on this device. Server sync failed — wait 30 seconds and tap Save again.",
+            false
+          );
+          return;
+        }
+        if (err.status >= 500) {
+          setStatus(statusEl, "Saved on this device. " + errMsg(err), false);
+          return;
+        }
+        setStatus(statusEl, errMsg(err), false);
+      })
+      .then(function () {
+        btn.disabled = false;
+      });
+  }
+
+  if ($("profileSaveBtn")) {
+    $("profileSaveBtn").addEventListener("click", saveProfileExamSetup);
+  }
+
 
   /* =====================================================================
      Init

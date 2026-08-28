@@ -122,6 +122,9 @@ async def _run_schema_migrations(conn) -> None:
         "ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS ssce_exam_type VARCHAR(20) NULL"
     ))
     await conn.execute(text(
+        "ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS education_level VARCHAR(50) NULL"
+    ))
+    await conn.execute(text(
         "ALTER TABLE live_classes ADD COLUMN IF NOT EXISTS academic_class VARCHAR(40) NULL"
     ))
     await conn.execute(text(

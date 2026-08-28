@@ -106,6 +106,29 @@ async def _get_or_create_profile(db: AsyncSession, user_id: UUID) -> StudentProf
     return profile
 
 
+async def _ensure_student_profile_schema(db: AsyncSession) -> None:
+    """Columns create_all skips on older student_profiles tables."""
+    from sqlalchemy import text
+
+    stmts = (
+        "ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS education_level VARCHAR(50) NULL",
+        "ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS jamb_subjects VARCHAR[] NULL",
+        "ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS ssce_subjects VARCHAR[] NULL",
+        "ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS ssce_exam_type VARCHAR(20) NULL",
+        "ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS live_plan_id VARCHAR(80) NULL",
+        "ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS live_plan_expires_at TIMESTAMP NULL",
+        "ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS live_plan_sessions_used INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS community_channel_id UUID NULL",
+        "ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS school_student_id VARCHAR(40) NULL",
+        "ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS has_active_subscription BOOLEAN NOT NULL DEFAULT FALSE",
+    )
+    for stmt in stmts:
+        try:
+            await db.execute(text(stmt))
+        except Exception as exc:
+            log.warning("student_profiles schema stmt skipped: %s (%s)", stmt, exc)
+
+
 def _profile_boards(profile: StudentProfile) -> dict:
     """Resolve jamb / ssce subject lists with legacy fallback."""
     jamb = list(profile.jamb_subjects or [])
@@ -211,8 +234,18 @@ async def setup_exam(
     current_user: dict = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.core.startup_db import probe_database
+
+    await _ensure_student_profile_schema(db)
     last_exc: Exception | None = None
-    for attempt in range(3):
+    for attempt in range(5):
+        if attempt > 0:
+            await probe_database()
+            await asyncio.sleep(1.2 * attempt)
+            try:
+                await db.rollback()
+            except Exception:
+                pass
         try:
             return await _setup_exam_impl(payload, current_user, db)
         except HTTPException:
@@ -220,12 +253,8 @@ async def setup_exam(
         except (OperationalError, DBAPIError) as exc:
             last_exc = exc
             log.warning("setup-exam db retry %s for user %s: %s", attempt + 1, current_user.get("sub"), exc)
-            try:
-                await db.rollback()
-            except Exception:
-                pass
-            if attempt < 2:
-                await asyncio.sleep(0.6 * (attempt + 1))
+            if attempt < 4:
+                await _ensure_student_profile_schema(db)
                 continue
         except Exception as exc:
             last_exc = exc
@@ -233,7 +262,11 @@ async def setup_exam(
             break
     detail = "Could not save exam setup right now. Your subjects were not lost — tap Save again in a minute."
     if last_exc and isinstance(last_exc, (OperationalError, DBAPIError)):
-        detail = "Database is waking up — wait 30 seconds and tap Save again."
+        err_txt = str(last_exc).lower()
+        if "education_level" in err_txt or "column" in err_txt or "undefinedcolumn" in err_txt:
+            detail = "Server database is updating — wait 1 minute, refresh the page, then tap Save again."
+        else:
+            detail = "Database is waking up — wait 30 seconds and tap Save again."
     raise HTTPException(status_code=500, detail=detail)
 
 
