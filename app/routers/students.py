@@ -1,8 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.exc import DBAPIError, OperationalError
 from pydantic import BaseModel
 from typing import List, Optional
+from uuid import UUID
+import asyncio
+import logging
 from app.core.database import get_db
 from app.core.deps import require_student
 from app.core.security import create_access_token, create_refresh_token, issue_auth_tokens
@@ -10,6 +14,7 @@ from app.core.subjects import AVAILABLE_SUBJECTS
 from app.models.user import StudentProfile, ExamType, User, UserRole, KindProfile
 
 router = APIRouter(prefix="/students", tags=["Students"])
+log = logging.getLogger(__name__)
 
 SUBJECT_LIMITS = {
     ExamType.JAMB: 4,
@@ -77,15 +82,28 @@ class ProfileResponse(BaseModel):
     ssce_exam_type: Optional[str] = None
 
 
-def _uniq(items: List[str] | None) -> List[str]:
-    seen = set()
-    out: List[str] = []
-    for s in items or []:
-        key = (s or "").strip()
-        if key and key not in seen:
-            seen.add(key)
-            out.append(key)
-    return out
+def _student_user_id(current_user: dict) -> UUID:
+    try:
+        return UUID(str(current_user.get("sub") or ""))
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid session. Log in again.")
+
+
+def _exam_type_value(exam_type) -> str:
+    if exam_type is None:
+        return ""
+    if hasattr(exam_type, "value"):
+        return str(exam_type.value)
+    return str(exam_type).replace("ExamType.", "").replace("EXAMTYPE.", "")
+
+
+async def _get_or_create_profile(db: AsyncSession, user_id: UUID) -> StudentProfile:
+    result = await db.execute(select(StudentProfile).where(StudentProfile.user_id == user_id))
+    profile = result.scalar_one_or_none()
+    if not profile:
+        profile = StudentProfile(user_id=user_id, selected_subjects=[])
+        db.add(profile)
+    return profile
 
 
 def _profile_boards(profile: StudentProfile) -> dict:
@@ -168,8 +186,9 @@ async def setup_status(
     db: AsyncSession = Depends(get_db),
 ):
     """Returns whether the student has completed exam type + subject selection."""
+    uid = _student_user_id(current_user)
     result = await db.execute(
-        select(StudentProfile).where(StudentProfile.user_id == current_user["sub"])
+        select(StudentProfile).where(StudentProfile.user_id == uid)
     )
     profile = result.scalar_one_or_none()
     boards = _profile_boards(profile) if profile else {
@@ -192,18 +211,41 @@ async def setup_exam(
     current_user: dict = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ):
-    import logging
-    log = logging.getLogger(__name__)
-    try:
-        return await _setup_exam_impl(payload, current_user, db)
-    except HTTPException:
-        raise
-    except Exception:
-        log.exception("setup-exam failed for user %s", current_user.get("sub"))
-        raise HTTPException(
-            status_code=500,
-            detail="Could not save exam setup right now. Your subjects were not lost — tap Save again in a minute.",
-        )
+    last_exc: Exception | None = None
+    for attempt in range(3):
+        try:
+            return await _setup_exam_impl(payload, current_user, db)
+        except HTTPException:
+            raise
+        except (OperationalError, DBAPIError) as exc:
+            last_exc = exc
+            log.warning("setup-exam db retry %s for user %s: %s", attempt + 1, current_user.get("sub"), exc)
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+            if attempt < 2:
+                await asyncio.sleep(0.6 * (attempt + 1))
+                continue
+        except Exception as exc:
+            last_exc = exc
+            log.exception("setup-exam failed for user %s", current_user.get("sub"))
+            break
+    detail = "Could not save exam setup right now. Your subjects were not lost — tap Save again in a minute."
+    if last_exc and isinstance(last_exc, (OperationalError, DBAPIError)):
+        detail = "Database is waking up — wait 30 seconds and tap Save again."
+    raise HTTPException(status_code=500, detail=detail)
+
+
+def _uniq(items: List[str] | None) -> List[str]:
+    seen = set()
+    out: List[str] = []
+    for s in items or []:
+        key = (s or "").strip()
+        if key and key not in seen:
+            seen.add(key)
+            out.append(key)
+    return out
 
 
 async def _setup_exam_impl(
@@ -211,6 +253,7 @@ async def _setup_exam_impl(
     current_user: dict,
     db: AsyncSession,
 ):
+    user_id = _student_user_id(current_user)
     # Common Entrance — 3 fixed subjects, taken together like JAMB.
     if _is_common_entrance_level(payload.education_level):
         from app.core.subjects import COMMON_ENTRANCE_SUBJECTS
@@ -222,11 +265,7 @@ async def _setup_exam_impl(
                 status_code=400,
                 detail="Common Entrance requires exactly 3 subjects: Mathematics/Quantitative Reasoning, English Language/Verbal Reasoning, and General Knowledge",
             )
-        result = await db.execute(select(StudentProfile).where(StudentProfile.user_id == current_user["sub"]))
-        profile = result.scalar_one_or_none()
-        if not profile:
-            profile = StudentProfile(user_id=current_user["sub"])
-            db.add(profile)
+        profile = await _get_or_create_profile(db, user_id)
         profile.exam_type = ExamType.WAEC
         profile.selected_subjects = subjects
         profile.jamb_subjects = []
@@ -253,11 +292,7 @@ async def _setup_exam_impl(
             raise HTTPException(status_code=400, detail="Select at least one subject for Junior WAEC")
         if len(subjects) > 9:
             raise HTTPException(status_code=400, detail="Junior WAEC allows max 9 subjects")
-        result = await db.execute(select(StudentProfile).where(StudentProfile.user_id == current_user["sub"]))
-        profile = result.scalar_one_or_none()
-        if not profile:
-            profile = StudentProfile(user_id=current_user["sub"])
-            db.add(profile)
+        profile = await _get_or_create_profile(db, user_id)
         profile.exam_type = exam_type
         profile.selected_subjects = subjects
         profile.jamb_subjects = []
@@ -278,7 +313,7 @@ async def _setup_exam_impl(
 
     # Primary 6 (and below path) → kids app (Common Entrance CBT lives there).
     if _is_primary_6(payload.education_level):
-        user_res = await db.execute(select(User).where(User.id == current_user["sub"]))
+        user_res = await db.execute(select(User).where(User.id == user_id))
         user = user_res.scalar_one_or_none()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
@@ -347,11 +382,7 @@ async def _setup_exam_impl(
         # Union for legacy consumers
         merged = _uniq([*jamb, *ssce])
 
-        result = await db.execute(select(StudentProfile).where(StudentProfile.user_id == current_user["sub"]))
-        profile = result.scalar_one_or_none()
-        if not profile:
-            profile = StudentProfile(user_id=current_user["sub"])
-            db.add(profile)
+        profile = await _get_or_create_profile(db, user_id)
         profile.exam_type = exam_type
         profile.selected_subjects = merged
         profile.jamb_subjects = jamb or None
@@ -388,11 +419,7 @@ async def _setup_exam_impl(
     if exam_type == ExamType.POST_UTME and len(subjects) != 4:
         raise HTTPException(status_code=400, detail="POST-UTME requires exactly 4 subjects")
 
-    result = await db.execute(select(StudentProfile).where(StudentProfile.user_id == current_user["sub"]))
-    profile = result.scalar_one_or_none()
-    if not profile:
-        profile = StudentProfile(user_id=current_user["sub"])
-        db.add(profile)
+    profile = await _get_or_create_profile(db, user_id)
 
     profile.exam_type = exam_type
     profile.selected_subjects = subjects
@@ -429,8 +456,9 @@ async def get_my_profile(
     db: AsyncSession = Depends(get_db),
 ):
     try:
+        uid = _student_user_id(current_user)
         result = await db.execute(
-            select(User).where(User.id == current_user["sub"])
+            select(User).where(User.id == uid)
         )
         user = result.scalar_one_or_none()
         if not user:
