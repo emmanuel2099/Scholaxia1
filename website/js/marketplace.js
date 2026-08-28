@@ -223,12 +223,41 @@
       .join("");
   }
 
+  function productImageUrl(p) {
+    if (!p) return "";
+    return String(p.image_url || p.secure_url || "").trim();
+  }
+
   function escapeHtml(s) {
     return String(s)
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
+  }
+
+  function cartRowHtml(title, qty, linePrice, removeHtml, imageUrl) {
+    var thumb = imageUrl
+      ? '<img class="mkt-cart-thumb" src="' +
+        escapeHtml(imageUrl.replace(/"/g, "")) +
+        '" alt="" />'
+      : '<div class="mkt-cart-thumb mkt-cart-thumb-empty" aria-hidden="true"></div>';
+    return (
+      '<div class="mkt-cart-row">' +
+      thumb +
+      '<div class="mkt-cart-meta">' +
+      "<strong>" +
+      escapeHtml(title) +
+      "</strong>" +
+      "<span>Qty " +
+      qty +
+      " · " +
+      money(linePrice) +
+      "</span>" +
+      "</div>" +
+      removeHtml +
+      "</div>"
+    );
   }
 
   async function addToCart(productId) {
@@ -245,13 +274,16 @@
       var existing = guestCart.filter(function (it) {
         return String(it.product_id) === String(productId);
       })[0];
-      if (existing) existing.quantity = (existing.quantity || 1) + 1;
-      else {
+      if (existing) {
+        existing.quantity = (existing.quantity || 1) + 1;
+        if (!existing.image_url) existing.image_url = productImageUrl(product);
+      } else {
         guestCart.push({
           product_id: productId,
           title: product.title,
           price: product.price,
           quantity: 1,
+          image_url: productImageUrl(product),
         });
       }
       saveGuestCart();
@@ -294,20 +326,15 @@
           .map(function (it) {
             var title =
               (it.product && it.product.title) || it.title || "Product";
-            return (
-              '<div class="mkt-cart-row">' +
-              "<strong>" +
-              escapeHtml(title) +
-              "</strong>" +
-              "<span>Qty " +
-              (it.quantity || 1) +
-              " · " +
-              money(it.line_total || 0) +
-              "</span>" +
+            var img = productImageUrl(it.product) || it.image_url || "";
+            return cartRowHtml(
+              title,
+              it.quantity || 1,
+              it.line_total || 0,
               '<button type="button" data-remove="' +
-              escapeHtml(String(it.id || "")) +
-              '">Remove</button>' +
-              "</div>"
+                escapeHtml(String(it.id || "")) +
+                '">Remove</button>',
+              img
             );
           })
           .join("");
@@ -331,20 +358,12 @@
       .map(function (it, idx) {
         var line = (Number(it.price) || 0) * (it.quantity || 1);
         total += line;
-        return (
-          '<div class="mkt-cart-row">' +
-          "<strong>" +
-          escapeHtml(it.title || "Product") +
-          "</strong>" +
-          "<span>Qty " +
-          (it.quantity || 1) +
-          " · " +
-          money(line) +
-          "</span>" +
-          '<button type="button" data-remove-guest="' +
-          idx +
-          '">Remove</button>' +
-          "</div>"
+        return cartRowHtml(
+          it.title || "Product",
+          it.quantity || 1,
+          line,
+          '<button type="button" data-remove-guest="' + idx + '">Remove</button>',
+          it.image_url || ""
         );
       })
       .join("");
