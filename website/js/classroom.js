@@ -2095,7 +2095,7 @@ function connectChat() {
           try {
             document.body.classList.remove("classroom-chrome-hidden");
             var chromeBtn = document.getElementById("classroom-chrome-toggle");
-            if (chromeBtn) chromeBtn.textContent = "Hide panels";
+            if (chromeBtn) chromeBtn.textContent = "Hide people";
           } catch (eChrome) {}
           addRaisedHand(msg.user_id, msg.name);
           addChatMessage("", (msg.name || "A student") + " raised their hand.", true);
@@ -2674,7 +2674,7 @@ function toggleClassroomChrome() {
   var on = document.body.classList.toggle("classroom-chrome-hidden");
   try { sessionStorage.setItem("sx_classroom_chrome_hidden", on ? "1" : "0"); } catch (e) {}
   var btn = document.getElementById("classroom-chrome-toggle");
-  if (btn) btn.textContent = on ? "Show panels" : "Hide panels";
+  if (btn) btn.textContent = on ? "People" : "Hide people";
 }
 window.toggleClassroomChrome = toggleClassroomChrome;
 (function initClassroomChrome() {
@@ -2698,7 +2698,7 @@ window.toggleClassroomChrome = toggleClassroomChrome;
   var btn = document.getElementById("classroom-chrome-toggle");
   if (btn) {
     btn.textContent = document.body.classList.contains("classroom-chrome-hidden")
-      ? "Show panels"
-      : "Hide panels";
+      ? "People"
+      : "Hide people";
   }
 })();

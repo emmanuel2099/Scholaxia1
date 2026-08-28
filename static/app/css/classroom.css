@@ -620,11 +620,18 @@ body {
   .chat-panel { max-height: 240px; border-left: none; border-top: 1px solid #2e1f4a; }
 }
 
-/* Immersive teaching mode — panels/toolbar hidden until tapped */
+/* Immersive teaching mode — hide side panels; toolbar stays on phones */
 body.classroom-chrome-hidden .participants-panel,
-body.classroom-chrome-hidden .attendance-panel,
+body.classroom-chrome-hidden .attendance-panel {
+  display: none !important;
+}
 body.classroom-chrome-hidden .classroom-toolbar {
   display: none !important;
+}
+@media (max-width: 900px) {
+  body.classroom-chrome-hidden .classroom-toolbar {
+    display: flex !important;
+  }
 }
 .classroom-chrome-toggle {
   position: fixed;
@@ -662,29 +669,40 @@ body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
   }
   .classroom-top {
     flex-wrap: wrap;
-    gap: 6px;
-    padding: 8px 10px;
+    gap: 4px;
+    padding: 6px 8px;
     flex: 0 0 auto;
+    min-height: 0;
   }
   .classroom-title-wrap {
     order: -1;
     flex: 1 1 100%;
+    gap: 8px;
   }
   .classroom-title-wrap h1 {
-    font-size: 0.92rem;
+    font-size: 0.88rem;
   }
   .classroom-title-wrap p {
-    font-size: 0.75rem;
+    font-size: 0.72rem;
+    margin-top: 0;
+  }
+  .live-pill {
+    font-size: 0.62rem;
+    padding: 2px 6px;
   }
   .btn-back,
   .btn-end-class,
   .btn-save-class-top {
-    padding: 6px 8px;
-    font-size: 0.78rem;
+    padding: 5px 7px;
+    font-size: 0.72rem;
+  }
+  .audience-badge {
+    font-size: 0.65rem;
+    padding: 2px 6px;
   }
   .cr-status {
-    font-size: 0.72rem;
-    max-width: 42vw;
+    font-size: 0.68rem;
+    max-width: 36vw;
     overflow: hidden;
     text-overflow: ellipsis;
   }
@@ -692,80 +710,97 @@ body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
     grid-template-columns: 1fr !important;
     grid-template-rows: minmax(0, 1fr);
     overflow: hidden;
-    flex: 1;
+    flex: 1 1 auto;
     min-height: 0;
+    display: flex;
+    flex-direction: column;
   }
   .participants-panel {
     position: fixed;
     left: 0;
     right: 0;
-    bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(52px + env(safe-area-inset-bottom, 0px));
     top: auto;
     height: auto;
-    max-height: 34vh;
+    max-height: min(120px, 22vh);
     z-index: 35;
     border-right: none;
     border-top: 1px solid #2e1f4a;
-    border-radius: 14px 14px 0 0;
+    border-radius: 12px 12px 0 0;
     transform: translateY(110%);
     transition: transform 0.22s ease;
-    box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.4);
+    display: flex !important;
   }
   body:not(.classroom-chrome-hidden) .participants-panel {
     transform: translateY(0);
-    display: flex !important;
   }
   body.classroom-chrome-hidden .participants-panel {
     transform: translateY(110%);
     pointer-events: none;
     visibility: hidden;
   }
+  .participants-head {
+    padding: 6px 10px;
+  }
+  .participants-head h2 {
+    font-size: 0.78rem;
+    margin-bottom: 2px;
+  }
+  .participants-sub {
+    font-size: 0.68rem;
+    margin: 0;
+    line-height: 1.25;
+  }
   .student-self-panel {
     position: fixed;
-    top: calc(52px + env(safe-area-inset-top, 0px));
-    right: 8px;
-    width: 76px;
+    top: calc(44px + env(safe-area-inset-top, 0px));
+    right: 6px;
+    width: 64px;
     margin: 0;
-    padding: 4px;
+    padding: 3px;
     z-index: 22;
-    border-radius: 10px;
+    border-radius: 8px;
     background: rgba(26, 18, 40, 0.92);
     border: 1px solid #7c3aed;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  }
+  .student-self-panel.hidden {
+    display: none !important;
   }
   .student-self-title,
   .student-self-status {
     display: none;
   }
   .student-self-video {
-    width: 76px;
-    height: 56px;
+    width: 64px;
+    height: 48px;
     aspect-ratio: auto;
-    border-radius: 6px;
-  }
-  body:not(.classroom-chrome-hidden) .student-self-panel {
-    top: auto;
-    bottom: calc(56px + env(safe-area-inset-bottom, 0px) + 34vh + 8px);
-    right: 10px;
+    border-radius: 5px;
   }
   .main-stage-wrap {
     min-height: 0;
     overflow: hidden;
     width: 100%;
     max-width: 100vw;
-    flex: 1;
+    flex: 1 1 auto;
     display: flex;
     flex-direction: column;
+    order: 1;
   }
   .video-stage,
   #video-stage {
     position: relative;
     width: 100% !important;
     max-width: 100vw !important;
-    flex: 1;
+    flex: 1 1 auto;
     min-height: 0;
     height: auto !important;
     overflow: hidden !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: #0a0612;
   }
   .video-remote,
   #video-remote {
@@ -786,14 +821,14 @@ body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
   .video-tile.local,
   #video-local {
     position: absolute !important;
-    top: 8px !important;
-    left: 8px !important;
+    top: 6px !important;
+    left: 6px !important;
     right: auto !important;
     bottom: auto !important;
-    width: 76px !important;
-    height: 56px !important;
-    max-width: 76px !important;
-    border-radius: 8px;
+    width: 64px !important;
+    height: 48px !important;
+    max-width: 64px !important;
+    border-radius: 6px;
     z-index: 12;
     border: 2px solid #7c3aed;
   }
@@ -802,22 +837,60 @@ body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
     width: 100%;
     max-width: 100vw;
     z-index: 8;
+    display: flex;
+    flex-direction: column;
+  }
+  .board-scroll {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
   .whiteboard-canvas {
     max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+  .board-toolbar {
+    max-height: 24vh;
+    padding: 6px 8px;
+    flex: 0 0 auto;
+  }
+  .board-type-input {
+    font-size: 0.88rem;
+    padding: 8px 10px;
   }
   .participants-list {
-    max-height: 22vh;
+    max-height: 48px;
+    padding: 4px 8px;
+    gap: 4px;
+    flex: 0 0 auto;
+  }
+  .participant-card {
+    padding: 4px 8px;
+    border-radius: 8px;
+  }
+  .participant-avatar {
+    width: 24px;
+    height: 24px;
+    font-size: 0.72rem;
+  }
+  .participant-body strong {
+    font-size: 0.72rem;
+  }
+  .participant-status {
+    font-size: 0.62rem;
   }
   .participant-video {
-    max-height: 72px;
+    max-height: 48px;
   }
   .participant-card.camera-on .participant-video {
-    max-height: 72px;
+    max-height: 48px;
   }
   .classroom-toolbar {
-    position: sticky;
-    bottom: 0;
+    position: relative;
+    bottom: auto;
     left: 0;
     right: 0;
     z-index: 30;
@@ -827,26 +900,58 @@ body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
     flex-wrap: nowrap;
-    gap: 6px;
-    padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
-    background: rgba(15, 10, 26, 0.96);
+    gap: 4px;
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px));
+    background: rgba(15, 10, 26, 0.98);
     border-top: 1px solid #2e1f4a;
     flex: 0 0 auto;
+    order: 2;
+    scrollbar-width: none;
   }
-  body:not(.classroom-chrome-hidden) .classroom-toolbar {
-    display: flex !important;
+  .classroom-toolbar::-webkit-scrollbar {
+    display: none;
+  }
+  .classroom-toolbar .toolbar-btn span {
+    display: none;
   }
   .classroom-toolbar .vc-btn {
     flex: 0 0 auto;
+    min-width: 40px;
+    min-height: 40px;
+    padding: 8px 10px;
+    font-size: 1.05rem;
+    justify-content: center;
+  }
+  .classroom-toolbar .reaction-btn {
+    min-width: 36px;
+    padding: 6px 8px !important;
+    font-size: 1.15rem !important;
+  }
+  .classroom-toolbar .toolbar-right {
+    display: none;
+  }
+  .classroom-toolbar .toolbar-left {
+    flex: 1;
+    min-width: 0;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    gap: 4px;
+    scrollbar-width: none;
+  }
+  .classroom-toolbar .toolbar-left::-webkit-scrollbar {
+    display: none;
   }
   .classroom-chrome-toggle {
-    bottom: calc(64px + env(safe-area-inset-bottom, 0px));
-    right: 10px;
+    position: fixed;
+    bottom: calc(52px + env(safe-area-inset-bottom, 0px));
+    right: 8px;
     z-index: 45;
-    padding: 10px 14px;
-    font-size: 0.82rem;
+    padding: 6px 10px;
+    font-size: 0.72rem;
+    border-radius: 8px;
+    opacity: 0.92;
   }
   body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
-    bottom: calc(64px + env(safe-area-inset-bottom, 0px) + 34vh);
+    bottom: calc(52px + env(safe-area-inset-bottom, 0px) + min(120px, 22vh));
   }
 }
