@@ -16,7 +16,7 @@
   var participantVideoTracks = {};
   var teacherVideoTrack = null;
   var sidebarVideoOrder = []; // student ids with mounted cam tiles (budgeted)
-  var MAX_SIDEBAR_VIDEOS = 9;
+  var MAX_SIDEBAR_VIDEOS = 24;
   var JOIN_TIMEOUT_MS = 45000;
   var PUBLISH_TIMEOUT_MS = 35000;
   var AUDIO_CAPTURE_OPTS = {
@@ -489,6 +489,7 @@
       var playP = el.play && el.play();
       if (playP && playP.catch) playP.catch(function () {});
     } catch (ePlay) { /* ignore */ }
+    if (typeof window.syncMainStageLayers === "function") window.syncMainStageLayers();
     if (!isTeacherRole() && !isScreen && typeof maybeShowSaveClassHint === "function") {
       maybeShowSaveClassHint();
     }
@@ -496,7 +497,11 @@
 
   function clearMainStageVideo() {
     var wrap = document.getElementById("video-remote");
-    if (wrap) wrap.innerHTML = "";
+    if (wrap) {
+      wrap.innerHTML = "";
+      wrap.classList.remove("screen-active");
+    }
+    if (typeof window.syncMainStageLayers === "function") window.syncMainStageLayers();
     if (typeof showVideoPlaceholder === "function") {
       showVideoPlaceholder(
         isTeacherRole()

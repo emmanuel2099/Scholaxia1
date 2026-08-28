@@ -222,7 +222,51 @@ function findParticipantCard(studentId) {
   return null;
 }
 
+function isMobileClassroomView() {
+  try {
+    return window.matchMedia("(max-width: 900px)").matches;
+  } catch (e) {
+    return window.innerWidth <= 900;
+  }
+}
+window.isMobileClassroomView = isMobileClassroomView;
+
+function updateCamRailLayout() {
+  var wrap = document.querySelector(".main-stage-wrap");
+  var rail = document.getElementById("student-cam-rail");
+  if (!wrap || !rail) return;
+  wrap.classList.toggle("has-cam-rail", !rail.classList.contains("hidden") && rail.children.length > 0);
+}
+
+function findOrCreateCamRailSlot(studentId) {
+  if (!isTeacherRole() || !isMobileClassroomView() || !studentId) return null;
+  var rail = document.getElementById("student-cam-rail");
+  if (!rail) return null;
+  var sid = String(studentId);
+  var tile = rail.querySelector('[data-rail-student-id="' + sid + '"]');
+  if (!tile) {
+    tile = document.createElement("div");
+    tile.className = "cam-rail-tile";
+    tile.setAttribute("data-rail-student-id", sid);
+    var initial = "S";
+    var card = findParticipantCard(sid);
+    if (card) {
+      var strong = card.querySelector(".participant-body > strong");
+      if (strong && strong.textContent) initial = strong.textContent.charAt(0).toUpperCase();
+    }
+    tile.innerHTML =
+      '<div class="cam-rail-video"></div><span class="cam-rail-label">' + escHtml(initial) + "</span>";
+    rail.appendChild(tile);
+  }
+  rail.classList.remove("hidden");
+  updateCamRailLayout();
+  return tile.querySelector(".cam-rail-video");
+}
+
 function findParticipantVideoSlot(studentId) {
+  if (!studentId) return null;
+  var railSlot = findOrCreateCamRailSlot(studentId);
+  if (railSlot) return railSlot;
   var card = findParticipantCard(studentId);
   if (card) {
     var slot = card.querySelector(".participant-video");
@@ -278,6 +322,10 @@ function showHostTools(show) {
     document.querySelectorAll(".student-only").forEach(function (el) {
       el.classList.add("hidden");
     });
+    if (isMobileClassroomView()) {
+      var strip = document.getElementById("classroom-host-strip");
+      if (strip) strip.classList.remove("hidden");
+    }
   }
 }
 
@@ -970,7 +1018,19 @@ function flushPendingStudentVideos() {
 
 function detachParticipantCameraVideo(studentId) {
   if (!studentId) return;
-  var slot = findParticipantVideoSlot(studentId);
+  var sid = String(studentId);
+  var rail = document.getElementById("student-cam-rail");
+  if (rail) {
+    var tile = rail.querySelector('[data-rail-student-id="' + sid + '"]');
+    if (tile) tile.remove();
+    if (!rail.querySelector(".cam-rail-tile")) rail.classList.add("hidden");
+    updateCamRailLayout();
+  }
+  var slot = document.getElementById("participant-video-" + sid);
+  if (!slot) {
+    var card = findParticipantCard(sid);
+    if (card) slot = card.querySelector(".participant-video");
+  }
   if (slot) {
     var vids = slot.querySelectorAll("video");
     vids.forEach(function (v) {
@@ -1329,6 +1389,20 @@ function flushBoardEventQueue() {
   });
 }
 
+function syncMainStageLayers() {
+  var remote = document.getElementById("video-remote");
+  var overlay = document.getElementById("board-overlay");
+  var screenOn = remote && remote.classList.contains("screen-active");
+  if (overlay) {
+    overlay.classList.toggle("stage-visible", board.open && !overlay.classList.contains("hidden"));
+    overlay.classList.toggle("stage-on-top", board.open && !screenOn);
+  }
+  if (remote) {
+    remote.classList.toggle("stage-on-top", screenOn);
+  }
+}
+window.syncMainStageLayers = syncMainStageLayers;
+
 function showBoardForStudent(forceOpen) {
   if (isTeacherRole()) return;
   var overlay = document.getElementById("board-overlay");
@@ -1341,6 +1415,7 @@ function showBoardForStudent(forceOpen) {
   overlay.classList.remove("hidden");
   hideVideoPlaceholder();
   resizeBoardCanvas();
+  syncMainStageLayers();
 }
 
 function hideBoardForStudent() {
@@ -1348,6 +1423,7 @@ function hideBoardForStudent() {
   board.open = false;
   var overlay = document.getElementById("board-overlay");
   if (overlay) overlay.classList.add("hidden");
+  syncMainStageLayers();
 }
 window.hideBoardForStudent = hideBoardForStudent;
 window.showBoardForStudent = showBoardForStudent;
@@ -1908,6 +1984,7 @@ function toggleBoard(forceOpen) {
   var open = typeof forceOpen === "boolean" ? forceOpen : !board.open;
   board.open = open;
   overlay.classList.toggle("hidden", !open);
+  syncMainStageLayers();
   if (open) {
     resizeBoardCanvas();
     hideVideoPlaceholder();
@@ -1942,9 +2019,11 @@ function handleBoardMessage(msg) {
     board.open = !!data.open;
     var overlay = document.getElementById("board-overlay");
     if (overlay) overlay.classList.toggle("hidden", !board.open);
+    syncMainStageLayers();
     if (board.open) {
       hideVideoPlaceholder();
       resizeBoardCanvas();
+      redrawBoard();
       if (!isTeacherRole()) {
         addChatMessage("", "Teacher opened the board.", true);
       }
@@ -2092,11 +2171,13 @@ function connectChat() {
         }
       } else if (msg.event === "raise_hand") {
         if (isTeacherRole()) {
-          try {
-            document.body.classList.remove("classroom-chrome-hidden");
-            var chromeBtn = document.getElementById("classroom-chrome-toggle");
-            if (chromeBtn) chromeBtn.textContent = "Hide people";
-          } catch (eChrome) {}
+          if (!isMobileClassroomView()) {
+            try {
+              document.body.classList.remove("classroom-chrome-hidden");
+              var chromeBtn = document.getElementById("classroom-chrome-toggle");
+              if (chromeBtn) chromeBtn.textContent = "Hide people";
+            } catch (eChrome) {}
+          }
           addRaisedHand(msg.user_id, msg.name);
           addChatMessage("", (msg.name || "A student") + " raised their hand.", true);
           showClassroomToast((msg.name || "A student") + " raised their hand");
@@ -2154,6 +2235,7 @@ function connectChat() {
             hideBoardForStudent();
             addChatMessage("", "Teacher is sharing their screen…", true);
           }
+          syncMainStageLayers();
           if (typeof attachExistingRemoteTracks === "function") {
             attachExistingRemoteTracks();
           } else if (window.LiveClassMedia && LiveClassMedia.reattachRemoteTracks) {
@@ -2678,18 +2760,15 @@ function toggleClassroomChrome() {
 }
 window.toggleClassroomChrome = toggleClassroomChrome;
 (function initClassroomChrome() {
-  var isMobile = false;
-  try {
-    isMobile = window.matchMedia("(max-width: 900px)").matches;
-  } catch (e) {}
+  var isMobile = isMobileClassroomView();
   try {
     var pref = sessionStorage.getItem("sx_classroom_chrome_hidden");
-    // Phones: board-first by default — huge side panel hides the lesson
-    if (isMobile && !isTeacherRole()) {
+    // Phones: board-first — hide people strip by default (toolbar stays visible)
+    if (isMobile && pref !== "0") {
       document.body.classList.add("classroom-chrome-hidden");
     } else if (pref === "0") {
       document.body.classList.remove("classroom-chrome-hidden");
-    } else {
+    } else if (!isMobile) {
       document.body.classList.add("classroom-chrome-hidden");
     }
   } catch (e) {

@@ -287,6 +287,60 @@ body {
   min-height: 0;
   min-width: 0;
 }
+.student-cam-rail {
+  display: none;
+}
+.cam-rail-tile {
+  flex: 0 0 auto;
+  width: 52px;
+  text-align: center;
+}
+.cam-rail-video {
+  width: 52px;
+  height: 40px;
+  background: #000;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #6d28d9;
+}
+.cam-rail-video video,
+.cam-rail-video .participant-video-el {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.cam-rail-label {
+  display: block;
+  font-size: 0.58rem;
+  color: #a78bfa;
+  line-height: 1.1;
+  margin-top: 2px;
+  max-width: 52px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.classroom-host-strip {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #1a1228;
+  border-top: 1px solid #2e1f4a;
+  flex: 0 0 auto;
+}
+.classroom-host-strip .host-strip-btn {
+  flex: 1;
+  min-height: 44px;
+  font-weight: 700;
+  font-size: 0.88rem;
+  justify-content: center;
+}
+.video-remote.screen-active { z-index: 4; }
+.board-overlay.stage-visible { z-index: 10; }
+.board-overlay.stage-visible.stage-on-top { z-index: 14; }
+.video-remote.screen-active.stage-on-top { z-index: 16; }
 .classroom-toolbar {
   display: flex;
   align-items: center;
@@ -722,7 +776,7 @@ body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
     bottom: calc(52px + env(safe-area-inset-bottom, 0px));
     top: auto;
     height: auto;
-    max-height: min(120px, 22vh);
+    max-height: min(88px, 16vh);
     z-index: 35;
     border-right: none;
     border-top: 1px solid #2e1f4a;
@@ -731,6 +785,12 @@ body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
     transition: transform 0.22s ease;
     box-shadow: 0 -6px 20px rgba(0, 0, 0, 0.4);
     display: flex !important;
+    overflow: hidden;
+  }
+  .participants-panel .attendance-panel,
+  .participants-panel .raise-hand-panel,
+  .participants-panel .student-self-panel {
+    display: none !important;
   }
   body:not(.classroom-chrome-hidden) .participants-panel {
     transform: translateY(0);
@@ -802,6 +862,29 @@ body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
     justify-content: center !important;
     background: #0a0612;
   }
+  .student-cam-rail:not(.hidden) {
+    display: flex !important;
+    flex-direction: column;
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 56px;
+    z-index: 13;
+    gap: 4px;
+    padding: 4px 2px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    background: rgba(8, 5, 14, 0.88);
+    border-right: 1px solid #4c1d95;
+  }
+  .main-stage-wrap:has(.student-cam-rail:not(.hidden)) .video-stage,
+  .main-stage-wrap:has(.student-cam-rail:not(.hidden)) #video-stage,
+  .main-stage-wrap.has-cam-rail .video-stage,
+  .main-stage-wrap.has-cam-rail #video-stage {
+    padding-left: 56px;
+  }
   .video-remote,
   #video-remote {
     width: 100% !important;
@@ -862,14 +945,26 @@ body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
     padding: 8px 10px;
   }
   .participants-list {
-    max-height: 48px;
-    padding: 4px 8px;
+    max-height: 36px;
+    padding: 2px 8px;
     gap: 4px;
     flex: 0 0 auto;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
   }
   .participant-card {
-    padding: 4px 8px;
-    border-radius: 8px;
+    padding: 2px 6px;
+    border-radius: 6px;
+    flex: 0 0 auto;
+    max-width: 120px;
+  }
+  .participant-details-row {
+    gap: 4px;
+  }
+  .participant-actions {
+    display: none !important;
   }
   .participant-avatar {
     width: 24px;
@@ -941,6 +1036,13 @@ body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
   .classroom-toolbar .toolbar-left::-webkit-scrollbar {
     display: none;
   }
+  .classroom-host-strip.host-only:not(.hidden) {
+    display: flex !important;
+  }
+  .classroom-toolbar #btn-share,
+  .classroom-toolbar #btn-board {
+    display: none !important;
+  }
   .classroom-chrome-toggle {
     position: fixed;
     bottom: calc(52px + env(safe-area-inset-bottom, 0px));
@@ -952,6 +1054,6 @@ body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
     opacity: 0.92;
   }
   body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
-    bottom: calc(52px + env(safe-area-inset-bottom, 0px) + min(120px, 22vh));
+    bottom: calc(52px + env(safe-area-inset-bottom, 0px) + min(88px, 16vh));
   }
 }
