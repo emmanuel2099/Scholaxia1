@@ -5111,34 +5111,75 @@
         });
       }
 
+      function buildSetupPayload(examType, selectedSubjects, eduLevel) {
+        var body = {
+          education_level: eduLevel,
+          exam_type: examType,
+          subjects: selectedSubjects.slice(),
+        };
+        if (examType === "JAMB") {
+          body.enable_jamb = true;
+          body.enable_ssce = false;
+          body.jamb_subjects = selectedSubjects.slice();
+        } else if (examType === "WAEC" || examType === "NECO") {
+          body.enable_jamb = false;
+          body.enable_ssce = true;
+          body.ssce_exam_type = examType;
+          body.ssce_subjects = selectedSubjects.slice();
+        }
+        return body;
+      }
+
+      function delayMs(ms) {
+        return new Promise(function (resolve) {
+          setTimeout(resolve, ms);
+        });
+      }
+
+      function saveToServerWithRetries() {
+        var payload = buildSetupPayload(examType, selectedSubjects, eduLevel);
+        var attempts = 0;
+        function run() {
+          attempts += 1;
+          return postSetup(payload).catch(function (err) {
+            if (attempts >= 4) throw err;
+            var retryable =
+              !err ||
+              !err.status ||
+              err.status >= 500 ||
+              err.message === "NETWORK" ||
+              err.message === "TIMEOUT";
+            if (!retryable) throw err;
+            return delayMs(1200 * attempts).then(run);
+          });
+        }
+        return run();
+      }
+
       // Try simple legacy payload first (most compatible), then dual-board payload
       var legacyBody = {
         exam_type: examType,
         subjects: selectedSubjects.slice(),
         education_level: eduLevel,
       };
-      var dualBody = {
-        education_level: eduLevel,
-        exam_type: examType,
-        subjects: selectedSubjects.slice(),
-        enable_jamb: examType === "JAMB",
-        jamb_subjects: examType === "JAMB" ? selectedSubjects.slice() : undefined,
-        enable_ssce: examType === "WAEC" || examType === "NECO",
-        ssce_exam_type: examType === "WAEC" || examType === "NECO" ? examType : undefined,
-        ssce_subjects: examType === "WAEC" || examType === "NECO" ? selectedSubjects.slice() : undefined,
-      };
+      var dualBody = buildSetupPayload(examType, selectedSubjects, eduLevel);
 
       function saveToServer() {
-        return postSetup(legacyBody).catch(function () {
+        return postSetup(legacyBody).catch(function (err) {
+          if (err && err.status && err.status < 500) throw err;
           return postSetup(dualBody);
         });
       }
 
-      var wake = api.wakeServer ? api.wakeServer(45000) : Promise.resolve();
+      var wake = api.wakeServer ? api.wakeServer(60000) : Promise.resolve();
       wake
-        .then(saveToServer)
+        .then(function () {
+          return saveToServerWithRetries();
+        })
         .catch(function () {
-          return saveToServer();
+          return delayMs(1500).then(function () {
+            return saveToServerWithRetries();
+          });
         })
         .then(function (res) {
           commitLocalCache();
@@ -5161,9 +5202,13 @@
             return;
           }
           if (err.status >= 500) {
+            var serverMsg = errMsg(err);
             setStatus(
               statusEl,
-              "Saved on this device. Server busy — tap Save again in a minute to sync.",
+              "Saved on this device. " +
+                (serverMsg && !/server error loading/i.test(serverMsg)
+                  ? serverMsg
+                  : "Server is waking up — wait 30 seconds and tap Save again."),
               false
             );
             return;
