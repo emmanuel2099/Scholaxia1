@@ -147,8 +147,17 @@ def _setup_complete(profile: StudentProfile | None) -> bool:
 async def list_available_subjects():
     """Subjects students can pick during exam setup."""
     from app.core.subjects import COMMON_ENTRANCE_SUBJECTS
+    try:
+        subjects = list(AVAILABLE_SUBJECTS)
+    except Exception:
+        subjects = []
+    if not subjects:
+        subjects = [
+            "Mathematics", "English Language", "Biology", "Chemistry", "Physics",
+            "Economics", "Government", "Geography", "Literature in English",
+        ]
     return {
-        "subjects": AVAILABLE_SUBJECTS,
+        "subjects": subjects,
         "common_entrance_subjects": list(COMMON_ENTRANCE_SUBJECTS),
     }
 
@@ -182,6 +191,25 @@ async def setup_exam(
     payload: ExamSetupRequest,
     current_user: dict = Depends(require_student),
     db: AsyncSession = Depends(get_db),
+):
+    import logging
+    log = logging.getLogger(__name__)
+    try:
+        return await _setup_exam_impl(payload, current_user, db)
+    except HTTPException:
+        raise
+    except Exception:
+        log.exception("setup-exam failed for user %s", current_user.get("sub"))
+        raise HTTPException(
+            status_code=500,
+            detail="Could not save exam setup right now. Your subjects were not lost — tap Save again in a minute.",
+        )
+
+
+async def _setup_exam_impl(
+    payload: ExamSetupRequest,
+    current_user: dict,
+    db: AsyncSession,
 ):
     # Common Entrance — 3 fixed subjects, taken together like JAMB.
     if _is_common_entrance_level(payload.education_level):

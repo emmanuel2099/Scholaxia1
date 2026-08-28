@@ -1758,8 +1758,20 @@ function resizeBoardCanvas() {
   var stage = document.getElementById("video-stage");
   if (!stage) return;
   var rect = stage.getBoundingClientRect();
-  board.canvas.width = rect.width;
-  var minH = Math.max(rect.height - (board.canDraw ? 160 : 0), 200);
+  var w = Math.floor(rect.width || 0);
+  var h = Math.floor(rect.height || 0);
+  if (w < 80 || h < 80) {
+    var vh = window.innerHeight || 600;
+    w = Math.max(w, Math.floor(window.innerWidth * 0.92));
+    h = Math.max(h, Math.floor(vh * 0.48));
+    requestAnimationFrame(function () {
+      resizeBoardCanvas();
+    });
+    if (w < 80 || h < 80) return;
+  }
+  var toolbarReserve = board.canDraw && board.open ? Math.min(180, Math.floor(h * 0.28)) : 0;
+  board.canvas.width = w;
+  var minH = Math.max(h - toolbarReserve, 200);
   board.canvas.height = Math.max(minH, board.textY + board.lineHeight * 3, board.canvas.height || 0);
   if (board.ctx) {
     board.ctx.lineCap = "round";
@@ -1769,6 +1781,7 @@ function resizeBoardCanvas() {
   }
   redrawBoard();
   scrollBoardToTypingCursor();
+  syncMainStageLayers();
 }
 
 function boardCoords(ev) {
@@ -1986,8 +1999,11 @@ function toggleBoard(forceOpen) {
   overlay.classList.toggle("hidden", !open);
   syncMainStageLayers();
   if (open) {
-    resizeBoardCanvas();
     hideVideoPlaceholder();
+    requestAnimationFrame(function () {
+      resizeBoardCanvas();
+      setTimeout(function () { resizeBoardCanvas(); }, 120);
+    });
     if (board.canDraw) {
       setBoardTool("type");
       var inp = document.getElementById("board-type-input");

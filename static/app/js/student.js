@@ -4927,6 +4927,15 @@
 
   var subjectsCatalog = [];
   var selectedSubjects = [];
+  var FALLBACK_SUBJECTS = [
+    "Mathematics", "English Language", "Biology", "Chemistry", "Physics",
+    "Economics", "Government", "Geography", "Literature in English",
+    "Agricultural Science", "Commerce", "Christian Religious Studies",
+    "Islamic Religious Studies", "Further Mathematics",
+    "Citizenship and Heritage Studies (Civic)", "Physical Education",
+    "Office Practice", "Home Management", "Fine Arts", "Animal Husbandry",
+    "Book Keeping", "Data Processing",
+  ];
 
   function loadProfile() {
     var examType = localStorage.getItem("sia_exam_type");
@@ -4977,8 +4986,13 @@
         renderSubjectChips();
       })
       .catch(function (err) {
+        subjectsCatalog = FALLBACK_SUBJECTS.slice();
         var wrap = $("profileSubjectChips");
-        if (wrap) wrap.innerHTML = errorHtml(errMsg(err), "profile");
+        if (wrap && !subjectsCatalog.length) {
+          wrap.innerHTML = errorHtml(errMsg(err), "profile");
+        } else {
+          renderSubjectChips();
+        }
       });
   }
 
@@ -5137,10 +5151,19 @@
           }
         })
         .catch(function (err) {
+          commitLocalCache();
           if (!err || !err.status || err.message === "NETWORK" || err.message === "TIMEOUT") {
             setStatus(
               statusEl,
-              "Could not reach the server. Wait 30 seconds (Render may be waking up) and tap Save again.",
+              "Saved on this device. Server sync failed — wait 30 seconds and tap Save again.",
+              false
+            );
+            return;
+          }
+          if (err.status >= 500) {
+            setStatus(
+              statusEl,
+              "Saved on this device. Server busy — tap Save again in a minute to sync.",
               false
             );
             return;
