@@ -927,12 +927,12 @@ async def join_class(
         sid = str(student_uid)
 
         result = await db.execute(select(LiveClass).where(LiveClass.id == class_uuid))
-    live_class = result.scalar_one_or_none()
-    now = naive_utc_now()
-    if not live_class or not _class_is_active(live_class, now):
-        raise HTTPException(status_code=404, detail="Class not live")
+        live_class = result.scalar_one_or_none()
+        now = naive_utc_now()
+        if not live_class or not _class_is_active(live_class, now):
+            raise HTTPException(status_code=404, detail="Class not live")
 
-        # Snapshot immediately â€” never read ORM attrs after a rollback
+        # Snapshot immediately — never read ORM attrs after a rollback
         room_id = str(live_class.room_id or "")
         title = live_class.title or "Live class"
         subject = live_class.subject or ""
@@ -978,7 +978,11 @@ async def join_class(
                     pass
             try:
                 await db.execute(
-                    sql_text("UPDATE live_classes SET is_live = TRUE WHERE id = :cid AND COALESCE(is_live, false) = false AND (end_time IS NULL OR end_time > NOW())"),
+                    sql_text(
+                        "UPDATE live_classes SET is_live = TRUE WHERE id = :cid "
+                        "AND COALESCE(is_live, false) = false "
+                        "AND (end_time IS NULL OR end_time > NOW())"
+                    ),
                     {"cid": str(class_uuid)},
                 )
                 await db.flush()
@@ -1001,29 +1005,29 @@ async def join_class(
                 await _safe_rollback()
                 access = {"can_join": True}
             if not access.get("can_join"):
-            if access.get("active_plan") and access.get("sessions_left", 0) <= 0:
+                if access.get("active_plan") and access.get("sessions_left", 0) <= 0:
+                    raise HTTPException(
+                        status_code=402,
+                        detail="You have used all live sessions on your plan this month. Upgrade or renew your plan.",
+                    )
                 raise HTTPException(
                     status_code=402,
-                    detail="You have used all live sessions on your plan this month. Upgrade or renew your plan.",
+                    detail="Choose a Scholaxia One-on-One Live Class plan before joining.",
                 )
-            raise HTTPException(
-                status_code=402,
-                detail="Choose a Scholaxia One-on-One Live Class plan before joining.",
-            )
 
         teacher_name = "Teacher"
         try:
-    from app.models.user import User
+            from app.models.user import User
 
             teacher_res = await db.execute(select(User).where(User.id == parse_uuid(teacher_id)))
-    teacher_user = teacher_res.scalar_one_or_none()
+            teacher_user = teacher_res.scalar_one_or_none()
             if teacher_user and teacher_user.full_name:
                 teacher_name = str(teacher_user.full_name)
         except Exception:
             await _safe_rollback()
         teacher_meta = {"teacher_id": teacher_id, "teacher_name": teacher_name}
 
-        # Best-effort attendance â€” never block the LiveKit token
+        # Best-effort attendance — never block the LiveKit token
         att_id = str(uuid_lib.uuid4())
         try:
             existing = (
@@ -1050,7 +1054,7 @@ async def join_class(
                     ),
                     {"aid": str(existing[0])},
                 )
-        await db.flush()
+                await db.flush()
             else:
                 await db.execute(
                     sql_text(
@@ -1061,18 +1065,18 @@ async def join_class(
                     ),
                     {"aid": att_id, "cid": str(class_uuid), "sid": sid},
                 )
-    await db.flush()
+                await db.flush()
         except Exception as att_exc:
             log.warning("attendance write skipped: %s", att_exc)
             await _safe_rollback()
 
-    try:
-        from app.services.live_class_room import grant_mic, grant_camera
+        try:
+            from app.services.live_class_room import grant_mic, grant_camera
 
             grant_mic(room_id, sid)
             grant_camera(room_id, sid)
-    except Exception:
-        pass
+        except Exception:
+            pass
 
         if not room_id:
             raise HTTPException(
@@ -1080,25 +1084,25 @@ async def join_class(
                 detail="This class has no room id. Ask the teacher to restart it.",
             )
 
-    payload = _livekit_token_payload(
+        payload = _livekit_token_payload(
             room_id,
             sid,
-        current_user.get("email") or "student",
-        can_publish=True,
-        role="student",
-    )
-    return {
+            current_user.get("email") or "student",
+            can_publish=True,
+            role="student",
+        )
+        return {
             "class_id": str(class_uuid),
             "title": title,
             "subject": subject,
-        **teacher_meta,
-        **payload,
-        "is_muted": False,
+            **teacher_meta,
+            **payload,
+            "is_muted": False,
             "is_live": is_live,
             "end_time": end_time_iso,
-        "mic_allowed": True,
-        "camera_allowed": True,
-    }
+            "mic_allowed": True,
+            "camera_allowed": True,
+        }
     except HTTPException:
         raise
     except Exception as exc:
