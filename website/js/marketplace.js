@@ -477,7 +477,20 @@
     }
   }
 
+  function initHeroSlider() {
+    var slides = document.querySelectorAll(".mkt-hero-slide");
+    if (slides.length < 2) return;
+    var idx = 0;
+    setInterval(function () {
+      idx = (idx + 1) % slides.length;
+      slides.forEach(function (s, i) {
+        s.classList.toggle("is-active", i === idx);
+      });
+    }, 3800);
+  }
+
   document.addEventListener("DOMContentLoaded", async function () {
+    initHeroSlider();
     loadGuestCart();
     setCartBadge();
 

@@ -15,7 +15,7 @@
       href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700;9..144,800&family=Sora:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="css/marketplace.css?v=20260828n" />
+    <link rel="stylesheet" href="css/marketplace.css?v=20260828p" />
   </head>
   <body class="mkt-body">
     <header class="mkt-top">
@@ -44,15 +44,20 @@
 
     <main>
       <section class="mkt-hero">
-        <div class="mkt-hero-media" aria-hidden="true">
-          <img src="media/feature-market.png" alt="" />
+        <div class="mkt-hero-inner">
+          <div class="mkt-hero-slider" id="mktHeroSlider" aria-hidden="true">
+            <img src="media/feature-market.png" class="mkt-hero-slide is-active" alt="" />
+            <img src="media/banner-1.png" class="mkt-hero-slide" alt="" />
+            <img src="media/banner-2.png" class="mkt-hero-slide" alt="" />
+            <img src="media/banner-3.png" class="mkt-hero-slide" alt="" />
+          </div>
           <div class="mkt-hero-scrim"></div>
-        </div>
-        <div class="mkt-hero-copy">
-          <h1>Scholaxia<br /><span>Market</span></h1>
-          <div class="mkt-hero-cta">
-            <a class="mkt-primary" href="#shelf">Shop the shelf</a>
-            <button type="button" class="mkt-secondary" id="btnSell">Sell as a vendor</button>
+          <div class="mkt-hero-copy">
+            <h1>Scholaxia<br /><span>Market</span></h1>
+            <div class="mkt-hero-cta">
+              <a class="mkt-primary" href="#shelf">Shop the shelf</a>
+              <button type="button" class="mkt-secondary" id="btnSell">Sell as a vendor</button>
+            </div>
           </div>
         </div>
       </section>
@@ -143,6 +148,6 @@
 
     <script src="js/api.js?v=20260828m"></script>
     <script src="js/paystack.js?v=12"></script>
-    <script src="js/marketplace.js?v=20260828m"></script>
+    <script src="js/marketplace.js?v=20260828p"></script>
   </body>
 </html>
