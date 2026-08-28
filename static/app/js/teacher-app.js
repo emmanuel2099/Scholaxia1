@@ -322,60 +322,63 @@
     }
   }
 
-  async function endClass(id) {
+async function endClass(id) {
     if (!id) return;
     if (!confirm("End this class for everyone?")) return;
+    var cardBtn = document.querySelector('[data-end-class="' + id + '"]');
+    var card = cardBtn && cardBtn.closest ? cardBtn.closest(".item-card") : null;
+    function flipCardEnded() {
+      if (!card) return;
+      card.classList.remove("is-live");
+      card.setAttribute("data-ended", "1");
+      var badge = card.querySelector(".badge.live");
+      if (badge) {
+        badge.className = "badge muted";
+        badge.textContent = "Ended";
+      }
+      var actions = card.querySelector(".actions");
+      if (actions) {
+        actions.innerHTML =
+          '<button type="button" class="btn-sm" data-start="' +
+          esc(id) +
+          '">Start</button>';
+      }
+    }
+    flipCardEnded();
+    if ($("statLive")) {
+      var n = parseInt($("statLive").textContent || "0", 10) || 0;
+      $("statLive").textContent = String(Math.max(0, n - 1));
+    }
     try {
       var res = await api.api("/api/v1/live-classes/" + encodeURIComponent(id) + "/end", {
         method: "POST",
         preferXhr: true,
-        timeout: 60000,
-        retries: 2,
+        timeout: 90000,
+        retries: 3,
+        awaitWake: true,
       });
       if (res && res.is_live === true) {
-        // One more force attempt — stuck is_live rows flip the banner back to 1
         res = await api.api("/api/v1/live-classes/" + encodeURIComponent(id) + "/end", {
           method: "POST",
           preferXhr: true,
-          timeout: 60000,
-          retries: 1,
+          timeout: 90000,
+          retries: 2,
+          awaitWake: true,
         });
       }
       if (res && res.is_live === true) {
-        throw new Error("Server did not end the class. Try again.");
-      }
-      // Optimistic UI: flip this card off LIVE immediately, then refresh from API
-      var cardBtn = document.querySelector('[data-end-class="' + id + '"]');
-      var card = cardBtn && cardBtn.closest ? cardBtn.closest(".item-card") : null;
-      if (card) {
-        card.classList.remove("is-live");
-        var badge = card.querySelector(".badge.live");
-        if (badge) {
-          badge.className = "badge muted";
-          badge.textContent = "Ended";
-        }
-        var actions = card.querySelector(".actions");
-        if (actions) {
-          actions.innerHTML =
-            '<button type="button" class="btn-sm" data-start="' +
-            esc(id) +
-            '">Start</button>';
-        }
-      }
-      if ($("statLive")) {
-        var n = parseInt($("statLive").textContent || "0", 10) || 0;
-        $("statLive").textContent = String(Math.max(0, n - 1));
+        throw new Error("Server did not end the class. Tap End again or refresh.");
       }
       alert("Class ended.");
       await loadLive();
-      // If list still reports live for this id, force end once more then refresh
       var still = document.querySelector('[data-end-class="' + id + '"]');
       if (still) {
+        flipCardEnded();
         try {
           await api.api("/api/v1/live-classes/" + encodeURIComponent(id) + "/end", {
             method: "POST",
             preferXhr: true,
-            timeout: 60000,
+            timeout: 90000,
             retries: 1,
           });
           await loadLive();

@@ -1747,6 +1747,16 @@ function onBoardPointerMove(ev) {
   if (!board.drawing || !board.ctx) return;
   var p = boardCoords(ev);
   if (board.tool === "erase") {
+    if (board.liveText) {
+      board.liveText = "";
+      sendBoardEvent("text_stream", {
+        id: board.liveTextId || boardLiveTextId(),
+        x: board.textX,
+        y: board.textY,
+        text: "",
+        size: board.fontSize,
+      });
+    }
     var eraseStroke = {
       x0: board.lastX, y0: board.lastY, x1: p.x, y1: p.y, width: 28
     };
@@ -1948,8 +1958,16 @@ function handleBoardMessage(msg) {
     return;
   }
   if (msg.action === "erase") {
-    applyEraseStroke(data, true);
-    redrawBoard();
+    var erData = msg.data || {};
+    if (!board.history.some(function (h) {
+      return h.type === "erase" && h.data
+        && h.data.x0 === erData.x0 && h.data.y0 === erData.y0
+        && h.data.x1 === erData.x1 && h.data.y1 === erData.y1;
+    })) {
+      board.history.push({ type: "erase", data: erData });
+    }
+    board.liveText = "";
+    applyEraseStroke(erData, false);
     return;
   }
   if (msg.action === "text") {
@@ -2660,10 +2678,20 @@ function toggleClassroomChrome() {
 }
 window.toggleClassroomChrome = toggleClassroomChrome;
 (function initClassroomChrome() {
+  var isMobile = false;
+  try {
+    isMobile = window.matchMedia("(max-width: 900px)").matches;
+  } catch (e) {}
   try {
     var pref = sessionStorage.getItem("sx_classroom_chrome_hidden");
-    if (pref === "0") document.body.classList.remove("classroom-chrome-hidden");
-    else document.body.classList.add("classroom-chrome-hidden");
+    // Phones: board-first by default — huge side panel hides the lesson
+    if (isMobile && !isTeacherRole()) {
+      document.body.classList.add("classroom-chrome-hidden");
+    } else if (pref === "0") {
+      document.body.classList.remove("classroom-chrome-hidden");
+    } else {
+      document.body.classList.add("classroom-chrome-hidden");
+    }
   } catch (e) {
     document.body.classList.add("classroom-chrome-hidden");
   }

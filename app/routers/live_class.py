@@ -1965,13 +1965,31 @@ async def end_class(
     except Exception as del_exc:
         log.warning("end_class access-code cleanup skipped: %s", del_exc)
 
-    # Re-read so response cannot lie about still being live
-    await db.refresh(live_class)
-    if live_class.is_live:
-        live_class.is_live = False
-        live_class.end_time = ended_at
-        await db.flush()
-        await db.refresh(live_class)
+  # Commit before refresh/notify so a later failure cannot roll back is_live=false
+    try:
+        await db.commit()
+    except Exception as commit_exc:
+        log.warning("end_class commit failed: %s", commit_exc)
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        raise HTTPException(status_code=500, detail="Could not save class end state")
+
+    try:
+        result2 = await db.execute(select(LiveClass).where(LiveClass.id == cid))
+        live_class = result2.scalar_one_or_none() or live_class
+    except Exception:
+        pass
+
+    if live_class and live_class.is_live:
+        try:
+            live_class.is_live = False
+            live_class.end_time = ended_at
+            await db.flush()
+            await db.commit()
+        except Exception:
+            pass
 
     try:
         from app.websockets.live_class_ws import broadcast as ws_broadcast

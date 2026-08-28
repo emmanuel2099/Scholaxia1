@@ -644,7 +644,7 @@ body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
   background: #111827;
 }
 
-/* —— Mobile classroom layout (stop video/panel fighting) —— */
+/* —— Mobile: board-first, tiny camera thumbs —— */
 @media (max-width: 900px) {
   html, body {
     height: 100%;
@@ -657,42 +657,56 @@ body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
     height: 100dvh;
     max-height: 100dvh;
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
   }
   .classroom-top {
     flex-wrap: wrap;
-    gap: 8px;
-    padding: 10px 12px;
+    gap: 6px;
+    padding: 8px 10px;
+    flex: 0 0 auto;
   }
   .classroom-title-wrap {
     order: -1;
     flex: 1 1 100%;
   }
   .classroom-title-wrap h1 {
-    font-size: 1rem;
+    font-size: 0.92rem;
+  }
+  .classroom-title-wrap p {
+    font-size: 0.75rem;
   }
   .btn-back,
   .btn-end-class,
   .btn-save-class-top {
-    padding: 8px 10px;
-    font-size: 0.82rem;
+    padding: 6px 8px;
+    font-size: 0.78rem;
+  }
+  .cr-status {
+    font-size: 0.72rem;
+    max-width: 42vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .classroom-layout {
     grid-template-columns: 1fr !important;
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-rows: minmax(0, 1fr);
     overflow: hidden;
+    flex: 1;
+    min-height: 0;
   }
   .participants-panel {
     position: fixed;
     left: 0;
     right: 0;
-    bottom: 0;
+    bottom: calc(56px + env(safe-area-inset-bottom, 0px));
     top: auto;
-    height: min(52vh, 420px);
-    max-height: 52vh;
+    height: auto;
+    max-height: 34vh;
     z-index: 35;
     border-right: none;
     border-top: 1px solid #2e1f4a;
-    border-radius: 16px 16px 0 0;
+    border-radius: 14px 14px 0 0;
     transform: translateY(110%);
     transition: transform 0.22s ease;
     box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.45);
@@ -703,35 +717,64 @@ body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
   }
   body.classroom-chrome-hidden .participants-panel {
     transform: translateY(110%);
-    display: flex !important; /* keep in DOM for animation, still off-screen */
     pointer-events: none;
+    visibility: hidden;
+  }
+  .student-self-panel {
+    position: fixed;
+    top: calc(52px + env(safe-area-inset-top, 0px));
+    right: 8px;
+    width: 76px;
+    margin: 0;
+    padding: 4px;
+    z-index: 22;
+    border-radius: 10px;
+    background: rgba(26, 18, 40, 0.92);
+    border: 1px solid #7c3aed;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  }
+  .student-self-title,
+  .student-self-status {
+    display: none;
+  }
+  .student-self-video {
+    width: 76px;
+    height: 56px;
+    aspect-ratio: auto;
+    border-radius: 6px;
+  }
+  body:not(.classroom-chrome-hidden) .student-self-panel {
+    top: auto;
+    bottom: calc(56px + env(safe-area-inset-bottom, 0px) + 34vh + 8px);
+    right: 10px;
   }
   .main-stage-wrap {
     min-height: 0;
     overflow: hidden;
     width: 100%;
     max-width: 100vw;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
   }
   .video-stage,
   #video-stage {
     position: relative;
     width: 100% !important;
     max-width: 100vw !important;
-    height: 100%;
+    flex: 1;
     min-height: 0;
+    height: auto !important;
     overflow: hidden !important;
   }
   .video-remote,
-  #video-remote,
-  .video-tile,
-  #video-local {
+  #video-remote {
     width: 100% !important;
     max-width: 100% !important;
     height: 100% !important;
     overflow: hidden !important;
   }
   .video-remote video,
-  .video-tile video,
   .remote-user,
   .remote-user video {
     width: 100% !important;
@@ -740,14 +783,37 @@ body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
     object-fit: contain !important;
     display: block;
   }
+  .video-tile.local,
+  #video-local {
+    position: absolute !important;
+    top: 8px !important;
+    left: 8px !important;
+    right: auto !important;
+    bottom: auto !important;
+    width: 76px !important;
+    height: 56px !important;
+    max-width: 76px !important;
+    border-radius: 8px;
+    z-index: 12;
+    border: 2px solid #7c3aed;
+  }
   .board-overlay {
     inset: 0;
     width: 100%;
     max-width: 100vw;
-    overflow: auto;
+    z-index: 8;
   }
   .whiteboard-canvas {
     max-width: 100%;
+  }
+  .participants-list {
+    max-height: 22vh;
+  }
+  .participant-video {
+    max-height: 72px;
+  }
+  .participant-card.camera-on .participant-video {
+    max-height: 72px;
   }
   .classroom-toolbar {
     position: sticky;
@@ -761,10 +827,11 @@ body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
     flex-wrap: nowrap;
-    gap: 8px;
-    padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+    gap: 6px;
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 0px));
     background: rgba(15, 10, 26, 0.96);
     border-top: 1px solid #2e1f4a;
+    flex: 0 0 auto;
   }
   body:not(.classroom-chrome-hidden) .classroom-toolbar {
     display: flex !important;
@@ -773,13 +840,13 @@ body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
     flex: 0 0 auto;
   }
   .classroom-chrome-toggle {
-    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-    right: 12px;
+    bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+    right: 10px;
     z-index: 45;
     padding: 10px 14px;
-    font-size: 0.85rem;
+    font-size: 0.82rem;
   }
   body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
-    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(64px + env(safe-area-inset-bottom, 0px) + 34vh);
   }
 }
