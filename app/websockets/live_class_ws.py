@@ -18,6 +18,8 @@ from app.services.live_class_room import (
     grant_camera,
     revoke_camera,
     cleanup_room,
+    record_board_event,
+    get_board_replay_messages,
 )
 
 # room_id -> list of connected websockets with metadata
@@ -57,6 +59,14 @@ async def broadcast(room_id: str, message: dict, exclude: WebSocket = None):
             dead.append(conn)
     for conn in dead:
         rooms[room_id].remove(conn)
+
+
+async def replay_board_to_websocket(room_id: str, websocket: WebSocket) -> None:
+    for msg in get_board_replay_messages(room_id):
+        try:
+            await websocket.send_text(json.dumps(msg))
+        except Exception:
+            break
 
 
 async def send_to_user(room_id: str, target_user_id: str, message: dict):
@@ -151,6 +161,8 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
         "role": role,
         "name": name,
     }, exclude=websocket)
+    if not _is_teacher_role(role):
+        await replay_board_to_websocket(room_id, websocket)
 
     try:
         while True:
@@ -187,11 +199,15 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
                         "message": "You do not have whiteboard access. Ask your teacher.",
                     }))
                 else:
+                    action = message.get("action")
+                    data = message.get("data") or {}
+                    if _is_teacher_role(role):
+                        record_board_event(room_id, action, data)
                     await broadcast(room_id, {
                         "event": "whiteboard",
                         "user_id": user_id,
-                        "action": message.get("action"),
-                        "data": message.get("data") or {},
+                        "action": action,
+                        "data": data,
                     }, exclude=websocket)
 
             elif event == "grant_whiteboard":
@@ -257,6 +273,7 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
                         await notify_mic_revoked(room_id, str(target_id))
 
             elif event == "request_board_sync":
+                await replay_board_to_websocket(room_id, websocket)
                 await broadcast(room_id, {
                     "event": "request_board_sync",
                     "user_id": user_id,

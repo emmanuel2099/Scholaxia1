@@ -495,7 +495,23 @@
     }
   }
 
+  function remoteTeacherScreenActive() {
+    if (!liveRoom) return false;
+    var active = false;
+    liveRoom.remoteParticipants.forEach(function (participant) {
+      if (!isTeacherParticipant(participant)) return;
+      participant.trackPublications.forEach(function (pub) {
+        if (isScreenPublication(pub) && pub.track && !pub.isMuted) active = true;
+      });
+    });
+    return active;
+  }
+
   function clearMainStageVideo() {
+    if (!isTeacherRole()) {
+      if (window.board && window.board.open) return;
+      if (remoteTeacherScreenActive()) return;
+    }
     var wrap = document.getElementById("video-remote");
     if (wrap) {
       wrap.innerHTML = "";
@@ -581,6 +597,14 @@
     if (track.kind !== c.Track.Kind.Video && track.kind !== "video") return;
 
     if (isScreenPublication(publication)) {
+      var wrap = document.getElementById("video-remote");
+      if (wrap) {
+        wrap.innerHTML = "";
+        wrap.classList.remove("screen-active");
+      }
+      if (typeof window.syncMainStageLayers === "function") window.syncMainStageLayers();
+      if (!isTeacherRole() && window.board && window.board.open) return;
+      if (!isTeacherRole() && remoteTeacherScreenActive()) return;
       clearMainStageVideo();
       return;
     }
@@ -593,7 +617,7 @@
 
     if (!isTeacherRole() && isTeacherParticipant(participant) && isCameraPublication(publication)) {
       teacherVideoTrack = null;
-      clearMainStageVideo();
+      if (!remoteTeacherScreenActive()) clearMainStageVideo();
       return;
     }
 
@@ -612,19 +636,30 @@
       clearStudentParticipantVideo(studentId, publication, participant);
     } else if (isTeacherParticipant(participant)) {
       teacherVideoTrack = null;
-      clearMainStageVideo();
+      if (!remoteTeacherScreenActive()) clearMainStageVideo();
     }
   }
 
   function attachExistingRemoteTracks() {
     if (!liveRoom) return;
     var c = lk();
+    // Students: attach teacher screen share first so it wins over camera-off events.
+    if (!isTeacherRole()) {
+      liveRoom.remoteParticipants.forEach(function (participant) {
+        if (!isTeacherParticipant(participant)) return;
+        wireParticipantVideoEvents(participant);
+        participant.trackPublications.forEach(function (pub) {
+          if (!isScreenPublication(pub)) return;
+          setPublicationSubscribed(pub, true);
+          if (pub.track) attachRemoteTrack(pub.track, pub, participant);
+        });
+      });
+    }
     liveRoom.remoteParticipants.forEach(function (participant) {
       wireParticipantVideoEvents(participant);
       participant.trackPublications.forEach(function (pub) {
         var isAudio = !!(c && (pub.kind === c.Track.Kind.Audio || pub.kind === "audio"));
         var isVideo = !!(c && (pub.kind === c.Track.Kind.Video || pub.kind === "video"));
-        // Always subscribe — dynacast / late joiners otherwise miss teacher screen.
         if (isAudio || isVideo || isScreenPublication(pub)) {
           setPublicationSubscribed(pub, true);
         }

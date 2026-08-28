@@ -1400,6 +1400,8 @@ function syncMainStageLayers() {
   if (remote) {
     remote.classList.toggle("stage-on-top", screenOn);
   }
+  document.body.classList.toggle("classroom-board-open", board.open);
+  if (board.open && typeof hideVideoPlaceholder === "function") hideVideoPlaceholder();
 }
 window.syncMainStageLayers = syncMainStageLayers;
 
@@ -2038,10 +2040,16 @@ function handleBoardMessage(msg) {
     syncMainStageLayers();
     if (board.open) {
       hideVideoPlaceholder();
-      resizeBoardCanvas();
-      redrawBoard();
+      requestAnimationFrame(function () {
+        resizeBoardCanvas();
+        redrawBoard();
+      });
       if (!isTeacherRole()) {
         addChatMessage("", "Teacher opened the board.", true);
+        if (window._sxBoardSyncPoll) {
+          clearInterval(window._sxBoardSyncPoll);
+          window._sxBoardSyncPoll = null;
+        }
       }
     }
     return;
@@ -2146,6 +2154,18 @@ function connectChat() {
     flushBoardEventQueue();
     if (!isTeacherRole()) {
       liveSocket.send(JSON.stringify({ event: "request_board_sync" }));
+      if (window._sxBoardSyncPoll) clearInterval(window._sxBoardSyncPoll);
+      window._sxBoardSyncPoll = setInterval(function () {
+        if (!liveSocket || liveSocket.readyState !== WebSocket.OPEN) return;
+        if (board.open) {
+          clearInterval(window._sxBoardSyncPoll);
+          window._sxBoardSyncPoll = null;
+          return;
+        }
+        try {
+          liveSocket.send(JSON.stringify({ event: "request_board_sync" }));
+        } catch (ePoll) { /* ignore */ }
+      }, 8000);
     }
     updateAudienceStats();
     var studBadge = document.getElementById("audience-badge");
@@ -2346,6 +2366,9 @@ window.sendReaction = sendReaction;
 window.showReactionBurst = showReactionBurst;
 
 function showVideoPlaceholder(text) {
+  if (window.board && board.open) return;
+  var remote = document.getElementById("video-remote");
+  if (remote && remote.classList.contains("screen-active")) return;
   var ph = document.getElementById("video-placeholder");
   var txt = document.getElementById("video-placeholder-text");
   if (txt) txt.textContent = text;

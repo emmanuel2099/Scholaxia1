@@ -341,6 +341,13 @@ body {
 .board-overlay.stage-visible { z-index: 10; }
 .board-overlay.stage-visible.stage-on-top { z-index: 14; }
 .video-remote.screen-active.stage-on-top { z-index: 16; }
+body.classroom-board-open #video-placeholder {
+  display: none !important;
+}
+body.classroom-board-open .board-overlay:not(.hidden) {
+  display: flex !important;
+  z-index: 14;
+}
 .classroom-toolbar {
   display: flex;
   align-items: center;

@@ -9,7 +9,14 @@
   }
 
   window.API_BASE = S.API_BASE || "https://scholaxia1.onrender.com";
-  window.API_WS = "wss://scholaxia1.onrender.com";
+  window.API_WS = (function () {
+    try {
+      var base = window.API_BASE || "https://scholaxia1.onrender.com";
+      if (base.indexOf("https://") === 0) return "wss://" + base.slice(8);
+      if (base.indexOf("http://") === 0) return "ws://" + base.slice(7);
+    } catch (e) {}
+    return "wss://scholaxia1.onrender.com";
+  })();
 
   window.getToken = S.getToken;
   window.getUser = S.getUser;
