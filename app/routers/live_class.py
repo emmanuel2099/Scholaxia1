@@ -500,10 +500,9 @@ async def _ensure_attendance_for_unmute(
 
 
 def _mic_allowed_for(room_id: str, student_id: str, attendance: ClassAttendance | None) -> bool:
-    if has_mic_access(room_id, student_id):
-        return True
-    # Open mic for anyone actively in class unless teacher muted them.
-    return attendance is not None and not bool(attendance.is_muted)
+    if attendance is not None and bool(attendance.is_muted):
+        return False
+    return has_mic_access(room_id, student_id)
 
 
 def _camera_allowed_for(
@@ -511,10 +510,7 @@ def _camera_allowed_for(
     student_id: str,
     attendance: ClassAttendance | None = None,
 ) -> bool:
-    if has_camera_access(room_id, student_id):
-        return True
-    # Joined students may publish camera by default (same as mic), unless muted.
-    return attendance is not None and not attendance.is_muted
+    return has_camera_access(room_id, student_id)
 
 
 def _can_publish_for_student(

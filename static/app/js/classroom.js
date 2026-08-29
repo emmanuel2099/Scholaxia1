@@ -39,6 +39,17 @@ var API_WS = (typeof window !== "undefined" && window.API_WS)
   : "wss://scholaxia1.onrender.com";
 var JOIN_TIMEOUT_MS = 45000;
 
+function escHtml(value) {
+  if (value == null) return "";
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+window.escHtml = escHtml;
+
 var SUBJECT_SYMBOLS = {
   mathematics: {
     label: "Mathematics",
@@ -683,14 +694,14 @@ function setVideoControlsEnabled(enabled) {
 }
 
 function showAudioUnlockBanner() {
+  if (!isTeacherRole()) {
+    unlockClassAudio();
+    return;
+  }
   var bar = document.getElementById("audio-unlock-banner");
   if (!bar || !bar.classList.contains("hidden")) return;
   var label = bar.querySelector("strong");
-  if (label) {
-    label.textContent = isTeacherRole()
-      ? "Tap to hear students"
-      : "Tap to hear audio";
-  }
+  if (label) label.textContent = "Tap to hear students";
   bar.classList.remove("hidden");
 }
 
@@ -1008,6 +1019,9 @@ async function revokeStudentMic(userId) {
   if (!isTeacherRole() || !userId) return;
   var classId = liveSession.class_id || liveSession.classId;
   try {
+    if (liveSocket && liveSocket.readyState === WebSocket.OPEN) {
+      liveSocket.send(JSON.stringify({ event: "revoke_mic", target_user_id: userId }));
+    }
     await api("/api/v1/live-classes/" + classId + "/students/" + userId + "/mute", { method: "POST" });
     addChatMessage("", "Student microphone muted.", true);
     loadClassroomStudents(true);
@@ -1039,6 +1053,9 @@ async function revokeStudentCamera(userId) {
   if (!isTeacherRole() || !userId) return;
   var classId = liveSession.class_id || liveSession.classId;
   try {
+    if (liveSocket && liveSocket.readyState === WebSocket.OPEN) {
+      liveSocket.send(JSON.stringify({ event: "revoke_camera", target_user_id: userId }));
+    }
     await api("/api/v1/live-classes/" + classId + "/students/" + userId + "/revoke-camera", { method: "POST" });
     addChatMessage("", "Student camera access removed.", true);
     loadClassroomStudents(true);
@@ -2676,18 +2693,23 @@ function connectChat(isReconnect) {
         addChatMessage("", msg.message, true);
       } else if (msg.event === "mic_access_granted") {
         if (!isTeacherRole() && isMicEventForMe(msg)) {
+          var handBtnGrant = document.getElementById("btn-hand");
+          if (handBtnGrant) handBtnGrant.classList.remove("active");
           showClassroomToast("You may speak — turn on your mic");
           if (typeof enableStudentMic === "function") {
             enableStudentMic().catch(function (err) {
-              addChatMessage("", "Mic: " + (err.message || "turn on Mic button"), true);
+              showClassroomToast("Tap Mic to speak", true);
             });
           }
         }
       } else if (msg.event === "mic_access_update") {
-        if (!isTeacherRole() && msg.has_mic && isMicEventForMe(msg) && typeof enableStudentMic === "function") {
-          enableStudentMic().catch(function (err) {
-            addChatMessage("", "Mic: " + (err.message || "turn on Mic button"), true);
-          });
+        if (!isTeacherRole() && isMicEventForMe(msg) && msg.has_mic && typeof window.studentMicAllowed === "boolean" && !window.studentMicAllowed) {
+          if (typeof enableStudentMic === "function") {
+            enableStudentMic().catch(function () { /* ignore */ });
+          }
+        }
+        if (!isTeacherRole() && isMicEventForMe(msg) && !msg.has_mic && typeof disableStudentMic === "function") {
+          disableStudentMic();
         }
         if (isTeacherRole() && msg.has_mic) {
           if (typeof ensureRoomAudioPlayback === "function") ensureRoomAudioPlayback();
@@ -2716,8 +2738,12 @@ function connectChat(isReconnect) {
           if (typeof reattachParticipantVideos === "function") reattachParticipantVideos();
         }
       } else if (msg.event === "camera_access_revoked") {
-        if (typeof disableStudentCamera === "function") disableStudentCamera();
-        addChatMessage("", msg.message || "Your camera access was removed by the teacher.", true);
+        if (!isTeacherRole() && isMicEventForMe(msg) && typeof disableStudentCamera === "function") {
+          disableStudentCamera();
+          showClassroomToast(msg.message || "Camera turned off by teacher");
+        } else if (isTeacherRole()) {
+          addChatMessage("", msg.message || "Student camera access removed.", true);
+        }
       } else if (msg.event === "screen_share") {
         if (msg.active) {
           if (typeof applySpotlight === "function") applySpotlight("screen", true);
@@ -2772,23 +2798,28 @@ function connectChat(isReconnect) {
 }
 
 function sendChatMessage(e) {
-  e.preventDefault();
+  if (e && e.preventDefault) e.preventDefault();
   if (!classPermissions.studentsCanChat && !isTeacherRole()) {
     showClassroomToast("Chat is disabled by the teacher", true);
-    return;
+    return false;
   }
   var input = document.getElementById("chat-input");
-  var text = input.value.trim();
-  if (!text || !liveSocket || liveSocket.readyState !== WebSocket.OPEN) {
-    if (!liveSocket || liveSocket.readyState !== WebSocket.OPEN) {
-      showClassroomToast("Chat still connecting — try again", true);
-    }
-    return;
+  var text = input ? input.value.trim() : "";
+  if (!text) return false;
+  if (!liveSocket || liveSocket.readyState !== WebSocket.OPEN) {
+    showClassroomToast("Chat still connecting — try again", true);
+    return false;
   }
-  liveSocket.send(JSON.stringify({ event: "chat", text: text }));
-  addChatMessage("You", text);
-  input.value = "";
+  try {
+    liveSocket.send(JSON.stringify({ event: "chat", text: text }));
+    addChatMessage("You", text);
+    input.value = "";
+  } catch (err) {
+    showClassroomToast("Could not send message", true);
+  }
+  return false;
 }
+window.sendChatMessage = sendChatMessage;
 
 function raiseHand() {
   if (!classPermissions.studentsCanRaiseHand && !isTeacherRole()) {
@@ -2801,6 +2832,10 @@ function raiseHand() {
   }
   if (isTeacherRole()) {
     addChatMessage("", "Students raise their hand — you are the teacher.", true);
+    return;
+  }
+  if (document.getElementById("btn-hand") && document.getElementById("btn-hand").classList.contains("active")) {
+    showClassroomToast("Hand already raised — waiting for teacher");
     return;
   }
   liveSocket.send(JSON.stringify({ event: "raise_hand", name: getStudentName() }));

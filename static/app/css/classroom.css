@@ -491,10 +491,16 @@ body.classroom-board-open .board-overlay:not(.hidden) {
   flex: 1; padding: 10px 12px; border-radius: 8px; border: 1px solid #6d28d9;
   background: #0a0612; color: #fff; font-size: 0.9rem;
 }
-.chat-form button {
-  padding: 10px 16px; border: none; border-radius: 8px;
-  background: #5b21b6; color: #fff; font-weight: 600; cursor: pointer;
+.chat-form button,
+.chat-send-btn {
+  padding: 10px 14px; border: none; border-radius: 999px;
+  background: #7c3aed; color: #fff; font-weight: 700; cursor: pointer;
+  min-width: 44px; min-height: 44px; line-height: 1;
+  flex: 0 0 auto;
 }
+.chat-send-btn:hover { background: #6d28d9; }
+.chat-form input:disabled,
+.chat-send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .raise-hand-panel {
   flex: 0 0 auto;

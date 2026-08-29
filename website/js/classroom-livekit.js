@@ -1584,6 +1584,8 @@
   }
 
   async function enableStudentMic() {
+    if (window._sxMicEnableBusy) return;
+    window._sxMicEnableBusy = true;
     window.studentMicAllowed = true;
     if (typeof syncStudentMicState === "function") syncStudentMicState(true);
     liveSession = window.liveSession || liveSession;
@@ -1596,9 +1598,6 @@
     if (micBtn) micBtn.disabled = false;
     if (typeof showClassroomToast === "function") {
       showClassroomToast("You can speak now — mic turning on");
-    }
-    if (typeof addChatMessage === "function") {
-      addChatMessage("", "Your teacher let you speak. Turning on your mic…", true);
     }
     try {
       var tokenOk = await refreshLiveKitToken();
@@ -1625,15 +1624,18 @@
         showClassroomToast("Mic is on — you can speak");
       }
     } catch (e) {
+      var micBtn = document.getElementById("btn-mic");
       if (micBtn) micBtn.disabled = false;
-      if (typeof addChatMessage === "function") {
-        addChatMessage("", "Mic allowed — tap the Mic button to speak. (" + (e.message || "") + ")", true);
+      if (typeof showClassroomToast === "function") {
+        showClassroomToast("Tap Mic button to speak", true);
       }
     }
+    window._sxMicEnableBusy = false;
   }
 
   async function disableStudentMic() {
     window.studentMicAllowed = false;
+    if (typeof syncStudentMicState === "function") syncStudentMicState(false);
     try {
       await setMic(false);
       await refreshLiveKitToken();

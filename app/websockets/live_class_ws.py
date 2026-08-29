@@ -141,10 +141,9 @@ async def notify_mic_granted(room_id: str, student_id: str) -> None:
         "eventId": new_event_id(),
         "user_id": sid,
         "target_user_id": sid,
-        "message": "Your teacher let you speak. Your mic is turning on.",
+        "message": "Your teacher let you speak. Tap Mic to talk.",
     }
     await send_to_user(room_id, sid, payload)
-    await broadcast(room_id, payload)
     await broadcast(room_id, {
         "event": "mic_access_update",
         "eventId": new_event_id(),
@@ -169,7 +168,6 @@ async def notify_mic_revoked(room_id: str, student_id: str) -> None:
         "message": "Your teacher muted you.",
     }
     await send_to_user(room_id, sid, payload)
-    await broadcast(room_id, payload)
     await broadcast(room_id, {
         "event": "mic_access_update",
         "eventId": new_event_id(),
