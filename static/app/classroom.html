@@ -6,7 +6,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; script-src-attr 'unsafe-inline'; connect-src * blob: data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src * data: blob:; media-src * blob: data:; worker-src 'self' blob:; frame-src 'self' blob:;" />
   <title>Live Classroom — Scholaxia</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/classroom.css?v=20260830b" />
+  <link rel="stylesheet" href="css/classroom.css?v=20260830c" />
   <link rel="stylesheet" href="css/responsive.css?v=20260804i" />
 </head>
 <body class="meet-v2">
@@ -187,6 +187,7 @@
       <button type="button" id="btn-chat" class="meet-tool-btn" onclick="toggleMeetChatPanel()" title="Chat">
         &#128172;<span>Chat</span><span id="chat-unread" class="chat-unread hidden">0</span>
       </button>
+      <button type="button" id="btn-stage-fullscreen" class="meet-tool-btn hidden" onclick="toggleStageFullscreen()" title="Full screen share">&#9974;<span>Full</span></button>
       <button type="button" id="btn-more" class="meet-tool-btn" onclick="toggleMoreMenu()" title="More">&#8943;<span>More</span></button>
       <button type="button" id="btn-save-live" class="meet-tool-btn save-class-btn student-only hidden" onclick="toggleSaveLive()">&#128190;<span>Save</span></button>
       <span id="mic-live-badge" class="mic-live-badge hidden host-only">Students hear you</span>
@@ -254,7 +255,7 @@
 <script src="js/classroom-bridge.js?v=20260828h"></script>
 <script src="js/saved-live.js?v=20260804i"></script>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.9.3/dist/livekit-client.umd.js"></script>
-<script src="js/classroom-livekit.js?v=20260830a"></script>
-<script src="js/classroom.js?v=20260830b"></script>
+<script src="js/classroom-livekit.js?v=20260830c"></script>
+<script src="js/classroom.js?v=20260830c"></script>
 </body>
 </html>

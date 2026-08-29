@@ -205,11 +205,25 @@ function startTeacherBoardHeartbeat() {
   window._sxBoardHeartbeat = setInterval(function () {
     if (!board.open) return;
     if (liveSocket && liveSocket.readyState === WebSocket.OPEN) {
-      syncBoardToRoom();
+      sendBoardHeartbeat();
     } else {
       try { connectChat(true); } catch (eHb) { /* ignore */ }
     }
   }, 12000);
+}
+
+function sendBoardHeartbeat() {
+  if (!isTeacherRole() || !board.open) return;
+  sendBoardEvent("board_open", { open: true });
+  if (board.liveText) {
+    sendBoardEvent("text_stream", {
+      id: board.liveTextId || boardLiveTextId(),
+      x: board.textX,
+      y: board.textY,
+      text: board.liveText,
+      size: board.fontSize,
+    });
+  }
 }
 
 function newBoardTextId() {
@@ -220,7 +234,27 @@ function boardLiveTextId() {
   return "live-" + Math.round(board.textX) + "-" + Math.round(board.textY);
 }
 
-var liveSaveRecorder = null;
+var _boardRedrawScheduled = false;
+var _boardTypeSendTimer = null;
+var _lastBoardTypeStream = "";
+var _lastRemoteTextStream = "";
+
+function scheduleRedrawBoard() {
+  if (_boardRedrawScheduled) return;
+  _boardRedrawScheduled = true;
+  requestAnimationFrame(function () {
+    _boardRedrawScheduled = false;
+    redrawBoard();
+  });
+}
+
+function refreshLiveKitRosterDebounced() {
+  if (window._sxRosterDebounce) clearTimeout(window._sxRosterDebounce);
+  window._sxRosterDebounce = setTimeout(function () {
+    window._sxRosterDebounce = null;
+    refreshLiveKitRoster();
+  }, 600);
+}
 var liveSaveChunks = [];
 var liveSaveActive = false;
 var liveSaveStartedAt = null;
@@ -1128,7 +1162,7 @@ function buildParticipantCardHtml(s) {
       '<button type="button" data-action="remove-student" data-student-id="' + escHtml(sid) + '">Remove</button>' +
       "</div>";
   }
-  return '<article class="participant-card' + cardMods + '" data-student-id="' + escHtml(sid) + '">' +
+  return '<article class="participant-card' + cardMods + '" data-student-id="' + escHtml(sid) + '" data-camera-on="' + (camLive ? "1" : "0") + '">' +
     (connLabel ? '<span class="participant-conn ' + connClass + '">' + connLabel + "</span>" : "") +
     '<div id="participant-reaction-' + escHtml(sid) + '" class="participant-reaction hidden" aria-hidden="true"></div>' +
     '<div id="participant-video-' + escHtml(sid) + '" class="participant-video' + (camLive ? "" : " hidden") + '"></div>' +
@@ -1143,20 +1177,25 @@ function buildParticipantCardHtml(s) {
 function updateParticipantCardContent(card, s) {
   if (!card || !s) return;
   card.classList.toggle("raised", !!raisedHands[s.student_id]);
+  card.classList.toggle("camera-on", !!(s.camera_enabled || s.camera_allowed));
+  card.setAttribute("data-camera-on", (s.camera_enabled || s.camera_allowed) ? "1" : "0");
   var strong = card.querySelector(".participant-body > strong");
   if (strong) strong.textContent = s.name || "Student";
   var status = card.querySelector(".participant-status");
   if (status) {
     var micLabel = s.mic_allowed ? "🎤 On" : "🎤 Off";
-    var camLabel = s.camera_allowed ? "📷 On" : "📷 Off";
+    var camLabel = (s.camera_enabled || s.camera_allowed) ? "📷 Live" : "📷 Off";
     var handLabel = raisedHands[s.student_id] ? '<span>✋ Raised</span>' : "";
     var joined = s.joined_at ? '<span>Joined ' + formatParticipantTime(s.joined_at) + "</span>" : "";
-    status.innerHTML = "<span>" + micLabel + "</span><span>" + camLabel + "</span>" + handLabel + joined;
+    var statusHtml = "<span>" + micLabel + "</span><span>" + camLabel + "</span>" + handLabel + joined;
+    if (status.innerHTML !== statusHtml) status.innerHTML = statusHtml;
   }
   var actions = card.querySelector(".participant-actions");
   if (isTeacherRole()) {
     var sid = String(s.student_id || "");
     var raised = raisedHands[sid] || raisedHands[sid.toLowerCase()];
+    var stateKey = sid + "|" + (s.mic_allowed ? "1" : "0") + "|" + (s.camera_allowed ? "1" : "0") + "|" + (raised ? "1" : "0");
+    if (actions && actions.dataset.stateKey === stateKey) return;
     var html = (s.mic_allowed
       ? '<button type="button" data-action="mute-student" data-student-id="' + escHtml(sid) + '">Mute</button>'
       : '<button type="button" class="btn-give-access btn-allow-speak" data-action="allow-speak" data-student-id="' +
@@ -1177,7 +1216,10 @@ function updateParticipantCardContent(card, s) {
         body.appendChild(actions);
       }
     }
-    if (actions) actions.innerHTML = html;
+    if (actions) {
+      actions.innerHTML = html;
+      actions.dataset.stateKey = stateKey;
+    }
   }
 }
 
@@ -1206,6 +1248,7 @@ function renderClassroomStudents(students) {
   if (empty) empty.remove();
 
   var existing = {};
+  var needsReattach = false;
   list.querySelectorAll(".participant-card[data-student-id]").forEach(function (card) {
     existing[card.getAttribute("data-student-id")] = card;
   });
@@ -1220,6 +1263,7 @@ function renderClassroomStudents(students) {
       wrap.innerHTML = buildParticipantCardHtml(s);
       card = wrap.firstChild;
       list.appendChild(card);
+      needsReattach = true;
     } else {
       updateParticipantCardContent(card, s);
     }
@@ -1230,13 +1274,14 @@ function renderClassroomStudents(students) {
         detachParticipantCameraVideo(sid);
       }
       existing[sid].remove();
+      needsReattach = true;
     }
   });
   list.scrollTop = scrollTop;
   var cardCount = list.querySelectorAll(".participant-card[data-student-id]").length;
   list.setAttribute("data-count", String(Math.min(cardCount, 6) || 0));
   updateParticipantsHeader(students.length, liveSession && liveSession.teacher_name);
-  if (typeof window.reattachParticipantVideos === "function") {
+  if (needsReattach && typeof window.reattachParticipantVideos === "function") {
     window.reattachParticipantVideos();
   }
   if (typeof flushPendingStudentVideos === "function") {
@@ -1432,6 +1477,7 @@ function refreshLiveKitRoster() {
 }
 
 window.refreshLiveKitRoster = refreshLiveKitRoster;
+window.refreshLiveKitRosterDebounced = refreshLiveKitRosterDebounced;
 
 function formatParticipantTime(iso) {
   try {
@@ -1538,6 +1584,10 @@ function startClassElapsedTimer() {
     } else {
       badge.textContent = "In class · " + timer;
     }
+    if (liveSocket && liveSocket.readyState === WebSocket.OPEN &&
+        window.LiveClassMedia && LiveClassMedia.isJoined && LiveClassMedia.isJoined()) {
+      showReconnectBanner(false);
+    }
   }, 1000);
 }
 
@@ -1635,7 +1685,10 @@ function applyStudentRoster(students, teacherName, activeCount) {
     renderClassroomStudents(list);
     // Keep header honest even when render path had zero cards briefly.
     updateParticipantsHeader(count, teacherName || liveSession.teacher_name || "Teacher");
-    loadClassAttendance();
+    if (!window._sxAttendanceLoaded) {
+      window._sxAttendanceLoaded = true;
+      loadClassAttendance();
+    }
   } else {
     renderParticipantsForStudent(list);
     updateParticipantsHeader(
@@ -2129,14 +2182,21 @@ function onBoardTypeInput() {
   var inp = document.getElementById("board-type-input");
   board.liveText = inp ? inp.value : "";
   board.liveTextId = boardLiveTextId();
-  redrawBoard();
-  sendBoardEvent("text_stream", {
-    id: board.liveTextId,
-    x: board.textX,
-    y: board.textY,
-    text: board.liveText,
-    size: board.fontSize
-  });
+  scheduleRedrawBoard();
+  if (_boardTypeSendTimer) return;
+  _boardTypeSendTimer = setTimeout(function () {
+    _boardTypeSendTimer = null;
+    var streamPayload = JSON.stringify({
+      id: board.liveTextId,
+      x: board.textX,
+      y: board.textY,
+      text: board.liveText,
+      size: board.fontSize,
+    });
+    if (streamPayload === _lastBoardTypeStream) return;
+    _lastBoardTypeStream = streamPayload;
+    sendBoardEvent("text_stream", JSON.parse(streamPayload));
+  }, 90);
 }
 
 function onBoardTypeKeydown(e) {
@@ -2550,11 +2610,14 @@ function handleBoardMessage(msg) {
     return;
   }
   if (msg.action === "text_stream") {
+    var streamKey = (data.x || 0) + "|" + (data.y || 0) + "|" + (data.text || "");
+    if (streamKey === _lastRemoteTextStream) return;
+    _lastRemoteTextStream = streamKey;
     board.textX = data.x;
     board.textY = data.y;
     board.liveText = data.text || "";
-    ensureBoardCanvasFitsContent();
-    redrawBoard();
+    if (!board.liveText) ensureBoardCanvasFitsContent();
+    scheduleRedrawBoard();
     scrollBoardToTypingCursor();
     return;
   }
@@ -2679,7 +2742,6 @@ function connectChat(isReconnect) {
         if (isTeacherRole() && String(pj.role || msg.role || "").toLowerCase().indexOf("teacher") < 0) {
           ensureParticipantCardForStudent(pjId, pjName);
           setTimeout(function () {
-            syncBoardToRoom();
             loadClassroomStudents(true);
           }, 200);
         }
@@ -2694,13 +2756,17 @@ function connectChat(isReconnect) {
           ensureParticipantCardForStudent(puId, pu.name);
           var cardPu = findParticipantCard(puId);
           if (cardPu) {
+            var prevCam = cardPu.getAttribute("data-camera-on") === "1";
+            var camOn = !!(pu.cameraAllowed || pu.cameraEnabled);
             updateParticipantCardContent(cardPu, {
               student_id: puId,
               name: pu.name,
               mic_allowed: !!(pu.micAllowed || pu.microphoneEnabled),
-              camera_allowed: !!(pu.cameraAllowed || pu.cameraEnabled),
+              camera_allowed: camOn,
+              camera_enabled: camOn,
             });
-            if (pu.cameraEnabled && typeof window.reattachParticipantVideos === "function") {
+            cardPu.setAttribute("data-camera-on", camOn ? "1" : "0");
+            if (camOn && !prevCam && typeof window.reattachParticipantVideos === "function") {
               window.reattachParticipantVideos();
             }
           }
@@ -2721,7 +2787,6 @@ function connectChat(isReconnect) {
         if (isTeacherRole() && msg.role === "student") {
           ensureParticipantCardForStudent(msg.user_id, joinedName);
           setTimeout(function () {
-            syncBoardToRoom();
             loadClassroomStudents(true);
           }, 300);
         }
@@ -2730,7 +2795,7 @@ function connectChat(isReconnect) {
         updateAudienceStats();
         if (isTeacherRole()) loadClassroomStudents(true);
       } else if (msg.event === "request_board_sync") {
-        if (isTeacherRole()) syncBoardToRoom();
+        if (isTeacherRole() && board.open) sendBoardHeartbeat();
       } else if (msg.event === "class_ended") {
         handleClassEnded(msg.message || "The teacher ended the class.");
       } else if (msg.event === "class_started") {
@@ -2785,7 +2850,11 @@ function connectChat(isReconnect) {
       } else if (msg.event === "spotlight" && msg.mode) {
         applySpotlight(msg.mode, true, msg.userId || msg.user_id || "");
       } else if (msg.event === "reaction") {
-        showReactionBurst(msg.emoji || "👍", msg.name || "", msg.user_id);
+        var reactUser = msg.user_id || msg.userId || "";
+        showReactionBurst(msg.emoji || "👍", msg.name || "", reactUser);
+        if (isTeacherRole()) {
+          showClassroomToast((msg.name || "Student") + " " + (msg.emoji || "👍"));
+        }
       } else if (msg.event === "permission_changed" && msg.permissions) {
         applyClassPermissions(msg.permissions);
         if (!isTeacherRole() && !classPermissions.studentsCanWriteBoard) {
@@ -2977,6 +3046,7 @@ function sendReaction(emoji) {
 function showReactionBurst(emoji, name, userId) {
   var stage = document.getElementById("video-stage") || document.getElementById("reaction-overlay");
   var overlay = document.getElementById("reaction-overlay");
+  if (overlay) overlay.setAttribute("aria-hidden", "false");
   if (!overlay && stage) {
     overlay = document.createElement("div");
     overlay.id = "reaction-overlay";
@@ -3330,14 +3400,11 @@ window.onload = function () {
   window.studentMicAllowed = studentMicAllowed;
   window.studentCameraAllowed = studentCameraAllowed;
   if (!isTeacherRole() && liveSession) {
-    if (liveSession.mic_allowed !== false) {
-      studentMicAllowed = true;
-      window.studentMicAllowed = true;
-    }
-    if (liveSession.camera_allowed !== false) {
-      studentCameraAllowed = true;
-      window.studentCameraAllowed = true;
-    }
+    studentMicAllowed = !!(liveSession.mic_allowed);
+    studentCameraAllowed = !!(liveSession.camera_allowed);
+    window.studentMicAllowed = studentMicAllowed;
+    window.studentCameraAllowed = studentCameraAllowed;
+    if (typeof syncStudentMicState === "function") syncStudentMicState(studentMicAllowed);
   }
   document.getElementById("cr-title").textContent = liveSession.title || "Live Class";
   document.getElementById("cr-meta").textContent =
@@ -3475,9 +3542,36 @@ function showReconnectBanner(show, text) {
   var el = document.getElementById("reconnect-banner");
   var txt = document.getElementById("reconnect-banner-text");
   if (!el) return;
+  if (show) {
+    var wsOk = liveSocket && liveSocket.readyState === WebSocket.OPEN;
+    var videoOk = window.LiveClassMedia && LiveClassMedia.isJoined && LiveClassMedia.isJoined();
+    if (wsOk && videoOk) {
+      show = false;
+    } else if (wsOk && !videoOk && text && text.indexOf("Connection lost") >= 0) {
+      text = "Video reconnecting…";
+    }
+  }
   if (txt && text) txt.textContent = text;
   el.classList.toggle("hidden", !show);
 }
+
+function toggleStageFullscreen(force) {
+  var on = typeof force === "boolean" ? force : !document.body.classList.contains("meet-stage-fullscreen");
+  document.body.classList.toggle("meet-stage-fullscreen", on);
+  var btn = document.getElementById("btn-stage-fullscreen");
+  if (btn) {
+    btn.classList.toggle("active", on);
+    btn.textContent = on ? "Exit full" : "Full screen";
+  }
+}
+window.toggleStageFullscreen = toggleStageFullscreen;
+
+function onScreenShareStageChange(active) {
+  var btn = document.getElementById("btn-stage-fullscreen");
+  if (btn) btn.classList.toggle("hidden", !active);
+  if (!active) toggleStageFullscreen(false);
+}
+window.onScreenShareStageChange = onScreenShareStageChange;
 
 function applySpotlight(mode, fromServer, userId) {
   currentSpotlight = mode || "teacher";

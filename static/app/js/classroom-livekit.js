@@ -464,7 +464,21 @@
     }
     if (typeof hideVideoPlaceholder === "function") hideVideoPlaceholder();
     var wrap = document.getElementById("video-remote");
-    if (!wrap) return;
+    if (!wrap || !track) return;
+    var trackId = "";
+    try {
+      trackId = (track.mediaStreamTrack && track.mediaStreamTrack.id) ||
+        (track.sid || track.trackSid || "") || "";
+    } catch (eId) { /* ignore */ }
+    var existingVid = wrap.querySelector("video");
+    if (existingVid && trackId && existingVid.dataset && existingVid.dataset.lkTrackId === trackId) {
+      wrap.classList.toggle("screen-active", !!isScreen);
+      if (typeof window.syncMainStageLayers === "function") window.syncMainStageLayers();
+      if (isScreen && typeof window.onScreenShareStageChange === "function") {
+        window.onScreenShareStageChange(true);
+      }
+      return;
+    }
     // Screen share must not sit under an open board overlay
     if (isScreen && !isTeacherRole()) {
       try {
@@ -481,8 +495,10 @@
     var box = document.createElement("div");
     box.className = "remote-user" + (isScreen ? " screen-share" : "");
     var el = track.attach();
+    if (trackId) el.dataset.lkTrackId = trackId;
     el.style.width = "100%";
     el.style.height = "100%";
+    el.style.objectFit = isScreen ? "contain" : "cover";
     el.muted = true;
     el.autoplay = true;
     el.playsInline = true;
@@ -493,6 +509,9 @@
       if (playP && playP.catch) playP.catch(function () {});
     } catch (ePlay) { /* ignore */ }
     if (typeof window.syncMainStageLayers === "function") window.syncMainStageLayers();
+    if (isScreen && typeof window.onScreenShareStageChange === "function") {
+      window.onScreenShareStageChange(true);
+    }
     if (!isTeacherRole() && !isScreen && typeof maybeShowSaveClassHint === "function") {
       maybeShowSaveClassHint();
     }
@@ -520,6 +539,7 @@
       wrap.innerHTML = "";
       wrap.classList.remove("screen-active");
     }
+    if (typeof window.onScreenShareStageChange === "function") window.onScreenShareStageChange(false);
     if (typeof window.syncMainStageLayers === "function") window.syncMainStageLayers();
     if (typeof showVideoPlaceholder === "function") {
       showVideoPlaceholder(
@@ -845,7 +865,8 @@
         if (pub.track) attachRemoteTrack(pub.track, pub, participant);
       });
       if (typeof updateAudienceStats === "function") updateAudienceStats();
-      if (typeof refreshLiveKitRoster === "function") refreshLiveKitRoster();
+      if (typeof refreshLiveKitRosterDebounced === "function") refreshLiveKitRosterDebounced();
+      else if (typeof refreshLiveKitRoster === "function") refreshLiveKitRoster();
     });
     room.on(c.RoomEvent.ParticipantDisconnected, function (participant) {
       detachRemoteAudio(participant);
@@ -860,7 +881,8 @@
         clearMainStageVideo();
       }
       if (typeof updateAudienceStats === "function") updateAudienceStats();
-      if (typeof refreshLiveKitRoster === "function") refreshLiveKitRoster();
+      if (typeof refreshLiveKitRosterDebounced === "function") refreshLiveKitRosterDebounced();
+      else if (typeof refreshLiveKitRoster === "function") refreshLiveKitRoster();
     });
     room.on(c.RoomEvent.LocalTrackPublished, function (publication) {
       if (publication && (publication.kind === c.Track.Kind.Audio || publication.kind === "audio")) {
@@ -1171,18 +1193,16 @@
       hideLiveKitSetupBanner();
       attachExistingRemoteTracks();
       if (typeof updateAudienceStats === "function") updateAudienceStats();
-      if (typeof refreshLiveKitRoster === "function") refreshLiveKitRoster();
+      if (typeof refreshLiveKitRosterDebounced === "function") refreshLiveKitRosterDebounced();
+      else if (typeof refreshLiveKitRoster === "function") refreshLiveKitRoster();
       if (typeof setVideoControlsEnabled === "function") {
         var canMic = isTeacherRole() || window.studentMicAllowed || !!(liveSession && liveSession.mic_allowed);
         var canCam = isTeacherRole() || window.studentCameraAllowed || !!(liveSession && liveSession.camera_allowed);
-        if (canMic && !isTeacherRole()) {
-          window.studentMicAllowed = true;
-        }
-        setVideoControlsEnabled(canMic || canCam);
+        setVideoControlsEnabled(canMic || canCam || isTeacherRole());
         var micBtn = document.getElementById("btn-mic");
         var camBtn = document.getElementById("btn-cam");
-        if (micBtn) micBtn.disabled = !canMic;
-        if (camBtn) camBtn.disabled = !canCam;
+        if (micBtn) micBtn.disabled = isTeacherRole() ? false : !canMic;
+        if (camBtn) camBtn.disabled = isTeacherRole() ? false : !canCam;
       }
       if (typeof setStatus === "function") setStatus("Connected — video + chat");
       if (typeof maybeHideJoinOverlay === "function") maybeHideJoinOverlay();
@@ -1203,12 +1223,12 @@
           if (!liveVideoJoined) return;
           var boardDominates = window.board && window.board.open && !remoteTeacherScreenActive();
           if (!boardDominates) {
-            attachExistingRemoteTracks();
             reattachTeacherMainStage();
+            ensureRoomAudioPlayback();
           } else {
             ensureRoomAudioPlayback();
           }
-        }, 6000);
+        }, 8000);
       }
       var studBadge = document.getElementById("audience-badge");
       if (studBadge && !isTeacherRole()) {
@@ -1234,16 +1254,23 @@
           addChatMessage("", "You are live — students can see and hear you now.", true);
         }
       } else {
-        // Always open mic when allowed so the teacher can hear this student.
-        window.studentMicAllowed = true;
-        if (liveSession) liveSession.mic_allowed = true;
+        window.studentMicAllowed = !!(liveSession && liveSession.mic_allowed);
+        window.studentCameraAllowed = !!(liveSession && liveSession.camera_allowed);
+        if (typeof syncStudentMicState === "function") syncStudentMicState(window.studentMicAllowed);
+        micOn = false;
+        camOn = false;
         try {
-          await setMic(true);
-          // Retry once — some browsers need a second publish after permission.
-          setTimeout(function () {
-            setMic(true).catch(function () {});
-          }, 1200);
-        } catch (micErr) { /* permission may need a tap */ }
+          await setMic(false);
+          await setCam(false);
+        } catch (eMute) { /* ignore */ }
+        if (typeof updateMediaButton === "function") {
+          updateMediaButton(document.getElementById("btn-mic"), false);
+          updateMediaButton(document.getElementById("btn-cam"), false);
+        }
+        var micBtnStu = document.getElementById("btn-mic");
+        var camBtnStu = document.getElementById("btn-cam");
+        if (micBtnStu) micBtnStu.disabled = !window.studentMicAllowed;
+        if (camBtnStu) camBtnStu.disabled = !window.studentCameraAllowed;
         if (!liveRoom.remoteParticipants.size) {
           if (typeof showVideoPlaceholder === "function") {
             showVideoPlaceholder("Waiting for the teacher to start video…");
