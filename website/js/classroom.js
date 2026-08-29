@@ -531,17 +531,26 @@ window.showStudentSelfPreview = showStudentSelfPreview;
 window.hideStudentSelfPreview = hideStudentSelfPreview;
 
 function showHostTools(show) {
+  var keepHiddenIds = {
+    "class-permissions-panel": true,
+    "attendance-panel": true,
+    "class-join-overlay": true,
+    "livekit-setup-banner": true,
+  };
   document.querySelectorAll(".host-only").forEach(function (el) {
+    if (keepHiddenIds[el.id]) return;
     if (show) el.classList.remove("hidden");
     else el.classList.add("hidden");
   });
   if (show) {
     document.body.classList.add("host-view");
+    document.body.classList.remove("student-view");
     document.querySelectorAll(".student-only").forEach(function (el) {
       el.classList.add("hidden");
     });
     var side = document.getElementById("host-sidebar");
     if (side && !isMobileClassroomView()) side.classList.remove("hidden");
+    collapseMeetChatPanel(false);
     startTeacherBoardHeartbeat();
   } else {
     document.body.classList.remove("host-view");
@@ -553,6 +562,13 @@ function showStudentTools(show) {
     if (show) el.classList.remove("hidden");
     else el.classList.add("hidden");
   });
+  if (show) {
+    document.body.classList.add("student-view");
+    document.body.classList.remove("host-view");
+    collapseMeetChatPanel(true);
+  } else {
+    document.body.classList.remove("student-view");
+  }
 }
 
 function updateSaveLiveUi() {
@@ -1399,48 +1415,8 @@ window.setParticipantCameraOn = setParticipantCameraOn;
 window.isParticipantVideoLive = isParticipantVideoLive;
 
 function renderParticipantsForStudent(students) {
-  var list = document.getElementById("participants-list");
-  if (!list) return;
-  var scrollTop = list.scrollTop;
-  var teacherLine = document.getElementById("participants-teacher-line");
-  if (teacherLine && liveSession) {
-    teacherLine.textContent = "Teacher: " + (liveSession.teacher_name || liveSession.teacher || "—");
-  }
-  var remotes = [];
-  if (window.LiveClassMedia && typeof window.LiveClassMedia.listRemoteRoster === "function") {
-    remotes = window.LiveClassMedia.listRemoteRoster() || [];
-  }
-  var byId = {};
-  (students || []).forEach(function (s) {
-    if (s && s.student_id) byId[String(s.student_id)] = s;
-  });
-  remotes.forEach(function (r) {
-    if (r && r.student_id && !byId[r.student_id]) byId[r.student_id] = r;
-  });
-  var merged = Object.keys(byId).map(function (k) { return byId[k]; });
-  var teacherName = (liveSession && (liveSession.teacher_name || liveSession.teacher)) || "Teacher";
-  var items = [];
-  items.push(
-    '<article class="participant-card"><div class="participant-details"><div class="participant-details-row">' +
-    '<div class="participant-avatar">T</div><div class="participant-body"><strong>' +
-    escHtml(teacherName) +
-    '</strong><div class="participant-status"><span>Host</span></div></div></div></div></article>'
-  );
-  merged.forEach(function (s) {
-    if (s.is_teacher) return;
-    var initial = (s.name || "S").charAt(0).toUpperCase();
-    items.push(
-      '<article class="participant-card" data-student-id="' + escHtml(String(s.student_id || "")) + '">' +
-      '<div class="participant-details"><div class="participant-details-row">' +
-      '<div class="participant-avatar">' + escHtml(initial) + '</div><div class="participant-body"><strong>' +
-      escHtml(s.name || "Student") + '</strong><div class="participant-status"><span>' +
-      (s.mic_allowed ? "🎤 On" : "🎤 Off") +
-      "</span></div></div></div></div></article>"
-    );
-  });
-  list.innerHTML = items.join("");
-  list.scrollTop = scrollTop;
-  updateParticipantsHeader(merged.length, liveSession && (liveSession.teacher_name || liveSession.teacher));
+  /* Student view: teacher video fills stage; no participant strip. */
+  updateParticipantsHeader((students || []).length, liveSession && (liveSession.teacher_name || liveSession.teacher));
 }
 
 function refreshLiveKitRoster() {
@@ -1468,23 +1444,20 @@ function formatParticipantTime(iso) {
 
 function updateParticipantsHeader(studentCount, teacherName) {
   var countEl = document.getElementById("participants-count");
-  var teacherEl = document.getElementById("participants-teacher-line");
-  var studentsEl = document.getElementById("participants-students-line");
   var badge = document.getElementById("audience-badge");
   var total = (studentCount || 0) + 1;
   if (countEl) countEl.textContent = "(" + total + ")";
-  if (teacherEl) teacherEl.textContent = "Teacher: " + (teacherName || liveSession.teacher_name || "—");
-  if (studentsEl) studentsEl.textContent = "Students online: " + (studentCount || 0);
-  if (badge) badge.textContent = total + " in class";
+  if (badge && !classElapsedTimer) {
+    badge.textContent = total + " in class";
+  }
 }
 
 function toggleChatDrawer(forceOpen) {
-  switchMeetTab("chat");
-  clearChatUnread();
-  try {
-    var input = document.getElementById("chat-input");
-    if (input) setTimeout(function () { input.focus(); }, 180);
-  } catch (e) { /* ignore */ }
+  if (typeof forceOpen === "boolean" && !forceOpen) {
+    collapseMeetChatPanel(true);
+    return;
+  }
+  toggleMeetChatPanel();
 }
 
 function switchMeetTab(tab) {
@@ -1497,6 +1470,7 @@ function switchMeetTab(tab) {
   if (chatPanel) chatPanel.classList.toggle("hidden", activeMeetTab !== "chat");
   if (handsPanel) handsPanel.classList.toggle("hidden", activeMeetTab !== "hands");
   if (activeMeetTab === "chat") {
+    collapseMeetChatPanel(false);
     clearChatUnread();
     try {
       var input = document.getElementById("chat-input");
@@ -1505,6 +1479,23 @@ function switchMeetTab(tab) {
   }
 }
 window.switchMeetTab = switchMeetTab;
+
+function collapseMeetChatPanel(collapse) {
+  var panel = document.querySelector(".meet-bottom-panel");
+  if (!panel) return;
+  var hide = typeof collapse === "boolean" ? collapse : !panel.classList.contains("collapsed");
+  panel.classList.toggle("collapsed", hide);
+  try { sessionStorage.setItem("sx_meet_chat_collapsed", hide ? "1" : "0"); } catch (e) {}
+}
+window.collapseMeetChatPanel = collapseMeetChatPanel;
+
+function toggleMeetChatPanel() {
+  var panel = document.querySelector(".meet-bottom-panel");
+  if (!panel) return;
+  collapseMeetChatPanel(!panel.classList.contains("collapsed"));
+  if (!panel.classList.contains("collapsed")) switchMeetTab("chat");
+}
+window.toggleMeetChatPanel = toggleMeetChatPanel;
 
 function toggleParticipantStrip(forceShow) {
   var wrap = document.getElementById("meet-strip-wrap");
@@ -1567,7 +1558,8 @@ function clearChatUnread() {
 }
 
 function bumpChatUnread() {
-  if (activeMeetTab === "chat") return;
+  var panel = document.querySelector(".meet-bottom-panel");
+  if (activeMeetTab === "chat" && panel && !panel.classList.contains("collapsed")) return;
   setChatUnread(chatUnreadCount + 1);
 }
 
@@ -1590,7 +1582,6 @@ async function loadClassAttendance() {
   if (!log) return;
   try {
     var data = await api("/api/v1/live-classes/" + classId + "/attendance");
-    if (panel) panel.classList.remove("hidden");
     if (!data.records || !data.records.length) {
       log.innerHTML = "<p>No attendance yet.</p>";
       return;
@@ -3476,6 +3467,7 @@ window.toggleClassroomChrome = toggleClassroomChrome;
   document.body.classList.remove("classroom-chrome-hidden");
   try {
     if (sessionStorage.getItem("sx_meet_strip_hidden") === "1") toggleParticipantStrip(false);
+    if (sessionStorage.getItem("sx_meet_chat_collapsed") === "1") collapseMeetChatPanel(true);
   } catch (e) { /* ignore */ }
 })();
 
@@ -3660,11 +3652,19 @@ function toggleClassPermission(key, on) {
 window.toggleClassPermission = toggleClassPermission;
 
 function showPermissionsPanel() {
-  var panel = document.getElementById("class-permissions-panel");
-  if (panel) panel.classList.toggle("hidden");
+  toggleControlsSheet(true);
   toggleHostSidebar(true);
+  loadClassAttendance();
 }
 window.showPermissionsPanel = showPermissionsPanel;
+
+function toggleControlsSheet(forceOpen) {
+  var sheet = document.getElementById("controls-sheet");
+  if (!sheet) return;
+  var open = typeof forceOpen === "boolean" ? forceOpen : sheet.classList.contains("hidden");
+  sheet.classList.toggle("hidden", !open);
+}
+window.toggleControlsSheet = toggleControlsSheet;
 
 function showSpotlightBarIfHost() {
   var bar = document.getElementById("spotlight-bar");

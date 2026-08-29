@@ -6,7 +6,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; script-src-attr 'unsafe-inline'; connect-src * blob: data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src * data: blob:; media-src * blob: data:; worker-src 'self' blob:; frame-src 'self' blob:;" />
   <title>Live Classroom — Scholaxia</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/classroom.css?v=20260830a" />
+  <link rel="stylesheet" href="css/classroom.css?v=20260830b" />
   <link rel="stylesheet" href="css/responsive.css?v=20260804i" />
 </head>
 <body class="meet-v2">
@@ -112,26 +112,27 @@
         </div>
       </section>
 
-      <div id="meet-strip-wrap" class="meet-strip-wrap">
+      <div id="meet-strip-wrap" class="meet-strip-wrap host-only hidden">
         <div class="meet-strip-head">
           <span>Participants <span id="participants-count">(0)</span></span>
           <button type="button" class="btn-sm meet-strip-toggle" onclick="toggleParticipantStrip()">Hide people</button>
         </div>
-        <p id="participants-teacher-line" class="participants-sub meet-strip-sub">Teacher: —</p>
-        <p id="participants-students-line" class="participants-sub meet-strip-sub">Students online: 0</p>
         <div id="participant-strip" class="participant-strip">
           <div id="participants-list" class="participants-list participants-strip" data-count="0">
-            <p class="participants-empty">Waiting for participants…</p>
+            <p class="participants-empty">No students yet</p>
           </div>
         </div>
       </div>
 
-      <div class="meet-bottom-panel">
-        <div class="meet-tabs" role="tablist">
-          <button type="button" class="meet-tab is-active" data-tab="chat" onclick="switchMeetTab('chat')">Chat</button>
-          <button type="button" class="meet-tab host-only hidden" data-tab="hands" onclick="switchMeetTab('hands')">
-            Raised hands <span id="hands-tab-badge" class="meet-tab-badge hidden">0</span>
-          </button>
+      <div class="meet-bottom-panel" id="meet-bottom-panel">
+        <div class="meet-panel-head">
+          <div class="meet-tabs" role="tablist">
+            <button type="button" class="meet-tab is-active" data-tab="chat" onclick="switchMeetTab('chat')">Chat</button>
+            <button type="button" class="meet-tab host-only hidden" data-tab="hands" onclick="switchMeetTab('hands')">
+              Raised hands <span id="hands-tab-badge" class="meet-tab-badge hidden">0</span>
+            </button>
+          </div>
+          <button type="button" class="meet-panel-collapse" onclick="collapseMeetChatPanel(true)" title="Hide chat">&#10005;</button>
         </div>
         <div id="meet-panel-chat" class="meet-panel-body">
           <div id="chat-log" class="chat-log meet-chat-log"></div>
@@ -156,7 +157,7 @@
         </div>
         <input type="search" id="participant-search" class="meet-search" placeholder="Search participants…" oninput="filterHostParticipants(this.value)" />
         <div id="host-participants-list" class="host-participants-list"></div>
-        <button type="button" class="meet-side-link" onclick="showPermissionsPanel()">Class controls</button>
+        <button type="button" class="meet-side-link" onclick="showPermissionsPanel()">Class controls &amp; attendance</button>
       </section>
       <section class="meet-side-block">
         <div class="meet-side-head">
@@ -169,20 +170,6 @@
           </div>
         </div>
       </section>
-      <div id="class-permissions-panel" class="class-permissions-panel host-only hidden">
-        <h3>Class controls</h3>
-        <label class="perm-row"><input type="checkbox" id="perm-camera" checked onchange="toggleClassPermission('studentsCanUseCamera', this.checked)" /> Students can use camera</label>
-        <label class="perm-row"><input type="checkbox" id="perm-mic" checked onchange="toggleClassPermission('studentsCanUseMicrophone', this.checked)" /> Students can use mic</label>
-        <label class="perm-row"><input type="checkbox" id="perm-chat" checked onchange="toggleClassPermission('studentsCanChat', this.checked)" /> Students can chat</label>
-        <label class="perm-row"><input type="checkbox" id="perm-react" checked onchange="toggleClassPermission('studentsCanReact', this.checked)" /> Students can react</label>
-        <label class="perm-row"><input type="checkbox" id="perm-hand" checked onchange="toggleClassPermission('studentsCanRaiseHand', this.checked)" /> Students can raise hand</label>
-        <label class="perm-row"><input type="checkbox" id="perm-board" onchange="toggleClassPermission('studentsCanWriteBoard', this.checked)" /> Students can write on board</label>
-        <label class="perm-row"><input type="checkbox" id="perm-screen" onchange="toggleClassPermission('studentsCanShareScreen', this.checked)" /> Students can share screen</label>
-      </div>
-      <div id="attendance-panel" class="attendance-panel host-only hidden">
-        <h3>Attendance</h3>
-        <div id="attendance-log" class="attendance-log"></div>
-      </div>
     </aside>
   </main>
 
@@ -197,7 +184,7 @@
       <button type="button" id="btn-board" class="meet-tool-btn host-only hidden" onclick="toggleBoard()" title="Board">&#128221;<span>Board</span></button>
       <button type="button" id="btn-hand" class="meet-tool-btn student-only" onclick="raiseHand()" title="Raise hand">&#9995;<span>Hand</span></button>
       <button type="button" id="btn-react" class="meet-tool-btn" onclick="toggleReactionSheet()" title="React">&#128522;<span>React</span></button>
-      <button type="button" id="btn-chat" class="meet-tool-btn" onclick="switchMeetTab('chat')" title="Chat">
+      <button type="button" id="btn-chat" class="meet-tool-btn" onclick="toggleMeetChatPanel()" title="Chat">
         &#128172;<span>Chat</span><span id="chat-unread" class="chat-unread hidden">0</span>
       </button>
       <button type="button" id="btn-more" class="meet-tool-btn" onclick="toggleMoreMenu()" title="More">&#8943;<span>More</span></button>
@@ -228,11 +215,32 @@
     <p class="bottom-sheet-title">More</p>
     <div class="more-menu-list">
       <button type="button" onclick="toggleParticipantStrip(false); toggleMoreMenu(false)">Participants strip</button>
-      <button type="button" onclick="switchMeetTab('chat'); toggleMoreMenu(false)">Chat</button>
+      <button type="button" onclick="toggleMeetChatPanel(); toggleMoreMenu(false)">Chat</button>
       <button type="button" class="host-only hidden" onclick="toggleHostSidebar(true); toggleMoreMenu(false)">Host sidebar</button>
       <button type="button" class="host-only hidden" onclick="toggleScreenShare(); toggleMoreMenu(false)">Share screen</button>
       <button type="button" class="host-only hidden" onclick="toggleBoard(); toggleMoreMenu(false)">Whiteboard</button>
       <button type="button" onclick="leaveClassroom()">Leave class</button>
+    </div>
+  </div>
+
+  <div id="controls-sheet" class="bottom-sheet hidden" role="dialog" aria-label="Class controls">
+    <div class="bottom-sheet-handle"></div>
+    <div class="controls-sheet-head">
+      <p class="bottom-sheet-title">Class controls</p>
+      <button type="button" class="btn-sm" onclick="toggleControlsSheet(false)">Close</button>
+    </div>
+    <div id="class-permissions-panel" class="class-permissions-panel sheet-permissions">
+      <label class="perm-row"><input type="checkbox" id="perm-camera" checked onchange="toggleClassPermission('studentsCanUseCamera', this.checked)" /> Students can use camera</label>
+      <label class="perm-row"><input type="checkbox" id="perm-mic" checked onchange="toggleClassPermission('studentsCanUseMicrophone', this.checked)" /> Students can use mic</label>
+      <label class="perm-row"><input type="checkbox" id="perm-chat" checked onchange="toggleClassPermission('studentsCanChat', this.checked)" /> Students can chat</label>
+      <label class="perm-row"><input type="checkbox" id="perm-react" checked onchange="toggleClassPermission('studentsCanReact', this.checked)" /> Students can react</label>
+      <label class="perm-row"><input type="checkbox" id="perm-hand" checked onchange="toggleClassPermission('studentsCanRaiseHand', this.checked)" /> Students can raise hand</label>
+      <label class="perm-row"><input type="checkbox" id="perm-board" onchange="toggleClassPermission('studentsCanWriteBoard', this.checked)" /> Students can write on board</label>
+      <label class="perm-row"><input type="checkbox" id="perm-screen" onchange="toggleClassPermission('studentsCanShareScreen', this.checked)" /> Students can share screen</label>
+    </div>
+    <div id="attendance-panel" class="attendance-panel sheet-attendance">
+      <h3>Attendance</h3>
+      <div id="attendance-log" class="attendance-log"></div>
     </div>
   </div>
 
@@ -247,6 +255,6 @@
 <script src="js/saved-live.js?v=20260804i"></script>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.9.3/dist/livekit-client.umd.js"></script>
 <script src="js/classroom-livekit.js?v=20260830a"></script>
-<script src="js/classroom.js?v=20260830a"></script>
+<script src="js/classroom.js?v=20260830b"></script>
 </body>
 </html>

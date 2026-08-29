@@ -1889,11 +1889,134 @@ body.meet-v2.host-view .meet-main {
     z-index: 1200;
     box-shadow: -8px 0 32px rgba(0, 0, 0, 0.5);
   }
-  .meet-bottom-panel {
-    max-height: 180px;
-    min-height: 140px;
+  .meet-bottom-panel:not(.collapsed) {
+    max-height: 34vh;
+    min-height: 160px;
   }
   .meet-tool-btn span:not(.chat-unread) { display: none; }
   .meet-tool-btn { min-width: 44px; padding: 10px 8px; }
+}
+
+/* Meet v2 layout fixes — override legacy mobile classroom rules */
+body.meet-v2 .classroom-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+}
+body.meet-v2 .meet-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+body.meet-v2 .meet-primary {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+body.meet-v2 .main-stage-wrap {
+  position: relative !important;
+  inset: auto !important;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100% !important;
+  max-width: 100% !important;
+  z-index: auto;
+  overflow: hidden;
+  padding: 8px 10px 0;
+  display: flex;
+}
+body.meet-v2 .main-stage-wrap .video-stage,
+body.meet-v2 #video-stage {
+  flex: 1;
+  min-height: 0;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  border-radius: 14px;
+}
+body.meet-v2 #classroom-toolbar.meet-toolbar {
+  flex: 0 0 auto;
+  order: unset !important;
+  position: relative !important;
+  bottom: auto !important;
+  width: 100%;
+  z-index: 40;
+}
+body.meet-v2.student-view .meet-strip-wrap {
+  display: none !important;
+}
+body.meet-v2.host-view .meet-tab[data-tab="hands"] {
+  display: none;
+}
+.meet-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #2e1f4a;
+  background: #1a1228;
+}
+.meet-panel-head .meet-tabs {
+  flex: 1;
+  border-bottom: none;
+  background: transparent;
+}
+.meet-panel-collapse {
+  border: none;
+  background: transparent;
+  color: #a78bfa;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+}
+.meet-bottom-panel.collapsed {
+  flex: 0 0 0 !important;
+  max-height: 0 !important;
+  min-height: 0 !important;
+  margin: 0 10px !important;
+  padding: 0 !important;
+  border: none !important;
+  overflow: hidden !important;
+  opacity: 0;
+  pointer-events: none;
+}
+.meet-bottom-panel:not(.collapsed) {
+  flex: 0 0 200px;
+  max-height: 30vh;
+}
+body.meet-v2.host-view .meet-bottom-panel:not(.collapsed) {
+  flex: 0 0 180px;
+  max-height: 26vh;
+}
+.controls-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 4px 8px;
+}
+.sheet-permissions {
+  border-top: none;
+  padding: 0 4px;
+}
+.sheet-attendance {
+  margin-top: 12px;
+  padding: 0 4px;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+body.meet-v2 .meet-sidebar {
+  overflow-y: auto;
+}
+@media (max-width: 900px) {
+  body.meet-v2 .main-stage-wrap {
+    padding: 4px 6px 0;
+  }
+  body.meet-v2.student-view .meet-bottom-panel:not(.collapsed) {
+    max-height: 38vh;
+  }
 }
 
