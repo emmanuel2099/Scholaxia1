@@ -355,6 +355,49 @@ def raised_hand_queue(room_id: str) -> List[dict]:
     return out
 
 
+DEFAULT_PERMISSIONS = {
+    "studentsCanUseCamera": True,
+    "studentsCanUseMicrophone": True,
+    "studentsCanChat": True,
+    "studentsCanReact": True,
+    "studentsCanRaiseHand": True,
+    "studentsCanShareScreen": False,
+    "studentsCanWriteBoard": False,
+}
+
+
+def default_permissions() -> dict:
+    return dict(DEFAULT_PERMISSIONS)
+
+
+def get_room_permissions(room_id: str) -> dict:
+    meta = room_meta.get(room_id) or {}
+    perms = dict(DEFAULT_PERMISSIONS)
+    stored = meta.get("permissions") or {}
+    if isinstance(stored, dict):
+        for k, v in stored.items():
+            if k in perms:
+                perms[k] = bool(v)
+    return perms
+
+
+def set_room_permissions(room_id: str, permissions: dict | None) -> dict:
+    cleaned = get_room_permissions(room_id)
+    if isinstance(permissions, dict):
+        for k, v in permissions.items():
+            if k in cleaned:
+                cleaned[k] = bool(v)
+    set_room_meta(room_id, permissions=cleaned)
+    return cleaned
+
+
+def lower_all_hands(room_id: str) -> List[str]:
+    hands = list(room_raised_hands.get(room_id) or [])
+    for key in hands:
+        lower_hand(room_id, key)
+    return hands
+
+
 def set_room_meta(room_id: str, **kwargs: Any) -> dict:
     meta = room_meta.setdefault(room_id, {})
     meta.update({k: v for k, v in kwargs.items() if v is not None})
@@ -372,20 +415,13 @@ def get_room_snapshot(room_id: str) -> dict:
         "sessionStatus": meta.get("sessionStatus") or "LIVE",
         "classId": meta.get("classId"),
         "presentation": meta.get("presentation") or "teacher",
+        "spotlight": meta.get("spotlight") or meta.get("presentation") or "teacher",
+        "spotlightUserId": meta.get("spotlightUserId"),
         "screenShareActive": bool(meta.get("screenShareActive")),
         "participants": list_participants(room_id),
         "raisedHands": raised_hand_queue(room_id),
         "boardOpen": bool(board.get("open")),
-        "permissions": meta.get("permissions")
-        or {
-            "studentsCanUseCamera": True,
-            "studentsCanUseMicrophone": True,
-            "studentsCanChat": True,
-            "studentsCanReact": True,
-            "studentsCanRaiseHand": True,
-            "studentsCanShareScreen": False,
-            "studentsCanWriteBoard": False,
-        },
+        "permissions": get_room_permissions(room_id),
     }
 
 

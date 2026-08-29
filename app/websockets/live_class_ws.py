@@ -25,10 +25,13 @@ from app.services.live_class_room import (
     get_room_snapshot,
     raise_hand,
     lower_hand,
+    lower_all_hands,
     list_participants,
     new_event_id,
     set_room_meta,
     upsert_participant_flags,
+    get_room_permissions,
+    set_room_permissions,
 )
 
 # room_id -> list of connected websockets with metadata
@@ -264,15 +267,22 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
             event = message.get("event")
 
             if event == "chat":
-                # Exclude sender — client already shows local "You" echo
-                await broadcast(room_id, {
-                    "event": "chat",
-                    "eventId": new_event_id(),
-                    "user_id": user_id,
-                    "role": role,
-                    "name": name,
-                    "text": message.get("text", ""),
-                }, exclude=websocket)
+                perms = get_room_permissions(room_id)
+                if not _is_teacher_role(role) and not perms.get("studentsCanChat", True):
+                    await websocket.send_text(json.dumps({
+                        "event": "error",
+                        "message": "Chat is disabled by the teacher.",
+                    }))
+                else:
+                    # Exclude sender — client already shows local "You" echo
+                    await broadcast(room_id, {
+                        "event": "chat",
+                        "eventId": new_event_id(),
+                        "user_id": user_id,
+                        "role": role,
+                        "name": name,
+                        "text": message.get("text", ""),
+                    }, exclude=websocket)
 
             elif event == "screen_share":
                 active = bool(message.get("active"))
@@ -291,7 +301,10 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
                 )
 
             elif event == "whiteboard":
+                perms = get_room_permissions(room_id)
                 has_access = _is_teacher_role(role) or has_whiteboard_access(room_id, user_id)
+                if not _is_teacher_role(role) and not perms.get("studentsCanWriteBoard", False):
+                    has_access = False
                 if not has_access:
                     await websocket.send_text(json.dumps({
                         "event": "error",
@@ -304,6 +317,7 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
                         record_board_event(room_id, action, data_payload)
                     await broadcast(room_id, {
                         "event": "whiteboard",
+                        "eventId": new_event_id(),
                         "user_id": user_id,
                         "action": action,
                         "data": data_payload,
@@ -399,16 +413,23 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
                 }, exclude=websocket)
 
             elif event == "raise_hand":
-                hand_name = message.get("name") or name or "Student"
-                p = raise_hand(room_id, user_id, hand_name)
-                await broadcast(room_id, {
-                    "event": "raise_hand",
-                    "eventId": new_event_id(),
-                    "user_id": user_id,
-                    "name": hand_name,
-                    "participant": p,
-                    "raisedHands": get_room_snapshot(room_id).get("raisedHands") or [],
-                })
+                perms = get_room_permissions(room_id)
+                if not _is_teacher_role(role) and not perms.get("studentsCanRaiseHand", True):
+                    await websocket.send_text(json.dumps({
+                        "event": "error",
+                        "message": "Raise hand is disabled by the teacher.",
+                    }))
+                else:
+                    hand_name = message.get("name") or name or "Student"
+                    p = raise_hand(room_id, user_id, hand_name)
+                    await broadcast(room_id, {
+                        "event": "raise_hand",
+                        "eventId": new_event_id(),
+                        "user_id": user_id,
+                        "name": hand_name,
+                        "participant": p,
+                        "raisedHands": get_room_snapshot(room_id).get("raisedHands") or [],
+                    })
 
             elif event == "lower_hand":
                 target = message.get("target_user_id") or user_id
@@ -421,17 +442,72 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
                     "user_id": target,
                 })
 
+            elif event == "lower_all_hands":
+                if not _is_teacher_role(role):
+                    await websocket.send_text(json.dumps({
+                        "event": "error",
+                        "message": "Only the teacher can lower all hands.",
+                    }))
+                else:
+                    lowered = lower_all_hands(room_id)
+                    await broadcast(room_id, {
+                        "event": "lower_all_hands",
+                        "eventId": new_event_id(),
+                        "user_ids": lowered,
+                        "raisedHands": [],
+                    })
+
+            elif event == "set_permissions":
+                if not _is_teacher_role(role):
+                    await websocket.send_text(json.dumps({
+                        "event": "error",
+                        "message": "Only the teacher can change class permissions.",
+                    }))
+                else:
+                    perms = set_room_permissions(room_id, message.get("permissions") or {})
+                    await broadcast(room_id, {
+                        "event": "permission_changed",
+                        "eventId": new_event_id(),
+                        "permissions": perms,
+                    })
+
+            elif event == "spotlight":
+                mode = str(message.get("mode") or "teacher").strip().lower()
+                if mode not in ("teacher", "board", "screen", "grid", "student"):
+                    mode = "teacher"
+                spotlight_user = message.get("userId") or message.get("user_id") or ""
+                if _is_teacher_role(role):
+                    meta_kwargs = {"spotlight": mode, "presentation": mode}
+                    if mode == "student" and spotlight_user:
+                        meta_kwargs["spotlightUserId"] = str(spotlight_user)
+                    elif mode != "student":
+                        meta_kwargs["spotlightUserId"] = None
+                    set_room_meta(room_id, **meta_kwargs)
+                    await broadcast(room_id, {
+                        "event": "spotlight",
+                        "eventId": new_event_id(),
+                        "mode": mode,
+                        "userId": spotlight_user if mode == "student" else None,
+                    }, exclude=websocket)
+
             elif event == "reaction":
-                emoji = (message.get("emoji") or "👍").strip()[:8]
-                upsert_participant_flags(room_id, user_id, currentReaction=emoji)
-                await broadcast(room_id, {
-                    "event": "reaction",
-                    "eventId": new_event_id(),
-                    "user_id": user_id,
-                    "name": message.get("name") or name,
-                    "emoji": emoji,
-                    "role": role,
-                })
+                perms = get_room_permissions(room_id)
+                if not _is_teacher_role(role) and not perms.get("studentsCanReact", True):
+                    await websocket.send_text(json.dumps({
+                        "event": "error",
+                        "message": "Reactions are disabled by the teacher.",
+                    }))
+                else:
+                    emoji = (message.get("emoji") or "👍").strip()[:8]
+                    upsert_participant_flags(room_id, user_id, currentReaction=emoji)
+                    await broadcast(room_id, {
+                        "event": "reaction",
+                        "eventId": new_event_id(),
+                        "user_id": user_id,
+                        "name": message.get("name") or name,
+                        "emoji": emoji,
+                        "role": role,
+                    }, exclude=websocket)
 
             elif event == "poll_answer":
                 await broadcast(room_id, {

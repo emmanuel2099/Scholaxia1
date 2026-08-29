@@ -931,6 +931,22 @@ async def start_class(
     if not was_live:
         await _notify_for_class(db, live_class, live_now=True)
         await _notify_assigned_students_for_class(db, str(live_class.teacher_id), live_class)
+        try:
+            from app.websockets.live_class_ws import broadcast as ws_broadcast
+            from app.services.live_class_room import new_event_id
+
+            if live_class.room_id:
+                await ws_broadcast(
+                    str(live_class.room_id),
+                    {
+                        "event": "class_started",
+                        "eventId": new_event_id(),
+                        "class_id": str(live_class.id),
+                        "message": "Your teacher has started the class.",
+                    },
+                )
+        except Exception:
+            pass
     # Open mics for everyone already in the room so teacher â†” students hear each other.
     att_res = await db.execute(
         select(ClassAttendance).where(
@@ -2083,10 +2099,17 @@ async def end_class(
         from app.websockets.live_class_ws import broadcast as ws_broadcast
 
         if room_id:
+            try:
+                from app.services.live_class_room import set_room_meta, new_event_id
+
+                set_room_meta(str(room_id), sessionStatus="ENDED")
+            except Exception:
+                pass
             await ws_broadcast(
                 room_id,
                 {
                     "event": "class_ended",
+                    "eventId": new_event_id(),
                     "class_id": str(cid),
                     "message": "Class ended by the teacher.",
                 },

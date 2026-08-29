@@ -420,6 +420,8 @@ async function endClass(id) {
           role: "teacher",
           end_time: endTime || token.end_time || null,
           already_live: !!alreadyLive,
+          session_status: "LIVE",
+          is_live: true,
         })
       );
       window.location.href = "classroom.html";

@@ -3628,6 +3628,8 @@
         can_publish: r.can_publish !== false,
         role: "student",
         end_time: r.end_time || null,
+        session_status: r.session_status || (r.is_live ? "LIVE" : "LOBBY"),
+        is_live: r.is_live !== false,
       };
       writeLocalJson("live_session", sess);
       try {
