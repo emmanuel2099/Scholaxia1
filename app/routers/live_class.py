@@ -262,10 +262,25 @@ async def join_class_by_code(
     if not normalized:
         raise HTTPException(status_code=400, detail="Enter the access code from your Access Code tab.")
 
+    # Normalize SX-XXXX / spaced digits so students can paste flexibly
+    compact = normalized.replace(" ", "").replace("-", "")
     result = await db.execute(select(LiveClass).where(LiveClass.join_code == normalized))
     live_class = result.scalar_one_or_none()
+    if not live_class and compact != normalized:
+        result = await db.execute(
+            select(LiveClass).where(LiveClass.join_code == compact)
+        )
+        live_class = result.scalar_one_or_none()
     if not live_class:
-        raise HTTPException(status_code=404, detail="Invalid code. Each class has its own code â€” check Access Code tab.")
+        # Try matching SX- prefix variants
+        result = await db.execute(
+            select(LiveClass).where(LiveClass.join_code.ilike(f"%{compact[-8:]}"))
+        )
+        candidates = result.scalars().all()
+        if len(candidates) == 1:
+            live_class = candidates[0]
+    if not live_class:
+        raise HTTPException(status_code=404, detail="Invalid or expired class code.")
 
     sid = parse_uuid(current_user["sub"])
     delivery = await db.execute(
@@ -276,6 +291,16 @@ async def join_class_by_code(
     )
     delivery_row = delivery.scalar_one_or_none()
 
+    now = naive_utc_now()
+    status = _session_status(live_class, now)
+    if status == "ENDED":
+        raise HTTPException(status_code=410, detail="This class has ended.")
+    if status == "SCHEDULED" and not live_class.is_live:
+        raise HTTPException(
+            status_code=404,
+            detail="Your teacher has not started this class yet.",
+        )
+
     prof_res = await db.execute(
         select(StudentProfile).where(StudentProfile.user_id == current_user["sub"])
     )
@@ -283,7 +308,7 @@ async def join_class_by_code(
     can_access, detail = await _student_can_access_class(
         db, current_user["sub"], live_class, profile
     )
-    # Private class access code IS the invite â€” student joins free (no subscription).
+    # Private class access code IS the invite — student joins free (no subscription).
     if not can_access and _class_visibility(live_class) == LiveClassVisibility.private.value:
         can_access, detail = True, ""
         try:
@@ -297,9 +322,13 @@ async def join_class_by_code(
     if not can_access:
         raise HTTPException(status_code=403, detail=detail)
 
-    now = naive_utc_now()
     if not _class_is_active(live_class, now):
-        raise HTTPException(status_code=404, detail="This class is not live yet.")
+        if status == "ENDED":
+            raise HTTPException(status_code=410, detail="This class has ended.")
+        raise HTTPException(
+            status_code=404,
+            detail="Your teacher has not started this class yet.",
+        )
 
     if delivery_row:
         delivery_row.is_read = True
@@ -511,6 +540,19 @@ def _class_is_active(live_class: LiveClass, now: datetime) -> bool:
         if live_class.end_time is None or live_class.end_time > now:
             return True
     return False
+
+
+def _session_status(live_class: LiveClass, now: datetime | None = None) -> str:
+    """SCHEDULED | LOBBY | LIVE | ENDED — derived from existing columns."""
+    from app.services.live_class_room import derive_session_status
+
+    now = now or naive_utc_now()
+    return derive_session_status(
+        is_live=bool(live_class.is_live),
+        start_time=live_class.start_time,
+        end_time=live_class.end_time,
+        now=now,
+    )
 
 
 async def _heal_stale_live_flags(db: AsyncSession, now: datetime | None = None) -> None:
@@ -875,6 +917,17 @@ async def start_class(
     if live_class.end_time and live_class.end_time <= now:
         live_class.end_time = now + timedelta(hours=2)
 
+    try:
+        from app.services.live_class_room import set_room_meta
+
+        set_room_meta(
+            str(live_class.room_id or ""),
+            classId=str(live_class.id),
+            sessionStatus="LIVE",
+        )
+    except Exception:
+        pass
+
     if not was_live:
         await _notify_for_class(db, live_class, live_now=True)
         await _notify_assigned_students_for_class(db, str(live_class.teacher_id), live_class)
@@ -1071,10 +1124,21 @@ async def join_class(
             await _safe_rollback()
 
         try:
-            from app.services.live_class_room import grant_mic, grant_camera
+            from app.services.live_class_room import grant_mic, grant_camera, set_room_meta, upsert_participant
 
             grant_mic(room_id, sid)
             grant_camera(room_id, sid)
+            set_room_meta(
+                room_id,
+                classId=str(class_uuid),
+                sessionStatus="LIVE" if is_live else "LOBBY",
+            )
+            upsert_participant(
+                room_id,
+                sid,
+                role="student",
+                name=current_user.get("email") or "Student",
+            )
         except Exception:
             pass
 
@@ -1099,6 +1163,7 @@ async def join_class(
             **payload,
             "is_muted": False,
             "is_live": is_live,
+            "session_status": "LIVE" if is_live else "LOBBY",
             "end_time": end_time_iso,
             "mic_allowed": True,
             "camera_allowed": True,
@@ -1224,6 +1289,7 @@ async def class_presence(
         "class_id": str(live_class.id),
         "room_id": live_class.room_id,
         "is_live": bool(live_class.is_live),
+        "session_status": _session_status(live_class),
         "teacher_id": str(live_class.teacher_id),
         "teacher_name": teacher.full_name if teacher else "Teacher",
         "active_attendees": len(students),

@@ -569,6 +569,10 @@
       }
       if (isTeacherRole() && isCameraPublication(publication)) {
         var studentId = resolveStudentIdFromParticipant(participant);
+        var displayName = (participant && (participant.name || participant.identity)) || "Student";
+        if (studentId && typeof ensureParticipantCardForStudent === "function") {
+          ensureParticipantCardForStudent(studentId, displayName);
+        }
         if (studentId) {
           participantVideoTracks[studentId] = {
             track: track,
@@ -579,6 +583,10 @@
             sidebarVideoOrder.push(studentId);
           }
           applyStudentVideoBudget();
+          // Force attach even if roster was empty a moment ago
+          if (typeof attachParticipantCameraVideo === "function") {
+            attachParticipantCameraVideo(studentId, track);
+          }
         }
         return;
       }
@@ -1221,6 +1229,18 @@
     }
   }
 
+  function reportLocalMediaState() {
+    try {
+      if (typeof liveSocket !== "undefined" && liveSocket && liveSocket.readyState === 1) {
+        liveSocket.send(JSON.stringify({
+          event: "participant_media_state",
+          cameraEnabled: !!camOn,
+          microphoneEnabled: !!micOn,
+        }));
+      }
+    } catch (e) { /* ignore */ }
+  }
+
   async function setMic(on) {
     if (mediaMode === "local" && window.localPreviewStream) {
       var audioTrack = window.localPreviewStream.getAudioTracks()[0];
@@ -1245,6 +1265,7 @@
     await publishMicrophoneEnabled(on);
     micOn = on;
     if (typeof updateMediaButton === "function") updateMediaButton(btn, on);
+    reportLocalMediaState();
     if (on) {
       var track = getLocalMicTrack();
       if (track && typeof startMicMonitor === "function") startMicMonitor(track);
@@ -1308,6 +1329,7 @@
     }
     camOn = on;
     if (typeof updateMediaButton === "function") updateMediaButton(btn, on);
+    reportLocalMediaState();
     if (on) {
       attachLocalCameraPreview();
       if (isTeacherRole()) {

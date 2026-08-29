@@ -290,6 +290,62 @@ function findParticipantCard(studentId) {
   return null;
 }
 
+/** Ensure a participant tile exists for LiveKit identity (teacher view). */
+function ensureParticipantCardForStudent(studentId, name) {
+  if (!studentId || !isTeacherRole()) return findParticipantCard(studentId);
+  var existing = findParticipantCard(studentId);
+  if (existing) return existing;
+  var list = document.getElementById("participants-list");
+  if (!list) return null;
+  var empty = list.querySelector(".participants-empty");
+  if (empty) empty.remove();
+  var s = {
+    student_id: String(studentId),
+    name: name || "Student",
+    mic_allowed: true,
+    camera_allowed: true,
+  };
+  list.insertAdjacentHTML("beforeend", buildParticipantCardHtml(s));
+  bindParticipantActionClicks();
+  return findParticipantCard(studentId);
+}
+window.ensureParticipantCardForStudent = ensureParticipantCardForStudent;
+
+function applyRoomSnapshot(snapshot) {
+  if (!snapshot) return;
+  window.__roomSnapshot = snapshot;
+  var parts = snapshot.participants || [];
+  if (isTeacherRole() && parts.length) {
+    var students = parts
+      .filter(function (p) {
+        return String(p.role || "").toUpperCase() !== "TEACHER" &&
+          String(p.connectionState || "") !== "DISCONNECTED";
+      })
+      .map(function (p) {
+        return {
+          student_id: p.userId || p.participantId,
+          name: p.name || "Student",
+          mic_allowed: !!(p.micAllowed || p.microphoneEnabled),
+          camera_allowed: !!(p.cameraAllowed || p.cameraEnabled),
+          joined_at: p.joinedAt,
+          connection_state: p.connectionState,
+          camera_enabled: !!p.cameraEnabled,
+        };
+      });
+    renderClassroomStudents(students);
+    flushPendingStudentVideos();
+    if (typeof window.reattachParticipantVideos === "function") {
+      window.reattachParticipantVideos();
+    }
+  }
+  var hands = snapshot.raisedHands || [];
+  hands.forEach(function (h) {
+    if (h && h.userId) addRaisedHand(h.userId, h.name || "Student");
+  });
+  updateAudienceStats();
+}
+window.applyRoomSnapshot = applyRoomSnapshot;
+
 function isMobileClassroomView() {
   try {
     return window.matchMedia("(max-width: 900px)").matches;
@@ -2298,14 +2354,58 @@ function connectChat(isReconnect) {
     try {
       var msg = JSON.parse(ev.data);
       if (msg.event === "chat") {
-        var who = msg.role === "teacher" ? "Teacher" : "Student";
+        var who = msg.name || (msg.role === "teacher" ? "Teacher" : "Student");
         addChatMessage(who, msg.text || "");
+      } else if (msg.event === "room_snapshot") {
+        applyRoomSnapshot(msg);
+      } else if (msg.event === "participant_joined" || msg.event === "participant_reconnected") {
+        var pj = msg.participant || {};
+        var pjId = pj.userId || msg.user_id;
+        var pjName = pj.name || msg.name || "Student";
+        if (isTeacherRole() && String(pj.role || msg.role || "").toLowerCase().indexOf("teacher") < 0) {
+          ensureParticipantCardForStudent(pjId, pjName);
+          setTimeout(function () {
+            syncBoardToRoom();
+            loadClassroomStudents(true);
+          }, 200);
+        }
+        if (msg.event === "participant_joined") {
+          addChatMessage("", (pjName || "Someone") + " joined the class.", true);
+        }
+        updateAudienceStats();
+      } else if (msg.event === "participant_updated" && msg.participant) {
+        var pu = msg.participant;
+        var puId = pu.userId || pu.participantId;
+        if (isTeacherRole() && puId) {
+          ensureParticipantCardForStudent(puId, pu.name);
+          var cardPu = findParticipantCard(puId);
+          if (cardPu) {
+            updateParticipantCardContent(cardPu, {
+              student_id: puId,
+              name: pu.name,
+              mic_allowed: !!(pu.micAllowed || pu.microphoneEnabled),
+              camera_allowed: !!(pu.cameraAllowed || pu.cameraEnabled),
+            });
+            if (pu.cameraEnabled && typeof window.reattachParticipantVideos === "function") {
+              window.reattachParticipantVideos();
+            }
+          }
+        }
+      } else if (msg.event === "participant_left") {
+        if (msg.role === "student" && wsStudentCount > 0) wsStudentCount--;
+        updateAudienceStats();
+        addChatMessage("", (msg.name || "Someone") + " left the class.", true);
+        if (isTeacherRole()) loadClassroomStudents(true);
       } else if (msg.event === "user_joined") {
         if (msg.role === "student") wsStudentCount++;
         updateAudienceStats();
         var joinedName = msg.name || "Someone";
-        addChatMessage("", joinedName + " joined the class.", true);
+        // Prefer participant_joined for toast; skip duplicate if we already handled it
+        if (!msg._fromParticipant) {
+          /* legacy path kept for older servers */
+        }
         if (isTeacherRole() && msg.role === "student") {
+          ensureParticipantCardForStudent(msg.user_id, joinedName);
           setTimeout(function () {
             syncBoardToRoom();
             loadClassroomStudents(true);
@@ -2314,8 +2414,6 @@ function connectChat(isReconnect) {
       } else if (msg.event === "user_left") {
         if (msg.role === "student" && wsStudentCount > 0) wsStudentCount--;
         updateAudienceStats();
-        var leftName = msg.name || "Someone";
-        addChatMessage("", leftName + " left the class.", true);
         if (isTeacherRole()) loadClassroomStudents(true);
       } else if (msg.event === "request_board_sync") {
         if (isTeacherRole()) syncBoardToRoom();

@@ -1,9 +1,8 @@
 """
 WebSocket handler for live class real-time features:
-- Chat
-- Whiteboard sync (teacher always has access; students need teacher grant)
-- Raise hand + teacher grants mic
-- Polls
+- Authoritative participant registry (upsert on reconnect)
+- Room snapshot for late joiners
+- Chat, whiteboard, raise hand, reactions, mic/camera grants
 """
 from fastapi import WebSocket, WebSocketDisconnect
 from typing import Dict, List
@@ -21,11 +20,29 @@ from app.services.live_class_room import (
     cleanup_room,
     record_board_event,
     get_board_replay_messages,
+    upsert_participant,
+    mark_participant_disconnected,
+    get_room_snapshot,
+    raise_hand,
+    lower_hand,
+    list_participants,
+    new_event_id,
+    set_room_meta,
+    upsert_participant_flags,
 )
 
 # room_id -> list of connected websockets with metadata
 rooms: Dict[str, List[dict]] = {}
 _pending_room_cleanup: Dict[str, asyncio.Task] = {}
+
+
+def _is_teacher_role(role: str) -> bool:
+    r = str(role or "").strip().lower().replace("userrole.", "")
+    return r in ("teacher", "admin", "host")
+
+
+def _uid(user_id: str) -> str:
+    return str(user_id or "").strip().lower()
 
 
 async def connect(room_id: str, websocket: WebSocket, user_id: str, role: str, display_name: str = ""):
@@ -35,11 +52,25 @@ async def connect(room_id: str, websocket: WebSocket, user_id: str, role: str, d
     await websocket.accept()
     if room_id not in rooms:
         rooms[room_id] = []
+
+    # Drop prior sockets for the same user (reconnect upsert — no duplicate peers)
+    uid = _uid(user_id)
+    stale = [c for c in rooms[room_id] if _uid(c.get("user_id")) == uid and c["ws"] is not websocket]
+    for c in stale:
+        try:
+            await c["ws"].close()
+        except Exception:
+            pass
+        try:
+            rooms[room_id].remove(c)
+        except ValueError:
+            pass
+
     rooms[room_id].append({
         "ws": websocket,
         "user_id": user_id,
         "role": role,
-        "display_name": display_name or ("Teacher" if role in ("teacher", "admin") else "Student"),
+        "display_name": display_name or ("Teacher" if _is_teacher_role(role) else "Student"),
     })
 
 
@@ -72,7 +103,10 @@ async def broadcast(room_id: str, message: dict, exclude: WebSocket = None):
         except Exception:
             dead.append(conn)
     for conn in dead:
-        rooms[room_id].remove(conn)
+        try:
+            rooms[room_id].remove(conn)
+        except ValueError:
+            pass
 
 
 async def replay_board_to_websocket(room_id: str, websocket: WebSocket) -> None:
@@ -87,18 +121,13 @@ async def send_to_user(room_id: str, target_user_id: str, message: dict):
     """Send a message to a specific user in the room."""
     if room_id not in rooms:
         return
-    target = str(target_user_id or "").strip().lower()
+    target = _uid(target_user_id)
     for conn in rooms[room_id]:
-        if str(conn["user_id"] or "").strip().lower() == target:
+        if _uid(conn.get("user_id")) == target:
             try:
                 await conn["ws"].send_text(json.dumps(message))
             except Exception:
                 pass
-
-
-def _is_teacher_role(role: str) -> bool:
-    r = str(role or "").strip().lower().replace("userrole.", "")
-    return r in ("teacher", "admin", "host")
 
 
 async def notify_mic_granted(room_id: str, student_id: str) -> None:
@@ -106,6 +135,7 @@ async def notify_mic_granted(room_id: str, student_id: str) -> None:
     grant_mic(room_id, sid)
     payload = {
         "event": "mic_access_granted",
+        "eventId": new_event_id(),
         "user_id": sid,
         "target_user_id": sid,
         "message": "Your teacher let you speak. Your mic is turning on.",
@@ -114,8 +144,14 @@ async def notify_mic_granted(room_id: str, student_id: str) -> None:
     await broadcast(room_id, payload)
     await broadcast(room_id, {
         "event": "mic_access_update",
+        "eventId": new_event_id(),
         "user_id": sid,
         "has_mic": True,
+    })
+    await broadcast(room_id, {
+        "event": "participant_updated",
+        "eventId": new_event_id(),
+        "participant": next((p for p in list_participants(room_id) if _uid(p.get("userId")) == _uid(sid)), None),
     })
 
 
@@ -124,6 +160,7 @@ async def notify_mic_revoked(room_id: str, student_id: str) -> None:
     revoke_mic(room_id, sid)
     payload = {
         "event": "mic_access_revoked",
+        "eventId": new_event_id(),
         "user_id": sid,
         "target_user_id": sid,
         "message": "Your teacher muted you.",
@@ -132,6 +169,7 @@ async def notify_mic_revoked(room_id: str, student_id: str) -> None:
     await broadcast(room_id, payload)
     await broadcast(room_id, {
         "event": "mic_access_update",
+        "eventId": new_event_id(),
         "user_id": sid,
         "has_mic": False,
     })
@@ -142,14 +180,21 @@ async def notify_camera_granted(room_id: str, student_id: str) -> None:
     grant_camera(room_id, sid)
     await send_to_user(room_id, sid, {
         "event": "camera_access_granted",
+        "eventId": new_event_id(),
         "user_id": sid,
         "target_user_id": sid,
         "message": "Your teacher let you turn on your camera.",
     })
     await broadcast(room_id, {
         "event": "camera_access_update",
+        "eventId": new_event_id(),
         "user_id": sid,
         "has_camera": True,
+    })
+    await broadcast(room_id, {
+        "event": "participant_updated",
+        "eventId": new_event_id(),
+        "participant": next((p for p in list_participants(room_id) if _uid(p.get("userId")) == _uid(sid)), None),
     })
 
 
@@ -157,10 +202,12 @@ async def notify_camera_revoked(room_id: str, student_id: str) -> None:
     revoke_camera(room_id, student_id)
     await send_to_user(room_id, student_id, {
         "event": "camera_access_revoked",
+        "eventId": new_event_id(),
         "message": "Your teacher turned off your camera access.",
     })
     await broadcast(room_id, {
         "event": "camera_access_update",
+        "eventId": new_event_id(),
         "user_id": student_id,
         "has_camera": False,
     })
@@ -169,14 +216,46 @@ async def notify_camera_revoked(room_id: str, student_id: str) -> None:
 async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, role: str, display_name: str = ""):
     await connect(room_id, websocket, user_id, role, display_name)
     name = display_name or ("Teacher" if _is_teacher_role(role) else "Student")
+
+    # Detect reconnect: participant already existed
+    prior = next((p for p in list_participants(room_id) if _uid(p.get("userId")) == _uid(user_id)), None)
+    was_reconnect = bool(prior and prior.get("connectionState") in ("DISCONNECTED", "RECONNECTING", "CONNECTED"))
+
+    participant = upsert_participant(
+        room_id,
+        user_id,
+        role=role,
+        name=name,
+        reconnect=was_reconnect,
+    )
+
+    # Send authoritative snapshot to this client first (prevents race with live events)
+    try:
+        snapshot = get_room_snapshot(room_id)
+        await websocket.send_text(json.dumps(snapshot))
+    except Exception:
+        pass
+
+    if not _is_teacher_role(role):
+        await replay_board_to_websocket(room_id, websocket)
+
+    join_event = {
+        "event": "participant_joined" if not was_reconnect else "participant_reconnected",
+        "eventId": new_event_id(),
+        "user_id": user_id,
+        "role": role,
+        "name": name,
+        "participant": participant,
+    }
+    await broadcast(room_id, join_event, exclude=websocket)
+    # Keep legacy event for older clients
     await broadcast(room_id, {
         "event": "user_joined",
+        "eventId": new_event_id(),
         "user_id": user_id,
         "role": role,
         "name": name,
     }, exclude=websocket)
-    if not _is_teacher_role(role):
-        await replay_board_to_websocket(room_id, websocket)
 
     try:
         while True:
@@ -185,22 +264,28 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
             event = message.get("event")
 
             if event == "chat":
+                # Exclude sender — client already shows local "You" echo
                 await broadcast(room_id, {
                     "event": "chat",
+                    "eventId": new_event_id(),
                     "user_id": user_id,
                     "role": role,
+                    "name": name,
                     "text": message.get("text", ""),
-                })
+                }, exclude=websocket)
 
             elif event == "screen_share":
-                # Relay so students force-subscribe / hide board under the share
+                active = bool(message.get("active"))
+                set_room_meta(room_id, screenShareActive=active, presentation="screen" if active else "teacher")
+                upsert_participant_flags(room_id, user_id, isScreenSharing=active)
                 await broadcast(
                     room_id,
                     {
                         "event": "screen_share",
+                        "eventId": new_event_id(),
                         "user_id": user_id,
                         "role": role,
-                        "active": bool(message.get("active")),
+                        "active": active,
                     },
                     exclude=websocket,
                 )
@@ -214,14 +299,14 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
                     }))
                 else:
                     action = message.get("action")
-                    data = message.get("data") or {}
+                    data_payload = message.get("data") or {}
                     if _is_teacher_role(role):
-                        record_board_event(room_id, action, data)
+                        record_board_event(room_id, action, data_payload)
                     await broadcast(room_id, {
                         "event": "whiteboard",
                         "user_id": user_id,
                         "action": action,
-                        "data": data,
+                        "data": data_payload,
                     }, exclude=websocket)
 
             elif event == "grant_whiteboard":
@@ -273,6 +358,7 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
                 else:
                     target_id = message.get("target_user_id")
                     if target_id:
+                        lower_hand(room_id, str(target_id))
                         await notify_mic_granted(room_id, str(target_id))
 
             elif event == "revoke_mic":
@@ -289,25 +375,60 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
             elif event == "request_board_sync":
                 await replay_board_to_websocket(room_id, websocket)
 
+            elif event == "request_room_snapshot":
+                try:
+                    await websocket.send_text(json.dumps(get_room_snapshot(room_id)))
+                except Exception:
+                    pass
+
+            elif event == "participant_media_state":
+                # Client reports local cam/mic so peers can show correct tile states
+                upsert_participant_flags(
+                    room_id,
+                    user_id,
+                    cameraEnabled=bool(message.get("cameraEnabled")),
+                    microphoneEnabled=bool(message.get("microphoneEnabled")),
+                )
+                await broadcast(room_id, {
+                    "event": "participant_updated",
+                    "eventId": new_event_id(),
+                    "participant": next(
+                        (p for p in list_participants(room_id) if _uid(p.get("userId")) == _uid(user_id)),
+                        None,
+                    ),
+                }, exclude=websocket)
+
             elif event == "raise_hand":
+                hand_name = message.get("name") or name or "Student"
+                p = raise_hand(room_id, user_id, hand_name)
                 await broadcast(room_id, {
                     "event": "raise_hand",
+                    "eventId": new_event_id(),
                     "user_id": user_id,
-                    "name": message.get("name") or "Student",
+                    "name": hand_name,
+                    "participant": p,
+                    "raisedHands": get_room_snapshot(room_id).get("raisedHands") or [],
                 })
 
             elif event == "lower_hand":
+                target = message.get("target_user_id") or user_id
+                if not _is_teacher_role(role) and _uid(target) != _uid(user_id):
+                    target = user_id
+                lower_hand(room_id, str(target))
                 await broadcast(room_id, {
                     "event": "lower_hand",
-                    "user_id": user_id,
+                    "eventId": new_event_id(),
+                    "user_id": target,
                 })
 
             elif event == "reaction":
                 emoji = (message.get("emoji") or "👍").strip()[:8]
+                upsert_participant_flags(room_id, user_id, currentReaction=emoji)
                 await broadcast(room_id, {
                     "event": "reaction",
+                    "eventId": new_event_id(),
                     "user_id": user_id,
-                    "name": message.get("name") or ("Teacher" if role == "teacher" else "Student"),
+                    "name": message.get("name") or name,
                     "emoji": emoji,
                     "role": role,
                 })
@@ -315,10 +436,42 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
             elif event == "poll_answer":
                 await broadcast(room_id, {
                     "event": "poll_answer",
+                    "eventId": new_event_id(),
                     "user_id": user_id,
                     "answer": message.get("answer"),
                 })
 
     except WebSocketDisconnect:
         disconnect(room_id, websocket)
-        await broadcast(room_id, {"event": "user_left", "user_id": user_id, "role": role})
+        # Only mark left if no other socket for this user remains
+        still_here = any(_uid(c.get("user_id")) == _uid(user_id) for c in rooms.get(room_id, []))
+        if not still_here:
+            mark_participant_disconnected(room_id, user_id)
+            await broadcast(room_id, {
+                "event": "participant_left",
+                "eventId": new_event_id(),
+                "user_id": user_id,
+                "role": role,
+                "name": name,
+            })
+            await broadcast(room_id, {
+                "event": "user_left",
+                "eventId": new_event_id(),
+                "user_id": user_id,
+                "role": role,
+                "name": name,
+            })
+    except Exception:
+        disconnect(room_id, websocket)
+        still_here = any(_uid(c.get("user_id")) == _uid(user_id) for c in rooms.get(room_id, []))
+        if not still_here:
+            mark_participant_disconnected(room_id, user_id)
+            try:
+                await broadcast(room_id, {
+                    "event": "user_left",
+                    "user_id": user_id,
+                    "role": role,
+                    "name": name,
+                })
+            except Exception:
+                pass
