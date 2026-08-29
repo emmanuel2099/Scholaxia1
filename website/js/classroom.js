@@ -23,6 +23,10 @@ window.raisedHands = raisedHands;
 var wsStudentCount = 0;
 var chatUnreadCount = 0;
 var seenChatEventIds = {};
+var lastClassroomStudents = [];
+var hostParticipantFilter = "";
+var activeMeetTab = "chat";
+var classElapsedTimer = null;
 var classPermissions = {
   studentsCanUseCamera: true,
   studentsCanUseMicrophone: true,
@@ -532,14 +536,15 @@ function showHostTools(show) {
     else el.classList.add("hidden");
   });
   if (show) {
+    document.body.classList.add("host-view");
     document.querySelectorAll(".student-only").forEach(function (el) {
       el.classList.add("hidden");
     });
-    if (isMobileClassroomView()) {
-      var strip = document.getElementById("classroom-host-strip");
-      if (strip) strip.classList.remove("hidden");
-    }
+    var side = document.getElementById("host-sidebar");
+    if (side && !isMobileClassroomView()) side.classList.remove("hidden");
     startTeacherBoardHeartbeat();
+  } else {
+    document.body.classList.remove("host-view");
   }
 }
 
@@ -847,27 +852,38 @@ function getStudentName() {
   return localStorage.getItem("sia_name") || "Student";
 }
 
-function renderRaisedHands() {
-  var list = document.getElementById("raise-hand-list");
-  if (!list || !isTeacherRole()) return;
+function buildRaisedHandsHtml() {
   var ids = Object.keys(raisedHands);
-  if (!ids.length) {
-    list.innerHTML = '<p class="raise-hand-empty">No students waiting.</p>';
-    return;
-  }
-  // Preserve raise order (object insertion order)
-  list.innerHTML = ids.map(function (id, idx) {
+  if (!ids.length) return '<p class="raise-hand-empty">No students waiting.</p>';
+  return ids.map(function (id, idx) {
     var item = raisedHands[id];
     var name = escHtml(item.name || "Student");
     return '<div class="raise-hand-item">' +
       '<span><span class="hand-rank">' + (idx + 1) + '.</span>&#9995; ' + name + '</span>' +
       '<span style="display:flex;gap:6px">' +
       '<button type="button" class="btn-give-access" onclick="grantStudentMic(' +
-      JSON.stringify(id) + ',' + JSON.stringify(item.name || "Student") + ')">Allow</button>' +
+      JSON.stringify(id) + ',' + JSON.stringify(item.name || "Student") + ')">Allow to speak</button>' +
       '<button type="button" class="btn-sm" onclick="lowerHandForStudent(' +
       JSON.stringify(id) + ')">Lower</button>' +
       "</span></div>";
   }).join("");
+}
+
+function renderRaisedHands() {
+  if (!isTeacherRole()) return;
+  var html = buildRaisedHandsHtml();
+  var list = document.getElementById("raise-hand-list");
+  var bottom = document.getElementById("raise-hand-list-bottom");
+  if (list) list.innerHTML = html;
+  if (bottom) bottom.innerHTML = html;
+  var count = Object.keys(raisedHands).length;
+  var tabBadge = document.getElementById("hands-tab-badge");
+  var sideBadge = document.getElementById("hands-side-badge");
+  if (tabBadge) {
+    tabBadge.textContent = String(count);
+    tabBadge.classList.toggle("hidden", count === 0);
+  }
+  if (sideBadge) sideBadge.textContent = "(" + count + ")";
 }
 
 function addRaisedHand(userId, name) {
@@ -915,12 +931,7 @@ function lowerAllHands() {
 window.lowerAllHands = lowerAllHands;
 
 function renderRaisedHandToolbarBadge() {
-  var btn = document.getElementById("btn-give-access-all");
-  if (!btn || !isTeacherRole()) return;
-  var count = Object.keys(raisedHands).length;
-  btn.textContent = count
-    ? "Allow raised hands to speak (" + count + ")"
-    : "Allow raised hands to speak";
+  renderRaisedHands();
 }
 
 function getMyClassroomUserId() {
@@ -1216,7 +1227,55 @@ function renderClassroomStudents(students) {
     flushPendingStudentVideos();
   }
   bindParticipantActionClicks();
+  if (isTeacherRole()) renderHostParticipantList(students);
 }
+
+function buildHostParticipantRowHtml(s, isTeacher) {
+  if (isTeacher) {
+    return '<div class="host-participant-row host-teacher" data-name="teacher">' +
+      '<span class="host-part-avatar">T</span>' +
+      '<span class="host-part-name">' + escHtml(s.name || "Teacher") + "</span>" +
+      '<span class="host-part-icons"><span class="icon-on">🎤</span><span class="icon-on">📷</span></span></div>';
+  }
+  var sid = String(s.student_id || "");
+  var micOn = s.mic_allowed;
+  var camOn = s.camera_allowed || s.camera_enabled;
+  return '<div class="host-participant-row" data-student-id="' + escHtml(sid) + '" data-name="' +
+    escHtml((s.name || "").toLowerCase()) + '">' +
+    '<span class="host-part-avatar">' + escHtml((s.name || "S").charAt(0).toUpperCase()) + "</span>" +
+    '<span class="host-part-name">' + escHtml(s.name || "Student") + "</span>" +
+    '<span class="host-part-icons">' +
+    '<span class="' + (micOn ? "icon-on" : "icon-off") + '">🎤</span>' +
+    '<span class="' + (camOn ? "icon-on" : "icon-off") + '">📷</span></span></div>';
+}
+
+function renderHostParticipantList(students) {
+  if (!isTeacherRole()) return;
+  var list = document.getElementById("host-participants-list");
+  if (!list) return;
+  lastClassroomStudents = students || [];
+  var q = (hostParticipantFilter || "").trim().toLowerCase();
+  var filtered = lastClassroomStudents.filter(function (s) {
+    if (!q) return true;
+    return (s.name || "").toLowerCase().indexOf(q) >= 0;
+  });
+  var teacherName = liveSession && liveSession.teacher_name || "Teacher";
+  var html = buildHostParticipantRowHtml({ name: teacherName }, true);
+  if (!filtered.length && q) {
+    html += '<p class="participants-empty">No match.</p>';
+  } else {
+    html += filtered.map(function (s) { return buildHostParticipantRowHtml(s, false); }).join("");
+  }
+  list.innerHTML = html;
+  var countEl = document.getElementById("host-participants-count");
+  if (countEl) countEl.textContent = "(" + (lastClassroomStudents.length + 1) + ")";
+}
+
+function filterHostParticipants(value) {
+  hostParticipantFilter = value || "";
+  renderHostParticipantList(lastClassroomStudents);
+}
+window.filterHostParticipants = filterHostParticipants;
 
 function bindParticipantActionClicks() {
   var list = document.getElementById("participants-list");
@@ -1420,17 +1479,75 @@ function updateParticipantsHeader(studentCount, teacherName) {
 }
 
 function toggleChatDrawer(forceOpen) {
-  var drawer = document.getElementById("chat-drawer");
-  if (!drawer) return;
-  var open = typeof forceOpen === "boolean" ? forceOpen : !drawer.classList.contains("open");
-  drawer.classList.toggle("open", open);
-  if (open) {
+  switchMeetTab("chat");
+  clearChatUnread();
+  try {
+    var input = document.getElementById("chat-input");
+    if (input) setTimeout(function () { input.focus(); }, 180);
+  } catch (e) { /* ignore */ }
+}
+
+function switchMeetTab(tab) {
+  activeMeetTab = tab || "chat";
+  document.querySelectorAll(".meet-tab").forEach(function (btn) {
+    btn.classList.toggle("is-active", btn.getAttribute("data-tab") === activeMeetTab);
+  });
+  var chatPanel = document.getElementById("meet-panel-chat");
+  var handsPanel = document.getElementById("meet-panel-hands");
+  if (chatPanel) chatPanel.classList.toggle("hidden", activeMeetTab !== "chat");
+  if (handsPanel) handsPanel.classList.toggle("hidden", activeMeetTab !== "hands");
+  if (activeMeetTab === "chat") {
     clearChatUnread();
     try {
       var input = document.getElementById("chat-input");
-      if (input) setTimeout(function () { input.focus(); }, 180);
+      if (input) setTimeout(function () { input.focus(); }, 120);
     } catch (e) { /* ignore */ }
   }
+}
+window.switchMeetTab = switchMeetTab;
+
+function toggleParticipantStrip(forceShow) {
+  var wrap = document.getElementById("meet-strip-wrap");
+  if (!wrap) return;
+  var hidden;
+  if (typeof forceShow === "boolean") hidden = !forceShow;
+  else hidden = !wrap.classList.contains("strip-hidden");
+  wrap.classList.toggle("strip-hidden", hidden);
+  var btn = wrap.querySelector(".meet-strip-toggle");
+  if (btn) btn.textContent = hidden ? "Show people" : "Hide people";
+  try { sessionStorage.setItem("sx_meet_strip_hidden", hidden ? "1" : "0"); } catch (e) {}
+}
+window.toggleParticipantStrip = toggleParticipantStrip;
+
+function toggleHostSidebar(forceShow) {
+  var side = document.getElementById("host-sidebar");
+  if (!side) return;
+  var show = typeof forceShow === "boolean" ? forceShow : side.classList.contains("hidden");
+  side.classList.toggle("hidden", !show);
+}
+window.toggleHostSidebar = toggleHostSidebar;
+
+function startClassElapsedTimer() {
+  if (classElapsedTimer) return;
+  var start = Date.now();
+  classElapsedTimer = setInterval(function () {
+    var badge = document.getElementById("audience-badge");
+    if (!badge) return;
+    var secs = Math.floor((Date.now() - start) / 1000);
+    var m = Math.floor(secs / 60);
+    var s = secs % 60;
+    var timer = m + ":" + String(s).padStart(2, "0");
+    if (isTeacherRole()) {
+      var inChat = wsStudentCount;
+      var inVideo = countVideoAudience();
+      var parts = [];
+      if (inChat > 0) parts.push(inChat + " in chat");
+      if (inVideo > 0) parts.push(inVideo + " on video");
+      badge.textContent = parts.length ? parts.join(" · ") : "In class · " + timer;
+    } else {
+      badge.textContent = "In class · " + timer;
+    }
+  }, 1000);
 }
 
 function setChatUnread(n) {
@@ -1450,8 +1567,7 @@ function clearChatUnread() {
 }
 
 function bumpChatUnread() {
-  var drawer = document.getElementById("chat-drawer");
-  if (drawer && drawer.classList.contains("open")) return;
+  if (activeMeetTab === "chat") return;
   setChatUnread(chatUnreadCount + 1);
 }
 
@@ -2637,9 +2753,8 @@ function connectChat(isReconnect) {
         if (isTeacherRole()) {
           if (!isMobileClassroomView()) {
             try {
-              document.body.classList.remove("classroom-chrome-hidden");
-              var chromeBtn = document.getElementById("classroom-chrome-toggle");
-              if (chromeBtn) chromeBtn.textContent = "Hide people";
+              switchMeetTab("hands");
+              toggleHostSidebar(true);
             } catch (eChrome) {}
           }
           if (Array.isArray(msg.raisedHands) && msg.raisedHands.length) {
@@ -3269,13 +3384,12 @@ window.onload = function () {
 
   if (isTeacherRole()) {
     showHostTools(true);
-    var permPanel = document.getElementById("class-permissions-panel");
-    if (permPanel) permPanel.classList.remove("hidden");
     var rhPanel = document.getElementById("raise-hand-panel");
     if (rhPanel) rhPanel.classList.remove("hidden");
     renderRaisedHandToolbarBadge();
     var audBadge = document.getElementById("audience-badge");
     if (audBadge) audBadge.classList.remove("hidden");
+    startClassElapsedTimer();
     startClassroomStudentsPoll();
     bindClassroomAudioUnlock();
   } else {
@@ -3285,6 +3399,7 @@ window.onload = function () {
       studBadge.textContent = "Joining…";
       studBadge.classList.remove("hidden");
     }
+    startClassElapsedTimer();
     startClassroomStudentsPoll();
     startStudentMicPermissionPoll();
     bindClassroomAudioUnlock();
@@ -3352,39 +3467,16 @@ window.onload = function () {
 
 
 function toggleClassroomChrome(forceHidden) {
-  var on;
-  if (typeof forceHidden === "boolean") {
-    document.body.classList.toggle("classroom-chrome-hidden", forceHidden);
-    on = forceHidden;
-  } else {
-    on = document.body.classList.toggle("classroom-chrome-hidden");
-  }
-  try { sessionStorage.setItem("sx_classroom_chrome_hidden", on ? "1" : "0"); } catch (e) {}
-  var btn = document.getElementById("classroom-chrome-toggle");
-  if (btn) btn.textContent = on ? "People" : "Hide people";
+  if (typeof forceHidden === "boolean") toggleParticipantStrip(!forceHidden);
+  else toggleParticipantStrip();
 }
 window.toggleClassroomChrome = toggleClassroomChrome;
-(function initClassroomChrome() {
-  var isMobile = isMobileClassroomView();
+(function initMeetV2Layout() {
+  document.body.classList.add("meet-v2");
+  document.body.classList.remove("classroom-chrome-hidden");
   try {
-    var pref = sessionStorage.getItem("sx_classroom_chrome_hidden");
-    // Phones: board-first — hide people strip by default (toolbar stays visible)
-    if (isMobile && pref !== "0") {
-      document.body.classList.add("classroom-chrome-hidden");
-    } else if (pref === "0") {
-      document.body.classList.remove("classroom-chrome-hidden");
-    } else if (!isMobile) {
-      document.body.classList.add("classroom-chrome-hidden");
-    }
-  } catch (e) {
-    document.body.classList.add("classroom-chrome-hidden");
-  }
-  var btn = document.getElementById("classroom-chrome-toggle");
-  if (btn) {
-    btn.textContent = document.body.classList.contains("classroom-chrome-hidden")
-      ? "People"
-      : "Hide people";
-  }
+    if (sessionStorage.getItem("sx_meet_strip_hidden") === "1") toggleParticipantStrip(false);
+  } catch (e) { /* ignore */ }
 })();
 
 function showReconnectBanner(show, text) {
@@ -3569,10 +3661,8 @@ window.toggleClassPermission = toggleClassPermission;
 
 function showPermissionsPanel() {
   var panel = document.getElementById("class-permissions-panel");
-  if (panel) panel.classList.remove("hidden");
-  document.body.classList.remove("classroom-chrome-hidden");
-  var btn = document.getElementById("classroom-chrome-toggle");
-  if (btn) btn.textContent = "Hide people";
+  if (panel) panel.classList.toggle("hidden");
+  toggleHostSidebar(true);
 }
 window.showPermissionsPanel = showPermissionsPanel;
 

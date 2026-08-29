@@ -1482,3 +1482,418 @@ body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
   }
 }
 
+/* ── Meet v2 layout (reference classroom UI) ── */
+body.meet-v2 {
+  background: #0c0814;
+}
+
+.meet-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #14101f;
+  border-bottom: 1px solid #2e1f4a;
+  flex-wrap: wrap;
+}
+.meet-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+.meet-breadcrumb h1 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.meet-breadcrumb p {
+  font-size: 0.78rem;
+  color: #a78bfa;
+  margin-top: 2px;
+}
+.meet-header-mid {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.meet-timer-badge {
+  background: #1a1228;
+  border: 1px solid #4c1d95;
+  color: #e9d5ff;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.meet-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.btn-save-class-top {
+  border: none;
+  background: #16a34a;
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.btn-save-class-top.save-active { background: #854d0e; }
+
+.meet-main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr;
+  min-height: 0;
+}
+body.meet-v2.host-view .meet-main {
+  grid-template-columns: 1fr minmax(260px, 300px);
+}
+.meet-primary {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+.main-stage-wrap {
+  flex: 1 1 auto;
+  min-height: 38vh;
+  padding: 8px 10px 0;
+  display: flex;
+}
+.main-stage-wrap .video-stage {
+  flex: 1;
+  min-height: 0;
+  border-radius: 14px;
+  border: 1px solid #2e1f4a;
+  background: #050308;
+}
+
+.meet-strip-wrap {
+  flex: 0 0 auto;
+  padding: 8px 10px 0;
+  transition: max-height 0.2s ease, opacity 0.2s ease;
+  max-height: 220px;
+}
+.meet-strip-wrap.strip-hidden {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  padding-top: 0;
+  pointer-events: none;
+}
+.meet-strip-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #e9d5ff;
+}
+.meet-strip-sub {
+  font-size: 0.72rem;
+  margin: 0 0 2px;
+}
+.participant-strip {
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 4px;
+}
+.meet-v2 .participants-strip.participants-list {
+  flex-direction: row;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  gap: 8px;
+  padding: 6px 2px;
+  max-height: none;
+}
+.meet-v2 .participants-strip .participant-card {
+  flex: 0 0 132px;
+  width: 132px;
+  min-width: 132px;
+}
+.meet-v2 .participants-strip .participant-card.camera-on {
+  flex: 0 0 148px;
+  width: 148px;
+  min-width: 148px;
+}
+.meet-v2 .participants-strip .participant-actions {
+  display: none;
+}
+.meet-v2 .participants-strip .participant-details-row {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.meet-v2 .participants-strip .participant-body strong {
+  font-size: 0.72rem;
+}
+
+.meet-bottom-panel {
+  flex: 0 0 auto;
+  margin: 8px 10px 6px;
+  border: 1px solid #2e1f4a;
+  border-radius: 12px;
+  background: #13091f;
+  min-height: 160px;
+  max-height: 220px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.meet-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid #2e1f4a;
+  background: #1a1228;
+}
+.meet-tab {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: #a78bfa;
+  padding: 10px 14px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.meet-tab.is-active {
+  color: #fff;
+  background: #13091f;
+  box-shadow: inset 0 -2px 0 #7c3aed;
+}
+.meet-tab-badge {
+  display: inline-block;
+  margin-left: 6px;
+  background: #f59e0b;
+  color: #111;
+  font-size: 0.68rem;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+.meet-panel-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.meet-panel-body.hidden { display: none !important; }
+.meet-chat-log {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 10px 12px;
+  font-size: 0.82rem;
+}
+.meet-chat-form {
+  display: flex;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid #2e1f4a;
+}
+.meet-chat-form input {
+  flex: 1;
+  border: 1px solid #4c1d95;
+  background: #0f0a1a;
+  color: #f5f3ff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+}
+
+.meet-sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid #2e1f4a;
+  background: #13091f;
+  overflow: hidden;
+}
+.meet-side-block {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  overflow: hidden;
+}
+.meet-side-block + .meet-side-block {
+  border-top: 1px solid #2e1f4a;
+}
+.meet-side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.meet-side-head h3 {
+  font-size: 0.88rem;
+  color: #f5f3ff;
+  font-weight: 600;
+}
+.meet-search {
+  width: 100%;
+  border: 1px solid #4c1d95;
+  background: #0f0a1a;
+  color: #f5f3ff;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  margin-bottom: 8px;
+}
+.host-participants-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.host-participant-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+}
+.host-participant-row:hover { background: #1a1228; }
+.host-part-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #5b21b6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+.host-part-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.host-part-icons {
+  display: flex;
+  gap: 4px;
+  font-size: 0.72rem;
+}
+.host-part-icons .icon-off { opacity: 0.35; filter: grayscale(1); }
+.meet-side-link {
+  margin-top: 8px;
+  border: 1px solid #4c1d95;
+  background: transparent;
+  color: #c4b5fd;
+  padding: 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.78rem;
+  width: 100%;
+}
+.raise-hand-panel-meet {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.raise-hand-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 4px;
+  font-size: 0.8rem;
+  border-bottom: 1px solid #2e1f4a;
+}
+.btn-give-access {
+  border: none;
+  background: #16a34a;
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.meet-toolbar {
+  flex: 0 0 auto;
+  padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
+  background: #14101f;
+  border-top: 1px solid #2e1f4a;
+}
+.meet-toolbar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.meet-tool-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 56px;
+  padding: 8px 6px;
+  border: 1px solid #4c1d95;
+  border-radius: 10px;
+  background: #1a1228;
+  color: #e9d5ff;
+  cursor: pointer;
+  font-size: 0.65rem;
+  position: relative;
+}
+.meet-tool-btn span:not(.chat-unread) { font-size: 0.62rem; }
+.meet-tool-btn.on {
+  border-color: #22c55e;
+  background: rgba(34, 197, 94, 0.15);
+  color: #bbf7d0;
+}
+.meet-tool-btn.off {
+  border-color: #dc2626;
+  background: rgba(220, 38, 38, 0.12);
+  color: #fecaca;
+}
+.meet-tool-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.meet-end-btn { margin-left: 8px; }
+
+@media (max-width: 900px) {
+  body.meet-v2.host-view .meet-main {
+    grid-template-columns: 1fr;
+  }
+  .meet-sidebar:not(.hidden) {
+    position: fixed;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: min(92vw, 320px);
+    z-index: 1200;
+    box-shadow: -8px 0 32px rgba(0, 0, 0, 0.5);
+  }
+  .meet-bottom-panel {
+    max-height: 180px;
+    min-height: 140px;
+  }
+  .meet-tool-btn span:not(.chat-unread) { display: none; }
+  .meet-tool-btn { min-width: 44px; padding: 10px 8px; }
+}
+
