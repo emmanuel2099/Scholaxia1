@@ -384,6 +384,17 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
                     if target_id:
                         await notify_mic_revoked(room_id, str(target_id))
 
+            elif event == "revoke_camera":
+                if not _is_teacher_role(role):
+                    await websocket.send_text(json.dumps({
+                        "event": "error",
+                        "message": "Only the teacher can revoke camera access.",
+                    }))
+                else:
+                    target_id = message.get("target_user_id")
+                    if target_id:
+                        await notify_camera_revoked(room_id, str(target_id))
+
             elif event == "request_board_sync":
                 await replay_board_to_websocket(room_id, websocket)
 
