@@ -962,6 +962,23 @@ function getStudentName() {
   return localStorage.getItem("sia_name") || "Student";
 }
 
+function applyRaisedHandNameToRoster(userId, name) {
+  if (!userId || !name) return;
+  var key = normalizeStudentId(userId);
+  var display = String(name).trim();
+  if (!display || display.toLowerCase() === "student") return;
+  window.__participantNames = window.__participantNames || {};
+  window.__participantNames[key] = display;
+  if (Array.isArray(lastClassroomStudents)) {
+    lastClassroomStudents.forEach(function (s) {
+      if (s && normalizeStudentId(s.student_id) === key) {
+        s.name = display;
+      }
+    });
+  }
+  if (isClassroomHost()) renderHostParticipantList(lastClassroomStudents);
+}
+
 function buildRaisedHandsHtml() {
   var ids = Object.keys(raisedHands);
   if (!ids.length) return '<p class="raise-hand-empty">No students waiting.</p>';
@@ -969,13 +986,15 @@ function buildRaisedHandsHtml() {
     var item = raisedHands[id];
     var name = resolveStudentDisplayName({ student_id: id, name: item.name });
     var safeName = escHtml(name);
-    var safeId = escHtml(String(id));
+    var rawId = String(id).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    var rawName = String(name).replace(/\\/g, "\\\\").replace(/'/g, "\\'");
     return '<div class="raise-hand-item">' +
       '<span><span class="hand-rank">' + (idx + 1) + '.</span>&#9995; ' + safeName + '</span>' +
       '<span class="raise-hand-actions">' +
-      '<button type="button" class="btn-hand-allow" data-hand-action="allow" data-user-id="' + safeId +
-      '" data-user-name="' + safeName + '">Allow to speak</button>' +
-      '<button type="button" class="btn-hand-lower" data-hand-action="lower" data-user-id="' + safeId + '">Lower</button>' +
+      '<button type="button" class="btn-hand-allow" data-hand-action="allow" data-user-id="' + escHtml(String(id)) +
+      '" data-user-name="' + safeName + '" onclick="grantStudentMic(\'' + rawId + '\',\'' + rawName + '\')">Allow to speak</button>' +
+      '<button type="button" class="btn-hand-lower" data-hand-action="lower" data-user-id="' + escHtml(String(id)) +
+      '" onclick="lowerHandForStudent(\'' + rawId + '\')">Lower</button>' +
       "</span></div>";
   }).join("");
 }
@@ -1101,6 +1120,7 @@ function addRaisedHand(userId, name) {
   if (display && display.toLowerCase() !== "student") {
     window.__participantNames = window.__participantNames || {};
     window.__participantNames[uid] = display;
+    applyRaisedHandNameToRoster(userId, display);
   }
   var panel = document.getElementById("raise-hand-panel");
   if (panel) panel.classList.remove("hidden");
@@ -1128,7 +1148,7 @@ function lowerHandForStudent(userId) {
 window.lowerHandForStudent = lowerHandForStudent;
 
 function lowerAllHands() {
-  if (!isTeacherRole()) return;
+  if (!isClassroomHost()) return;
   raisedHands = {};
   window.raisedHands = raisedHands;
   renderRaisedHands();
@@ -2912,6 +2932,9 @@ function connectChat(isReconnect) {
   var userId = payload.sub || liveSession.user_id || liveSession.identity || "user";
   var role = isClassroomHost() ? "teacher" : "student";
   var displayName = localStorage.getItem("sia_name") || "";
+  if (!displayName && liveSession && liveSession.student_name) {
+    displayName = liveSession.student_name;
+  }
   if (!displayName) {
     try {
       var u = typeof api !== "undefined" && api.getUser ? api.getUser() : null;
@@ -2919,7 +2942,7 @@ function connectChat(isReconnect) {
     } catch (eU) { /* ignore */ }
   }
   if (!displayName) {
-    displayName = (liveSession.teacher_name && isTeacherRole()) ? liveSession.teacher_name : "Student";
+    displayName = (liveSession.teacher_name && isClassroomHost()) ? liveSession.teacher_name : "Student";
   }
   var url = API_WS + "/ws/live-class/" + encodeURIComponent(liveSession.room_id)
     + "?user_id=" + encodeURIComponent(userId)

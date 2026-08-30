@@ -200,7 +200,8 @@ async def app_home():
     target = index if index.is_file() else student
     if not target.is_file():
         raise HTTPException(status_code=404, detail="Student app not packaged on this deploy")
-    return FileResponse(target)
+    no_cache = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
+    return FileResponse(target, headers=no_cache)
 
 
 @app.get("/app/{asset_path:path}")
@@ -219,7 +220,8 @@ async def app_assets(asset_path: str):
         raise HTTPException(status_code=404, detail="Not found")
     if not full.is_file():
         raise HTTPException(status_code=404, detail="Not found")
-    return FileResponse(full)
+    no_cache = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
+    return FileResponse(full, headers=no_cache)
 
 
 # Admin website (same host as API): https://scholaxia1.onrender.com/admin/

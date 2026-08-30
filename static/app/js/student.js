@@ -3630,6 +3630,7 @@
         end_time: r.end_time || null,
         session_status: r.session_status || (r.is_live ? "LIVE" : "LOBBY"),
         is_live: r.is_live !== false,
+        student_name: localStorage.getItem("sia_name") || (user && (user.full_name || user.name)) || "Student",
       };
       writeLocalJson("live_session", sess);
       try {
