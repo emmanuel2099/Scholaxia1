@@ -253,15 +253,7 @@
       if (typeof data.can_publish === "boolean") liveSession.can_publish = data.can_publish;
       if (typeof persistLiveSession === "function") persistLiveSession(liveSession);
     }
-    if (typeof setVideoControlsEnabled === "function" && liveVideoJoined) {
-      var canMic = window.studentMicAllowed;
-      var canCam = window.studentCameraAllowed;
-      setVideoControlsEnabled(canMic || canCam);
-      var micBtn = document.getElementById("btn-mic");
-      var camBtn = document.getElementById("btn-cam");
-      if (micBtn) micBtn.disabled = !canMic;
-      if (camBtn) camBtn.disabled = !canCam;
-    }
+    if (typeof syncStudentMediaControls === "function") syncStudentMediaControls();
   }
 
   function detachRemoteAudio(participant) {
@@ -1260,6 +1252,7 @@
         var camBtnStu = document.getElementById("btn-cam");
         if (micBtnStu) micBtnStu.disabled = !window.studentMicAllowed;
         if (camBtnStu) camBtnStu.disabled = !window.studentCameraAllowed;
+        if (typeof syncStudentMediaControls === "function") syncStudentMediaControls();
         if (!liveRoom.remoteParticipants.size) {
           if (typeof showVideoPlaceholder === "function") {
             showVideoPlaceholder("Waiting for the teacher to start video…");
