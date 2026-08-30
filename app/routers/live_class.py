@@ -953,12 +953,6 @@ async def start_class(
     )
     for att in att_res.scalars().all():
         att.is_muted = False
-        try:
-            from app.services.live_class_room import grant_mic, grant_camera
-            grant_mic(live_class.room_id, str(att.student_id))
-            grant_camera(live_class.room_id, str(att.student_id))
-        except Exception:
-            pass
     await db.flush()
     return {"message": "Class started", "room_id": live_class.room_id, "is_live": True, "join_code": live_class.join_code}
 
@@ -1136,10 +1130,14 @@ async def join_class(
             await _safe_rollback()
 
         try:
-            from app.services.live_class_room import grant_mic, grant_camera, set_room_meta, upsert_participant
+            from app.services.live_class_room import set_room_meta, upsert_participant
 
-            grant_mic(room_id, sid)
-            grant_camera(room_id, sid)
+            student_display = (
+                current_user.get("full_name")
+                or current_user.get("name")
+                or current_user.get("email")
+                or "Student"
+            )
             set_room_meta(
                 room_id,
                 classId=str(class_uuid),
@@ -1149,10 +1147,15 @@ async def join_class(
                 room_id,
                 sid,
                 role="student",
-                name=current_user.get("email") or "Student",
+                name=student_display,
             )
         except Exception:
             pass
+
+        att = await _active_attendance(db, class_uuid, sid)
+        can_publish_student = _can_publish_for_student(room_id, sid, att)
+        mic_ok = _mic_allowed_for(room_id, sid, att)
+        cam_ok = _camera_allowed_for(room_id, sid, att)
 
         if not room_id:
             raise HTTPException(
@@ -1163,8 +1166,8 @@ async def join_class(
         payload = _livekit_token_payload(
             room_id,
             sid,
-            current_user.get("email") or "student",
-            can_publish=True,
+            current_user.get("full_name") or current_user.get("email") or "student",
+            can_publish=can_publish_student,
             role="student",
         )
         return {
@@ -1177,8 +1180,9 @@ async def join_class(
             "is_live": is_live,
             "session_status": "LIVE" if is_live else "LOBBY",
             "end_time": end_time_iso,
-            "mic_allowed": True,
-            "camera_allowed": True,
+            "mic_allowed": mic_ok,
+            "camera_allowed": cam_ok,
+            "can_publish": can_publish_student,
         }
     except HTTPException:
         raise
@@ -1210,16 +1214,13 @@ async def get_livekit_token(
     )
     uid = current_user["sub"]
     att = None if is_teacher else await _active_attendance(db, live_class.id, uid)
-    # Keep publish rights open for active students unless teacher muted them.
-    if att is not None and not att.is_muted:
-        try:
-            from app.services.live_class_room import grant_mic, grant_camera
-            grant_mic(live_class.room_id, uid)
-            grant_camera(live_class.room_id, uid)
-        except Exception:
-            pass
     can_publish = is_teacher or _can_publish_for_student(live_class.room_id, uid, att)
-    display = current_user.get("email") or current_user.get("sub") or "user"
+    display = (
+        current_user.get("full_name")
+        or current_user.get("email")
+        or current_user.get("sub")
+        or "user"
+    )
     payload = _livekit_token_payload(
         live_class.room_id,
         uid,

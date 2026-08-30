@@ -908,6 +908,16 @@ function stopSelfHear() {
   selfHearAudio = null;
 }
 
+function looksLikeUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    String(value || "").trim()
+  );
+}
+
+function normalizeStudentId(id) {
+  return String(id || "").trim().toLowerCase();
+}
+
 function getStudentName() {
   return localStorage.getItem("sia_name") || "Student";
 }
@@ -931,7 +941,11 @@ function buildRaisedHandsHtml() {
 }
 
 function bindRaisedHandActions() {
-  var roots = [document.getElementById("raise-hand-panel"), document.getElementById("meet-bottom-panel")];
+  var roots = [
+    document.getElementById("host-sidebar"),
+    document.getElementById("raise-hand-panel"),
+    document.getElementById("meet-bottom-panel"),
+  ];
   roots.forEach(function (root) {
     if (!root || root.dataset.handActionsBound === "1") return;
     root.dataset.handActionsBound = "1";
@@ -951,26 +965,37 @@ function bindRaisedHandActions() {
 
 function resolveStudentDisplayName(s) {
   if (!s) return "Student";
-  var sid = String(s.student_id || s.userId || s.user_id || "");
+  var sid = normalizeStudentId(s.student_id || s.userId || s.user_id || "");
   var n = (s.name || "").trim();
-  if (n && n.toLowerCase() !== "student") return n;
+  if (n && n.toLowerCase() !== "student" && !looksLikeUuid(n)) return n;
   if (sid && raisedHands[sid] && raisedHands[sid].name &&
-      raisedHands[sid].name.toLowerCase() !== "student") {
+      raisedHands[sid].name.toLowerCase() !== "student" &&
+      !looksLikeUuid(raisedHands[sid].name)) {
     return raisedHands[sid].name;
   }
-  if (window.__participantNames && sid && window.__participantNames[sid]) {
-    return window.__participantNames[sid];
+  var names = window.__participantNames || {};
+  var nameHit = names[sid];
+  if (!nameHit) {
+    Object.keys(names).some(function (k) {
+      if (normalizeStudentId(k) === sid) {
+        nameHit = names[k];
+        return true;
+      }
+      return false;
+    });
   }
+  if (nameHit && !looksLikeUuid(nameHit)) return nameHit;
   try {
     var remotes = liveKitRosterFallback();
     for (var i = 0; i < remotes.length; i++) {
       var r = remotes[i];
-      if (String(r.student_id || "") === sid && r.name && r.name.toLowerCase() !== "student") {
+      if (normalizeStudentId(r.student_id || "") === sid && r.name &&
+          r.name.toLowerCase() !== "student" && !looksLikeUuid(r.name)) {
         return r.name;
       }
     }
   } catch (e) { /* ignore */ }
-  return n || "Student";
+  return "Student";
 }
 window.resolveStudentDisplayName = resolveStudentDisplayName;
 
@@ -994,10 +1019,11 @@ function renderRaisedHands() {
 
 function addRaisedHand(userId, name) {
   if (!userId || !isTeacherRole()) return;
-  if (!raisedHands[userId]) {
-    raisedHands[userId] = { name: name || "Student", at: Date.now() };
+  var uid = normalizeStudentId(userId);
+  if (!raisedHands[uid]) {
+    raisedHands[uid] = { name: name || "Student", at: Date.now() };
   } else {
-    raisedHands[userId].name = name || raisedHands[userId].name || "Student";
+    raisedHands[uid].name = name || raisedHands[uid].name || "Student";
   }
   var panel = document.getElementById("raise-hand-panel");
   if (panel) panel.classList.remove("hidden");
@@ -1006,7 +1032,7 @@ function addRaisedHand(userId, name) {
 }
 
 function removeRaisedHand(userId) {
-  delete raisedHands[userId];
+  delete raisedHands[normalizeStudentId(userId)];
   renderRaisedHands();
   renderRaisedHandToolbarBadge();
 }
@@ -1088,8 +1114,10 @@ async function grantStudentMic(userId, studentName) {
   showClassroomToast("Allowing " + name + " to speak…");
   var ok = false;
   var errMsg = "";
+  var wsSent = false;
   if (liveSocket && liveSocket.readyState === WebSocket.OPEN) {
     liveSocket.send(JSON.stringify({ event: "grant_mic", target_user_id: uid }));
+    wsSent = true;
   }
   try {
     await classroomHostApi(
@@ -1099,6 +1127,7 @@ async function grantStudentMic(userId, studentName) {
     ok = true;
   } catch (e) {
     errMsg = e.message || "Server error";
+    if (wsSent) ok = true;
   }
   if (ok) {
     removeRaisedHand(uid);
@@ -1376,7 +1405,8 @@ function renderHostParticipantList(students) {
   var q = (hostParticipantFilter || "").trim().toLowerCase();
   var filtered = lastClassroomStudents.filter(function (s) {
     if (!q) return true;
-    return (s.name || "").toLowerCase().indexOf(q) >= 0;
+    var label = resolveStudentDisplayName(s);
+    return label.toLowerCase().indexOf(q) >= 0 || (s.name || "").toLowerCase().indexOf(q) >= 0;
   });
   var teacherName = liveSession && liveSession.teacher_name || "Teacher";
   var html = buildHostParticipantRowHtml({ name: teacherName }, true);
@@ -1726,10 +1756,12 @@ function applyStudentRoster(students, teacherName, activeCount) {
   if (remote.length) {
     var byId = {};
     list.forEach(function (s) {
-      if (s && s.student_id) byId[String(s.student_id)] = s;
+      if (s && s.student_id) byId[normalizeStudentId(s.student_id)] = s;
     });
     remote.forEach(function (r) {
-      if (r && r.student_id && !byId[String(r.student_id)]) byId[String(r.student_id)] = r;
+      if (r && r.student_id && !byId[normalizeStudentId(r.student_id)]) {
+        byId[normalizeStudentId(r.student_id)] = r;
+      }
     });
     list = Object.keys(byId).map(function (k) { return byId[k]; });
   }
@@ -1779,12 +1811,14 @@ async function loadClassroomStudents(quiet) {
     var remote = liveKitRosterFallback();
     if (remote.length) {
       var byId = {};
-      students.forEach(function (s) {
-        if (s && s.student_id) byId[String(s.student_id)] = s;
-      });
-      remote.forEach(function (r) {
-        if (r && r.student_id && !byId[String(r.student_id)]) byId[String(r.student_id)] = r;
-      });
+    students.forEach(function (s) {
+      if (s && s.student_id) byId[normalizeStudentId(s.student_id)] = s;
+    });
+    remote.forEach(function (r) {
+      if (r && r.student_id && !byId[normalizeStudentId(r.student_id)]) {
+        byId[normalizeStudentId(r.student_id)] = r;
+      }
+    });
       students = Object.keys(byId).map(function (k) { return byId[k]; });
     }
     applyStudentRoster(
@@ -1803,10 +1837,12 @@ async function loadClassroomStudents(quiet) {
         if (fallback.length) {
           var map = {};
           students2.forEach(function (s) {
-            if (s && s.student_id) map[String(s.student_id)] = s;
+            if (s && s.student_id) map[normalizeStudentId(s.student_id)] = s;
           });
           fallback.forEach(function (r) {
-            if (r && r.student_id && !map[String(r.student_id)]) map[String(r.student_id)] = r;
+            if (r && r.student_id && !map[normalizeStudentId(r.student_id)]) {
+              map[normalizeStudentId(r.student_id)] = r;
+            }
           });
           students2 = Object.keys(map).map(function (k) { return map[k]; });
         }
@@ -2503,7 +2539,13 @@ function placeSymbol(x, y, text, broadcast) {
 function getBoardTextMaxWidth(fromX) {
   if (!board.canvas) return 400;
   var x = typeof fromX === "number" ? fromX : board.textX;
-  return Math.max(80, board.canvas.width - x - 20);
+  var maxFromCanvas = board.canvas.width - x - 20;
+  var scroller = document.getElementById("board-scroll");
+  if (scroller && scroller.clientWidth > 0) {
+    var visible = scroller.clientWidth - x - 20;
+    if (visible > 0) maxFromCanvas = Math.min(maxFromCanvas, visible);
+  }
+  return Math.max(80, maxFromCanvas);
 }
 
 function wrapBoardTextLines(text, maxWidth, fontSize) {
@@ -3581,10 +3623,7 @@ window.onload = function () {
   } else {
     showStudentTools(true);
     var studBadge = document.getElementById("audience-badge");
-    if (studBadge) {
-      studBadge.textContent = "Joining…";
-      studBadge.classList.remove("hidden");
-    }
+    if (studBadge) studBadge.classList.add("hidden");
     startClassElapsedTimer();
     startClassroomStudentsPoll();
     startStudentMicPermissionPoll();

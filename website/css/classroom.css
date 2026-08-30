@@ -2135,3 +2135,29 @@ body.meet-stage-fullscreen #btn-stage-fullscreen {
   white-space: nowrap;
 }
 
+/* Host sidebar buttons — override browser default white buttons */
+#host-sidebar button {
+  -webkit-appearance: none;
+  appearance: none;
+  font-family: inherit;
+}
+#host-sidebar .meet-side-btn,
+#host-sidebar .btn-hand-allow,
+#host-sidebar .btn-hand-lower {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  pointer-events: auto;
+  cursor: pointer;
+}
+#host-sidebar .raise-hand-actions {
+  pointer-events: auto;
+}
+
+/* Student view — hide connection/status clutter */
+body.meet-v2.student-view #audience-badge,
+body.meet-v2.student-view #reconnect-banner,
+body.meet-v2.student-view #cr-status {
+  display: none !important;
+}

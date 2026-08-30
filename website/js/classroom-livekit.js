@@ -129,15 +129,15 @@
       liveSession.channel_id = data.channel_id || liveSession.channel_id;
       if (data.room_id) liveSession.room_id = data.room_id;
       if (data.end_time) liveSession.end_time = data.end_time;
-      if (typeof data.mic_allowed === "boolean") liveSession.mic_allowed = data.mic_allowed;
-      if (typeof data.camera_allowed === "boolean") liveSession.camera_allowed = data.camera_allowed;
+      if (typeof data.mic_allowed === "boolean") {
+        liveSession.mic_allowed = data.mic_allowed;
+        if (!isTeacherRole()) window.studentMicAllowed = data.mic_allowed;
+      }
+      if (typeof data.camera_allowed === "boolean") {
+        liveSession.camera_allowed = data.camera_allowed;
+        if (!isTeacherRole()) window.studentCameraAllowed = data.camera_allowed;
+      }
       if (typeof data.can_publish === "boolean") liveSession.can_publish = data.can_publish;
-      if (data.mic_allowed) {
-        window.studentMicAllowed = true;
-      }
-      if (data.camera_allowed) {
-        window.studentCameraAllowed = true;
-      }
       if (data.teacher_id) liveSession.teacher_id = data.teacher_id;
       if (typeof applyStudentMediaPermissions === "function") applyStudentMediaPermissions(data);
       if (typeof persistLiveSession === "function") persistLiveSession(liveSession);
@@ -242,27 +242,16 @@
 
   function applyStudentMediaPermissions(data) {
     if (isTeacherRole() || !data) return;
-    if (data.mic_allowed !== false) {
-      window.studentMicAllowed = true;
-      if (typeof syncStudentMicState === "function") syncStudentMicState(true);
+    window.studentMicAllowed = data.mic_allowed === true;
+    window.studentCameraAllowed = data.camera_allowed === true;
+    if (typeof syncStudentMicState === "function") {
+      syncStudentMicState(window.studentMicAllowed);
     }
-    if (data.camera_allowed) {
-      window.studentCameraAllowed = true;
-    }
-    if (data.can_publish && liveSession) {
-      liveSession.can_publish = true;
-      liveSession.mic_allowed = !!data.mic_allowed;
-      liveSession.camera_allowed = !!data.camera_allowed;
+    if (liveSession) {
+      liveSession.mic_allowed = window.studentMicAllowed;
+      liveSession.camera_allowed = window.studentCameraAllowed;
+      if (typeof data.can_publish === "boolean") liveSession.can_publish = data.can_publish;
       if (typeof persistLiveSession === "function") persistLiveSession(liveSession);
-    } else {
-      if (data.mic_allowed && liveSession) {
-        liveSession.mic_allowed = true;
-        if (typeof persistLiveSession === "function") persistLiveSession(liveSession);
-      }
-      if (data.camera_allowed && liveSession) {
-        liveSession.camera_allowed = true;
-        if (typeof persistLiveSession === "function") persistLiveSession(liveSession);
-      }
     }
     if (typeof setVideoControlsEnabled === "function" && liveVideoJoined) {
       var canMic = window.studentMicAllowed;
@@ -389,7 +378,6 @@
       }
     } else {
       if (typeof hideVideoPlaceholder === "function") hideVideoPlaceholder();
-      if (typeof setStatus === "function") setStatus("Connected — you can hear the teacher");
       if (typeof maybeShowSaveClassHint === "function") maybeShowSaveClassHint();
     }
   }
@@ -1196,8 +1184,8 @@
       if (typeof refreshLiveKitRosterDebounced === "function") refreshLiveKitRosterDebounced();
       else if (typeof refreshLiveKitRoster === "function") refreshLiveKitRoster();
       if (typeof setVideoControlsEnabled === "function") {
-        var canMic = isTeacherRole() || window.studentMicAllowed || !!(liveSession && liveSession.mic_allowed);
-        var canCam = isTeacherRole() || window.studentCameraAllowed || !!(liveSession && liveSession.camera_allowed);
+        var canMic = isTeacherRole() || window.studentMicAllowed === true;
+        var canCam = isTeacherRole() || window.studentCameraAllowed === true;
         setVideoControlsEnabled(canMic || canCam || isTeacherRole());
         var micBtn = document.getElementById("btn-mic");
         var camBtn = document.getElementById("btn-cam");
@@ -1232,7 +1220,8 @@
       }
       var studBadge = document.getElementById("audience-badge");
       if (studBadge && !isTeacherRole()) {
-        studBadge.textContent = "In class · live";
+        studBadge.textContent = "";
+        studBadge.classList.add("hidden");
       }
 
       if (isTeacherRole()) {
@@ -1503,11 +1492,9 @@
       }
       return;
     }
-    if (mediaMode === "local" && window.localPreviewStream) {
-      try { await setMic(!micOn); } catch (e) {
-        var m1 = friendlyMediaError(e, "mic");
-        if (typeof showClassroomToast === "function") showClassroomToast(m1, true);
-        if (typeof addChatMessage === "function") addChatMessage("", m1, true);
+    if (!isTeacherRole() && mediaMode === "local" && window.localPreviewStream) {
+      if (typeof showClassroomToast === "function") {
+        showClassroomToast("Wait for the teacher to allow your mic", true);
       }
       return;
     }
@@ -1544,11 +1531,9 @@
       }
       return;
     }
-    if (mediaMode === "local" && window.localPreviewStream) {
-      try { await setCam(!camOn); } catch (e) {
-        var c1 = friendlyMediaError(e, "cam");
-        if (typeof showClassroomToast === "function") showClassroomToast(c1, true);
-        if (typeof addChatMessage === "function") addChatMessage("", c1, true);
+    if (!isTeacherRole() && mediaMode === "local" && window.localPreviewStream) {
+      if (typeof showClassroomToast === "function") {
+        showClassroomToast("Wait for the teacher to allow your camera", true);
       }
       return;
     }
@@ -1795,13 +1780,33 @@
     });
   }
 
+  function looksLikeUuid(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      String(value || "").trim()
+    );
+  }
+
+  function resolveRosterDisplayName(participant) {
+    if (!participant) return "Student";
+    var pid = String(participant.identity || "");
+    var n = String(participant.name || "").trim();
+    if (n && n.toLowerCase() !== "student" && !looksLikeUuid(n)) return n;
+    if (typeof window.resolveStudentDisplayName === "function") {
+      return window.resolveStudentDisplayName({ student_id: pid, name: n });
+    }
+    if (window.__participantNames && pid && window.__participantNames[pid]) {
+      return window.__participantNames[pid];
+    }
+    return "Student";
+  }
+
   function listRemoteRosterParticipants() {
     if (!liveRoom) return [];
     var out = [];
     liveRoom.remoteParticipants.forEach(function (p) {
       out.push({
         student_id: String(p.identity || ""),
-        name: p.name || String(p.identity || "Participant"),
+        name: resolveRosterDisplayName(p),
         mic_allowed: !!(p.isMicrophoneEnabled || (p.audioTrackPublications && p.audioTrackPublications.size)),
         camera_allowed: !!(p.isCameraEnabled || (p.videoTrackPublications && p.videoTrackPublications.size)),
         is_teacher: isTeacherParticipant(p) || participantRoleFromMeta(p) === "teacher",
