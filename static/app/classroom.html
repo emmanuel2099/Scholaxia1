@@ -6,7 +6,9 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; script-src-attr 'unsafe-inline'; connect-src * blob: data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src * data: blob:; media-src * blob: data:; worker-src 'self' blob:; frame-src 'self' blob:;" />
   <title>Live Classroom — Scholaxia</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/classroom.css?v=20260831b" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <link rel="stylesheet" href="css/classroom.css?v=20260831c" />
   <link rel="stylesheet" href="css/responsive.css?v=20260804i" />
 </head>
 <body class="meet-v2">
@@ -153,7 +155,7 @@
       <section class="meet-side-block">
         <div class="meet-side-head">
           <h3>Participants <span id="host-participants-count">(0)</span></h3>
-          <button type="button" class="meet-side-btn" onclick="toggleHostSidebar()">Hide</button>
+          <button type="button" class="meet-side-btn host-side-action-btn" onclick="toggleHostSidebar()">Hide</button>
         </div>
         <input type="search" id="participant-search" class="meet-search" placeholder="Search participants…" oninput="filterHostParticipants(this.value)" />
         <div id="host-participants-list" class="host-participants-list"></div>
@@ -162,7 +164,7 @@
       <section class="meet-side-block">
         <div class="meet-side-head">
           <h3>Raised hands <span id="hands-side-badge">(0)</span></h3>
-          <button type="button" class="meet-side-btn" onclick="lowerAllHands()">Lower all</button>
+          <button type="button" class="meet-side-btn host-side-action-btn" onclick="lowerAllHands()">Lower all</button>
         </div>
         <div id="raise-hand-panel" class="raise-hand-panel-meet">
           <div id="raise-hand-list" class="raise-hand-list">
@@ -255,7 +257,7 @@
 <script src="js/classroom-bridge.js?v=20260828h"></script>
 <script src="js/saved-live.js?v=20260804i"></script>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.9.3/dist/livekit-client.umd.js"></script>
-<script src="js/classroom-livekit.js?v=20260831b"></script>
-<script src="js/classroom.js?v=20260831b"></script>
+<script src="js/classroom-livekit.js?v=20260831c"></script>
+<script src="js/classroom.js?v=20260831c"></script>
 </body>
 </html>

@@ -1965,6 +1965,9 @@ body.meet-v2.host-view .meet-tab[data-tab="hands"] {
   justify-content: space-between;
   border-bottom: 1px solid #2e1f4a;
   background: #1a1228;
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
 }
 .meet-panel-head .meet-tabs {
   flex: 1;
@@ -2144,11 +2147,11 @@ body.meet-stage-fullscreen #btn-stage-fullscreen {
 
 /* Host sidebar buttons — override browser default white buttons */
 #host-sidebar button {
-  -webkit-appearance: none;
-  appearance: none;
   font-family: inherit;
+  cursor: pointer;
 }
 #host-sidebar .meet-side-btn,
+#host-sidebar .host-side-action-btn,
 #host-sidebar .btn-hand-allow,
 #host-sidebar .btn-hand-lower {
   display: inline-flex;
@@ -2157,21 +2160,29 @@ body.meet-stage-fullscreen #btn-stage-fullscreen {
   box-sizing: border-box;
   pointer-events: auto;
   cursor: pointer;
-  -webkit-appearance: none !important;
-  appearance: none !important;
-}
-#host-sidebar .meet-side-head .meet-side-btn {
-  background: #1a1228 !important;
+  background-color: #1a1228 !important;
   color: #e9d5ff !important;
   border: 1px solid #6d28d9 !important;
   border-radius: 8px !important;
   padding: 5px 10px !important;
   font-size: 0.72rem !important;
   font-weight: 600 !important;
+  line-height: 1.2 !important;
 }
-#host-sidebar .meet-side-head .meet-side-btn:hover {
-  background: #2e1065 !important;
+#host-sidebar .meet-side-btn:hover,
+#host-sidebar .host-side-action-btn:hover,
+#host-sidebar .btn-hand-lower:hover {
+  background-color: #2e1065 !important;
   border-color: #8b5cf6 !important;
+}
+#host-sidebar .btn-hand-allow {
+  background-color: #16a34a !important;
+  border-color: #16a34a !important;
+  color: #fff !important;
+}
+#host-sidebar .btn-hand-allow:hover {
+  background-color: #15803d !important;
+  border-color: #15803d !important;
 }
 .meet-tool-btn.media-locked,
 .meet-tool-btn:disabled {

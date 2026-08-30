@@ -1166,7 +1166,7 @@ async def join_class(
         payload = _livekit_token_payload(
             room_id,
             sid,
-            current_user.get("full_name") or current_user.get("email") or "student",
+            current_user.get("full_name") or current_user.get("email") or "Student",
             can_publish=can_publish_student,
             role="student",
         )

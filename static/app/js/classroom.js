@@ -294,6 +294,18 @@ function saveLiveSession(sess) {
   window.liveSession = sess;
 }
 
+function isClassroomHost() {
+  if (isTeacherRole()) return true;
+  try {
+    var r = String(localStorage.getItem("sia_role") || "").toLowerCase().replace(/^userrole\./, "");
+    if (r === "teacher" || r === "admin") return true;
+  } catch (e) { /* ignore */ }
+  return !!(
+    localStorage.getItem("sia_teacher_token") ||
+    localStorage.getItem("sia_admin_token")
+  );
+}
+
 function isTeacherRole() {
   if (!liveSession) return false;
   var role = String(liveSession.role || "").toLowerCase();
@@ -962,9 +974,8 @@ function buildRaisedHandsHtml() {
       '<span><span class="hand-rank">' + (idx + 1) + '.</span>&#9995; ' + safeName + '</span>' +
       '<span class="raise-hand-actions">' +
       '<button type="button" class="btn-hand-allow" data-hand-action="allow" data-user-id="' + safeId +
-      '" data-user-name="' + safeName + '" onclick="grantStudentMic(this.getAttribute(\'data-user-id\'), this.getAttribute(\'data-user-name\'))">Allow to speak</button>' +
-      '<button type="button" class="btn-hand-lower" data-hand-action="lower" data-user-id="' + safeId +
-      '" onclick="lowerHandForStudent(this.getAttribute(\'data-user-id\'))">Lower</button>' +
+      '" data-user-name="' + safeName + '">Allow to speak</button>' +
+      '<button type="button" class="btn-hand-lower" data-hand-action="lower" data-user-id="' + safeId + '">Lower</button>' +
       "</span></div>";
   }).join("");
 }
@@ -980,7 +991,7 @@ function bindRaisedHandActions() {
     root.dataset.handActionsBound = "1";
     root.addEventListener("click", function (e) {
       var btn = e.target.closest("[data-hand-action]");
-      if (!btn || !isTeacherRole()) return;
+      if (!btn || !isClassroomHost()) return;
       e.preventDefault();
       e.stopPropagation();
       var uid = btn.getAttribute("data-user-id");
@@ -990,6 +1001,28 @@ function bindRaisedHandActions() {
       else if (action === "lower") lowerHandForStudent(uid);
     });
   });
+  if (!window.__sxHandDocBound) {
+    window.__sxHandDocBound = true;
+    document.addEventListener("click", function (e) {
+      if (!isClassroomHost()) return;
+      var allowBtn = e.target.closest(".btn-hand-allow");
+      if (allowBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        grantStudentMic(
+          allowBtn.getAttribute("data-user-id"),
+          allowBtn.getAttribute("data-user-name") || "Student"
+        );
+        return;
+      }
+      var lowerBtn = e.target.closest(".btn-hand-lower");
+      if (lowerBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        lowerHandForStudent(lowerBtn.getAttribute("data-user-id"));
+      }
+    }, true);
+  }
 }
 
 function resolveStudentDisplayName(s) {
@@ -997,6 +1030,16 @@ function resolveStudentDisplayName(s) {
   var sid = normalizeStudentId(s.student_id || s.userId || s.user_id || "");
   var n = (s.name || "").trim();
   if (n && n.toLowerCase() !== "student" && !looksLikeUuid(n)) return n;
+  if (sid) {
+    Object.keys(raisedHands).forEach(function (k) {
+      if (normalizeStudentId(k) !== sid) return;
+      var rh = raisedHands[k];
+      if (rh && rh.name && rh.name.toLowerCase() !== "student" && !looksLikeUuid(rh.name)) {
+        n = rh.name;
+      }
+    });
+    if (n && n.toLowerCase() !== "student" && !looksLikeUuid(n)) return n;
+  }
   if (sid && raisedHands[sid] && raisedHands[sid].name &&
       raisedHands[sid].name.toLowerCase() !== "student" &&
       !looksLikeUuid(raisedHands[sid].name)) {
@@ -1047,17 +1090,23 @@ function renderRaisedHands() {
 }
 
 function addRaisedHand(userId, name) {
-  if (!userId || !isTeacherRole()) return;
+  if (!userId || !isClassroomHost()) return;
   var uid = normalizeStudentId(userId);
+  var display = (name || "").trim();
   if (!raisedHands[uid]) {
-    raisedHands[uid] = { name: name || "Student", at: Date.now() };
+    raisedHands[uid] = { name: display || "Student", at: Date.now() };
   } else {
-    raisedHands[uid].name = name || raisedHands[uid].name || "Student";
+    raisedHands[uid].name = display || raisedHands[uid].name || "Student";
+  }
+  if (display && display.toLowerCase() !== "student") {
+    window.__participantNames = window.__participantNames || {};
+    window.__participantNames[uid] = display;
   }
   var panel = document.getElementById("raise-hand-panel");
   if (panel) panel.classList.remove("hidden");
   renderRaisedHands();
   renderRaisedHandToolbarBadge();
+  if (isClassroomHost()) renderHostParticipantList(lastClassroomStudents);
 }
 
 function removeRaisedHand(userId) {
@@ -1132,25 +1181,32 @@ async function classroomHostApi(path, options) {
 }
 
 async function grantStudentMic(userId, studentName) {
-  if (!isTeacherRole() || !userId) return;
+  if (!isClassroomHost() || !userId) {
+    showClassroomToast("Only the teacher can allow students to speak.", true);
+    return;
+  }
   var classId = liveSession.class_id || liveSession.classId;
   if (!classId) {
     showClassroomToast("Class session not found. Re-enter the classroom.", true);
     return;
   }
-  var uid = normalizeStudentId(userId);
-  var name = studentName || (raisedHands[uid] && raisedHands[uid].name) || "Student";
+  var uidRaw = String(userId).trim();
+  var uidKey = normalizeStudentId(uidRaw);
+  var name = studentName || (raisedHands[uidKey] && raisedHands[uidKey].name) || "Student";
   showClassroomToast("Allowing " + name + " to speak…");
   var ok = false;
   var errMsg = "";
   var wsSent = false;
   if (liveSocket && liveSocket.readyState === WebSocket.OPEN) {
-    liveSocket.send(JSON.stringify({ event: "grant_mic", target_user_id: uid }));
+    liveSocket.send(JSON.stringify({ event: "grant_mic", target_user_id: uidRaw }));
     wsSent = true;
+  } else {
+    showClassroomToast("Chat not connected — reconnecting…", true);
+    try { connectChat(true); } catch (eC) { /* ignore */ }
   }
   try {
     await classroomHostApi(
-      "/api/v1/live-classes/" + classId + "/students/" + encodeURIComponent(uid) + "/unmute",
+      "/api/v1/live-classes/" + classId + "/students/" + encodeURIComponent(uidRaw) + "/unmute",
       { method: "POST" }
     );
     ok = true;
@@ -1159,7 +1215,9 @@ async function grantStudentMic(userId, studentName) {
     if (wsSent) ok = true;
   }
   if (ok) {
-    removeRaisedHand(uid);
+    removeRaisedHand(uidKey);
+    window.__participantNames = window.__participantNames || {};
+    window.__participantNames[uidKey] = name;
     showClassroomToast("Done — " + name + " can speak now");
     addChatMessage("", name + " can now use the microphone.", true);
     if (typeof ensureRoomAudioPlayback === "function") ensureRoomAudioPlayback();
@@ -2852,7 +2910,7 @@ function connectChat(isReconnect) {
   }
   var payload = parseJwt(getAuthToken());
   var userId = payload.sub || liveSession.user_id || liveSession.identity || "user";
-  var role = isTeacherRole() ? "teacher" : "student";
+  var role = isClassroomHost() ? "teacher" : "student";
   var displayName = localStorage.getItem("sia_name") || "";
   if (!displayName) {
     try {
@@ -3021,19 +3079,28 @@ function connectChat(isReconnect) {
             raisedHands = {};
             window.raisedHands = raisedHands;
             msg.raisedHands.forEach(function (h) {
-              if (h && h.userId) raisedHands[h.userId] = { name: h.name || "Student", at: h.handRaisedAt };
+              if (!h || !h.userId) return;
+              var hk = normalizeStudentId(h.userId);
+              var hn = (h.name || "").trim() || "Student";
+              raisedHands[hk] = { name: hn, at: h.handRaisedAt || Date.now() };
+              if (hn.toLowerCase() !== "student") {
+                window.__participantNames = window.__participantNames || {};
+                window.__participantNames[hk] = hn;
+              }
             });
             renderRaisedHands();
             renderRaisedHandToolbarBadge();
+            renderHostParticipantList(lastClassroomStudents);
             var panelQ = document.getElementById("raise-hand-panel");
             if (panelQ) panelQ.classList.remove("hidden");
           } else {
             var rhName = msg.name || (msg.participant && msg.participant.name) || "";
             if (rhName) {
               window.__participantNames = window.__participantNames || {};
-              window.__participantNames[String(msg.user_id)] = rhName;
+              window.__participantNames[normalizeStudentId(msg.user_id)] = rhName;
             }
             addRaisedHand(msg.user_id, rhName);
+            renderHostParticipantList(lastClassroomStudents);
           }
           addChatMessage("", (msg.name || "A student") + " raised their hand.", true);
           showClassroomToast((msg.name || "A student") + " raised their hand");
@@ -3983,24 +4050,5 @@ function showSpotlightBarIfHost() {
 document.addEventListener("DOMContentLoaded", function () {
   try { showSpotlightBarIfHost(); } catch (e) { /* ignore */ }
   try { bindRaisedHandActions(); } catch (e2) { /* ignore */ }
-  try {
-    document.addEventListener("click", function (e) {
-      if (!isTeacherRole()) return;
-      var allowBtn = e.target.closest(".btn-hand-allow, [data-hand-action='allow']");
-      if (allowBtn) {
-        e.preventDefault();
-        grantStudentMic(
-          allowBtn.getAttribute("data-user-id"),
-          allowBtn.getAttribute("data-user-name") || "Student"
-        );
-        return;
-      }
-      var lowerBtn = e.target.closest(".btn-hand-lower, [data-hand-action='lower']");
-      if (lowerBtn) {
-        e.preventDefault();
-        lowerHandForStudent(lowerBtn.getAttribute("data-user-id"));
-      }
-    });
-  } catch (e3) { /* ignore */ }
   setTimeout(showSpotlightBarIfHost, 800);
 });
