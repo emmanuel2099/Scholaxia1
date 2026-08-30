@@ -436,6 +436,14 @@ function applyRoomSnapshot(snapshot) {
   if (!snapshot) return;
   window.__roomSnapshot = snapshot;
   var parts = snapshot.participants || [];
+  window.__participantNames = window.__participantNames || {};
+  parts.forEach(function (p) {
+    var pid = p.userId || p.participantId || p.user_id;
+    var pname = (p.name || p.displayName || "").trim();
+    if (pid && pname && pname.toLowerCase() !== "student" && !looksLikeUuid(pname)) {
+      window.__participantNames[normalizeStudentId(pid)] = pname;
+    }
+  });
   if (isTeacherRole() && parts.length) {
     var students = parts
       .filter(function (p) {
@@ -443,9 +451,10 @@ function applyRoomSnapshot(snapshot) {
           String(p.connectionState || "") !== "DISCONNECTED";
       })
       .map(function (p) {
+        var sid = p.userId || p.participantId;
         return {
-          student_id: p.userId || p.participantId,
-          name: p.name || "Student",
+          student_id: sid,
+          name: resolveStudentDisplayName({ student_id: sid, name: p.name }),
           mic_allowed: !!(p.micAllowed || p.microphoneEnabled),
           camera_allowed: !!(p.cameraAllowed || p.cameraEnabled),
           joined_at: p.joinedAt,
@@ -464,6 +473,7 @@ function applyRoomSnapshot(snapshot) {
     if (h && h.userId) addRaisedHand(h.userId, h.name || "Student");
   });
   if (snapshot.permissions) applyClassPermissions(snapshot.permissions);
+  if (!isTeacherRole()) syncStudentMediaControls();
   if (snapshot.sessionStatus) applySessionStatus(snapshot.sessionStatus);
   var spot = snapshot.spotlight || snapshot.presentation;
   if (spot) {
@@ -744,6 +754,23 @@ async function stopLiveSaveAndStore(showNotice) {
   });
 }
 
+function syncStudentMediaControls() {
+  if (isTeacherRole()) return;
+  var micBtn = document.getElementById("btn-mic");
+  var camBtn = document.getElementById("btn-cam");
+  var micOk = window.studentMicAllowed === true;
+  var camOk = window.studentCameraAllowed === true;
+  if (micBtn) {
+    micBtn.disabled = !micOk;
+    micBtn.classList.toggle("media-locked", !micOk);
+  }
+  if (camBtn) {
+    camBtn.disabled = !camOk;
+    camBtn.classList.toggle("media-locked", !camOk);
+  }
+}
+window.syncStudentMediaControls = syncStudentMediaControls;
+
 function setVideoControlsEnabled(enabled) {
   var micBtn = document.getElementById("btn-mic");
   var camBtn = document.getElementById("btn-cam");
@@ -754,8 +781,9 @@ function setVideoControlsEnabled(enabled) {
     });
     return;
   }
-  if (micBtn) micBtn.disabled = !(enabled && window.studentMicAllowed);
-  if (camBtn) camBtn.disabled = !(enabled && window.studentCameraAllowed);
+  if (micBtn) micBtn.disabled = !(enabled && window.studentMicAllowed === true);
+  if (camBtn) camBtn.disabled = !(enabled && window.studentCameraAllowed === true);
+  syncStudentMediaControls();
 }
 
 function showAudioUnlockBanner() {
@@ -934,8 +962,9 @@ function buildRaisedHandsHtml() {
       '<span><span class="hand-rank">' + (idx + 1) + '.</span>&#9995; ' + safeName + '</span>' +
       '<span class="raise-hand-actions">' +
       '<button type="button" class="btn-hand-allow" data-hand-action="allow" data-user-id="' + safeId +
-      '" data-user-name="' + safeName + '">Allow to speak</button>' +
-      '<button type="button" class="btn-hand-lower" data-hand-action="lower" data-user-id="' + safeId + '">Lower</button>' +
+      '" data-user-name="' + safeName + '" onclick="grantStudentMic(this.getAttribute(\'data-user-id\'), this.getAttribute(\'data-user-name\'))">Allow to speak</button>' +
+      '<button type="button" class="btn-hand-lower" data-hand-action="lower" data-user-id="' + safeId +
+      '" onclick="lowerHandForStudent(this.getAttribute(\'data-user-id\'))">Lower</button>' +
       "</span></div>";
   }).join("");
 }
@@ -1109,7 +1138,7 @@ async function grantStudentMic(userId, studentName) {
     showClassroomToast("Class session not found. Re-enter the classroom.", true);
     return;
   }
-  var uid = String(userId).trim();
+  var uid = normalizeStudentId(userId);
   var name = studentName || (raisedHands[uid] && raisedHands[uid].name) || "Student";
   showClassroomToast("Allowing " + name + " to speak…");
   var ok = false;
@@ -2824,7 +2853,16 @@ function connectChat(isReconnect) {
   var payload = parseJwt(getAuthToken());
   var userId = payload.sub || liveSession.user_id || liveSession.identity || "user";
   var role = isTeacherRole() ? "teacher" : "student";
-  var displayName = localStorage.getItem("sia_name") || (liveSession.teacher_name && isTeacherRole() ? liveSession.teacher_name : "Student");
+  var displayName = localStorage.getItem("sia_name") || "";
+  if (!displayName) {
+    try {
+      var u = typeof api !== "undefined" && api.getUser ? api.getUser() : null;
+      if (u && (u.full_name || u.name)) displayName = u.full_name || u.name;
+    } catch (eU) { /* ignore */ }
+  }
+  if (!displayName) {
+    displayName = (liveSession.teacher_name && isTeacherRole()) ? liveSession.teacher_name : "Student";
+  }
   var url = API_WS + "/ws/live-class/" + encodeURIComponent(liveSession.room_id)
     + "?user_id=" + encodeURIComponent(userId)
     + "&role=" + encodeURIComponent(role)
@@ -2883,7 +2921,8 @@ function connectChat(isReconnect) {
     updateAudienceStats();
     var studBadge = document.getElementById("audience-badge");
     if (studBadge && !isTeacherRole()) {
-      studBadge.textContent = "In class";
+      studBadge.textContent = "";
+      studBadge.classList.add("hidden");
     }
   };
   liveSocket.onmessage = function (ev) {
@@ -3570,11 +3609,12 @@ window.onload = function () {
   window.studentMicAllowed = studentMicAllowed;
   window.studentCameraAllowed = studentCameraAllowed;
   if (!isTeacherRole() && liveSession) {
-    studentMicAllowed = !!(liveSession.mic_allowed);
-    studentCameraAllowed = !!(liveSession.camera_allowed);
+    studentMicAllowed = liveSession.mic_allowed === true;
+    studentCameraAllowed = liveSession.camera_allowed === true;
     window.studentMicAllowed = studentMicAllowed;
     window.studentCameraAllowed = studentCameraAllowed;
     if (typeof syncStudentMicState === "function") syncStudentMicState(studentMicAllowed);
+    syncStudentMediaControls();
   }
   document.getElementById("cr-title").textContent = liveSession.title || "Live Class";
   document.getElementById("cr-meta").textContent =
@@ -3889,15 +3929,20 @@ function applyClassPermissions(perms) {
     var hand = document.getElementById("btn-hand");
     var chat = document.getElementById("btn-chat");
     var react = document.getElementById("btn-react");
+    var micOk = window.studentMicAllowed === true;
+    var camOk = window.studentCameraAllowed === true;
     if (cam) {
-      cam.disabled = !classPermissions.studentsCanUseCamera && !studentCameraAllowed;
+      cam.disabled = !camOk;
+      cam.classList.toggle("media-locked", !camOk);
     }
     if (mic) {
-      mic.disabled = !classPermissions.studentsCanUseMicrophone && !studentMicAllowed;
+      mic.disabled = !micOk;
+      mic.classList.toggle("media-locked", !micOk);
     }
     if (hand) hand.disabled = !classPermissions.studentsCanRaiseHand;
     if (chat) chat.classList.toggle("disabled", !classPermissions.studentsCanChat);
     if (react) react.disabled = !classPermissions.studentsCanReact;
+    return;
   }
 }
 window.applyClassPermissions = applyClassPermissions;
@@ -3938,5 +3983,24 @@ function showSpotlightBarIfHost() {
 document.addEventListener("DOMContentLoaded", function () {
   try { showSpotlightBarIfHost(); } catch (e) { /* ignore */ }
   try { bindRaisedHandActions(); } catch (e2) { /* ignore */ }
+  try {
+    document.addEventListener("click", function (e) {
+      if (!isTeacherRole()) return;
+      var allowBtn = e.target.closest(".btn-hand-allow, [data-hand-action='allow']");
+      if (allowBtn) {
+        e.preventDefault();
+        grantStudentMic(
+          allowBtn.getAttribute("data-user-id"),
+          allowBtn.getAttribute("data-user-name") || "Student"
+        );
+        return;
+      }
+      var lowerBtn = e.target.closest(".btn-hand-lower, [data-hand-action='lower']");
+      if (lowerBtn) {
+        e.preventDefault();
+        lowerHandForStudent(lowerBtn.getAttribute("data-user-id"));
+      }
+    });
+  } catch (e3) { /* ignore */ }
   setTimeout(showSpotlightBarIfHost, 800);
 });

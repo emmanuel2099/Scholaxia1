@@ -1694,8 +1694,15 @@ body.meet-v2.host-view .meet-main {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 10px 12px;
+  padding: 12px 12px 10px;
   font-size: 0.82rem;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.meet-chat-log .chat-msg {
+  position: relative;
+  z-index: 1;
 }
 .meet-chat-form {
   display: flex;
@@ -2150,6 +2157,27 @@ body.meet-stage-fullscreen #btn-stage-fullscreen {
   box-sizing: border-box;
   pointer-events: auto;
   cursor: pointer;
+  -webkit-appearance: none !important;
+  appearance: none !important;
+}
+#host-sidebar .meet-side-head .meet-side-btn {
+  background: #1a1228 !important;
+  color: #e9d5ff !important;
+  border: 1px solid #6d28d9 !important;
+  border-radius: 8px !important;
+  padding: 5px 10px !important;
+  font-size: 0.72rem !important;
+  font-weight: 600 !important;
+}
+#host-sidebar .meet-side-head .meet-side-btn:hover {
+  background: #2e1065 !important;
+  border-color: #8b5cf6 !important;
+}
+.meet-tool-btn.media-locked,
+.meet-tool-btn:disabled {
+  opacity: 0.38;
+  pointer-events: none;
+  filter: grayscale(0.4);
 }
 #host-sidebar .raise-hand-actions {
   pointer-events: auto;
