@@ -992,9 +992,9 @@ function buildRaisedHandsHtml() {
       '<span><span class="hand-rank">' + (idx + 1) + '.</span>&#9995; ' + safeName + '</span>' +
       '<span class="raise-hand-actions">' +
       '<button type="button" class="btn-hand-allow" data-hand-action="allow" data-user-id="' + escHtml(String(id)) +
-      '" data-user-name="' + safeName + '" onclick="grantStudentMic(\'' + rawId + '\',\'' + rawName + '\')">Allow to speak</button>' +
+      '" data-user-name="' + safeName + '" onclick="sxAllowSpeak(this)">Allow to speak</button>' +
       '<button type="button" class="btn-hand-lower" data-hand-action="lower" data-user-id="' + escHtml(String(id)) +
-      '" onclick="lowerHandForStudent(\'' + rawId + '\')">Lower</button>' +
+      '" onclick="sxLowerHand(this)">Lower</button>' +
       "</span></div>";
   }).join("");
 }
@@ -1029,8 +1029,8 @@ function bindRaisedHandActions() {
         e.preventDefault();
         e.stopPropagation();
         grantStudentMic(
-          allowBtn.getAttribute("data-user-id"),
-          allowBtn.getAttribute("data-user-name") || "Student"
+          allowBtn.getAttribute("data-user-id") || allowBtn.getAttribute("data-uid"),
+          allowBtn.getAttribute("data-user-name") || allowBtn.getAttribute("data-name") || "Student"
         );
         return;
       }
@@ -1038,7 +1038,7 @@ function bindRaisedHandActions() {
       if (lowerBtn) {
         e.preventDefault();
         e.stopPropagation();
-        lowerHandForStudent(lowerBtn.getAttribute("data-user-id"));
+        lowerHandForStudent(lowerBtn.getAttribute("data-user-id") || lowerBtn.getAttribute("data-uid"));
       }
     }, true);
   }
@@ -1091,7 +1091,7 @@ function resolveStudentDisplayName(s) {
 window.resolveStudentDisplayName = resolveStudentDisplayName;
 
 function renderRaisedHands() {
-  if (!isTeacherRole()) return;
+  if (!isClassroomHost()) return;
   var html = buildRaisedHandsHtml();
   var list = document.getElementById("raise-hand-list");
   var bottom = document.getElementById("raise-hand-list-bottom");
@@ -1484,6 +1484,23 @@ function renderClassroomStudents(students) {
   if (isTeacherRole()) renderHostParticipantList(students);
 }
 
+function enrichStudentsWithKnownNames(students) {
+  if (!students || !students.length) return students || [];
+  var names = window.__participantNames || {};
+  return students.map(function (s) {
+    if (!s) return s;
+    var sid = normalizeStudentId(s.student_id || "");
+    var best = resolveStudentDisplayName(s);
+    if (best && best.toLowerCase() !== "student") {
+      return Object.assign({}, s, { name: best });
+    }
+    if (sid && names[sid] && names[sid].toLowerCase() !== "student") {
+      return Object.assign({}, s, { name: names[sid] });
+    }
+    return s;
+  });
+}
+
 function buildHostParticipantRowHtml(s, isTeacher) {
   if (isTeacher) {
     return '<div class="host-participant-row host-teacher" data-name="teacher">' +
@@ -1491,10 +1508,16 @@ function buildHostParticipantRowHtml(s, isTeacher) {
       '<span class="host-part-name">' + escHtml(s.name || "Teacher") + "</span>" +
       '<span class="host-part-icons"><span class="icon-on">🎤</span><span class="icon-on">📷</span></span></div>';
   }
-  var sid = String(s.student_id || "");
-  var micOn = s.mic_allowed;
-  var camOn = s.camera_allowed || s.camera_enabled;
+  var sid = normalizeStudentId(s.student_id || "");
   var displayName = resolveStudentDisplayName(s);
+  var micOn = !!(s.mic_allowed || s.mic_on);
+  var camOn = !!(s.camera_allowed || s.camera_on);
+  Object.keys(raisedHands).forEach(function (k) {
+    if (normalizeStudentId(k) === sid && raisedHands[k] && raisedHands[k].name) {
+      var rn = String(raisedHands[k].name).trim();
+      if (rn && rn.toLowerCase() !== "student" && !looksLikeUuid(rn)) displayName = rn;
+    }
+  });
   return '<div class="host-participant-row" data-student-id="' + escHtml(sid) + '" data-name="' +
     escHtml(displayName.toLowerCase()) + '">' +
     '<span class="host-part-avatar">' + escHtml(displayName.charAt(0).toUpperCase()) + "</span>" +
@@ -1505,10 +1528,10 @@ function buildHostParticipantRowHtml(s, isTeacher) {
 }
 
 function renderHostParticipantList(students) {
-  if (!isTeacherRole()) return;
+  if (!isClassroomHost()) return;
   var list = document.getElementById("host-participants-list");
   if (!list) return;
-  lastClassroomStudents = students || [];
+  lastClassroomStudents = enrichStudentsWithKnownNames(students || []);
   var q = (hostParticipantFilter || "").trim().toLowerCase();
   var filtered = lastClassroomStudents.filter(function (s) {
     if (!q) return true;
@@ -1858,7 +1881,7 @@ function liveKitRosterFallback() {
 }
 
 function applyStudentRoster(students, teacherName, activeCount) {
-  var list = students || [];
+  var list = enrichStudentsWithKnownNames(students || []);
   var remote = liveKitRosterFallback();
   if (remote.length) {
     var byId = {};
@@ -2008,6 +2031,25 @@ window.grantStudentCamera = grantStudentCamera;
 window.revokeStudentCamera = revokeStudentCamera;
 window.loadClassroomStudents = loadClassroomStudents;
 window.unlockClassAudio = unlockClassAudio;
+
+function sxAllowSpeak(btn) {
+  if (!btn) return;
+  var uid = btn.getAttribute("data-user-id") || btn.getAttribute("data-uid");
+  var name = btn.getAttribute("data-user-name") || btn.getAttribute("data-name") || "";
+  if (!uid) {
+    showClassroomToast("Could not identify student — refresh and try again.", true);
+    return;
+  }
+  grantStudentMic(uid, name);
+}
+window.sxAllowSpeak = sxAllowSpeak;
+
+function sxLowerHand(btn) {
+  if (!btn) return;
+  var uid = btn.getAttribute("data-user-id") || btn.getAttribute("data-uid");
+  if (uid) lowerHandForStudent(uid);
+}
+window.sxLowerHand = sxLowerHand;
 
 function withTimeout(promise, ms, message) {
   return Promise.race([

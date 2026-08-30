@@ -30,10 +30,22 @@
       background-color: #2e1065 !important;
       border-color: #8b5cf6 !important;
     }
+    .sx-build-badge {
+      display: inline-block;
+      margin-left: 8px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: #16a34a;
+      color: #fff;
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      vertical-align: middle;
+    }
   </style>
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
-  <link rel="stylesheet" href="css/classroom.css?v=20260831d" />
+  <link rel="stylesheet" href="css/classroom.css?v=20260831e" />
   <link rel="stylesheet" href="css/responsive.css?v=20260804i" />
 </head>
 <body class="meet-v2">
@@ -68,6 +80,7 @@
   <header class="meet-header">
     <div class="meet-header-left">
       <span class="live-pill" id="live-status-pill">LIVE</span>
+      <span id="sx-build-badge" class="sx-build-badge" title="UI build version">BUILD 20260831e</span>
       <div class="meet-breadcrumb">
         <h1 id="cr-title">Live Class</h1>
         <p id="cr-meta">—</p>
@@ -180,7 +193,7 @@
       <section class="meet-side-block">
         <div class="meet-side-head">
           <h3>Participants <span id="host-participants-count">(0)</span></h3>
-          <div role="button" class="host-side-action-btn" tabindex="0" onclick="toggleHostSidebar()">Hide</div>
+          <div role="button" class="host-side-action-btn" tabindex="0" onclick="toggleHostSidebar()" style="display:inline-flex;align-items:center;background:#1a1228;color:#e9d5ff;border:1px solid #6d28d9;border-radius:8px;padding:5px 10px;font-size:0.72rem;font-weight:600;cursor:pointer;">Hide</div>
         </div>
         <input type="search" id="participant-search" class="meet-search" placeholder="Search participants…" oninput="filterHostParticipants(this.value)" />
         <div id="host-participants-list" class="host-participants-list"></div>
@@ -189,7 +202,7 @@
       <section class="meet-side-block">
         <div class="meet-side-head">
           <h3>Raised hands <span id="hands-side-badge">(0)</span></h3>
-          <div role="button" class="host-side-action-btn" tabindex="0" onclick="lowerAllHands()">Lower all</div>
+          <div role="button" class="host-side-action-btn" tabindex="0" onclick="lowerAllHands()" style="display:inline-flex;align-items:center;background:#1a1228;color:#e9d5ff;border:1px solid #6d28d9;border-radius:8px;padding:5px 10px;font-size:0.72rem;font-weight:600;cursor:pointer;">Lower all</div>
         </div>
         <div id="raise-hand-panel" class="raise-hand-panel-meet">
           <div id="raise-hand-list" class="raise-hand-list">
@@ -282,7 +295,7 @@
 <script src="js/classroom-bridge.js?v=20260828h"></script>
 <script src="js/saved-live.js?v=20260804i"></script>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.9.3/dist/livekit-client.umd.js"></script>
-<script src="js/classroom-livekit.js?v=20260831d"></script>
-<script src="js/classroom.js?v=20260831d"></script>
+<script src="js/classroom-livekit.js?v=20260831e"></script>
+<script src="js/classroom.js?v=20260831e"></script>
 </body>
 </html>
