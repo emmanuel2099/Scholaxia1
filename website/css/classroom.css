@@ -2073,3 +2073,65 @@ body.meet-stage-fullscreen #btn-stage-fullscreen {
   object-fit: contain !important;
 }
 
+/* Meet sidebar + raised-hand buttons (dark theme — no white defaults) */
+.meet-sidebar .meet-side-btn,
+.meet-strip-head .meet-side-btn {
+  border: 1px solid #6d28d9;
+  background: #1a1228;
+  color: #e9d5ff;
+  padding: 5px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.meet-sidebar .meet-side-btn:hover,
+.meet-strip-head .meet-side-btn:hover {
+  background: #2e1065;
+  border-color: #8b5cf6;
+}
+.raise-hand-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.btn-hand-allow {
+  border: none;
+  background: #16a34a;
+  color: #fff;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.btn-hand-allow:hover { background: #15803d; }
+.btn-hand-lower {
+  border: 1px solid #6d28d9;
+  background: #1a1228;
+  color: #e9d5ff;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.btn-hand-lower:hover { background: #2e1065; }
+.meet-side-block .raise-hand-item {
+  background: #1a1228;
+  border: 1px solid #4c1d95;
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+}
+.meet-side-block .raise-hand-item span:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+

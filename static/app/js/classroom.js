@@ -320,7 +320,14 @@ function isTeacherRole() {
 
 function setStatus(text) {
   var el = document.getElementById("cr-status");
-  if (el) el.textContent = text;
+  if (!el) return;
+  if (!isTeacherRole()) {
+    el.classList.add("hidden");
+    el.textContent = "";
+    return;
+  }
+  el.textContent = text || "";
+  el.classList.remove("hidden");
 }
 
 var classroomToastTimer = null;
@@ -586,6 +593,7 @@ function showHostTools(show) {
     if (side && !isMobileClassroomView()) side.classList.remove("hidden");
     collapseMeetChatPanel(false);
     startTeacherBoardHeartbeat();
+    bindRaisedHandActions();
   } else {
     document.body.classList.remove("host-view");
   }
@@ -599,6 +607,8 @@ function showStudentTools(show) {
   if (show) {
     document.body.classList.add("student-view");
     document.body.classList.remove("host-view");
+    var statusEl = document.getElementById("cr-status");
+    if (statusEl) statusEl.classList.add("hidden");
     collapseMeetChatPanel(true);
   } else {
     document.body.classList.remove("student-view");
@@ -907,17 +917,62 @@ function buildRaisedHandsHtml() {
   if (!ids.length) return '<p class="raise-hand-empty">No students waiting.</p>';
   return ids.map(function (id, idx) {
     var item = raisedHands[id];
-    var name = escHtml(item.name || "Student");
+    var name = resolveStudentDisplayName({ student_id: id, name: item.name });
+    var safeName = escHtml(name);
+    var safeId = escHtml(String(id));
     return '<div class="raise-hand-item">' +
-      '<span><span class="hand-rank">' + (idx + 1) + '.</span>&#9995; ' + name + '</span>' +
-      '<span style="display:flex;gap:6px">' +
-      '<button type="button" class="btn-give-access" onclick="grantStudentMic(' +
-      JSON.stringify(id) + ',' + JSON.stringify(item.name || "Student") + ')">Allow to speak</button>' +
-      '<button type="button" class="btn-sm" onclick="lowerHandForStudent(' +
-      JSON.stringify(id) + ')">Lower</button>' +
+      '<span><span class="hand-rank">' + (idx + 1) + '.</span>&#9995; ' + safeName + '</span>' +
+      '<span class="raise-hand-actions">' +
+      '<button type="button" class="btn-hand-allow" data-hand-action="allow" data-user-id="' + safeId +
+      '" data-user-name="' + safeName + '">Allow to speak</button>' +
+      '<button type="button" class="btn-hand-lower" data-hand-action="lower" data-user-id="' + safeId + '">Lower</button>' +
       "</span></div>";
   }).join("");
 }
+
+function bindRaisedHandActions() {
+  var roots = [document.getElementById("raise-hand-panel"), document.getElementById("meet-bottom-panel")];
+  roots.forEach(function (root) {
+    if (!root || root.dataset.handActionsBound === "1") return;
+    root.dataset.handActionsBound = "1";
+    root.addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-hand-action]");
+      if (!btn || !isTeacherRole()) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var uid = btn.getAttribute("data-user-id");
+      var uname = btn.getAttribute("data-user-name") || "Student";
+      var action = btn.getAttribute("data-hand-action");
+      if (action === "allow") grantStudentMic(uid, uname);
+      else if (action === "lower") lowerHandForStudent(uid);
+    });
+  });
+}
+
+function resolveStudentDisplayName(s) {
+  if (!s) return "Student";
+  var sid = String(s.student_id || s.userId || s.user_id || "");
+  var n = (s.name || "").trim();
+  if (n && n.toLowerCase() !== "student") return n;
+  if (sid && raisedHands[sid] && raisedHands[sid].name &&
+      raisedHands[sid].name.toLowerCase() !== "student") {
+    return raisedHands[sid].name;
+  }
+  if (window.__participantNames && sid && window.__participantNames[sid]) {
+    return window.__participantNames[sid];
+  }
+  try {
+    var remotes = liveKitRosterFallback();
+    for (var i = 0; i < remotes.length; i++) {
+      var r = remotes[i];
+      if (String(r.student_id || "") === sid && r.name && r.name.toLowerCase() !== "student") {
+        return r.name;
+      }
+    }
+  } catch (e) { /* ignore */ }
+  return n || "Student";
+}
+window.resolveStudentDisplayName = resolveStudentDisplayName;
 
 function renderRaisedHands() {
   if (!isTeacherRole()) return;
@@ -934,6 +989,7 @@ function renderRaisedHands() {
     tabBadge.classList.toggle("hidden", count === 0);
   }
   if (sideBadge) sideBadge.textContent = "(" + count + ")";
+  bindRaisedHandActions();
 }
 
 function addRaisedHand(userId, name) {
@@ -1128,7 +1184,8 @@ async function revokeStudentCamera(userId) {
 function buildParticipantCardHtml(s) {
   var sid = String(s.student_id || "");
   var raised = raisedHands[sid] || raisedHands[sid.toLowerCase()];
-  var initial = (s.name || "S").charAt(0).toUpperCase();
+  var displayName = resolveStudentDisplayName(s);
+  var initial = displayName.charAt(0).toUpperCase();
   var micOn = s.mic_allowed;
   var camOn = s.camera_allowed;
   var camLive = !!s.camera_enabled;
@@ -1169,7 +1226,7 @@ function buildParticipantCardHtml(s) {
     '<div class="participant-details">' +
     '<div class="participant-details-row">' +
     '<div class="participant-avatar" aria-hidden="true">' + escHtml(initial) + "</div>" +
-    '<div class="participant-body"><strong>' + escHtml(s.name || "Student") + "</strong>" +
+    '<div class="participant-body"><strong>' + escHtml(displayName) + "</strong>" +
     '<div class="participant-status"><span>' + micLabel + "</span><span>" + camLabel + "</span>" + handLabel + joined + "</div>" +
     hostActions + "</div></div></div></article>";
 }
@@ -1180,7 +1237,7 @@ function updateParticipantCardContent(card, s) {
   card.classList.toggle("camera-on", !!(s.camera_enabled || s.camera_allowed));
   card.setAttribute("data-camera-on", (s.camera_enabled || s.camera_allowed) ? "1" : "0");
   var strong = card.querySelector(".participant-body > strong");
-  if (strong) strong.textContent = s.name || "Student";
+  if (strong) strong.textContent = resolveStudentDisplayName(s);
   var status = card.querySelector(".participant-status");
   if (status) {
     var micLabel = s.mic_allowed ? "🎤 On" : "🎤 Off";
@@ -1301,10 +1358,11 @@ function buildHostParticipantRowHtml(s, isTeacher) {
   var sid = String(s.student_id || "");
   var micOn = s.mic_allowed;
   var camOn = s.camera_allowed || s.camera_enabled;
+  var displayName = resolveStudentDisplayName(s);
   return '<div class="host-participant-row" data-student-id="' + escHtml(sid) + '" data-name="' +
-    escHtml((s.name || "").toLowerCase()) + '">' +
-    '<span class="host-part-avatar">' + escHtml((s.name || "S").charAt(0).toUpperCase()) + "</span>" +
-    '<span class="host-part-name">' + escHtml(s.name || "Student") + "</span>" +
+    escHtml(displayName.toLowerCase()) + '">' +
+    '<span class="host-part-avatar">' + escHtml(displayName.charAt(0).toUpperCase()) + "</span>" +
+    '<span class="host-part-name">' + escHtml(displayName) + "</span>" +
     '<span class="host-part-icons">' +
     '<span class="' + (micOn ? "icon-on" : "icon-off") + '">🎤</span>' +
     '<span class="' + (camOn ? "icon-on" : "icon-off") + '">📷</span></span></div>';
@@ -1998,7 +2056,7 @@ function redrawBoard() {
   function drawNext() {
     if (idx >= board.history.length) {
       if (board.liveText) {
-        applyBoardText({
+        drawBoardTextWrapped({
           x: board.textX,
           y: board.textY,
           text: board.liveText,
@@ -2183,6 +2241,7 @@ function onBoardTypeInput() {
   board.liveText = inp ? inp.value : "";
   board.liveTextId = boardLiveTextId();
   scheduleRedrawBoard();
+  ensureBoardCanvasFitsForLiveText();
   if (_boardTypeSendTimer) return;
   _boardTypeSendTimer = setTimeout(function () {
     _boardTypeSendTimer = null;
@@ -2242,6 +2301,22 @@ function commitBoardLine() {
     size: board.fontSize
   });
   if (inp) inp.focus();
+}
+
+function ensureBoardCanvasFitsForLiveText() {
+  if (!board.canvas || !board.ctx) return;
+  var lines = wrapBoardTextLines(board.liveText || "", getBoardTextMaxWidth(), board.fontSize);
+  var need = board.textY + lines.length * board.lineHeight + board.lineHeight * 2;
+  var minH = 200;
+  var stage = document.getElementById("video-stage");
+  if (stage) {
+    var rect = stage.getBoundingClientRect();
+    minH = Math.max(rect.height - (board.canDraw ? 160 : 0), 200);
+  }
+  var nextH = Math.max(minH, need);
+  if (nextH > board.canvas.height) {
+    board.canvas.height = nextH;
+  }
 }
 
 function ensureBoardCanvasFitsContent() {
@@ -2425,12 +2500,53 @@ function placeSymbol(x, y, text, broadcast) {
   if (broadcast !== false) sendBoardEvent("text", data);
 }
 
-function applyBoardText(data, save) {
+function getBoardTextMaxWidth(fromX) {
+  if (!board.canvas) return 400;
+  var x = typeof fromX === "number" ? fromX : board.textX;
+  return Math.max(80, board.canvas.width - x - 20);
+}
+
+function wrapBoardTextLines(text, maxWidth, fontSize) {
+  if (!board.ctx || !text) return [];
+  var size = fontSize || board.fontSize;
+  board.ctx.font = "600 " + size + "px Inter, sans-serif";
+  var lines = [];
+  var line = "";
+  for (var i = 0; i < text.length; i++) {
+    var ch = text[i];
+    if (ch === "\n") {
+      lines.push(line);
+      line = "";
+      continue;
+    }
+    var test = line + ch;
+    if (board.ctx.measureText(test).width > maxWidth && line) {
+      lines.push(line);
+      line = ch;
+    } else {
+      line = test;
+    }
+  }
+  if (line) lines.push(line);
+  return lines.length ? lines : [""];
+}
+
+function drawBoardTextWrapped(data, save) {
   if (!board.ctx || !data) return;
-  board.ctx.font = "600 " + (data.size || board.fontSize) + "px Inter, sans-serif";
+  var size = data.size || board.fontSize;
+  board.ctx.font = "600 " + size + "px Inter, sans-serif";
   board.ctx.fillStyle = "#e8f5ec";
-  board.ctx.fillText(data.text, data.x, data.y);
+  var maxW = getBoardTextMaxWidth(data.x);
+  var lines = wrapBoardTextLines(data.text || "", maxW, size);
+  var lh = board.lineHeight;
+  lines.forEach(function (ln, i) {
+    board.ctx.fillText(ln, data.x, data.y + i * lh);
+  });
   if (save !== false) board.history.push({ type: "text", data: data });
+}
+
+function applyBoardText(data, save) {
+  drawBoardTextWrapped(data, save);
 }
 
 function clearBoardCanvas(broadcast) {
@@ -2617,6 +2733,7 @@ function handleBoardMessage(msg) {
     board.textY = data.y;
     board.liveText = data.text || "";
     if (!board.liveText) ensureBoardCanvasFitsContent();
+    else ensureBoardCanvasFitsForLiveText();
     scheduleRedrawBoard();
     scrollBoardToTypingCursor();
     return;
@@ -2739,6 +2856,10 @@ function connectChat(isReconnect) {
         var pj = msg.participant || {};
         var pjId = pj.userId || msg.user_id;
         var pjName = pj.name || msg.name || "Student";
+        if (pjId && pjName) {
+          window.__participantNames = window.__participantNames || {};
+          window.__participantNames[String(pjId)] = pjName;
+        }
         if (isTeacherRole() && String(pj.role || msg.role || "").toLowerCase().indexOf("teacher") < 0) {
           ensureParticipantCardForStudent(pjId, pjName);
           setTimeout(function () {
@@ -2753,6 +2874,8 @@ function connectChat(isReconnect) {
         var pu = msg.participant;
         var puId = pu.userId || pu.participantId;
         if (isTeacherRole() && puId) {
+          window.__participantNames = window.__participantNames || {};
+          if (pu.name) window.__participantNames[String(puId)] = pu.name;
           ensureParticipantCardForStudent(puId, pu.name);
           var cardPu = findParticipantCard(puId);
           if (cardPu) {
@@ -2824,7 +2947,12 @@ function connectChat(isReconnect) {
             var panelQ = document.getElementById("raise-hand-panel");
             if (panelQ) panelQ.classList.remove("hidden");
           } else {
-            addRaisedHand(msg.user_id, msg.name);
+            var rhName = msg.name || (msg.participant && msg.participant.name) || "";
+            if (rhName) {
+              window.__participantNames = window.__participantNames || {};
+              window.__participantNames[String(msg.user_id)] = rhName;
+            }
+            addRaisedHand(msg.user_id, rhName);
           }
           addChatMessage("", (msg.name || "A student") + " raised their hand.", true);
           showClassroomToast((msg.name || "A student") + " raised their hand");
@@ -3539,6 +3667,9 @@ window.toggleClassroomChrome = toggleClassroomChrome;
 })();
 
 function showReconnectBanner(show, text) {
+  if (!isTeacherRole()) {
+    show = false;
+  }
   var el = document.getElementById("reconnect-banner");
   var txt = document.getElementById("reconnect-banner-text");
   if (!el) return;
@@ -3767,5 +3898,6 @@ function showSpotlightBarIfHost() {
 
 document.addEventListener("DOMContentLoaded", function () {
   try { showSpotlightBarIfHost(); } catch (e) { /* ignore */ }
+  try { bindRaisedHandActions(); } catch (e2) { /* ignore */ }
   setTimeout(showSpotlightBarIfHost, 800);
 });

@@ -6,7 +6,7 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; script-src-attr 'unsafe-inline'; connect-src * blob: data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src * data: blob:; media-src * blob: data:; worker-src 'self' blob:; frame-src 'self' blob:;" />
   <title>Live Classroom — Scholaxia</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/classroom.css?v=20260830c" />
+  <link rel="stylesheet" href="css/classroom.css?v=20260830d" />
   <link rel="stylesheet" href="css/responsive.css?v=20260804i" />
 </head>
 <body class="meet-v2">
@@ -53,7 +53,7 @@
     <div class="meet-header-right">
       <button type="button" id="btn-save-class-top" class="btn-save-class-top student-only hidden" onclick="toggleSaveLive()">&#128190; Save class</button>
       <button type="button" id="btn-end-class" class="btn-end-class host-only hidden" onclick="endLiveClass()">End class</button>
-      <span id="cr-status" class="cr-status">Connecting…</span>
+      <span id="cr-status" class="cr-status host-only hidden">Connecting…</span>
     </div>
   </header>
 
@@ -115,7 +115,7 @@
       <div id="meet-strip-wrap" class="meet-strip-wrap host-only hidden">
         <div class="meet-strip-head">
           <span>Participants <span id="participants-count">(0)</span></span>
-          <button type="button" class="btn-sm meet-strip-toggle" onclick="toggleParticipantStrip()">Hide people</button>
+          <button type="button" class="meet-side-btn meet-strip-toggle" onclick="toggleParticipantStrip()">Hide people</button>
         </div>
         <div id="participant-strip" class="participant-strip">
           <div id="participants-list" class="participants-list participants-strip" data-count="0">
@@ -153,7 +153,7 @@
       <section class="meet-side-block">
         <div class="meet-side-head">
           <h3>Participants <span id="host-participants-count">(0)</span></h3>
-          <button type="button" class="btn-sm" onclick="toggleHostSidebar()">Hide</button>
+          <button type="button" class="meet-side-btn" onclick="toggleHostSidebar()">Hide</button>
         </div>
         <input type="search" id="participant-search" class="meet-search" placeholder="Search participants…" oninput="filterHostParticipants(this.value)" />
         <div id="host-participants-list" class="host-participants-list"></div>
@@ -162,7 +162,7 @@
       <section class="meet-side-block">
         <div class="meet-side-head">
           <h3>Raised hands <span id="hands-side-badge">(0)</span></h3>
-          <button type="button" class="btn-sm" onclick="lowerAllHands()">Lower all</button>
+          <button type="button" class="meet-side-btn" onclick="lowerAllHands()">Lower all</button>
         </div>
         <div id="raise-hand-panel" class="raise-hand-panel-meet">
           <div id="raise-hand-list" class="raise-hand-list">
@@ -228,7 +228,7 @@
     <div class="bottom-sheet-handle"></div>
     <div class="controls-sheet-head">
       <p class="bottom-sheet-title">Class controls</p>
-      <button type="button" class="btn-sm" onclick="toggleControlsSheet(false)">Close</button>
+      <button type="button" class="meet-side-btn" onclick="toggleControlsSheet(false)">Close</button>
     </div>
     <div id="class-permissions-panel" class="class-permissions-panel sheet-permissions">
       <label class="perm-row"><input type="checkbox" id="perm-camera" checked onchange="toggleClassPermission('studentsCanUseCamera', this.checked)" /> Students can use camera</label>
@@ -256,6 +256,6 @@
 <script src="js/saved-live.js?v=20260804i"></script>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.9.3/dist/livekit-client.umd.js"></script>
 <script src="js/classroom-livekit.js?v=20260830c"></script>
-<script src="js/classroom.js?v=20260830c"></script>
+<script src="js/classroom.js?v=20260830d"></script>
 </body>
 </html>
