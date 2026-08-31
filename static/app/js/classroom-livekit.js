@@ -1178,9 +1178,11 @@
       await run();
     } catch (e) {
       if (!on || isTeacherRole()) throw e;
-      await reconnectWithFreshToken();
-      if (!liveVideoJoined) throw e;
-      await run();
+      if (await refreshRoomToken()) {
+        await run();
+        return;
+      }
+      throw e;
     }
   }
 
@@ -1197,9 +1199,11 @@
       await run();
     } catch (e) {
       if (!on || isTeacherRole()) throw e;
-      await reconnectWithFreshToken();
-      if (!liveVideoJoined) throw e;
-      await run();
+      if (await refreshRoomToken()) {
+        await run();
+        return;
+      }
+      throw e;
     }
   }
 
@@ -1303,17 +1307,16 @@
         var isHost = isTeacherRole();
         liveRoom = new c.Room({
           adaptiveStream: true,
-          dynacast: true,
+          dynacast: isHost,
           audioCaptureDefaults: {
             echoCancellation: true,
             noiseSuppression: true,
             autoGainControl: true,
           },
           videoCaptureDefaults: {
-            // Students publish lighter video; teacher can use HD for the main stage.
             resolution: isHost
               ? { width: 1280, height: 720, frameRate: 24 }
-              : { width: 640, height: 360, frameRate: 20 },
+              : { width: 480, height: 270, frameRate: 15 },
           },
         });
         wireRoomEvents(liveRoom);
@@ -1762,34 +1765,34 @@
     var micBtn = document.getElementById("btn-mic");
     if (micBtn) micBtn.disabled = false;
     if (typeof showClassroomToast === "function") {
-      showClassroomToast("You can speak now — mic turning on");
+      showClassroomToast("Turning on your mic…");
     }
     try {
       var tokenOk = await refreshLiveKitToken();
       if (!tokenOk) throw new Error("Could not refresh permissions");
-      if (!liveSession.can_publish && !liveSession.mic_allowed) {
-        await new Promise(function (r) { setTimeout(r, 600); });
-        tokenOk = await refreshLiveKitToken();
-        if (!tokenOk || (!liveSession.can_publish && !liveSession.mic_allowed)) {
-          throw new Error("Server has not approved your mic yet — wait a few seconds");
-        }
+      var softOk = await refreshRoomToken();
+      if (!softOk) {
+        await refreshLiveKitToken();
+        softOk = await refreshRoomToken();
       }
-      await refreshPublishAccess();
       micOn = false;
-      await setMic(true);
-      if (!micOn || !isLocalMicPublished()) {
-        await refreshPublishAccess();
-        micOn = false;
-        await setMic(true);
+      try {
+        await publishMicrophoneEnabled(true);
+      } catch (pubErr) {
+        await refreshLiveKitToken();
+        if (!await refreshRoomToken()) throw pubErr;
+        await publishMicrophoneEnabled(true);
       }
+      micOn = true;
       if (typeof updateMediaButton === "function") {
         updateMediaButton(document.getElementById("btn-mic"), true);
       }
+      if (typeof reattachTeacherAudio === "function") reattachTeacherAudio();
+      await ensureRoomAudioPlayback();
       if (typeof showClassroomToast === "function") {
         showClassroomToast("Mic is on — you can speak");
       }
     } catch (e) {
-      var micBtn = document.getElementById("btn-mic");
       if (micBtn) micBtn.disabled = false;
       if (typeof showClassroomToast === "function") {
         showClassroomToast("Tap Mic button to speak", true);
@@ -1802,9 +1805,10 @@
     window.studentMicAllowed = false;
     if (typeof syncStudentMicState === "function") syncStudentMicState(false);
     try {
-      await setMic(false);
+      await publishMicrophoneEnabled(false);
+      micOn = false;
       await refreshLiveKitToken();
-      await reconnectWithFreshToken();
+      await refreshRoomToken();
     } catch (e) { /* ignore */ }
     if (typeof updateMediaButton === "function") {
       updateMediaButton(document.getElementById("btn-mic"), false);
@@ -1829,24 +1833,24 @@
     try {
       var tokenOk = await refreshLiveKitToken();
       if (!tokenOk) throw new Error("Could not refresh permissions");
-      if (!liveSession.can_publish && !liveSession.camera_allowed) {
-        await new Promise(function (r) { setTimeout(r, 600); });
-        tokenOk = await refreshLiveKitToken();
-        if (!tokenOk || (!liveSession.can_publish && !liveSession.camera_allowed)) {
-          throw new Error("Server has not approved your camera yet — wait a few seconds");
-        }
+      var softOk = await refreshRoomToken();
+      if (!softOk) {
+        await refreshLiveKitToken();
+        softOk = await refreshRoomToken();
       }
-      await refreshPublishAccess();
       if (typeof setVideoControlsEnabled === "function") setVideoControlsEnabled(true);
       var camBtn = document.getElementById("btn-cam");
       if (camBtn) camBtn.disabled = false;
       camOn = false;
-      await setCam(true);
-      if (!camOn || !isLocalCamPublished()) {
-        await refreshPublishAccess();
-        camOn = false;
-        await setCam(true);
+      try {
+        await publishCameraEnabled(true);
+      } catch (pubErr) {
+        await refreshLiveKitToken();
+        if (!await refreshRoomToken()) throw pubErr;
+        await publishCameraEnabled(true);
       }
+      camOn = true;
+      attachLocalCameraPreview();
       if (typeof updateMediaButton === "function") {
         updateMediaButton(camBtn, true);
       }
@@ -1854,10 +1858,8 @@
         showClassroomToast("Camera is on");
       }
     } catch (e) {
-      var camBtnErr = document.getElementById("btn-cam");
-      if (camBtnErr) camBtnErr.disabled = false;
-      if (typeof addChatMessage === "function") {
-        addChatMessage("", "Camera allowed — tap the Cam button. (" + (e.message || "") + ")", true);
+      if (typeof showClassroomToast === "function") {
+        showClassroomToast("Tap Cam button to turn on camera", true);
       }
     }
   }
@@ -1865,9 +1867,10 @@
   async function disableStudentCamera() {
     window.studentCameraAllowed = false;
     try {
-      await setCam(false);
+      await publishCameraEnabled(false);
+      camOn = false;
       await refreshLiveKitToken();
-      await reconnectWithFreshToken();
+      await refreshRoomToken();
     } catch (e) { /* ignore */ }
     if (typeof updateMediaButton === "function") {
       updateMediaButton(document.getElementById("btn-cam"), false);

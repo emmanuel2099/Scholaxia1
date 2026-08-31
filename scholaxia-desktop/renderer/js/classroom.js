@@ -144,6 +144,8 @@ var board = {
   imageCache: {}
 };
 var boardWsQueue = [];
+var BOARD_BASE_WIDTH = 1280;
+var BOARD_BASE_MIN_HEIGHT = 720;
 
 function queueBoardMessage(msg) {
   if (!msg) return;
@@ -1302,7 +1304,7 @@ async function grantStudentMic(userId, studentName) {
     setTimeout(function () {
       if (typeof reattachRemoteClassAudio === "function") reattachRemoteClassAudio();
       if (typeof ensureRoomAudioPlayback === "function") ensureRoomAudioPlayback();
-    }, 2500);
+    }, 600);
     return;
   }
   showClassroomToast("Could not allow " + name + ": " + errMsg, true);
@@ -2206,10 +2208,13 @@ function addChatMessage(name, text, isSystem, eventId) {
   if (isSystem) {
     div.textContent = text;
   } else {
-    div.innerHTML = "<strong>" + escHtml(name) + "</strong>" + escHtml(text);
+    div.innerHTML =
+      "<strong>" + escHtml(name) + "</strong><span class=\"chat-text\">" + escHtml(text) + "</span>";
   }
   log.appendChild(div);
-  log.scrollTop = log.scrollHeight;
+  requestAnimationFrame(function () {
+    log.scrollTop = log.scrollHeight;
+  });
   if (!isSystem) bumpChatUnread();
 }
 
@@ -2621,28 +2626,30 @@ function ensureBoardCanvasFitsForLiveText() {
   if (!board.canvas || !board.ctx) return;
   var lines = wrapBoardTextLines(board.liveText || "", getBoardTextMaxWidth(), board.fontSize);
   var need = board.textY + lines.length * board.lineHeight + board.lineHeight * 2;
-  var minH = 200;
-  var stage = document.getElementById("video-stage");
-  if (stage) {
-    var rect = stage.getBoundingClientRect();
-    minH = Math.max(rect.height - (board.canDraw ? 160 : 0), 200);
-  }
+  var minH = getBoardMinCanvasHeight();
   var nextH = Math.max(minH, need);
   if (nextH > board.canvas.height) {
     board.canvas.height = nextH;
   }
 }
 
+function getBoardMinCanvasHeight() {
+  var stage = document.getElementById("video-stage");
+  var minH = BOARD_BASE_MIN_HEIGHT;
+  if (stage) {
+    var rect = stage.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      var scaled = Math.floor(BOARD_BASE_WIDTH * (rect.height / rect.width));
+      minH = Math.max(BOARD_BASE_MIN_HEIGHT, scaled);
+    }
+  }
+  return minH;
+}
+
 function ensureBoardCanvasFitsContent() {
   if (!board.canvas) return;
   var need = Math.max(board.textY + board.lineHeight * 3, board.canvas.height || 0);
-  var minH = 200;
-  var stage = document.getElementById("video-stage");
-  if (stage) {
-    var rect = stage.getBoundingClientRect();
-    minH = Math.max(rect.height - (board.canDraw ? 160 : 0), 200);
-  }
-  var nextH = Math.max(minH, need);
+  var nextH = Math.max(getBoardMinCanvasHeight(), need);
   if (nextH > board.canvas.height) {
     board.canvas.height = nextH;
     if (board.ctx) {
@@ -2666,20 +2673,12 @@ function resizeBoardCanvas() {
   var stage = document.getElementById("video-stage");
   if (!stage) return;
   var rect = stage.getBoundingClientRect();
-  var w = Math.floor(rect.width || 0);
-  var h = Math.floor(rect.height || 0);
-  if (w < 80 || h < 80) {
-    var vh = window.innerHeight || 600;
-    w = Math.max(w, Math.floor(window.innerWidth * 0.92));
-    h = Math.max(h, Math.floor(vh * 0.48));
-    requestAnimationFrame(function () {
-      resizeBoardCanvas();
-    });
-    if (w < 80 || h < 80) return;
+  if (rect.width < 40 || rect.height < 40) {
+    requestAnimationFrame(function () { resizeBoardCanvas(); });
+    return;
   }
-  var toolbarReserve = board.canDraw && board.open ? Math.min(180, Math.floor(h * 0.28)) : 0;
-  board.canvas.width = w;
-  var minH = Math.max(h - toolbarReserve, 200);
+  board.canvas.width = BOARD_BASE_WIDTH;
+  var minH = getBoardMinCanvasHeight();
   board.canvas.height = Math.max(minH, board.textY + board.lineHeight * 3, board.canvas.height || 0);
   if (board.ctx) {
     board.ctx.lineCap = "round";
@@ -3464,6 +3463,8 @@ function sendChatMessage(e) {
     showClassroomToast("Chat still connecting — try again", true);
     return false;
   }
+  collapseMeetChatPanel(false);
+  switchMeetTab("chat");
   try {
     liveSocket.send(JSON.stringify({ event: "chat", text: text }));
     addChatMessage("You", text);
@@ -4030,6 +4031,22 @@ window.toggleClassroomChrome = toggleClassroomChrome;
     if (sessionStorage.getItem("sx_meet_strip_hidden") === "1") toggleParticipantStrip(false);
     if (sessionStorage.getItem("sx_meet_chat_collapsed") === "1") collapseMeetChatPanel(true);
   } catch (e) { /* ignore */ }
+  function scrollChatLog() {
+    var log = document.getElementById("chat-log");
+    if (log) log.scrollTop = log.scrollHeight;
+  }
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", scrollChatLog);
+    window.visualViewport.addEventListener("scroll", scrollChatLog);
+  }
+  var chatInput = document.getElementById("chat-input");
+  if (chatInput) {
+    chatInput.addEventListener("focus", function () {
+      collapseMeetChatPanel(false);
+      switchMeetTab("chat");
+      setTimeout(scrollChatLog, 80);
+    });
+  }
 })();
 
 function showReconnectBanner(show, text) {

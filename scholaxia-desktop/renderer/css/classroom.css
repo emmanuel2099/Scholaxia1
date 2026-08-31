@@ -480,8 +480,9 @@ body.classroom-board-open .board-overlay:not(.hidden) {
 }
 .chat-msg {
   background: #1a1228; border-radius: 10px; padding: 8px 12px; font-size: 0.88rem;
-  line-height: 1.45;
+  line-height: 1.45; color: #f5f3ff;
 }
+.chat-msg .chat-text { display: block; color: #f5f3ff; margin-top: 2px; }
 .chat-msg.system { background: transparent; color: #9ca3af; font-size: 0.8rem; font-style: italic; }
 .chat-msg strong { color: #c4b5fd; display: block; font-size: 0.75rem; margin-bottom: 3px; }
 .chat-form {
@@ -1768,6 +1769,7 @@ body.meet-v2.host-view .meet-main {
 .meet-chat-log .chat-msg {
   position: relative;
   z-index: 1;
+  color: #f5f3ff;
 }
 .meet-chat-form {
   display: flex;
@@ -2091,7 +2093,24 @@ body.meet-v2 .meet-sidebar {
     padding: 4px 6px 0;
   }
   body.meet-v2.student-view .meet-bottom-panel:not(.collapsed) {
-    max-height: 38vh;
+    max-height: 42vh;
+    position: fixed;
+    left: 8px;
+    right: 8px;
+    bottom: calc(62px + env(safe-area-inset-bottom, 0px));
+    z-index: 55;
+    margin: 0;
+    min-height: 200px;
+    box-shadow: 0 -10px 36px rgba(0, 0, 0, 0.55);
+  }
+  body.meet-v2.student-view .meet-bottom-panel:not(.collapsed) .meet-chat-log {
+    min-height: 110px;
+    max-height: 30vh;
+  }
+  body.meet-v2 .whiteboard-canvas {
+    width: 100% !important;
+    height: auto !important;
+    max-width: 100%;
   }
 }
 
