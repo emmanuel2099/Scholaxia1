@@ -2112,9 +2112,10 @@ async function loadClassroomStudents(quiet) {
 function startClassroomStudentsPoll() {
   if (classStudentsPollTimer) clearInterval(classStudentsPollTimer);
   loadClassroomStudents(true);
+  var pollMs = isTeacherRole() ? 8000 : 20000;
   classStudentsPollTimer = setInterval(function () {
     loadClassroomStudents(true);
-  }, 5000);
+  }, pollMs);
 }
 
 var studentMicPollTimer = null;
@@ -2130,7 +2131,7 @@ function startStudentMicPermissionPoll() {
         enableStudentMic();
       }
     } catch (e) { /* ignore */ }
-  }, 5000);
+  }, 4000);
 }
 
 window.grantStudentMic = grantStudentMic;
@@ -2285,6 +2286,7 @@ function showBoardForStudent(forceOpen) {
   hideVideoPlaceholder();
   resizeBoardCanvas();
   syncMainStageLayers();
+  if (typeof syncRemoteSubscriptions === "function") syncRemoteSubscriptions();
 }
 
 function hideBoardForStudent() {
@@ -2293,6 +2295,7 @@ function hideBoardForStudent() {
   var overlay = document.getElementById("board-overlay");
   if (overlay) overlay.classList.add("hidden");
   syncMainStageLayers();
+  if (typeof syncRemoteSubscriptions === "function") syncRemoteSubscriptions();
 }
 window.hideBoardForStudent = hideBoardForStudent;
 window.showBoardForStudent = showBoardForStudent;
