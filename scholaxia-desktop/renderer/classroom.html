@@ -2,14 +2,52 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; script-src-attr 'unsafe-inline'; connect-src * blob: data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com data:; img-src * data: blob:; media-src * blob: data:; worker-src 'self' blob:; frame-src 'self' blob:;" />
   <title>Live Classroom — Scholaxia</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/classroom.css?v=20260827d" />
+  <style>
+    /* Inline — always loads with page (fixes white Windows button chrome on Hide / Lower all) */
+    #host-sidebar .host-side-action-btn {
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      background: #1a1228 !important;
+      background-color: #1a1228 !important;
+      color: #e9d5ff !important;
+      border: 1px solid #6d28d9 !important;
+      border-radius: 8px !important;
+      padding: 5px 10px !important;
+      font-size: 0.72rem !important;
+      font-weight: 600 !important;
+      cursor: pointer !important;
+      user-select: none !important;
+      line-height: 1.2 !important;
+      box-sizing: border-box !important;
+    }
+    #host-sidebar .host-side-action-btn:hover {
+      background: #2e1065 !important;
+      background-color: #2e1065 !important;
+      border-color: #8b5cf6 !important;
+    }
+    .sx-build-badge {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: #16a34a;
+      color: #fff;
+      font-size: 0.62rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      vertical-align: middle;
+    }
+  </style>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <link rel="stylesheet" href="css/classroom.css?v=20260831k" />
   <link rel="stylesheet" href="css/responsive.css?v=20260804i" />
 </head>
-<body class="classroom-chrome-hidden">
+<body class="meet-v2">
 
 <div class="classroom-shell" id="classroom">
   <div id="audio-unlock-banner" class="audio-unlock-banner hidden" role="alert">
@@ -17,152 +55,254 @@
     <button type="button" class="btn-sm" onclick="unlockClassAudio()">Enable sound</button>
   </div>
 
+  <div id="reconnect-banner" class="reconnect-banner hidden" role="alert">
+    <span id="reconnect-banner-text">Connection lost. Reconnecting…</span>
+  </div>
+
+  <div id="lobby-banner" class="lobby-banner student-only hidden" role="status">
+    <strong>Waiting for teacher to start</strong>
+  </div>
+
+  <div id="class-join-overlay" class="class-join-overlay hidden" role="status" aria-live="polite">
+    <div class="class-join-spinner" aria-hidden="true"></div>
+    <p id="class-join-overlay-text">Joining class…</p>
+  </div>
+
   <div id="classroom-toast" class="classroom-toast hidden" role="status" aria-live="polite"></div>
 
   <div id="livekit-setup-banner" class="livekit-setup-banner hidden" role="alert">
     <strong>Live video not connected.</strong>
-    <span id="livekit-setup-msg">Students cannot see your camera or screen until LiveKit is configured on the server.</span>
+    <span id="livekit-setup-msg">Tap Retry video to connect LiveKit.</span>
     <button type="button" class="btn-sm" onclick="retryLiveKitConnect()">Retry video</button>
   </div>
 
-  <header class="classroom-top">
-    <button type="button" class="btn-back" onclick="leaveClassroom()">&#8592; Leave</button>
-    <div class="classroom-title-wrap">
-      <span class="live-pill">LIVE</span>
-      <div>
+  <header class="meet-header">
+    <div class="meet-header-primary">
+      <button type="button" class="btn-back" onclick="leaveClassroom()">&#8592; Leave</button>
+      <div class="meet-breadcrumb">
         <h1 id="cr-title">Live Class</h1>
         <p id="cr-meta">—</p>
       </div>
+      <div class="meet-header-actions">
+        <button type="button" id="btn-save-class-top" class="btn-save-class-top host-only hidden" onclick="toggleSaveLive()">&#128190; Record</button>
+        <button type="button" id="btn-end-class" class="btn-end-class host-only hidden" onclick="endLiveClass()">End class</button>
+      </div>
     </div>
-    <span id="audience-badge" class="audience-badge">Joining…</span>
-    <button type="button" id="btn-end-class" class="btn-end-class host-only hidden" onclick="endLiveClass()" title="End class for everyone">End class</button>
-    <button type="button" id="btn-save-class-top" class="btn-save-class-top student-only hidden" onclick="toggleSaveLive()" title="Save this class on your device">&#128190; Save class</button>
-    <span id="cr-status" class="cr-status">Connecting…</span>
+    <div class="meet-header-meta">
+      <span class="live-pill" id="live-status-pill">LIVE</span>
+      <span id="audience-badge" class="audience-badge meet-timer-badge">Joining…</span>
+      <span id="sx-build-badge" class="sx-build-badge" title="UI build version">BUILD 20260831k</span>
+      <span id="cr-status" class="cr-status host-only hidden">Connecting…</span>
+    </div>
   </header>
 
-  <main class="classroom-layout">
-    <aside class="participants-panel" id="participants-panel">
-      <div class="participants-head">
-        <h2>Participants <span id="participants-count">(0)</span></h2>
-        <p id="participants-teacher-line" class="participants-sub">Teacher: —</p>
-        <p id="participants-students-line" class="participants-sub">Students online: 0</p>
-      </div>
-      <div id="student-self-panel" class="student-self-panel student-only hidden">
-        <p class="student-self-title">Your camera</p>
-        <div id="student-self-video" class="student-self-video"></div>
-        <p id="student-self-status" class="student-self-status">Camera is on</p>
-      </div>
-      <div id="participants-list" class="participants-list">
-        <p class="participants-empty">Waiting for participants…</p>
-      </div>
-      <div id="attendance-panel" class="attendance-panel host-only hidden">
-        <h3>Attendance</h3>
-        <div id="attendance-log" class="attendance-log"></div>
-      </div>
-      <div id="raise-hand-panel" class="raise-hand-panel host-only hidden">
-        <h3>Raised hands</h3>
-        <div id="raise-hand-list" class="raise-hand-list">
-          <p class="raise-hand-empty">No students waiting.</p>
-        </div>
-      </div>
-    </aside>
+  <div id="spotlight-bar" class="spotlight-bar host-only hidden" role="toolbar" aria-label="Spotlight">
+    <span class="spotlight-label">Focus</span>
+    <button type="button" class="spot-btn is-active" data-spot="teacher" onclick="setSpotlight('teacher')">Teacher</button>
+    <button type="button" class="spot-btn" data-spot="board" onclick="setSpotlight('board')">Board</button>
+    <button type="button" class="spot-btn" data-spot="screen" onclick="setSpotlight('screen')">Screen</button>
+    <button type="button" class="spot-btn" data-spot="grid" onclick="setSpotlight('grid')">Grid</button>
+  </div>
 
-    <section class="main-stage-wrap">
-      <div id="video-stage" class="video-stage">
-        <div id="video-local" class="video-tile local hidden"></div>
-        <div id="video-remote" class="video-remote"></div>
-        <div id="board-overlay" class="board-overlay hidden">
-          <div id="board-scroll" class="board-scroll">
-            <canvas id="whiteboard" class="whiteboard-canvas"></canvas>
-            <div id="board-cursor" class="board-cursor hidden"></div>
-          </div>
-          <div id="board-toolbar" class="board-toolbar host-only hidden">
-            <div class="board-toolbar-row">
-              <label class="board-label" for="subject-keyboard">Subject keyboard</label>
-              <select id="subject-keyboard" onchange="renderSymbolPalette()">
-                <option value="mathematics">Mathematics</option>
-                <option value="physics">Physics</option>
-                <option value="chemistry">Chemistry</option>
-                <option value="english">English</option>
-                <option value="igbo">Igbo</option>
-                <option value="yoruba">Yoruba</option>
-                <option value="hausa">Hausa</option>
-              </select>
-              <button type="button" id="btn-board-type" class="vc-btn sm active" onclick="setBoardTool('type')">Type</button>
-              <button type="button" id="btn-board-draw" class="vc-btn sm" onclick="setBoardTool('draw')">Draw</button>
-              <button type="button" id="btn-board-erase" class="vc-btn sm" onclick="setBoardTool('erase')">Eraser</button>
-              <button type="button" class="vc-btn sm" onclick="pickBoardImage()">Add image</button>
-              <button type="button" class="vc-btn sm" onclick="clearBoard()">Clear</button>
-              <button type="button" class="vc-btn sm" onclick="toggleBoard()">Close board</button>
-              <input type="file" id="board-image-input" class="hidden" accept="image/jpeg,image/png,image/webp" />
+  <main class="meet-main">
+    <div class="meet-primary">
+      <section class="main-stage-wrap">
+        <div id="video-stage" class="video-stage" data-spotlight="teacher">
+          <div id="student-cam-rail" class="student-cam-rail host-only hidden" aria-label="Student cameras"></div>
+          <div id="video-local" class="video-tile local hidden"></div>
+          <div id="video-remote" class="video-remote"></div>
+          <div id="board-overlay" class="board-overlay hidden">
+            <div id="board-scroll" class="board-scroll">
+              <canvas id="whiteboard" class="whiteboard-canvas"></canvas>
+              <div id="board-cursor" class="board-cursor hidden"></div>
             </div>
-            <div class="board-type-row">
-              <input type="text" id="board-type-input" class="board-type-input"
-                placeholder="Type here — students see it live on the board. Press Enter for new line."
-                autocomplete="off" />
+            <div id="board-toolbar" class="board-toolbar host-only hidden">
+              <div class="board-toolbar-row">
+                <label class="board-label" for="subject-keyboard">Subject</label>
+                <select id="subject-keyboard" onchange="renderSymbolPalette()">
+                  <option value="mathematics">Mathematics</option>
+                  <option value="physics">Physics</option>
+                  <option value="chemistry">Chemistry</option>
+                  <option value="english">English</option>
+                  <option value="igbo">Igbo</option>
+                  <option value="yoruba">Yoruba</option>
+                  <option value="hausa">Hausa</option>
+                </select>
+                <button type="button" id="btn-board-type" class="vc-btn sm active" onclick="setBoardTool('type')">Type</button>
+                <button type="button" id="btn-board-draw" class="vc-btn sm" onclick="setBoardTool('draw')">Draw</button>
+                <button type="button" id="btn-board-erase" class="vc-btn sm" onclick="setBoardTool('erase')">Eraser</button>
+                <button type="button" class="vc-btn sm" onclick="pickBoardImage()">Image</button>
+                <button type="button" class="vc-btn sm" onclick="clearBoard()">Clear</button>
+                <button type="button" class="vc-btn sm" onclick="toggleBoard()">Close</button>
+                <input type="file" id="board-image-input" class="hidden" accept="image/jpeg,image/png,image/webp" />
+              </div>
+              <div class="board-type-row">
+                <input type="text" id="board-type-input" class="board-type-input" placeholder="Type on the board — students see it live" autocomplete="off" />
+              </div>
+              <div id="symbol-palette" class="symbol-palette"></div>
             </div>
-            <div id="symbol-palette" class="symbol-palette"></div>
-            <p id="board-hint" class="board-hint">Type in the box, tap symbols, or use Add image to show a picture on the board for everyone.</p>
           </div>
+          <div id="reaction-overlay" class="reaction-overlay" aria-hidden="true"></div>
+          <div id="video-placeholder" class="video-placeholder">
+            <div class="ph-icon">&#127909;</div>
+            <p id="video-placeholder-text">Joining class…</p>
+          </div>
+          <div id="spotlight-student-stage" class="spotlight-student-stage hidden" aria-label="Spotlight student"></div>
         </div>
-        <div id="reaction-overlay" class="reaction-overlay" aria-hidden="true"></div>
-        <div id="video-placeholder" class="video-placeholder">
-          <div class="ph-icon">&#127909;</div>
-          <p id="video-placeholder-text">Class is live — connecting…</p>
-        </div>
-      </div>
-    </section>
+      </section>
 
-    <aside id="chat-drawer" class="chat-drawer">
-      <div class="chat-drawer-head">
-        <h2>Class chat</h2>
-        <button type="button" class="btn-sm" onclick="toggleChatDrawer(false)">&#10005;</button>
+      <div id="meet-strip-wrap" class="meet-strip-wrap host-only hidden">
+        <div class="meet-strip-head">
+          <span>Participants <span id="participants-count">(0)</span></span>
+          <button type="button" class="meet-side-btn meet-strip-toggle" onclick="toggleParticipantStrip()">Hide people</button>
+        </div>
+        <div id="participant-strip" class="participant-strip">
+          <div id="participants-list" class="participants-list participants-strip" data-count="0">
+            <p class="participants-empty">No students yet</p>
+          </div>
+        </div>
       </div>
-      <div id="chat-log" class="chat-log"></div>
-      <form class="chat-form" onsubmit="sendChatMessage(event)">
-        <input type="text" id="chat-input" placeholder="Say something to the class…" autocomplete="off" />
-        <button type="submit">Send</button>
-      </form>
+
+      <div class="meet-bottom-panel" id="meet-bottom-panel">
+        <div class="meet-panel-head">
+          <div class="meet-tabs" role="tablist">
+            <button type="button" class="meet-tab is-active" data-tab="chat" onclick="switchMeetTab('chat')">Chat</button>
+            <button type="button" class="meet-tab host-only hidden" data-tab="hands" onclick="switchMeetTab('hands')">
+              Raised hands <span id="hands-tab-badge" class="meet-tab-badge hidden">0</span>
+            </button>
+          </div>
+          <button type="button" class="meet-panel-collapse" onclick="collapseMeetChatPanel(true)" title="Hide chat">&#10005;</button>
+        </div>
+        <div id="meet-panel-chat" class="meet-panel-body">
+          <div id="chat-log" class="chat-log meet-chat-log"></div>
+          <form class="chat-form meet-chat-form" onsubmit="return sendChatMessage(event)">
+            <input type="text" id="chat-input" placeholder="Type a message…" autocomplete="off" enterkeyhint="send" />
+            <button type="submit" id="chat-send-btn" class="chat-send-btn" aria-label="Send">&#10148;</button>
+          </form>
+        </div>
+        <div id="meet-panel-hands" class="meet-panel-body hidden">
+          <div id="raise-hand-list-bottom" class="raise-hand-list">
+            <p class="raise-hand-empty">No students waiting.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <aside id="host-sidebar" class="meet-sidebar host-only hidden">
+      <section class="meet-side-block">
+        <div class="meet-side-head">
+          <h3>Participants <span id="host-participants-count">(0)</span></h3>
+          <div role="button" class="host-side-action-btn" tabindex="0" onclick="toggleHostSidebar()" style="display:inline-flex;align-items:center;background:#1a1228;color:#e9d5ff;border:1px solid #6d28d9;border-radius:8px;padding:5px 10px;font-size:0.72rem;font-weight:600;cursor:pointer;">Hide</div>
+        </div>
+        <input type="search" id="participant-search" class="meet-search" placeholder="Search participants…" oninput="filterHostParticipants(this.value)" />
+        <div id="host-participants-list" class="host-participants-list"></div>
+        <button type="button" class="meet-side-link" onclick="showPermissionsPanel()">Class controls &amp; attendance</button>
+      </section>
+      <section class="meet-side-block">
+        <div class="meet-side-head">
+          <h3>Raised hands <span id="hands-side-badge">(0)</span></h3>
+          <div role="button" class="host-side-action-btn" tabindex="0" onclick="lowerAllHands()" style="display:inline-flex;align-items:center;background:#1a1228;color:#e9d5ff;border:1px solid #6d28d9;border-radius:8px;padding:5px 10px;font-size:0.72rem;font-weight:600;cursor:pointer;">Lower all</div>
+        </div>
+        <div id="raise-hand-panel" class="raise-hand-panel-meet">
+          <div id="raise-hand-list" class="raise-hand-list">
+            <p class="raise-hand-empty">No students waiting.</p>
+          </div>
+        </div>
+      </section>
     </aside>
   </main>
 
-  <footer class="classroom-toolbar">
-    <div class="toolbar-left">
+  <footer class="meet-toolbar" id="classroom-toolbar">
+    <div class="meet-toolbar-inner">
       <div class="mic-wrap">
-        <button type="button" id="btn-mic" class="vc-btn toolbar-btn" onclick="toggleMic()" title="Microphone">&#127908; <span>Mic</span></button>
-        <div id="mic-meter" class="mic-meter hidden" title="Mic level"><div id="mic-meter-fill" class="mic-meter-fill"></div></div>
+        <button type="button" id="btn-mic" class="meet-tool-btn" onclick="toggleMic()" title="Microphone">&#127908;<span>Mic</span></button>
+        <div id="mic-meter" class="mic-meter hidden"><div id="mic-meter-fill" class="mic-meter-fill"></div></div>
       </div>
-      <button type="button" id="btn-cam" class="vc-btn toolbar-btn" onclick="toggleCam()" title="Camera">&#128247; <span>Camera</span></button>
-      <button type="button" id="btn-chat" class="vc-btn toolbar-btn" onclick="toggleChatDrawer()" title="Chat">&#128172; <span>Chat</span></button>
-      <button type="button" class="vc-btn toolbar-btn" onclick="raiseHand()" title="Raise hand">&#9995; <span>Raise hand</span></button>
-      <div class="reaction-bar" title="Quick reactions">
-        <button type="button" class="vc-btn toolbar-btn reaction-btn" onclick="sendReaction('👍')" title="Thumbs up">👍</button>
-        <button type="button" class="vc-btn toolbar-btn reaction-btn" onclick="sendReaction('❤️')" title="Love">❤️</button>
-        <button type="button" class="vc-btn toolbar-btn reaction-btn" onclick="sendReaction('😂')" title="Laugh">😂</button>
-        <button type="button" class="vc-btn toolbar-btn reaction-btn" onclick="sendReaction('👏')" title="Clap">👏</button>
-        <button type="button" class="vc-btn toolbar-btn reaction-btn" onclick="sendReaction('🎉')" title="Celebrate">🎉</button>
-      </div>
-      <button type="button" id="btn-share" class="vc-btn toolbar-btn host-only hidden" onclick="toggleScreenShare()" title="Share screen">&#128187; <span>Share screen</span></button>
-      <button type="button" id="btn-board" class="vc-btn toolbar-btn host-only hidden" onclick="toggleBoard()" title="Teaching board">&#128221; <span>Board</span></button>
-      <button type="button" id="btn-save-live" class="vc-btn toolbar-btn save-class-btn student-only hidden" onclick="toggleSaveLive()" title="Record and save">&#128190; <span>Save</span></button>
-    </div>
-    <div class="toolbar-right">
-      <span id="mic-live-badge" class="mic-live-badge hidden">Students hear you</span>
-      <span id="save-live-badge" class="save-live-badge student-only hidden">Recording…</span>
-      <button type="button" class="btn-sm host-only hidden" id="btn-give-access-all" onclick="giveAccessToWaitingStudents()">Allow raised hands to speak</button>
+      <button type="button" id="btn-cam" class="meet-tool-btn" onclick="toggleCam()" title="Camera">&#128247;<span>Cam</span></button>
+      <button type="button" id="btn-share" class="meet-tool-btn host-only hidden" onclick="toggleScreenShare()" title="Share screen">&#128187;<span>Share</span></button>
+      <button type="button" id="btn-board" class="meet-tool-btn host-only hidden" onclick="toggleBoard()" title="Board">&#128221;<span>Board</span></button>
+      <button type="button" id="btn-hand" class="meet-tool-btn student-only" onclick="raiseHand()" title="Raise hand">&#9995;<span>Hand</span></button>
+      <button type="button" id="btn-react" class="meet-tool-btn" onclick="toggleReactionSheet()" title="React">&#128522;<span>React</span></button>
+      <button type="button" id="btn-chat" class="meet-tool-btn" onclick="toggleMeetChatPanel()" title="Chat">
+        &#128172;<span>Chat</span><span id="chat-unread" class="chat-unread hidden">0</span>
+      </button>
+      <button type="button" id="btn-stage-fullscreen" class="meet-tool-btn hidden" onclick="toggleStageFullscreen()" title="Full screen share">&#9974;<span>Full</span></button>
+      <button type="button" id="btn-more" class="meet-tool-btn" onclick="toggleMoreMenu()" title="More">&#8943;<span>More</span></button>
+      <button type="button" id="btn-save-live" class="meet-tool-btn save-class-btn host-only hidden" onclick="toggleSaveLive()">&#128190;<span>Record</span></button>
+      <span id="mic-live-badge" class="mic-live-badge hidden host-only">Students hear you</span>
+      <span id="save-live-badge" class="save-live-badge host-only hidden">Recording…</span>
+      <button type="button" class="btn-end-class meet-end-btn host-only hidden" onclick="endLiveClass()">End class</button>
     </div>
   </footer>
 
-  <button type="button" id="classroom-chrome-toggle" class="classroom-chrome-toggle" onclick="toggleClassroomChrome()" aria-controls="participants-panel" title="Show or hide classroom panels">
-    Show panels
-  </button>
+  <div id="sheet-backdrop" class="sheet-backdrop hidden" onclick="closeAllSheets()" aria-hidden="true"></div>
+
+  <div id="reaction-sheet" class="bottom-sheet hidden" role="dialog" aria-label="Reactions">
+    <div class="bottom-sheet-handle" role="button" tabindex="0" onclick="toggleReactionSheet(false)" title="Close"></div>
+    <div class="bottom-sheet-head">
+      <p class="bottom-sheet-title">Quick reaction</p>
+      <button type="button" class="sheet-close-btn" onclick="toggleReactionSheet(false)">Close</button>
+    </div>
+    <div class="reaction-sheet-grid">
+      <button type="button" onclick="sendReaction('👍'); toggleReactionSheet(false)">👍<span>Got it</span></button>
+      <button type="button" onclick="sendReaction('❓'); toggleReactionSheet(false)">❓<span>Question</span></button>
+      <button type="button" onclick="sendReaction('🙋'); toggleReactionSheet(false)">🙋<span>Speak</span></button>
+      <button type="button" onclick="sendReaction('😕'); toggleReactionSheet(false)">😕<span>Confused</span></button>
+      <button type="button" onclick="sendReaction('👏'); toggleReactionSheet(false)">👏<span>Great</span></button>
+      <button type="button" onclick="sendReaction('💡'); toggleReactionSheet(false)">💡<span>Idea</span></button>
+      <button type="button" onclick="sendReaction('❤️'); toggleReactionSheet(false)">❤️<span>Love</span></button>
+      <button type="button" onclick="sendReaction('😂'); toggleReactionSheet(false)">😂<span>Funny</span></button>
+    </div>
+  </div>
+
+  <div id="more-menu" class="bottom-sheet hidden" role="dialog" aria-label="More">
+    <div class="bottom-sheet-handle" role="button" tabindex="0" onclick="toggleMoreMenu(false)" title="Close"></div>
+    <div class="bottom-sheet-head">
+      <p class="bottom-sheet-title">More</p>
+      <button type="button" class="sheet-close-btn" onclick="toggleMoreMenu(false)">Close</button>
+    </div>
+    <div class="more-menu-list">
+      <button type="button" onclick="toggleParticipantStrip(false); toggleMoreMenu(false)">Participants strip</button>
+      <button type="button" onclick="toggleMeetChatPanel(); toggleMoreMenu(false)">Chat</button>
+      <button type="button" class="host-only hidden" onclick="toggleHostSidebar(true); toggleMoreMenu(false)">Host sidebar</button>
+      <button type="button" class="host-only hidden" onclick="toggleScreenShare(); toggleMoreMenu(false)">Share screen</button>
+      <button type="button" class="host-only hidden" onclick="toggleBoard(); toggleMoreMenu(false)">Whiteboard</button>
+      <button type="button" onclick="leaveClassroom()">Leave class</button>
+    </div>
+  </div>
+
+  <div id="controls-sheet" class="bottom-sheet hidden" role="dialog" aria-label="Class controls">
+    <div class="bottom-sheet-handle"></div>
+    <div class="controls-sheet-head">
+      <p class="bottom-sheet-title">Class controls</p>
+      <button type="button" class="meet-side-btn" onclick="toggleControlsSheet(false)">Close</button>
+    </div>
+    <div id="class-permissions-panel" class="class-permissions-panel sheet-permissions">
+      <label class="perm-row"><input type="checkbox" id="perm-camera" checked onchange="toggleClassPermission('studentsCanUseCamera', this.checked)" /> Students can use camera</label>
+      <label class="perm-row"><input type="checkbox" id="perm-mic" checked onchange="toggleClassPermission('studentsCanUseMicrophone', this.checked)" /> Students can use mic</label>
+      <label class="perm-row"><input type="checkbox" id="perm-chat" checked onchange="toggleClassPermission('studentsCanChat', this.checked)" /> Students can chat</label>
+      <label class="perm-row"><input type="checkbox" id="perm-react" checked onchange="toggleClassPermission('studentsCanReact', this.checked)" /> Students can react</label>
+      <label class="perm-row"><input type="checkbox" id="perm-hand" checked onchange="toggleClassPermission('studentsCanRaiseHand', this.checked)" /> Students can raise hand</label>
+      <label class="perm-row"><input type="checkbox" id="perm-board" onchange="toggleClassPermission('studentsCanWriteBoard', this.checked)" /> Students can write on board</label>
+      <label class="perm-row"><input type="checkbox" id="perm-screen" onchange="toggleClassPermission('studentsCanShareScreen', this.checked)" /> Students can share screen</label>
+    </div>
+    <div id="attendance-panel" class="attendance-panel sheet-attendance">
+      <h3>Attendance</h3>
+      <div id="attendance-log" class="attendance-log"></div>
+    </div>
+  </div>
+
+  <div id="student-self-panel" class="student-self-panel student-only hidden">
+    <div id="student-self-video" class="student-self-video"></div>
+    <p id="student-self-status" class="student-self-status">Your camera</p>
+  </div>
 </div>
 
 <script src="js/api.js?v=20260827c"></script>
-<script src="js/classroom-bridge.js?v=20260804i"></script>
+<script src="js/classroom-bridge.js?v=20260828h"></script>
 <script src="js/saved-live.js?v=20260804i"></script>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.9.3/dist/livekit-client.umd.js"></script>
-<script src="js/classroom-livekit.js?v=20260804i"></script>
-<script src="js/classroom.js?v=20260827d"></script>
+<script src="js/classroom-livekit.js?v=20260831k"></script>
+<script src="js/classroom.js?v=20260831k"></script>
 </body>
 </html>

@@ -599,6 +599,7 @@ function showHostTools(show) {
     "attendance-panel": true,
     "class-join-overlay": true,
     "livekit-setup-banner": true,
+    "audio-unlock-banner": true,
   };
   document.querySelectorAll(".host-only").forEach(function (el) {
     if (keepHiddenIds[el.id]) return;
@@ -809,20 +810,21 @@ function setVideoControlsEnabled(enabled) {
 }
 
 function showAudioUnlockBanner() {
-  if (!isTeacherRole()) {
-    unlockClassAudio();
-    return;
-  }
   var bar = document.getElementById("audio-unlock-banner");
   if (!bar || !bar.classList.contains("hidden")) return;
   var label = bar.querySelector("strong");
-  if (label) label.textContent = "Tap to hear students";
+  if (label) {
+    label.textContent = isTeacherRole() ? "Tap to hear students" : "Tap to hear your teacher";
+  }
   bar.classList.remove("hidden");
 }
 
 function unlockClassAudio() {
   var bar = document.getElementById("audio-unlock-banner");
   if (bar) bar.classList.add("hidden");
+  if (!isTeacherRole() && typeof reattachTeacherAudio === "function") {
+    reattachTeacherAudio();
+  }
   if (typeof reattachRemoteClassAudio === "function") {
     reattachRemoteClassAudio();
   }

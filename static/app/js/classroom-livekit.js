@@ -278,6 +278,33 @@
     try { track.detach(); } catch (e) { /* ignore */ }
   }
 
+  function pruneRemoteAudioElements() {
+    remoteAudioEls.forEach(function (el) {
+      if (!el) return;
+      try { el.srcObject = null; } catch (e) { /* ignore */ }
+      try { el.remove(); } catch (e2) { /* ignore */ }
+    });
+    remoteAudioEls = [];
+  }
+
+  /** Student client: keep teacher microphone subscribed and playing. */
+  function reattachTeacherAudio() {
+    if (!liveRoom || isTeacherRole()) return;
+    var c = lk();
+    if (!c) return;
+    liveRoom.remoteParticipants.forEach(function (participant) {
+      if (!isTeacherParticipant(participant)) return;
+      participant.trackPublications.forEach(function (pub) {
+        var isAudio = pub.kind === c.Track.Kind.Audio || pub.kind === "audio";
+        if (!isAudio) return;
+        setPublicationSubscribed(pub, true);
+        if (pub.track && !pub.isMuted && !pub.track.isMuted) {
+          attachRemoteAudio(pub.track, participant);
+        }
+      });
+    });
+  }
+
   function participantRoleFromMeta(participant) {
     if (!participant || !participant.metadata) return "";
     try {
@@ -352,7 +379,11 @@
         break;
       }
     }
-    if (!audioEl) {
+    if (!audioEl || !audioEl.srcObject) {
+      if (audioEl) {
+        try { audioEl.remove(); } catch (eRm) { /* ignore */ }
+        remoteAudioEls = remoteAudioEls.filter(function (x) { return x !== audioEl; });
+      }
       audioEl = track.attach();
       audioEl.setAttribute("data-participant-id", pid);
       audioWrap.appendChild(audioEl);
@@ -361,6 +392,8 @@
       try {
         track.attach(audioEl);
       } catch (e) {
+        try { audioEl.remove(); } catch (eRm2) { /* ignore */ }
+        remoteAudioEls = remoteAudioEls.filter(function (x) { return x !== audioEl; });
         audioEl = track.attach();
         audioEl.setAttribute("data-participant-id", pid);
         audioWrap.appendChild(audioEl);
@@ -379,6 +412,9 @@
     } else {
       if (typeof hideVideoPlaceholder === "function") hideVideoPlaceholder();
       if (typeof maybeShowSaveClassHint === "function") maybeShowSaveClassHint();
+      if (typeof showAudioUnlockBanner === "function" && liveRoom && liveRoom.canPlaybackAudio === false) {
+        showAudioUnlockBanner();
+      }
     }
   }
 
@@ -673,15 +709,17 @@
   function attachExistingRemoteTracks() {
     if (!liveRoom) return;
     var c = lk();
-    // Students: attach teacher screen share first so it wins over camera-off events.
+    // Students: attach teacher screen share and microphone first.
     if (!isTeacherRole()) {
       liveRoom.remoteParticipants.forEach(function (participant) {
         if (!isTeacherParticipant(participant)) return;
         wireParticipantVideoEvents(participant);
         participant.trackPublications.forEach(function (pub) {
-          if (!isScreenPublication(pub)) return;
-          setPublicationSubscribed(pub, true);
-          if (pub.track) attachRemoteTrack(pub.track, pub, participant);
+          var isAudio = !!(c && (pub.kind === c.Track.Kind.Audio || pub.kind === "audio"));
+          if (isScreenPublication(pub) || isAudio) {
+            setPublicationSubscribed(pub, true);
+            if (pub.track) attachRemoteTrack(pub.track, pub, participant);
+          }
         });
       });
     }
@@ -821,6 +859,9 @@
     room.on(c.RoomEvent.TrackUnsubscribed, function (track, publication, participant) {
       if (track && (track.kind === c.Track.Kind.Audio || track.kind === "audio")) {
         softDetachRemoteAudio(track);
+        if (!isTeacherRole() && isTeacherParticipant(participant)) {
+          setTimeout(function () { reattachTeacherAudio(); ensureRoomAudioPlayback(); }, 300);
+        }
         return;
       }
       detachRemoteVideo(track, publication, participant);
@@ -855,6 +896,10 @@
       participant.trackPublications.forEach(function (pub) {
         if (pub.track) attachRemoteTrack(pub.track, pub, participant);
       });
+      if (!isTeacherRole() && isTeacherParticipant(participant)) {
+        reattachTeacherAudio();
+        ensureRoomAudioPlayback();
+      }
       if (typeof updateAudienceStats === "function") updateAudienceStats();
       if (typeof refreshLiveKitRosterDebounced === "function") refreshLiveKitRosterDebounced();
       else if (typeof refreshLiveKitRoster === "function") refreshLiveKitRoster();
@@ -973,6 +1018,7 @@
         await liveRoom.disconnect();
       } catch (e) { /* ignore */ }
     }
+    pruneRemoteAudioElements();
     liveRoom = null;
     liveVideoJoined = false;
     await refreshLiveKitToken();
@@ -1238,17 +1284,15 @@
           });
         }, 10000);
       } else {
-        // Students: keep teacher camera / screen share subscribed and attached
+        // Students: keep teacher mic + camera / screen share subscribed and attached
+        reattachTeacherAudio();
         if (window._sxVideoKeepAlive) clearInterval(window._sxVideoKeepAlive);
         window._sxVideoKeepAlive = setInterval(function () {
           if (!liveVideoJoined) return;
+          reattachTeacherAudio();
           var boardDominates = window.board && window.board.open && !remoteTeacherScreenActive();
-          if (!boardDominates) {
-            reattachTeacherMainStage();
-            ensureRoomAudioPlayback();
-          } else {
-            ensureRoomAudioPlayback();
-          }
+          if (!boardDominates) reattachTeacherMainStage();
+          ensureRoomAudioPlayback();
         }, 8000);
       }
       var studBadge = document.getElementById("audience-badge");
@@ -1298,6 +1342,11 @@
           if (typeof showVideoPlaceholder === "function") {
             showVideoPlaceholder("Waiting for the teacher to start video…");
           }
+        }
+        reattachTeacherAudio();
+        await ensureRoomAudioPlayback();
+        if (liveRoom && liveRoom.canPlaybackAudio === false && typeof showAudioUnlockBanner === "function") {
+          showAudioUnlockBanner();
         }
       }
     } catch (err) {
@@ -1812,6 +1861,7 @@
     if (liveRoom) {
       try { await liveRoom.disconnect(); } catch (e) { /* ignore */ }
     }
+    pruneRemoteAudioElements();
     liveRoom = null;
     liveVideoJoined = false;
     mediaMode = "none";
@@ -1913,5 +1963,6 @@
   window.reattachParticipantVideos = reattachParticipantVideos;
   window.reattachTeacherMainStage = reattachTeacherMainStage;
   window.reattachRemoteClassAudio = reattachRemoteClassAudio;
+  window.reattachTeacherAudio = reattachTeacherAudio;
   window.attachExistingRemoteTracks = attachExistingRemoteTracks;
 })();
