@@ -519,7 +519,7 @@ function updateCamRailLayout() {
 }
 
 function findOrCreateCamRailSlot(studentId) {
-  if (!isTeacherRole() || !isMobileClassroomView() || !studentId) return null;
+  if (!isTeacherRole() || !studentId) return null;
   var rail = document.getElementById("student-cam-rail");
   if (!rail) return null;
   var sid = String(studentId);
@@ -631,6 +631,10 @@ function showStudentTools(show) {
     document.body.classList.remove("host-view");
     var statusEl = document.getElementById("cr-status");
     if (statusEl) statusEl.classList.add("hidden");
+    ["btn-save-class-top", "btn-save-live", "save-live-badge"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.classList.add("hidden");
+    });
     collapseMeetChatPanel(true);
   } else {
     document.body.classList.remove("student-view");
@@ -638,7 +642,7 @@ function showStudentTools(show) {
 }
 
 function updateSaveLiveUi() {
-  var label = liveSaveActive ? "Stop saving" : "Save class";
+  var label = liveSaveActive ? "Stop recording" : "Record class";
   var btn = document.getElementById("btn-save-live");
   var topBtn = document.getElementById("btn-save-class-top");
   var badge = document.getElementById("save-live-badge");
@@ -657,9 +661,9 @@ var liveSaveWaitTimer = null;
 var liveSaveHintShown = false;
 
 function maybeShowSaveClassHint() {
-  if (isTeacherRole() || liveSaveHintShown || liveSaveActive || liveSaveWaitTimer) return;
+  if (!isClassroomHost() || liveSaveHintShown || liveSaveActive || liveSaveWaitTimer) return;
   liveSaveHintShown = true;
-  addChatMessage("", "Tip: tap <strong>Save class</strong> at the top to record this lesson on your device.", true);
+  addChatMessage("", "Tip: tap <strong>Record class</strong> to save this lesson on your device.", true);
 }
 
 function startLiveSave(stream) {
@@ -676,7 +680,7 @@ function startLiveSave(stream) {
   liveSaveRecorder.start(1000);
   liveSaveActive = true;
   updateSaveLiveUi();
-  addChatMessage("", "Recording this class on your device. Tap <strong>Stop saving</strong> when finished, or leave the class to save automatically.", true);
+  addChatMessage("", "Recording this class on your device. Tap <strong>Stop recording</strong> when finished.", true);
 }
 
 function waitForRemoteStreamAndSave(maxMs) {
@@ -689,6 +693,9 @@ function waitForRemoteStreamAndSave(maxMs) {
       return;
     }
     var stream = getRemoteClassMediaStream();
+    if (!stream && typeof getLocalClassRecordStream === "function") {
+      stream = getLocalClassRecordStream();
+    }
     if (stream) {
       clearInterval(liveSaveWaitTimer);
       liveSaveWaitTimer = null;
@@ -712,14 +719,17 @@ function pickRecorderMimeType() {
 }
 
 function toggleSaveLive() {
-  if (isTeacherRole()) return;
+  if (!isClassroomHost()) return;
   if (liveSaveActive) {
     stopLiveSaveAndStore(true);
     return;
   }
   var stream = getRemoteClassMediaStream();
+  if (!stream && typeof getLocalClassRecordStream === "function") {
+    stream = getLocalClassRecordStream();
+  }
   if (!stream) {
-    addChatMessage("", "Waiting for teacher video or audio… recording will start automatically.", true);
+    addChatMessage("", "Waiting for student audio/video… recording will start when someone is live.", true);
     waitForRemoteStreamAndSave(45000);
     return;
   }
@@ -1692,6 +1702,7 @@ function attachParticipantCameraVideo(studentId, track) {
   slot.appendChild(el);
   slot.classList.remove("hidden");
   setParticipantCameraOn(studentId, true);
+  updateCamRailLayout();
   if (typeof updateSpotlightStudentStage === "function") updateSpotlightStudentStage();
   var playPromise = el.play && el.play();
   if (playPromise && playPromise.catch) {
@@ -4125,11 +4136,27 @@ function setSpotlight(mode) {
 }
 window.setSpotlight = setSpotlight;
 
+function syncSheetBackdrop() {
+  var backdrop = document.getElementById("sheet-backdrop");
+  if (!backdrop) return;
+  var open = false;
+  ["more-menu", "reaction-sheet", "controls-sheet"].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el && !el.classList.contains("hidden")) open = true;
+  });
+  backdrop.classList.toggle("hidden", !open);
+}
+
+function closeAllSheets() {
+  toggleMoreMenu(false);
+  toggleReactionSheet(false);
+  toggleControlsSheet(false);
+}
+window.closeAllSheets = closeAllSheets;
+
 function toggleReactionSheet(force) {
   var sheet = document.getElementById("reaction-sheet");
   if (!sheet) return;
-  var open = typeof force === "boolean" ? !force : sheet.classList.contains("hidden");
-  // force=false means close; force=true means open; undefined toggles
   if (typeof force === "boolean") {
     sheet.classList.toggle("hidden", !force);
   } else {
@@ -4137,6 +4164,7 @@ function toggleReactionSheet(force) {
   }
   var more = document.getElementById("more-menu");
   if (more && !sheet.classList.contains("hidden")) more.classList.add("hidden");
+  syncSheetBackdrop();
 }
 window.toggleReactionSheet = toggleReactionSheet;
 
@@ -4150,6 +4178,7 @@ function toggleMoreMenu(force) {
   }
   var react = document.getElementById("reaction-sheet");
   if (react && !sheet.classList.contains("hidden")) react.classList.add("hidden");
+  syncSheetBackdrop();
 }
 window.toggleMoreMenu = toggleMoreMenu;
 
@@ -4221,6 +4250,7 @@ function toggleControlsSheet(forceOpen) {
   if (!sheet) return;
   var open = typeof forceOpen === "boolean" ? forceOpen : sheet.classList.contains("hidden");
   sheet.classList.toggle("hidden", !open);
+  syncSheetBackdrop();
 }
 window.toggleControlsSheet = toggleControlsSheet;
 

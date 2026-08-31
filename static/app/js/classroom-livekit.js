@@ -265,13 +265,17 @@
     if (!pid) return;
     remoteAudioEls = remoteAudioEls.filter(function (el) {
       if (el && el.getAttribute && el.getAttribute("data-participant-id") === pid) {
-        // Never stop() remote tracks — that permanently mutes the student for this page.
         try { el.srcObject = null; } catch (e) { /* ignore */ }
         try { el.remove(); } catch (e2) { /* ignore */ }
         return false;
       }
       return true;
     });
+  }
+
+  function softDetachRemoteAudio(track) {
+    if (!track) return;
+    try { track.detach(); } catch (e) { /* ignore */ }
   }
 
   function participantRoleFromMeta(participant) {
@@ -591,6 +595,9 @@
           if (typeof attachParticipantCameraVideo === "function") {
             attachParticipantCameraVideo(studentId, track);
           }
+          if (typeof reattachParticipantVideos === "function") {
+            setTimeout(function () { reattachParticipantVideos(); }, 200);
+          }
         }
         return;
       }
@@ -813,7 +820,7 @@
     });
     room.on(c.RoomEvent.TrackUnsubscribed, function (track, publication, participant) {
       if (track && (track.kind === c.Track.Kind.Audio || track.kind === "audio")) {
-        detachRemoteAudio(participant);
+        softDetachRemoteAudio(track);
         return;
       }
       detachRemoteVideo(track, publication, participant);
@@ -1225,9 +1232,11 @@
         if (window._sxAudioKeepAlive) clearInterval(window._sxAudioKeepAlive);
         window._sxAudioKeepAlive = setInterval(function () {
           if (!liveVideoJoined) return;
-          attachExistingRemoteTracks();
           ensureRoomAudioPlayback();
-        }, 4000);
+          remoteAudioEls.forEach(function (el) {
+            if (el && el.paused) playRemoteAudioElement(el);
+          });
+        }, 10000);
       } else {
         // Students: keep teacher camera / screen share subscribed and attached
         if (window._sxVideoKeepAlive) clearInterval(window._sxVideoKeepAlive);
@@ -1756,7 +1765,7 @@
     var ms = new MediaStream();
     liveRoom.remoteParticipants.forEach(function (p) {
       p.trackPublications.forEach(function (pub) {
-        if (pub.track && pub.track.mediaStreamTrack) {
+        if (pub.track && pub.track.mediaStreamTrack && !pub.isMuted && !pub.track.isMuted) {
           ms.addTrack(pub.track.mediaStreamTrack);
         }
       });
@@ -1764,8 +1773,38 @@
     return ms.getTracks().length ? ms : null;
   }
 
+  function getLocalClassRecordStream() {
+    if (!liveRoom || !liveVideoJoined) return null;
+    var ms = new MediaStream();
+    var remote = getRemoteClassMediaStream();
+    if (remote) {
+      remote.getTracks().forEach(function (t) { ms.addTrack(t); });
+    }
+    try {
+      var c = lk();
+      if (c && liveRoom.localParticipant) {
+        liveRoom.localParticipant.trackPublications.forEach(function (pub) {
+          if (!pub.track || !pub.track.mediaStreamTrack || pub.isMuted || pub.track.isMuted) return;
+          if (pub.kind === c.Track.Kind.Audio || pub.kind === "audio" ||
+              pub.kind === c.Track.Kind.Video || pub.kind === "video") {
+            ms.addTrack(pub.track.mediaStreamTrack);
+          }
+        });
+      }
+    } catch (e) { /* ignore */ }
+    return ms.getTracks().length ? ms : null;
+  }
+
   async function disconnectLiveVideo() {
     stopLiveKitRetry();
+    if (window._sxAudioKeepAlive) {
+      clearInterval(window._sxAudioKeepAlive);
+      window._sxAudioKeepAlive = null;
+    }
+    if (window._sxVideoKeepAlive) {
+      clearInterval(window._sxVideoKeepAlive);
+      window._sxVideoKeepAlive = null;
+    }
     if (tokenRefreshTimer) {
       clearInterval(tokenRefreshTimer);
       tokenRefreshTimer = null;
@@ -1870,6 +1909,7 @@
   window.applyStudentMediaPermissions = applyStudentMediaPermissions;
   window.countVideoAudience = countVideoAudience;
   window.getRemoteClassMediaStream = getRemoteClassMediaStream;
+  window.getLocalClassRecordStream = getLocalClassRecordStream;
   window.reattachParticipantVideos = reattachParticipantVideos;
   window.reattachTeacherMainStage = reattachTeacherMainStage;
   window.reattachRemoteClassAudio = reattachRemoteClassAudio;

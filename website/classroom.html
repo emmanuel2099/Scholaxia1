@@ -44,7 +44,7 @@
   </style>
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
-  <link rel="stylesheet" href="css/classroom.css?v=20260831h" />
+  <link rel="stylesheet" href="css/classroom.css?v=20260831i" />
   <link rel="stylesheet" href="css/responsive.css?v=20260804i" />
 </head>
 <body class="meet-v2">
@@ -84,14 +84,14 @@
         <p id="cr-meta">—</p>
       </div>
       <div class="meet-header-actions">
-        <button type="button" id="btn-save-class-top" class="btn-save-class-top student-only hidden" onclick="toggleSaveLive()">&#128190; Save</button>
+        <button type="button" id="btn-save-class-top" class="btn-save-class-top host-only hidden" onclick="toggleSaveLive()">&#128190; Record</button>
         <button type="button" id="btn-end-class" class="btn-end-class host-only hidden" onclick="endLiveClass()">End class</button>
       </div>
     </div>
     <div class="meet-header-meta">
       <span class="live-pill" id="live-status-pill">LIVE</span>
       <span id="audience-badge" class="audience-badge meet-timer-badge">Joining…</span>
-      <span id="sx-build-badge" class="sx-build-badge" title="UI build version">BUILD 20260831h</span>
+      <span id="sx-build-badge" class="sx-build-badge" title="UI build version">BUILD 20260831i</span>
       <span id="cr-status" class="cr-status host-only hidden">Connecting…</span>
     </div>
   </header>
@@ -228,16 +228,21 @@
       </button>
       <button type="button" id="btn-stage-fullscreen" class="meet-tool-btn hidden" onclick="toggleStageFullscreen()" title="Full screen share">&#9974;<span>Full</span></button>
       <button type="button" id="btn-more" class="meet-tool-btn" onclick="toggleMoreMenu()" title="More">&#8943;<span>More</span></button>
-      <button type="button" id="btn-save-live" class="meet-tool-btn save-class-btn student-only hidden" onclick="toggleSaveLive()">&#128190;<span>Save</span></button>
+      <button type="button" id="btn-save-live" class="meet-tool-btn save-class-btn host-only hidden" onclick="toggleSaveLive()">&#128190;<span>Record</span></button>
       <span id="mic-live-badge" class="mic-live-badge hidden host-only">Students hear you</span>
-      <span id="save-live-badge" class="save-live-badge student-only hidden">Recording…</span>
+      <span id="save-live-badge" class="save-live-badge host-only hidden">Recording…</span>
       <button type="button" class="btn-end-class meet-end-btn host-only hidden" onclick="endLiveClass()">End class</button>
     </div>
   </footer>
 
+  <div id="sheet-backdrop" class="sheet-backdrop hidden" onclick="closeAllSheets()" aria-hidden="true"></div>
+
   <div id="reaction-sheet" class="bottom-sheet hidden" role="dialog" aria-label="Reactions">
-    <div class="bottom-sheet-handle"></div>
-    <p class="bottom-sheet-title">Quick reaction</p>
+    <div class="bottom-sheet-handle" role="button" tabindex="0" onclick="toggleReactionSheet(false)" title="Close"></div>
+    <div class="bottom-sheet-head">
+      <p class="bottom-sheet-title">Quick reaction</p>
+      <button type="button" class="sheet-close-btn" onclick="toggleReactionSheet(false)">Close</button>
+    </div>
     <div class="reaction-sheet-grid">
       <button type="button" onclick="sendReaction('👍'); toggleReactionSheet(false)">👍<span>Got it</span></button>
       <button type="button" onclick="sendReaction('❓'); toggleReactionSheet(false)">❓<span>Question</span></button>
@@ -251,8 +256,11 @@
   </div>
 
   <div id="more-menu" class="bottom-sheet hidden" role="dialog" aria-label="More">
-    <div class="bottom-sheet-handle"></div>
-    <p class="bottom-sheet-title">More</p>
+    <div class="bottom-sheet-handle" role="button" tabindex="0" onclick="toggleMoreMenu(false)" title="Close"></div>
+    <div class="bottom-sheet-head">
+      <p class="bottom-sheet-title">More</p>
+      <button type="button" class="sheet-close-btn" onclick="toggleMoreMenu(false)">Close</button>
+    </div>
     <div class="more-menu-list">
       <button type="button" onclick="toggleParticipantStrip(false); toggleMoreMenu(false)">Participants strip</button>
       <button type="button" onclick="toggleMeetChatPanel(); toggleMoreMenu(false)">Chat</button>
@@ -294,7 +302,7 @@
 <script src="js/classroom-bridge.js?v=20260828h"></script>
 <script src="js/saved-live.js?v=20260804i"></script>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.9.3/dist/livekit-client.umd.js"></script>
-<script src="js/classroom-livekit.js?v=20260831h"></script>
-<script src="js/classroom.js?v=20260831h"></script>
+<script src="js/classroom-livekit.js?v=20260831i"></script>
+<script src="js/classroom.js?v=20260831i"></script>
 </body>
 </html>

@@ -1356,8 +1356,41 @@ body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
 }
 .bottom-sheet-title {
   font-weight: 700;
-  margin-bottom: 12px;
+  margin-bottom: 0;
   color: #f5f3ff;
+}
+.bottom-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.sheet-close-btn,
+.bottom-sheet-head .meet-side-btn {
+  border: 1px solid #6d28d9;
+  background: #1a1228;
+  color: #e9d5ff;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sheet-close-btn:hover {
+  background: #2e1065;
+}
+.bottom-sheet-handle {
+  cursor: pointer;
+}
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(0, 0, 0, 0.45);
+}
+.sheet-backdrop.hidden {
+  display: none !important;
 }
 .reaction-sheet-grid {
   display: grid;
@@ -2378,6 +2411,42 @@ body.meet-stage-fullscreen #btn-stage-fullscreen {
 }
 #host-sidebar .raise-hand-actions {
   pointer-events: auto;
+}
+
+/* Meet v2 — teacher student camera strip (all screen sizes) */
+body.meet-v2.host-view .student-cam-rail:not(.hidden) {
+  display: flex !important;
+  flex-direction: row;
+  align-items: flex-end;
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  height: auto;
+  max-height: 130px;
+  z-index: 18;
+  gap: 8px;
+  padding: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  background: rgba(10, 6, 18, 0.9);
+  border: 1px solid #6d28d9;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+body.meet-v2.host-view .cam-rail-tile {
+  width: 108px;
+  flex-shrink: 0;
+}
+body.meet-v2.host-view .cam-rail-video {
+  width: 108px;
+  height: 80px;
+  border-radius: 8px;
+}
+body.meet-v2.host-view .cam-rail-label {
+  max-width: 108px;
+  font-size: 0.65rem;
 }
 
 /* Student view — hide connection/status clutter */
