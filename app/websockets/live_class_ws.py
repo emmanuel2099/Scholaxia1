@@ -373,6 +373,17 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
                         lower_hand(room_id, str(target_id))
                         await notify_mic_granted(room_id, str(target_id))
 
+            elif event == "grant_camera":
+                if not _is_teacher_role(role):
+                    await websocket.send_text(json.dumps({
+                        "event": "error",
+                        "message": "Only the teacher can allow student camera.",
+                    }))
+                else:
+                    target_id = message.get("target_user_id")
+                    if target_id:
+                        await notify_camera_granted(room_id, str(target_id))
+
             elif event == "revoke_mic":
                 if not _is_teacher_role(role):
                     await websocket.send_text(json.dumps({

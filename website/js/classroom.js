@@ -1225,26 +1225,32 @@ function isMicEventForMe(msg) {
   return target === mine;
 }
 
-function formatGrantError(detail) {
-  if (!detail) return "Could not allow student to speak";
+function formatGrantError(detail, fallback) {
+  if (!detail) return fallback || "Request failed";
   if (typeof detail === "string") return detail;
   if (Array.isArray(detail)) {
     return detail.map(function (d) { return (d && d.msg) || String(d); }).join(", ");
   }
   if (typeof detail === "object" && detail.msg) return detail.msg;
-  try { return JSON.stringify(detail); } catch (e) { return "Request failed"; }
+  try { return JSON.stringify(detail); } catch (e) { return fallback || "Request failed"; }
 }
 
-async function classroomHostApi(path, options) {
+async function classroomHostApi(path, options, errorFallback) {
   options = options || {};
   var tok = localStorage.getItem("sia_teacher_token") || localStorage.getItem("sia_admin_token") || getAuthToken();
+  if (!tok) throw new Error("Not signed in as teacher — open the class from the teacher dashboard");
   var res = await fetch(API_BASE + path, {
     method: options.method || "GET",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + tok },
     body: options.body,
   });
   var data = await res.json().catch(function () { return {}; });
-  if (!res.ok) throw new Error(formatGrantError(data.detail) || "Request failed (" + res.status + ")");
+  if (!res.ok) {
+    var msg = formatGrantError(data.detail, errorFallback) ||
+      (data.message ? String(data.message) : "") ||
+      "Request failed (" + res.status + ")";
+    throw new Error(msg);
+  }
   return data;
 }
 
@@ -1275,7 +1281,8 @@ async function grantStudentMic(userId, studentName) {
   try {
     await classroomHostApi(
       "/api/v1/live-classes/" + classId + "/students/" + encodeURIComponent(uidRaw) + "/unmute",
-      { method: "POST" }
+      { method: "POST" },
+      "Could not allow student to speak"
     );
     ok = true;
   } catch (e) {
@@ -1343,14 +1350,25 @@ async function revokeStudentMic(userId) {
 async function grantStudentCamera(userId) {
   if (!isClassroomHost() || !userId) return;
   var classId = liveSession.class_id || liveSession.classId;
-  if (!classId) return;
+  if (!classId) {
+    showClassroomToast("Class session not found. Re-enter the classroom.", true);
+    return;
+  }
   var uidRaw = String(userId).trim();
-  var name = (findStudentInRoster(uidRaw) && resolveStudentDisplayName(findStudentInRoster(uidRaw))) || "Student";
+  var rosterHit = findStudentInRoster(uidRaw);
+  if (rosterHit && rosterHit.student_id) uidRaw = String(rosterHit.student_id).trim();
+  var name = (rosterHit && resolveStudentDisplayName(rosterHit)) || "Student";
   showClassroomToast("Allowing " + name + " camera…");
+  var wsSent = false;
+  if (liveSocket && liveSocket.readyState === WebSocket.OPEN) {
+    liveSocket.send(JSON.stringify({ event: "grant_camera", target_user_id: uidRaw }));
+    wsSent = true;
+  }
   try {
     await classroomHostApi(
       "/api/v1/live-classes/" + classId + "/students/" + encodeURIComponent(uidRaw) + "/allow-camera",
-      { method: "POST" }
+      { method: "POST" },
+      "Could not allow camera"
     );
     showClassroomToast(name + " can use camera");
     addChatMessage("", name + " can turn on camera now.", true);
@@ -1359,6 +1377,12 @@ async function grantStudentCamera(userId) {
       if (typeof window.reattachParticipantVideos === "function") window.reattachParticipantVideos();
     }, 400);
   } catch (e) {
+    if (wsSent) {
+      showClassroomToast(name + " camera allowed — student can tap Cam");
+      addChatMessage("", name + " can turn on camera (via live chat).", true);
+      await loadClassroomStudents(true);
+      return;
+    }
     showClassroomToast("Could not allow camera: " + (e.message || "Try again."), true);
     addChatMessage("", "Could not allow camera: " + (e.message || "Try again."), true);
   }
@@ -1579,8 +1603,8 @@ function buildHostParticipantRowHtml(s, isTeacher) {
       '<span class="host-part-name">' + escHtml(s.name || "Teacher") + "</span>" +
       '<span class="host-part-icons"><span class="icon-on">🎤</span><span class="icon-on">📷</span></span></div>';
   }
-  var sid = normalizeStudentId(s.student_id || "");
-  var displayName = resolveStudentDisplayName(s);
+  var sidRaw = String(s.student_id || "");
+  var sid = normalizeStudentId(sidRaw);
   var micOn = !!(s.mic_allowed || s.mic_on);
   var camOn = !!(s.camera_allowed || s.camera_on);
   Object.keys(raisedHands).forEach(function (k) {
@@ -1589,7 +1613,8 @@ function buildHostParticipantRowHtml(s, isTeacher) {
       if (rn && rn.toLowerCase() !== "student" && !looksLikeUuid(rn)) displayName = rn;
     }
   });
-  return '<div class="host-participant-row" data-student-id="' + escHtml(sid) + '" data-name="' +
+  var displayName = resolveStudentDisplayName(s);
+  return '<div class="host-participant-row" data-student-id="' + escHtml(sidRaw || sid) + '" data-name="' +
     escHtml(displayName.toLowerCase()) + '">' +
     '<span class="host-part-avatar">' + escHtml(displayName.charAt(0).toUpperCase()) + "</span>" +
     '<span class="host-part-name">' + escHtml(displayName) + "</span>" +
@@ -1598,11 +1623,11 @@ function buildHostParticipantRowHtml(s, isTeacher) {
     '<span class="' + (camOn ? "icon-on" : "icon-off") + '">📷</span></span>' +
     '<span class="host-part-actions">' +
     (micOn
-      ? '<button type="button" class="host-part-btn btn-mute" data-user-id="' + escHtml(sid) + '" onclick="sxMuteStudent(this)">Mute</button>'
-      : '<button type="button" class="host-part-btn btn-allow" data-user-id="' + escHtml(sid) + '" data-user-name="' + escHtml(displayName) + '" onclick="sxAllowSpeak(this)">Mic</button>') +
+      ? '<button type="button" class="host-part-btn btn-mute" data-user-id="' + escHtml(sidRaw || sid) + '" onclick="sxMuteStudent(this)">Mute</button>'
+      : '<button type="button" class="host-part-btn btn-allow" data-user-id="' + escHtml(sidRaw || sid) + '" data-user-name="' + escHtml(displayName) + '" onclick="sxAllowSpeak(this)">Mic</button>') +
     (camOn
-      ? '<button type="button" class="host-part-btn btn-cam-off" data-user-id="' + escHtml(sid) + '" onclick="sxRevokeCam(this)">Cam off</button>'
-      : '<button type="button" class="host-part-btn btn-cam" data-user-id="' + escHtml(sid) + '" onclick="sxAllowCam(this)">Cam</button>') +
+      ? '<button type="button" class="host-part-btn btn-cam-off" data-user-id="' + escHtml(sidRaw || sid) + '" onclick="sxRevokeCam(this)">Cam off</button>'
+      : '<button type="button" class="host-part-btn btn-cam" data-user-id="' + escHtml(sidRaw || sid) + '" onclick="sxAllowCam(this)">Cam</button>') +
     "</span></div>";
 }
 

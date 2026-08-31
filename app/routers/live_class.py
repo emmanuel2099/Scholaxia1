@@ -1500,13 +1500,13 @@ async def allow_student_camera(
     )
     attendance = result.scalar_one_or_none()
     if not attendance:
-        raise HTTPException(status_code=404, detail="Student not in class")
-    grant_camera(live_class.room_id, str(student_id))
+        attendance = await _ensure_attendance_for_unmute(db, class_uuid, student_uuid)
+    grant_camera(live_class.room_id, str(student_uuid))
     try:
-        await live_class_ws.notify_camera_granted(live_class.room_id, str(student_id))
+        await live_class_ws.notify_camera_granted(live_class.room_id, str(student_uuid))
     except Exception:
         pass
-    return {"message": "Student can turn on camera", "camera_allowed": True}
+    return {"message": "Student can turn on camera", "camera_allowed": True, "student_id": str(student_uuid)}
 
 
 @router.post("/{class_id}/students/{student_id}/revoke-camera")
