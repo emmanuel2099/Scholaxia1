@@ -4093,6 +4093,9 @@ function applySpotlight(mode, fromServer, userId) {
   }
   updateSpotlightStudentStage();
   if (typeof syncMainStageLayers === "function") syncMainStageLayers();
+  if (isTeacherRole() && typeof refreshTeacherVideoLayout === "function") {
+    refreshTeacherVideoLayout();
+  }
 }
 window.applySpotlight = applySpotlight;
 

@@ -745,6 +745,73 @@
   window.reattachRemoteClassAudio = reattachRemoteClassAudio;
   window.ensureRoomAudioPlayback = ensureRoomAudioPlayback;
 
+  function getStageSpotlightMode() {
+    var stage = document.getElementById("video-stage");
+    return (stage && stage.getAttribute("data-spotlight")) || "teacher";
+  }
+
+  function attachTeacherCameraToMainStage() {
+    if (!isTeacherRole() || !liveRoom || !camOn) return false;
+    if (getStageSpotlightMode() !== "teacher") return false;
+    if (screenOn) return false;
+    var wrap = document.getElementById("video-remote");
+    if (!wrap || wrap.classList.contains("screen-active")) return false;
+    var c = lk();
+    if (!c) return false;
+    var pub = liveRoom.localParticipant.getTrackPublication(c.Track.Source.Camera);
+    if (!pub || !pub.track || pub.isMuted || pub.track.isMuted) return false;
+
+    var trackId = "";
+    try {
+      trackId = (pub.track.mediaStreamTrack && pub.track.mediaStreamTrack.id) ||
+        (pub.track.sid || pub.track.trackSid || "") || "";
+    } catch (eId) { /* ignore */ }
+    var existingTeacher = wrap.querySelector(".remote-user.teacher-self video");
+    if (existingTeacher && trackId && existingTeacher.dataset && existingTeacher.dataset.lkTrackId === trackId) {
+      if (typeof hideVideoPlaceholder === "function") hideVideoPlaceholder();
+      return true;
+    }
+
+    wrap.innerHTML = "";
+    wrap.classList.remove("screen-active");
+    var box = document.createElement("div");
+    box.className = "remote-user teacher-self";
+    var el = pub.track.attach();
+    if (trackId) el.dataset.lkTrackId = trackId;
+    el.style.width = "100%";
+    el.style.height = "100%";
+    el.style.objectFit = "cover";
+    el.muted = true;
+    el.autoplay = true;
+    el.playsInline = true;
+    box.appendChild(el);
+    wrap.appendChild(box);
+    try {
+      var playP = el.play && el.play();
+      if (playP && playP.catch) playP.catch(function () {});
+    } catch (ePlay) { /* ignore */ }
+    if (typeof hideVideoPlaceholder === "function") hideVideoPlaceholder();
+    if (typeof window.syncMainStageLayers === "function") window.syncMainStageLayers();
+    return true;
+  }
+
+  function refreshTeacherVideoLayout() {
+    if (!isTeacherRole()) return;
+    var localEl = document.getElementById("video-local");
+    var spotlight = getStageSpotlightMode();
+    if (spotlight === "teacher" && camOn && attachTeacherCameraToMainStage()) {
+      if (localEl) localEl.classList.add("hidden");
+      return;
+    }
+    var wrap = document.getElementById("video-remote");
+    if (wrap && !screenOn && spotlight === "teacher") {
+      var teacherSelf = wrap.querySelector(".remote-user.teacher-self");
+      if (teacherSelf) wrap.innerHTML = "";
+    }
+    attachLocalCameraPreview();
+  }
+  window.refreshTeacherVideoLayout = refreshTeacherVideoLayout;
+
   function attachLocalCameraPreview() {
     if (!liveRoom) return;
     var c = lk();
@@ -753,6 +820,10 @@
     liveRoom.localParticipant.videoTrackPublications.forEach(function (pub) {
       if (!isCameraPublication(pub) || !pub.track) return;
       if (isTeacherRole()) {
+        if (getStageSpotlightMode() === "teacher" && attachTeacherCameraToMainStage()) {
+          if (localEl) localEl.classList.add("hidden");
+          return;
+        }
         if (!localEl) return;
         localEl.innerHTML = "";
         var el = pub.track.attach();
@@ -1483,6 +1554,7 @@
     if (on) {
       attachLocalCameraPreview();
       if (isTeacherRole()) {
+        refreshTeacherVideoLayout();
         if (typeof hideVideoPlaceholder === "function") hideVideoPlaceholder();
         if (typeof addChatMessage === "function") {
           addChatMessage("", "Camera is live — students can see you on the main screen.", true);

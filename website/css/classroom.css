@@ -888,7 +888,7 @@ body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
     justify-content: center !important;
     background: #0a0612;
   }
-  .student-cam-rail:not(.hidden) {
+  body:not(.meet-v2) .student-cam-rail:not(.hidden) {
     display: flex !important;
     flex-direction: column;
     position: absolute;
@@ -905,10 +905,10 @@ body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
     background: rgba(8, 5, 14, 0.88);
     border-right: 1px solid #4c1d95;
   }
-  .main-stage-wrap:has(.student-cam-rail:not(.hidden)) .video-stage,
-  .main-stage-wrap:has(.student-cam-rail:not(.hidden)) #video-stage,
-  .main-stage-wrap.has-cam-rail .video-stage,
-  .main-stage-wrap.has-cam-rail #video-stage {
+  body:not(.meet-v2) .main-stage-wrap:has(.student-cam-rail:not(.hidden)) .video-stage,
+  body:not(.meet-v2) .main-stage-wrap:has(.student-cam-rail:not(.hidden)) #video-stage,
+  body:not(.meet-v2) .main-stage-wrap.has-cam-rail .video-stage,
+  body:not(.meet-v2) .main-stage-wrap.has-cam-rail #video-stage {
     padding-left: 56px;
   }
   .video-remote,
@@ -940,6 +940,16 @@ body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
     border-radius: 6px;
     z-index: 12;
     border: 2px solid #7c3aed;
+  }
+  body.meet-v2.host-view #video-local,
+  body.meet-v2:not(.student-view) #video-local {
+    top: auto !important;
+    left: auto !important;
+    right: 12px !important;
+    bottom: 12px !important;
+    width: 120px !important;
+    height: 90px !important;
+    max-width: 120px !important;
   }
   .board-overlay {
     inset: 0;
@@ -2414,39 +2424,106 @@ body.meet-stage-fullscreen #btn-stage-fullscreen {
 }
 
 /* Meet v2 — teacher student camera strip (all screen sizes) */
-body.meet-v2.host-view .student-cam-rail:not(.hidden) {
+body.meet-v2.host-view .student-cam-rail:not(.hidden),
+body.meet-v2:not(.student-view) .student-cam-rail:not(.hidden) {
   display: flex !important;
-  flex-direction: row;
+  flex-direction: row !important;
   align-items: flex-end;
   position: absolute;
   left: 8px;
   right: 8px;
   bottom: 8px;
-  height: auto;
-  max-height: 130px;
+  top: auto !important;
+  width: auto !important;
+  height: auto !important;
+  max-height: 180px;
   z-index: 18;
-  gap: 8px;
-  padding: 8px;
+  gap: 10px;
+  padding: 10px;
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
-  background: rgba(10, 6, 18, 0.9);
+  background: rgba(10, 6, 18, 0.92);
   border: 1px solid #6d28d9;
+  border-right: 1px solid #6d28d9;
   border-radius: 12px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
-body.meet-v2.host-view .cam-rail-tile {
-  width: 108px;
+body.meet-v2.host-view .main-stage-wrap.has-cam-rail .video-stage,
+body.meet-v2.host-view .main-stage-wrap:has(.student-cam-rail:not(.hidden)) .video-stage,
+body.meet-v2.host-view .main-stage-wrap.has-cam-rail #video-stage,
+body.meet-v2.host-view .main-stage-wrap:has(.student-cam-rail:not(.hidden)) #video-stage,
+body.meet-v2:not(.student-view) .main-stage-wrap.has-cam-rail .video-stage,
+body.meet-v2:not(.student-view) .main-stage-wrap:has(.student-cam-rail:not(.hidden)) .video-stage,
+body.meet-v2:not(.student-view) .main-stage-wrap.has-cam-rail #video-stage,
+body.meet-v2:not(.student-view) .main-stage-wrap:has(.student-cam-rail:not(.hidden)) #video-stage {
+  padding-left: 0 !important;
+  padding-bottom: 168px !important;
+}
+body.meet-v2.host-view #video-local.video-tile.local:not(.hidden),
+body.meet-v2:not(.student-view) #video-local.video-tile.local:not(.hidden) {
+  position: absolute !important;
+  top: auto !important;
+  left: auto !important;
+  right: 12px !important;
+  bottom: 12px !important;
+  width: 160px !important;
+  height: 120px !important;
+  max-width: 160px !important;
+  z-index: 19;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 2px solid #7c3aed;
+}
+body.meet-v2.host-view .main-stage-wrap.has-cam-rail #video-local.video-tile.local:not(.hidden),
+body.meet-v2.host-view .main-stage-wrap:has(.student-cam-rail:not(.hidden)) #video-local.video-tile.local:not(.hidden),
+body.meet-v2:not(.student-view) .main-stage-wrap.has-cam-rail #video-local.video-tile.local:not(.hidden),
+body.meet-v2:not(.student-view) .main-stage-wrap:has(.student-cam-rail:not(.hidden)) #video-local.video-tile.local:not(.hidden) {
+  bottom: 188px !important;
+}
+body.meet-v2.host-view .cam-rail-tile,
+body.meet-v2:not(.student-view) .cam-rail-tile {
+  width: 176px !important;
+  min-width: 176px !important;
+  max-width: 176px !important;
+  flex: 0 0 176px !important;
   flex-shrink: 0;
 }
-body.meet-v2.host-view .cam-rail-video {
-  width: 108px;
-  height: 80px;
-  border-radius: 8px;
+body.meet-v2.host-view .cam-rail-video,
+body.meet-v2:not(.student-view) .cam-rail-video {
+  width: 176px !important;
+  min-width: 176px !important;
+  height: 132px !important;
+  min-height: 132px !important;
+  border-radius: 10px;
+  aspect-ratio: 4 / 3;
 }
-body.meet-v2.host-view .cam-rail-label {
-  max-width: 108px;
-  font-size: 0.65rem;
+body.meet-v2.host-view .cam-rail-label,
+body.meet-v2:not(.student-view) .cam-rail-label {
+  max-width: 176px !important;
+  font-size: 0.72rem;
+  margin-top: 4px;
+}
+
+@media (max-width: 900px) {
+  body.meet-v2.host-view .cam-rail-tile,
+  body.meet-v2:not(.student-view) .cam-rail-tile {
+    width: 140px !important;
+    min-width: 140px !important;
+    max-width: 140px !important;
+    flex: 0 0 140px !important;
+  }
+  body.meet-v2.host-view .cam-rail-video,
+  body.meet-v2:not(.student-view) .cam-rail-video {
+    width: 140px !important;
+    min-width: 140px !important;
+    height: 105px !important;
+    min-height: 105px !important;
+  }
+  body.meet-v2.host-view .cam-rail-label,
+  body.meet-v2:not(.student-view) .cam-rail-label {
+    max-width: 140px !important;
+  }
 }
 
 /* Student view — hide connection/status clutter */
