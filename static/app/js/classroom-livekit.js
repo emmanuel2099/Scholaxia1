@@ -133,17 +133,14 @@
       liveSession.channel_id = data.channel_id || liveSession.channel_id;
       if (data.room_id) liveSession.room_id = data.room_id;
       if (data.end_time) liveSession.end_time = data.end_time;
-      if (typeof data.mic_allowed === "boolean") {
-        liveSession.mic_allowed = data.mic_allowed;
-        if (!isTeacherRole()) window.studentMicAllowed = data.mic_allowed;
-      }
-      if (typeof data.camera_allowed === "boolean") {
-        liveSession.camera_allowed = data.camera_allowed;
-        if (!isTeacherRole()) window.studentCameraAllowed = data.camera_allowed;
-      }
-      if (typeof data.can_publish === "boolean") liveSession.can_publish = data.can_publish;
       if (data.teacher_id) liveSession.teacher_id = data.teacher_id;
-      if (typeof applyStudentMediaPermissions === "function") applyStudentMediaPermissions(data);
+      if (
+        typeof data.mic_allowed === "boolean" ||
+        typeof data.camera_allowed === "boolean" ||
+        typeof data.can_publish === "boolean"
+      ) {
+        applyTokenMediaPermissions(data);
+      }
       if (typeof persistLiveSession === "function") persistLiveSession(liveSession);
       else localStorage.setItem("live_session", JSON.stringify(liveSession));
       window.liveSession = liveSession;
@@ -244,18 +241,49 @@
     remoteAudioEls.forEach(playRemoteAudioElement);
   }
 
-  function applyStudentMediaPermissions(data) {
+  /** Token refresh may lag behind teacher grant — never downgrade local mic/cam grants here. */
+  function applyTokenMediaPermissions(data) {
     if (isTeacherRole() || !data) return;
-    window.studentMicAllowed = data.mic_allowed === true;
-    window.studentCameraAllowed = data.camera_allowed === true;
-    if (typeof syncStudentMicState === "function") {
-      syncStudentMicState(window.studentMicAllowed);
+    var upgraded = false;
+    if (data.mic_allowed === true) {
+      window.studentMicAllowed = true;
+      if (liveSession) liveSession.mic_allowed = true;
+      if (typeof syncStudentMicState === "function") syncStudentMicState(true);
+      upgraded = true;
     }
-    if (liveSession) {
-      liveSession.mic_allowed = window.studentMicAllowed;
-      liveSession.camera_allowed = window.studentCameraAllowed;
-      if (typeof data.can_publish === "boolean") liveSession.can_publish = data.can_publish;
+    if (data.camera_allowed === true) {
+      window.studentCameraAllowed = true;
+      if (liveSession) liveSession.camera_allowed = true;
+      upgraded = true;
+    }
+    if (liveSession && typeof data.can_publish === "boolean") {
+      liveSession.can_publish = data.can_publish;
+    }
+    if (typeof syncStudentMediaControls === "function") syncStudentMediaControls();
+    if (upgraded && liveSession) {
       if (typeof persistLiveSession === "function") persistLiveSession(liveSession);
+      else localStorage.setItem("live_session", JSON.stringify(liveSession));
+    }
+  }
+
+  function applyStudentMediaPermissions(data) {
+    applyTokenMediaPermissions(data);
+  }
+
+  function applyLocalMicGrant() {
+    if (isTeacherRole()) return;
+    window.studentMicAllowed = true;
+    if (typeof syncStudentMicState === "function") syncStudentMicState(true);
+    liveSession = window.liveSession || liveSession;
+    if (liveSession) {
+      liveSession.mic_allowed = true;
+      if (typeof persistLiveSession === "function") persistLiveSession(liveSession);
+    }
+    if (typeof setVideoControlsEnabled === "function") setVideoControlsEnabled(true);
+    var micBtn = document.getElementById("btn-mic");
+    if (micBtn) {
+      micBtn.disabled = false;
+      micBtn.classList.remove("media-locked");
     }
     if (typeof syncStudentMediaControls === "function") syncStudentMediaControls();
   }
@@ -1307,8 +1335,10 @@
       await refreshLiveKitToken();
       await refreshRoomToken();
       var allowed = kind === "cam"
-        ? !!(liveSession && (liveSession.camera_allowed || liveSession.can_publish))
-        : !!(liveSession && (liveSession.mic_allowed || liveSession.can_publish));
+        ? window.studentCameraAllowed === true ||
+          !!(liveSession && (liveSession.camera_allowed || liveSession.can_publish))
+        : window.studentMicAllowed === true ||
+          !!(liveSession && liveSession.mic_allowed);
       if (allowed && await waitForRoomConnected(4000)) return true;
       await new Promise(function (r) { setTimeout(r, 400); });
     }
@@ -1783,6 +1813,9 @@
       return;
     }
     if (!isTeacherRole() && !window.studentMicAllowed) {
+      if (typeof showClassroomToast === "function") {
+        showClassroomToast("Raise your hand — teacher must allow your mic first", true);
+      }
       if (typeof addChatMessage === "function") {
         addChatMessage("", "Raise your hand and wait for the teacher to allow your mic.", true);
       }
@@ -1880,18 +1913,14 @@
   }
 
   async function enableStudentMic() {
-    if (window._sxMicEnableBusy) return;
-    window._sxMicEnableBusy = true;
-    window.studentMicAllowed = true;
-    if (typeof syncStudentMicState === "function") syncStudentMicState(true);
-    liveSession = window.liveSession || liveSession;
-    if (liveSession) {
-      liveSession.mic_allowed = true;
-      if (typeof persistLiveSession === "function") persistLiveSession(liveSession);
+    if (window._sxMicEnableBusy) {
+      var busyMs = Date.now() - (window._sxMicEnableBusyAt || 0);
+      if (busyMs < 25000) return;
     }
-    if (typeof setVideoControlsEnabled === "function") setVideoControlsEnabled(true);
+    window._sxMicEnableBusy = true;
+    window._sxMicEnableBusyAt = Date.now();
+    applyLocalMicGrant();
     var micBtn = document.getElementById("btn-mic");
-    if (micBtn) micBtn.disabled = false;
     if (typeof showClassroomToast === "function") {
       showClassroomToast("Turning on your mic…");
     }
@@ -1911,17 +1940,23 @@
         showClassroomToast("Mic is on — you can speak");
       }
     } catch (e) {
-      if (micBtn) micBtn.disabled = false;
+      applyLocalMicGrant();
       if (typeof showClassroomToast === "function") {
-        showClassroomToast("Tap Mic button to speak", true);
+        showClassroomToast("Tap Mic to turn on your microphone", true);
       }
+    } finally {
+      window._sxMicEnableBusy = false;
     }
-    window._sxMicEnableBusy = false;
   }
 
   async function disableStudentMic() {
     window.studentMicAllowed = false;
     if (typeof syncStudentMicState === "function") syncStudentMicState(false);
+    liveSession = window.liveSession || liveSession;
+    if (liveSession) {
+      liveSession.mic_allowed = false;
+      if (typeof persistLiveSession === "function") persistLiveSession(liveSession);
+    }
     try {
       await publishMicrophoneEnabled(false);
       micOn = false;

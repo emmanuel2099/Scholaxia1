@@ -2122,13 +2122,17 @@ var studentMicPollTimer = null;
 function startStudentMicPermissionPoll() {
   if (isTeacherRole() || studentMicPollTimer) return;
   studentMicPollTimer = setInterval(async function () {
-    if (window.studentMicAllowed || !liveSession) return;
+    if (!liveSession) return;
     try {
       var classId = liveSession.class_id || liveSession.classId;
       if (!classId) return;
       var data = await api("/api/v1/live-classes/" + classId + "/token");
+      var micBtn = document.getElementById("btn-mic");
+      var micOff = micBtn && micBtn.classList.contains("off");
       if (data && data.mic_allowed && typeof enableStudentMic === "function") {
-        enableStudentMic();
+        enableStudentMic().catch(function () { /* retry on next poll */ });
+      } else if (window.studentMicAllowed && micOff && typeof enableStudentMic === "function") {
+        enableStudentMic().catch(function () { /* retry publish */ });
       }
     } catch (e) { /* ignore */ }
   }, 4000);
