@@ -1489,12 +1489,34 @@ body.meet-v2 {
 
 .meet-header {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
   background: #14101f;
   border-bottom: 1px solid #2e1f4a;
+}
+.meet-header-primary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.meet-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.meet-header-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex-wrap: wrap;
+  min-width: 0;
+}
+.meet-breadcrumb {
+  flex: 1;
+  min-width: 0;
 }
 .meet-header-left {
   display: flex;
@@ -2239,50 +2261,47 @@ body.meet-stage-fullscreen #btn-stage-fullscreen {
 @media (max-width: 600px) {
   .meet-header {
     padding: 6px 8px;
-    gap: 4px;
-    flex-wrap: nowrap;
+    gap: 5px;
   }
-  .meet-header-left {
-    flex: 1 1 45%;
-    min-width: 0;
-    gap: 4px;
-  }
-  .meet-header-mid {
-    flex: 0 0 auto;
+  .meet-header-primary {
     gap: 6px;
   }
-  .meet-header-right {
-    flex: 0 0 auto;
+  .meet-header-meta {
     gap: 6px;
   }
   .sx-build-badge {
     font-size: 0.52rem;
-    padding: 2px 4px;
-    margin-left: 2px;
+    padding: 2px 5px;
+    margin-left: 0;
   }
   .meet-breadcrumb h1 {
-    font-size: 0.85rem;
+    font-size: 0.88rem;
+    line-height: 1.2;
   }
   .meet-breadcrumb p {
     font-size: 0.68rem;
+    line-height: 1.2;
   }
   .btn-back {
-    padding: 5px 8px;
+    padding: 6px 9px;
     font-size: 0.72rem;
+    flex-shrink: 0;
   }
   .meet-timer-badge,
   .audience-badge {
     font-size: 0.62rem;
-    padding: 4px 7px;
-    max-width: 42vw;
+    padding: 3px 7px;
+    max-width: none;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
   }
   .btn-end-class,
-  .meet-end-btn {
-    padding: 5px 10px;
+  .meet-end-btn,
+  .btn-save-class-top {
+    padding: 6px 10px;
     font-size: 0.72rem;
+  }
+  .meet-header-actions .btn-end-class {
+    white-space: nowrap;
   }
   #spotlight-bar {
     padding: 4px 8px;
