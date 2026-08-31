@@ -806,9 +806,17 @@ function setVideoControlsEnabled(enabled) {
     });
     return;
   }
-  if (micBtn) micBtn.disabled = !(enabled && window.studentMicAllowed === true);
-  if (camBtn) camBtn.disabled = !(enabled && window.studentCameraAllowed === true);
-  syncStudentMediaControls();
+  // Students: mic/cam depend on teacher grant — stay clickable so tap can reconnect video.
+  var micOk = window.studentMicAllowed === true;
+  var camOk = window.studentCameraAllowed === true;
+  if (micBtn) {
+    micBtn.disabled = !micOk;
+    micBtn.classList.toggle("media-locked", !micOk);
+  }
+  if (camBtn) {
+    camBtn.disabled = !camOk;
+    camBtn.classList.toggle("media-locked", !camOk);
+  }
 }
 
 function showAudioUnlockBanner() {
@@ -3363,9 +3371,9 @@ function connectChat(isReconnect) {
           }
         }
       } else if (msg.event === "mic_access_update") {
-        if (!isTeacherRole() && isMicEventForMe(msg) && msg.has_mic && typeof window.studentMicAllowed === "boolean" && !window.studentMicAllowed) {
+        if (!isTeacherRole() && isMicEventForMe(msg) && msg.has_mic) {
           if (typeof enableStudentMic === "function") {
-            enableStudentMic().catch(function () { /* ignore */ });
+            enableStudentMic().catch(function () { /* retry on poll */ });
           }
         }
         if (!isTeacherRole() && isMicEventForMe(msg) && !msg.has_mic && typeof disableStudentMic === "function") {
