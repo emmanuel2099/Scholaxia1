@@ -69,6 +69,10 @@
   }
 
   function showLiveKitSetupBanner(message) {
+    if (!isTeacherRole()) {
+      if (liveVideoJoined) return;
+      if (message && /reconnect/i.test(String(message))) return;
+    }
     var bar = document.getElementById("livekit-setup-banner");
     var msg = document.getElementById("livekit-setup-msg");
     if (msg && message) msg.textContent = message;
@@ -901,22 +905,25 @@
     });
     room.on(c.RoomEvent.Disconnected, function () {
       liveVideoJoined = false;
-      if (typeof showReconnectBanner === "function") {
-        showReconnectBanner(true, "Video disconnected. Reconnecting…");
+      if (isTeacherRole()) {
+        if (typeof showReconnectBanner === "function") {
+          showReconnectBanner(true, "Video disconnected. Reconnecting…");
+        }
+        if (typeof setStatus === "function") setStatus("Video reconnecting…");
       }
-      if (typeof setStatus === "function") setStatus("Video reconnecting…");
       scheduleLiveKitRetry();
     });
     room.on(c.RoomEvent.Connected, function () {
       scheduleTokenRefresh();
       ensureRoomAudioPlayback();
       if (typeof showReconnectBanner === "function") showReconnectBanner(false);
-      if (typeof setStatus === "function") setStatus("Connected — video + chat");
+      if (isTeacherRole() && typeof setStatus === "function") setStatus("Connected — video + chat");
+      hideLiveKitSetupBanner();
       if (typeof maybeHideJoinOverlay === "function") maybeHideJoinOverlay();
     });
     if (c.RoomEvent.Reconnecting) {
       room.on(c.RoomEvent.Reconnecting, function () {
-        if (typeof showReconnectBanner === "function") {
+        if (isTeacherRole() && typeof showReconnectBanner === "function") {
           showReconnectBanner(true, "Video reconnecting…");
         }
       });
@@ -950,6 +957,9 @@
   }
 
   async function disconnectAndReconnectRoom() {
+    var wasCam = camOn;
+    var wasMic = micOn;
+    var wasScreen = screenOn;
     liveKitConnecting = false;
     if (liveRoom) {
       try {
@@ -960,6 +970,31 @@
     liveVideoJoined = false;
     await refreshLiveKitToken();
     await tryConnectLiveVideo(true);
+    if (!liveVideoJoined) return;
+    if (wasScreen) {
+      await setScreenShare(true);
+    } else {
+      if (wasCam) {
+        camOn = false;
+        await setCam(true);
+      }
+      if (wasMic) {
+        micOn = false;
+        await setMic(true);
+      }
+    }
+  }
+
+  async function refreshPublishAccess() {
+    if (!liveVideoJoined || !liveRoom) {
+      await tryConnectLiveVideo(true);
+      return !!liveVideoJoined;
+    }
+    await refreshLiveKitToken();
+    var refreshed = await refreshRoomToken();
+    if (refreshed) return true;
+    await reconnectWithFreshToken();
+    return !!liveVideoJoined;
   }
 
   async function refreshRoomToken() {
@@ -987,13 +1022,10 @@
       return !!liveVideoJoined;
     }
     if (forceReconnect) {
-      await disconnectAndReconnectRoom();
+      await reconnectWithFreshToken();
       return !!liveVideoJoined;
     }
-    var refreshed = await refreshRoomToken();
-    if (refreshed) return true;
-    await disconnectAndReconnectRoom();
-    return !!liveVideoJoined;
+    return await refreshPublishAccess();
   }
 
   async function reconnectWithFreshToken() {
@@ -1022,7 +1054,7 @@
       await run();
     } catch (e) {
       if (!on || isTeacherRole()) throw e;
-      await disconnectAndReconnectRoom();
+      await reconnectWithFreshToken();
       if (!liveVideoJoined) throw e;
       await run();
     }
@@ -1041,7 +1073,7 @@
       await run();
     } catch (e) {
       if (!on || isTeacherRole()) throw e;
-      await disconnectAndReconnectRoom();
+      await reconnectWithFreshToken();
       if (!liveVideoJoined) throw e;
       await run();
     }
@@ -1069,7 +1101,7 @@
   function enterChatOnlyMode(message) {
     liveVideoJoined = false;
     liveRoom = null;
-    if (typeof setStatus === "function") {
+    if (isTeacherRole() && typeof setStatus === "function") {
       setStatus("Chat only — video reconnecting…");
     }
     if (!camOn && !window.localPreviewStream && typeof showVideoPlaceholder === "function") {
@@ -1500,8 +1532,7 @@
     }
     if (!isTeacherRole() && window.studentMicAllowed && !micOn) {
       try {
-        await refreshLiveKitToken();
-        await ensurePublishPermissions(true);
+        await refreshPublishAccess();
       } catch (e) { /* setMic retry may still work */ }
     }
     try {
@@ -1539,8 +1570,7 @@
     }
     if (!isTeacherRole() && window.studentCameraAllowed && !camOn) {
       try {
-        await refreshLiveKitToken();
-        await ensurePublishPermissions(true);
+        await refreshPublishAccess();
       } catch (e) { /* setCam retry may still work */ }
     }
     try {
@@ -1614,11 +1644,11 @@
           throw new Error("Server has not approved your mic yet — wait a few seconds");
         }
       }
-      await ensurePublishPermissions(true);
+      await refreshPublishAccess();
       micOn = false;
       await setMic(true);
       if (!micOn || !isLocalMicPublished()) {
-        await ensurePublishPermissions(true);
+        await refreshPublishAccess();
         micOn = false;
         await setMic(true);
       }
@@ -1676,14 +1706,14 @@
           throw new Error("Server has not approved your camera yet — wait a few seconds");
         }
       }
-      await ensurePublishPermissions(true);
+      await refreshPublishAccess();
       if (typeof setVideoControlsEnabled === "function") setVideoControlsEnabled(true);
       var camBtn = document.getElementById("btn-cam");
       if (camBtn) camBtn.disabled = false;
       camOn = false;
       await setCam(true);
       if (!camOn || !isLocalCamPublished()) {
-        await ensurePublishPermissions(true);
+        await refreshPublishAccess();
         camOn = false;
         await setCam(true);
       }

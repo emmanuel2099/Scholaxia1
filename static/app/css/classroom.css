@@ -2383,6 +2383,7 @@ body.meet-stage-fullscreen #btn-stage-fullscreen {
 /* Student view — hide connection/status clutter */
 body.meet-v2.student-view #audience-badge,
 body.meet-v2.student-view #reconnect-banner,
-body.meet-v2.student-view #cr-status {
+body.meet-v2.student-view #cr-status,
+body.meet-v2.student-view #livekit-setup-banner {
   display: none !important;
 }

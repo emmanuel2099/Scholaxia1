@@ -32,7 +32,6 @@
     }
     .sx-build-badge {
       display: inline-block;
-      margin-left: 8px;
       padding: 2px 6px;
       border-radius: 4px;
       background: #16a34a;
@@ -45,7 +44,7 @@
   </style>
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
-  <link rel="stylesheet" href="css/classroom.css?v=20260831f" />
+  <link rel="stylesheet" href="css/classroom.css?v=20260831h" />
   <link rel="stylesheet" href="css/responsive.css?v=20260804i" />
 </head>
 <body class="meet-v2">
@@ -78,21 +77,21 @@
   </div>
 
   <header class="meet-header">
-    <div class="meet-header-left">
-      <span class="live-pill" id="live-status-pill">LIVE</span>
-      <span id="sx-build-badge" class="sx-build-badge" title="UI build version">BUILD 20260831f</span>
+    <div class="meet-header-primary">
+      <button type="button" class="btn-back" onclick="leaveClassroom()">&#8592; Leave</button>
       <div class="meet-breadcrumb">
         <h1 id="cr-title">Live Class</h1>
         <p id="cr-meta">—</p>
       </div>
+      <div class="meet-header-actions">
+        <button type="button" id="btn-save-class-top" class="btn-save-class-top student-only hidden" onclick="toggleSaveLive()">&#128190; Save</button>
+        <button type="button" id="btn-end-class" class="btn-end-class host-only hidden" onclick="endLiveClass()">End class</button>
+      </div>
     </div>
-    <div class="meet-header-mid">
-      <button type="button" class="btn-back" onclick="leaveClassroom()">&#8592; Leave</button>
+    <div class="meet-header-meta">
+      <span class="live-pill" id="live-status-pill">LIVE</span>
       <span id="audience-badge" class="audience-badge meet-timer-badge">Joining…</span>
-    </div>
-    <div class="meet-header-right">
-      <button type="button" id="btn-save-class-top" class="btn-save-class-top student-only hidden" onclick="toggleSaveLive()">&#128190; Save class</button>
-      <button type="button" id="btn-end-class" class="btn-end-class host-only hidden" onclick="endLiveClass()">End class</button>
+      <span id="sx-build-badge" class="sx-build-badge" title="UI build version">BUILD 20260831h</span>
       <span id="cr-status" class="cr-status host-only hidden">Connecting…</span>
     </div>
   </header>
@@ -295,7 +294,7 @@
 <script src="js/classroom-bridge.js?v=20260828h"></script>
 <script src="js/saved-live.js?v=20260804i"></script>
 <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.9.3/dist/livekit-client.umd.js"></script>
-<script src="js/classroom-livekit.js?v=20260831f"></script>
-<script src="js/classroom.js?v=20260831f"></script>
+<script src="js/classroom-livekit.js?v=20260831h"></script>
+<script src="js/classroom.js?v=20260831h"></script>
 </body>
 </html>
