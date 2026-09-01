@@ -876,16 +876,19 @@ function setVideoControlsEnabled(enabled) {
 }
 
 function showAudioUnlockBanner() {
+  if (window._sxAudioUnlockDismissed) return;
   var bar = document.getElementById("audio-unlock-banner");
   if (!bar || !bar.classList.contains("hidden")) return;
+  window._sxAudioUnlockShown = true;
   var label = bar.querySelector("strong");
   if (label) {
-    label.textContent = isTeacherRole() ? "Tap to hear students" : "Tap to hear your teacher";
+    label.textContent = isTeacherRole() ? "Tap anywhere to hear students" : "Tap anywhere to hear your teacher";
   }
   bar.classList.remove("hidden");
 }
 
 function unlockClassAudio() {
+  window._sxAudioUnlockDismissed = true;
   var bar = document.getElementById("audio-unlock-banner");
   if (bar) bar.classList.add("hidden");
   if (!isTeacherRole() && typeof reattachTeacherAudio === "function") {
@@ -900,10 +903,11 @@ function unlockClassAudio() {
 }
 
 function bindClassroomAudioUnlock() {
-  document.body.addEventListener("click", function unlockOnce() {
+  var unlock = function () {
     unlockClassAudio();
-    document.body.removeEventListener("click", unlockOnce);
-  }, { once: true });
+  };
+  document.body.addEventListener("click", unlock, { once: true, capture: true });
+  document.body.addEventListener("touchstart", unlock, { once: true, capture: true, passive: true });
 }
 
 function updateMediaButton(btn, on) {
@@ -3482,8 +3486,6 @@ function connectChat(isReconnect) {
         if (isTeacherRole() && msg.has_mic) {
           if (typeof ensureRoomAudioPlayback === "function") ensureRoomAudioPlayback();
           if (typeof reattachRemoteClassAudio === "function") reattachRemoteClassAudio();
-          if (typeof showAudioUnlockBanner === "function") showAudioUnlockBanner();
-          addChatMessage("", "A student can speak now — tap Enable sound if you cannot hear them.", true);
         }
       } else if (msg.event === "mic_access_revoked") {
         if (!isTeacherRole() && isMicEventForMe(msg) && typeof disableStudentMic === "function") {

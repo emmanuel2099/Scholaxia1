@@ -222,8 +222,10 @@
     var p = el.play && el.play();
     if (p && p.catch) {
       p.catch(function () {
-        if (typeof showAudioUnlockBanner === "function") {
-          showAudioUnlockBanner();
+        if (liveRoom && typeof liveRoom.startAudio === "function") {
+          liveRoom.startAudio().then(function () {
+            if (el.play) el.play().catch(function () {});
+          }).catch(function () {});
         }
       });
     }
@@ -236,7 +238,7 @@
         await liveRoom.startAudio();
       }
     } catch (e) {
-      if (typeof showAudioUnlockBanner === "function") showAudioUnlockBanner();
+      /* Browser may require a tap — unlockClassAudio handles that once */
     }
     remoteAudioEls.forEach(playRemoteAudioElement);
   }
@@ -363,17 +365,13 @@
       return isTeacherParticipant(participant);
     }
     if (isScreenPublication(pub)) {
-      if (!isTeacherRole()) return isTeacherParticipant(participant);
+      if (!isTeacherRole()) return true;
       return false;
     }
     if (!isCameraPublication(pub)) return false;
     if (isTeacherRole()) {
       if (isTeacherParticipant(participant)) return false;
-      if (!isCameraPublication(pub)) return false;
-      var studentId = resolveStudentIdFromParticipant(participant);
-      if (!studentId) return true;
-      var ranked = prioritizeSidebarVideoIds();
-      return ranked.slice(0, MAX_SIDEBAR_VIDEOS).indexOf(studentId) >= 0;
+      return true;
     }
     if (!isTeacherParticipant(participant)) return false;
     if (remoteTeacherScreenActive()) return false;
@@ -466,7 +464,7 @@
       var studentId = resolveStudentIdFromParticipant(participant);
       if (!studentId) return;
       participant.trackPublications.forEach(function (pub) {
-        if (isCameraPublication(pub) && !pub.isMuted && ids.indexOf(studentId) < 0) {
+        if (isCameraPublication(pub) && ids.indexOf(studentId) < 0) {
           ids.push(studentId);
         }
       });
@@ -537,15 +535,9 @@
       if (typeof setStatus === "function") {
         setStatus("Connected — you can hear students when they speak");
       }
-      if (typeof showAudioUnlockBanner === "function" && liveRoom && liveRoom.canPlaybackAudio === false) {
-        showAudioUnlockBanner();
-      }
     } else {
       if (typeof hideVideoPlaceholder === "function") hideVideoPlaceholder();
       if (typeof maybeShowSaveClassHint === "function") maybeShowSaveClassHint();
-      if (typeof showAudioUnlockBanner === "function" && liveRoom && liveRoom.canPlaybackAudio === false) {
-        showAudioUnlockBanner();
-      }
     }
   }
 
@@ -786,8 +778,9 @@
           if (typeof attachParticipantCameraVideo === "function") {
             attachParticipantCameraVideo(studentId, track);
           }
+          maybeShowStudentOnMainStage(studentId, track, publication);
           if (typeof reattachParticipantVideos === "function") {
-            setTimeout(function () { reattachParticipantVideos(); }, 200);
+            setTimeout(function () { reattachParticipantVideos(); }, 100);
           }
         }
         return;
@@ -879,6 +872,57 @@
     return (stage && stage.getAttribute("data-spotlight")) || "teacher";
   }
 
+  function attachStudentVideoToMainStage(studentId, track, publication) {
+    if (!isTeacherRole() || !track) return false;
+    if (screenOn) return false;
+    var mode = getStageSpotlightMode();
+    if (mode === "board" && window.board && window.board.open) return false;
+    if (mode === "screen") return false;
+    if (mode === "student" && window.spotlightUserId && String(window.spotlightUserId) !== String(studentId)) {
+      return false;
+    }
+    if (mode === "teacher" && camOn) return false;
+    var wrap = document.getElementById("video-remote");
+    if (!wrap || wrap.classList.contains("screen-active")) return false;
+    var trackId = "";
+    try {
+      trackId = (track.mediaStreamTrack && track.mediaStreamTrack.id) ||
+        (track.sid || track.trackSid || "") || "";
+    } catch (eId) { /* ignore */ }
+    var existing = wrap.querySelector(".remote-user.student-main-stage video");
+    if (existing && trackId && existing.dataset && existing.dataset.lkTrackId === trackId) {
+      if (typeof hideVideoPlaceholder === "function") hideVideoPlaceholder();
+      return true;
+    }
+    wrap.innerHTML = "";
+    wrap.classList.remove("screen-active");
+    var box = document.createElement("div");
+    box.className = "remote-user student-main-stage";
+    box.setAttribute("data-student-id", String(studentId || ""));
+    var el = track.attach();
+    if (trackId) el.dataset.lkTrackId = trackId;
+    el.style.width = "100%";
+    el.style.height = "100%";
+    el.style.objectFit = "cover";
+    el.muted = true;
+    el.autoplay = true;
+    el.playsInline = true;
+    box.appendChild(el);
+    wrap.appendChild(box);
+    try {
+      var playP = el.play && el.play();
+      if (playP && playP.catch) playP.catch(function () {});
+    } catch (ePlay) { /* ignore */ }
+    if (typeof hideVideoPlaceholder === "function") hideVideoPlaceholder();
+    if (typeof window.syncMainStageLayers === "function") window.syncMainStageLayers();
+    return true;
+  }
+
+  function maybeShowStudentOnMainStage(studentId, track, publication) {
+    if (!isTeacherRole() || !studentId || !track) return;
+    attachStudentVideoToMainStage(studentId, track, publication);
+  }
+
   function attachTeacherCameraToMainStage() {
     if (!isTeacherRole() || !liveRoom || !camOn) return false;
     if (getStageSpotlightMode() !== "teacher") return false;
@@ -927,15 +971,21 @@
   function refreshTeacherVideoLayout() {
     if (!isTeacherRole()) return;
     var localEl = document.getElementById("video-local");
+    var wrap = document.getElementById("video-remote");
     var spotlight = getStageSpotlightMode();
     if (spotlight === "teacher" && camOn && attachTeacherCameraToMainStage()) {
       if (localEl) localEl.classList.add("hidden");
       return;
     }
-    var wrap = document.getElementById("video-remote");
+    if (!screenOn && spotlight === "teacher" && !camOn) {
+      var hasStudentMain = wrap && wrap.querySelector(".remote-user.student-main-stage video");
+      if (!hasStudentMain && typeof showVideoPlaceholder === "function") {
+        showVideoPlaceholder("Your camera is off — student video appears here when they turn on cam");
+      }
+    }
     if (wrap && !screenOn && spotlight === "teacher") {
       var teacherSelf = wrap.querySelector(".remote-user.teacher-self");
-      if (teacherSelf) wrap.innerHTML = "";
+      if (teacherSelf && camOn) wrap.innerHTML = "";
     }
     attachLocalCameraPreview();
   }
@@ -1056,6 +1106,13 @@
     var c = LK();
     room.on(c.RoomEvent.TrackSubscribed, function (track, publication, participant) {
       attachRemoteTrack(track, publication, participant);
+      if (!isTeacherRole() && isScreenPublication(publication)) {
+        if (typeof hideVideoPlaceholder === "function") hideVideoPlaceholder();
+        if (typeof window.syncMainStageLayers === "function") window.syncMainStageLayers();
+      }
+      if (track && (track.kind === "audio" || publication && publication.kind === "audio")) {
+        ensureRoomAudioPlayback();
+      }
       if (typeof updateAudienceStats === "function") updateAudienceStats();
     });
     room.on(c.RoomEvent.TrackUnsubscribed, function (track, publication, participant) {
@@ -1095,7 +1152,7 @@
     }
     room.on(c.RoomEvent.TrackPublished, function (publication, participant) {
       if (!participant || participant.isLocal) return;
-      if (!isTeacherRole() && isTeacherParticipant(participant) && isScreenPublication(publication)) {
+      if (!isTeacherRole() && isScreenPublication(publication)) {
         if (typeof window.hideBoardForStudent === "function") window.hideBoardForStudent();
         setPublicationSubscribed(publication, true);
         if (publication.track) {
@@ -1109,7 +1166,7 @@
       if (isTeacherRole() && isCameraPublication(publication)) {
         setTimeout(function () {
           if (typeof reattachParticipantVideos === "function") reattachParticipantVideos();
-        }, 100);
+        }, 50);
       }
     });
     room.on(c.RoomEvent.ParticipantConnected, function (participant) {
@@ -1190,6 +1247,8 @@
       if (isTeacherRole() && typeof setStatus === "function") setStatus("Connected — video + chat");
       hideLiveKitSetupBanner();
       if (typeof maybeHideJoinOverlay === "function") maybeHideJoinOverlay();
+      setTimeout(function () { ensureRoomAudioPlayback(); }, 300);
+      setTimeout(function () { ensureRoomAudioPlayback(); }, 1200);
     });
     if (c.RoomEvent.Reconnecting) {
       room.on(c.RoomEvent.Reconnecting, function () {
@@ -1220,7 +1279,7 @@
     if (c.RoomEvent.AudioPlaybackStatusChanged) {
       room.on(c.RoomEvent.AudioPlaybackStatusChanged, function () {
         if (liveRoom && liveRoom.canPlaybackAudio === false) {
-          if (typeof showAudioUnlockBanner === "function") showAudioUnlockBanner();
+          ensureRoomAudioPlayback();
         }
       });
     }
@@ -1453,7 +1512,7 @@
   }
 
   async function publishWithRetries(kind, on) {
-    var attempts = on ? 6 : 2;
+    var attempts = on ? 4 : 2;
     var lastErr = null;
     for (var i = 1; i <= attempts; i++) {
       try {
@@ -1466,8 +1525,8 @@
         if (!on || isTeacherRole()) break;
         await refreshLiveKitToken();
         await refreshRoomToken();
-        if (i >= 2) await studentReconnectForPublish();
-        await new Promise(function (r) { setTimeout(r, 500 * i); });
+        if (i >= 3) await studentReconnectForPublish();
+        await new Promise(function (r) { setTimeout(r, 300 * i); });
       }
     }
     throw lastErr || new Error("Could not publish " + kind);
@@ -1625,7 +1684,6 @@
       }
       if (typeof setStatus === "function") setStatus("Connected — video + chat");
       if (typeof maybeHideJoinOverlay === "function") maybeHideJoinOverlay();
-      if (typeof showAudioUnlockBanner === "function") showAudioUnlockBanner();
       await ensureRoomAudioPlayback();
       // Keep remote student audio alive for the teacher (autoplay / resubscribe).
       if (isTeacherRole()) {
@@ -1696,9 +1754,6 @@
         }
         reattachTeacherAudio();
         await ensureRoomAudioPlayback();
-        if (liveRoom && liveRoom.canPlaybackAudio === false && typeof showAudioUnlockBanner === "function") {
-          showAudioUnlockBanner();
-        }
       }
     } catch (err) {
       liveVideoJoined = false;
@@ -1984,6 +2039,7 @@
   }
 
   async function toggleMic() {
+    if (typeof unlockClassAudio === "function") unlockClassAudio();
     if (!isTeacherRole() && window.classPermissions && classPermissions.studentsCanUseMicrophone === false && !window.studentMicAllowed) {
       if (typeof showClassroomToast === "function") showClassroomToast("Mic is disabled by the teacher", true);
       return;
@@ -2023,6 +2079,7 @@
   }
 
   async function toggleCam() {
+    if (typeof unlockClassAudio === "function") unlockClassAudio();
     if (!isTeacherRole() && window.classPermissions && classPermissions.studentsCanUseCamera === false && !window.studentCameraAllowed) {
       if (typeof showClassroomToast === "function") showClassroomToast("Camera is disabled by the teacher", true);
       return;
