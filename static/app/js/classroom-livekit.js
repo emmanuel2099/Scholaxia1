@@ -438,7 +438,7 @@
       ];
     }
     return {
-      adaptiveStream: { pixelDensity: 1, pauseVideoInBackground: true },
+      adaptiveStream: { pixelDensity: isHost ? 1 : 0.85, pauseVideoInBackground: false },
       dynacast: isHost,
       disconnectOnPageLeave: true,
       stopLocalTrackOnUnpublish: true,
@@ -629,12 +629,11 @@
     }
     // Screen share must not sit under an open board overlay
     if (isScreen && !isTeacherRole()) {
+      window._teacherScreenSharing = true;
       try {
         if (typeof window.hideBoardForStudent === "function") window.hideBoardForStudent();
-        else {
-          var ov = document.getElementById("board-overlay");
-          if (ov) ov.classList.add("hidden");
-          if (window.board) window.board.open = false;
+        else if (typeof window.pauseStudentBoardSyncForScreenShare === "function") {
+          window.pauseStudentBoardSyncForScreenShare();
         }
       } catch (eHide) { /* ignore */ }
     }
@@ -669,8 +668,8 @@
   }
 
   function remoteTeacherScreenActive() {
-    if (!liveRoom) return false;
-    var active = false;
+    if (!liveRoom) return !!window._teacherScreenSharing;
+    var active = !!window._teacherScreenSharing;
     liveRoom.remoteParticipants.forEach(function (participant) {
       if (!isTeacherParticipant(participant)) return;
       participant.trackPublications.forEach(function (pub) {
@@ -813,6 +812,12 @@
     if (track.kind !== c.Track.Kind.Video && track.kind !== "video") return;
 
     if (isScreenPublication(publication)) {
+      if (!isTeacherRole()) {
+        window._teacherScreenSharing = false;
+        if (typeof window.resumeStudentBoardSyncAfterScreenShare === "function") {
+          window.resumeStudentBoardSyncAfterScreenShare();
+        }
+      }
       var wrap = document.getElementById("video-remote");
       if (wrap) {
         wrap.innerHTML = "";
@@ -856,8 +861,20 @@
     }
   }
 
+  function subscribeTeacherScreenShares() {
+    if (!liveRoom || isTeacherRole()) return;
+    liveRoom.remoteParticipants.forEach(function (participant) {
+      participant.trackPublications.forEach(function (pub) {
+        if (!isScreenPublication(pub)) return;
+        setPublicationSubscribed(pub, true);
+        if (pub.track) attachRemoteVideoToMainStage(pub.track, pub);
+      });
+    });
+  }
+
   function attachExistingRemoteTracks() {
     syncRemoteSubscriptions();
+    if (!isTeacherRole()) subscribeTeacherScreenShares();
     ensureRoomAudioPlayback();
   }
 
@@ -1701,14 +1718,25 @@
         if (window._sxVideoKeepAlive) clearInterval(window._sxVideoKeepAlive);
         window._sxVideoKeepAlive = setInterval(function () {
           if (!liveVideoJoined) return;
+          if (remoteTeacherScreenActive()) {
+            var wrapSs = document.getElementById("video-remote");
+            var vidSs = wrapSs && wrapSs.querySelector("video");
+            if (!vidSs || vidSs.paused || vidSs.readyState < 2) {
+              reattachTeacherScreenShare();
+            }
+            remoteAudioEls.forEach(function (el) {
+              if (el && el.paused) playRemoteAudioElement(el);
+            });
+            return;
+          }
           reattachTeacherAudio();
-          if (!window.board || !window.board.open || remoteTeacherScreenActive()) {
+          if (!window.board || !window.board.open) {
             reattachTeacherMainStage();
           }
           remoteAudioEls.forEach(function (el) {
             if (el && el.paused) playRemoteAudioElement(el);
           });
-        }, 15000);
+        }, 20000);
       }
       var studBadge = document.getElementById("audience-badge");
       if (studBadge && !isTeacherRole()) {

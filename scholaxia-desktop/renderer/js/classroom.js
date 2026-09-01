@@ -176,8 +176,40 @@ function applyBoardReplayMessages(messages) {
   }
 }
 
+function isStudentScreenShareActive() {
+  if (window._teacherScreenSharing) return true;
+  if (typeof window.remoteTeacherScreenActive === "function" && window.remoteTeacherScreenActive()) return true;
+  var remote = document.getElementById("video-remote");
+  return remote && remote.classList.contains("screen-active");
+}
+window.isStudentScreenShareActive = isStudentScreenShareActive;
+
+function pauseStudentBoardSyncForScreenShare() {
+  window._teacherScreenSharing = true;
+  if (window._sxBoardSyncPoll) {
+    clearInterval(window._sxBoardSyncPoll);
+    window._sxBoardSyncPoll = null;
+  }
+  if (window._sxBoardHttpSync) {
+    clearInterval(window._sxBoardHttpSync);
+    window._sxBoardHttpSync = null;
+  }
+}
+
+function resumeStudentBoardSyncAfterScreenShare() {
+  window._teacherScreenSharing = false;
+  if (isTeacherRole()) return;
+  if (!window._sxBoardHttpSync) startStudentBoardHttpSync();
+  if (liveSocket && liveSocket.readyState === WebSocket.OPEN) {
+    try {
+      liveSocket.send(JSON.stringify({ event: "request_board_sync" }));
+    } catch (eSync) { /* ignore */ }
+  }
+}
+
 function pullBoardStateFromServer() {
   if (!liveSession || !liveSession.room_id || isTeacherRole()) return;
+  if (isStudentScreenShareActive()) return;
   var path =
     "/api/v1/live-classes/board-sync/" + encodeURIComponent(liveSession.room_id);
   api(path, { preferXhr: true, timeout: 25000, retries: 0 })
@@ -2374,6 +2406,8 @@ function hideBoardForStudent() {
   if (typeof reattachTeacherScreenShare === "function") reattachTeacherScreenShare();
   if (typeof reattachTeacherMainStage === "function") reattachTeacherMainStage();
 }
+window.pauseStudentBoardSyncForScreenShare = pauseStudentBoardSyncForScreenShare;
+window.resumeStudentBoardSyncAfterScreenShare = resumeStudentBoardSyncAfterScreenShare;
 window.hideBoardForStudent = hideBoardForStudent;
 window.showBoardForStudent = showBoardForStudent;
 
@@ -2451,43 +2485,57 @@ function initWhiteboard() {
 
 function redrawBoard() {
   if (!board.ctx || !board.canvas) return;
-  board.ctx.clearRect(0, 0, board.canvas.width, board.canvas.height);
   var idx = 0;
-  function drawNext() {
+  var CHUNK = 80;
+  board.ctx.clearRect(0, 0, board.canvas.width, board.canvas.height);
+
+  function finishRedraw() {
+    if (board.liveText) {
+      drawBoardTextWrapped({
+        x: board.textX,
+        y: board.textY,
+        text: board.liveText,
+        size: board.fontSize
+      }, false);
+    } else {
+      cacheBoardHistoryBitmap();
+    }
+    updateBoardCursor();
+  }
+
+  function processNext() {
     if (idx >= board.history.length) {
-      if (board.liveText) {
-        drawBoardTextWrapped({
-          x: board.textX,
-          y: board.textY,
-          text: board.liveText,
-          size: board.fontSize
-        }, false);
-      } else {
-        cacheBoardHistoryBitmap();
-      }
-      updateBoardCursor();
+      finishRedraw();
       return;
     }
-    var item = board.history[idx++];
-    if (item.type === "draw") {
-      applyDrawStroke(item.data, false);
-      drawNext();
-    } else if (item.type === "erase") {
-      applyEraseStroke(item.data, false);
-      drawNext();
-    } else if (item.type === "text") {
-      applyBoardText(item.data, false);
-      drawNext();
-    } else if (item.type === "image") {
-      loadBoardImage(item.data.url, function (img) {
-        board.ctx.drawImage(img, item.data.x, item.data.y, item.data.w, item.data.h);
-        drawNext();
-      }, drawNext);
+    var item = board.history[idx];
+    if (item.type === "image") {
+      var imgData = item.data;
+      idx++;
+      loadBoardImage(imgData.url, function (img) {
+        board.ctx.drawImage(img, imgData.x, imgData.y, imgData.w, imgData.h);
+        processNext();
+      }, processNext);
+      return;
+    }
+    var processed = 0;
+    while (idx < board.history.length && processed < CHUNK) {
+      var it = board.history[idx];
+      if (it.type === "image") break;
+      if (it.type === "draw") applyDrawStroke(it.data, false);
+      else if (it.type === "erase") applyEraseStroke(it.data, false);
+      else if (it.type === "text") applyBoardText(it.data, false);
+      idx++;
+      processed++;
+    }
+    if (idx < board.history.length) {
+      requestAnimationFrame(processNext);
     } else {
-      drawNext();
+      finishRedraw();
     }
   }
-  drawNext();
+
+  processNext();
 }
 
 function normalizeBoardImageUrl(url) {
@@ -3084,6 +3132,10 @@ function handleBoardMessage(msg) {
   if (!msg) return;
   var data = msg.data || {};
   if (msg.action === "board_open") {
+    if (!isTeacherRole() && data.open && isStudentScreenShareActive()) {
+      window._boardOpenDeferred = true;
+      return;
+    }
     board.open = !!data.open;
     var overlay = document.getElementById("board-overlay");
     if (overlay) overlay.classList.toggle("hidden", !board.open);
@@ -3277,11 +3329,12 @@ function connectChat(isReconnect) {
       if (window._sxBoardSyncPoll) clearInterval(window._sxBoardSyncPoll);
       window._sxBoardSyncPoll = setInterval(function () {
         if (!liveSocket || liveSocket.readyState !== WebSocket.OPEN) return;
+        if (isStudentScreenShareActive()) return;
         if (board.open) return;
         try {
           liveSocket.send(JSON.stringify({ event: "request_board_sync" }));
         } catch (ePoll) { /* ignore */ }
-      }, 8000);
+      }, 25000);
     } else if (board.open) {
       setTimeout(function () { syncBoardToRoom(); }, 400);
     }
@@ -3531,8 +3584,10 @@ function connectChat(isReconnect) {
         }
         if (!isTeacherRole()) {
           if (msg.active) {
+            pauseStudentBoardSyncForScreenShare();
             hideBoardForStudent();
           } else {
+            resumeStudentBoardSyncAfterScreenShare();
             addChatMessage("", "Screen share ended.", true);
           }
           syncMainStageLayers();
@@ -3540,14 +3595,20 @@ function connectChat(isReconnect) {
           if (typeof syncRemoteSubscriptions === "function") syncRemoteSubscriptions();
           if (msg.active && typeof reattachTeacherScreenShare === "function") {
             reattachTeacherScreenShare();
-            setTimeout(function () { reattachTeacherScreenShare(); }, 200);
+            setTimeout(function () { reattachTeacherScreenShare(); }, 350);
+            setTimeout(function () { reattachTeacherScreenShare(); }, 1200);
           } else if (typeof attachExistingRemoteTracks === "function") {
             attachExistingRemoteTracks();
           } else if (window.LiveClassMedia && LiveClassMedia.reattachRemoteTracks) {
             LiveClassMedia.reattachRemoteTracks();
           }
           if (!msg.active && typeof reattachTeacherMainStage === "function") {
-            setTimeout(function () { reattachTeacherMainStage(); }, 200);
+            setTimeout(function () { reattachTeacherMainStage(); }, 300);
+          }
+          if (!msg.active && window._boardOpenDeferred && board.open) {
+            window._boardOpenDeferred = false;
+            showBoardForStudent(true);
+            scheduleRedrawBoard();
           }
         }
       } else if (msg.event === "whiteboard") {
