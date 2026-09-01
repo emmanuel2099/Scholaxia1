@@ -385,7 +385,11 @@ function showClassroomToast(message, isError) {
   var el = document.getElementById("classroom-toast");
   if (!el) return;
   if (classroomToastTimer) clearTimeout(classroomToastTimer);
-  el.textContent = message;
+  var text = message || "";
+  if (isError && !isTeacherRole() && /publication of local|timed out|no response from server/i.test(text)) {
+    text = "Connection is slow — tap Mic or Cam to try again.";
+  }
+  el.textContent = text;
   el.classList.remove("hidden", "error", "show");
   if (isError) el.classList.add("error");
   void el.offsetWidth;
@@ -3451,11 +3455,16 @@ function connectChat(isReconnect) {
         if (!isTeacherRole() && isMicEventForMe(msg)) {
           var handBtnGrant = document.getElementById("btn-hand");
           if (handBtnGrant) handBtnGrant.classList.remove("active");
-          showClassroomToast("You may speak — turn on your mic");
-          if (typeof enableStudentMic === "function") {
-            enableStudentMic().catch(function (err) {
-              showClassroomToast("Tap Mic to speak", true);
-            });
+          showClassroomToast("You may speak — turning on your mic…");
+          var turnOnMic = function () {
+            if (typeof enableStudentMic === "function") {
+              enableStudentMic().catch(function () { /* student can tap Mic */ });
+            }
+          };
+          if (typeof refreshLiveKitToken === "function") {
+            refreshLiveKitToken().then(turnOnMic).catch(turnOnMic);
+          } else {
+            turnOnMic();
           }
         }
       } else if (msg.event === "mic_access_update") {

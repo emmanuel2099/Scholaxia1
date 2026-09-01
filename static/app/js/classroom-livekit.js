@@ -1292,6 +1292,12 @@
     } catch (e) {
       if (!on || isTeacherRole()) throw e;
       if (await refreshRoomToken()) {
+        try {
+          await run();
+          return;
+        } catch (e2) { /* try full reconnect */ }
+      }
+      if (await studentReconnectForPublish()) {
         await run();
         return;
       }
@@ -1313,6 +1319,12 @@
     } catch (e) {
       if (!on || isTeacherRole()) throw e;
       if (await refreshRoomToken()) {
+        try {
+          await run();
+          return;
+        } catch (e2) { /* try full reconnect */ }
+      }
+      if (await studentReconnectForPublish()) {
         await run();
         return;
       }
@@ -1355,6 +1367,10 @@
 
   /** Connect (or reconnect) LiveKit before mic/cam publish — students often sit in chat-only mode. */
   async function ensureLiveVideoReady(maxMs) {
+    if (liveRoom && await waitForRoomConnected(1500)) {
+      liveVideoJoined = true;
+      return true;
+    }
     if (liveVideoJoined && liveRoom) return true;
     if (typeof showClassroomToast === "function") {
       showClassroomToast("Connecting video…");
@@ -1389,7 +1405,7 @@
         ? window.studentCameraAllowed === true ||
           !!(liveSession && (liveSession.camera_allowed || liveSession.can_publish))
         : window.studentMicAllowed === true ||
-          !!(liveSession && liveSession.mic_allowed);
+          !!(liveSession && (liveSession.mic_allowed || liveSession.can_publish));
       if (allowed && await waitForRoomConnected(4000)) return true;
       await new Promise(function (r) { setTimeout(r, 400); });
     }
@@ -1397,7 +1413,7 @@
   }
 
   async function publishWithRetries(kind, on) {
-    var attempts = on ? 4 : 2;
+    var attempts = on ? 6 : 2;
     var lastErr = null;
     for (var i = 1; i <= attempts; i++) {
       try {
@@ -1410,47 +1426,34 @@
         if (!on || isTeacherRole()) break;
         await refreshLiveKitToken();
         await refreshRoomToken();
-        await new Promise(function (r) { setTimeout(r, 600 * i); });
+        if (i >= 2) await studentReconnectForPublish();
+        await new Promise(function (r) { setTimeout(r, 500 * i); });
       }
     }
     throw lastErr || new Error("Could not publish " + kind);
   }
 
-  function enterChatOnlyMode(message) {
-    liveVideoJoined = false;
-    liveRoom = null;
-    if (isTeacherRole() && typeof setStatus === "function") {
-      setStatus("Chat only — video reconnecting…");
+  function formatStudentVideoMessage(message) {
+    var friendly = String(message || "");
+    if (/timeout|timed out|no response|publication of local track/i.test(friendly)) {
+      return "Connection is slow — tap Mic or Cam to try again.";
     }
+    if (friendly) return "Video reconnecting — chat and board still work.";
+    return "Connecting to class…";
+  }
+
+  function enterChatOnlyMode(message) {
     var friendly = message || "";
     if (!isTeacherRole()) {
-      if (/timeout|timed out|no response/i.test(friendly)) {
-        friendly = "Connection is slow — chat and board still work. Tap Mic or Cam to try again.";
-      } else if (friendly) {
-        friendly = "Video is reconnecting — chat and board still work.";
+      friendly = formatStudentVideoMessage(friendly);
+      liveVideoJoined = false;
+      if (typeof setStatus === "function") setStatus("Chat connected — tap Mic when allowed");
+      if (!camOn && !window.localPreviewStream && typeof showVideoPlaceholder === "function") {
+        showVideoPlaceholder(friendly);
       }
-    }
-    if (!camOn && !window.localPreviewStream && typeof showVideoPlaceholder === "function") {
-      showVideoPlaceholder(friendly || "Connecting to class…");
-    }
-    if (isTeacherRole()) {
-      showLiveKitSetupBanner(message || liveKitMissingMessage());
-    } else if (typeof showClassroomToast === "function") {
-      showClassroomToast(friendly || "Video reconnecting — chat still works", true);
-    }
-    if (isTeacherRole()) {
-      if (typeof showHostTools === "function") showHostTools(true);
-      if (window.board) {
-        window.board.canDraw = true;
-        var ov = document.getElementById("board-overlay");
-        if (ov) ov.classList.remove("view-only");
+      if (typeof showClassroomToast === "function") {
+        showClassroomToast(friendly, true);
       }
-      mediaMode = "local";
-      if (typeof startLocalPreviewOnly === "function") {
-        startLocalPreviewOnly().catch(function () {});
-      }
-      scheduleLiveKitRetry();
-    } else {
       if (typeof setVideoControlsEnabled === "function") {
         var canMic = window.studentMicAllowed === true;
         var canCam = window.studentCameraAllowed === true;
@@ -1459,11 +1462,49 @@
         syncStudentMediaControls();
       }
       scheduleLiveKitRetry();
+      return;
+    }
+    liveVideoJoined = false;
+    liveRoom = null;
+    if (typeof setStatus === "function") setStatus("Chat only — video reconnecting…");
+    if (!camOn && !window.localPreviewStream && typeof showVideoPlaceholder === "function") {
+      showVideoPlaceholder(message || "Connecting to class…");
+    }
+    showLiveKitSetupBanner(message || liveKitMissingMessage());
+    if (typeof showHostTools === "function") showHostTools(true);
+    if (window.board) {
+      window.board.canDraw = true;
+      var ov = document.getElementById("board-overlay");
+      if (ov) ov.classList.remove("view-only");
+    }
+    mediaMode = "local";
+    if (typeof startLocalPreviewOnly === "function") {
+      startLocalPreviewOnly().catch(function () {});
+    }
+    scheduleLiveKitRetry();
+  }
+
+  async function studentReconnectForPublish() {
+    if (isTeacherRole()) return false;
+    await refreshLiveKitToken();
+    if (!liveSession || !liveSession.livekit_token || !liveSession.livekit_url) return false;
+    try {
+      if (liveRoom) {
+        try { await liveRoom.disconnect(); } catch (eDisc) { /* ignore */ }
+      }
+      liveRoom = null;
+      liveVideoJoined = false;
+      liveKitConnecting = false;
+      await tryConnectLiveVideo(true);
+      return !!(liveVideoJoined && liveRoom);
+    } catch (eRec) {
+      return false;
     }
   }
 
   async function tryConnectLiveVideo(isRetry) {
-    if (liveKitConnecting || liveVideoJoined) return;
+    if (liveKitConnecting) return;
+    if (liveVideoJoined && liveRoom) return;
     if (!isRetry && typeof setVideoControlsEnabled === "function") setVideoControlsEnabled(false);
 
     if (!lk()) {
@@ -1599,12 +1640,6 @@
         if (typeof syncStudentMicState === "function") syncStudentMicState(window.studentMicAllowed);
         micOn = false;
         camOn = false;
-        if (isLocalMicPublished()) {
-          try { await publishWithRetries("mic", false); } catch (eMute) { /* ignore */ }
-        }
-        if (isLocalCamPublished()) {
-          try { await publishWithRetries("cam", false); } catch (eCam) { /* ignore */ }
-        }
         if (typeof updateMediaButton === "function") {
           updateMediaButton(document.getElementById("btn-mic"), false);
           updateMediaButton(document.getElementById("btn-cam"), false);
@@ -1627,7 +1662,12 @@
       }
     } catch (err) {
       liveVideoJoined = false;
-      liveRoom = null;
+      if (isTeacherRole()) {
+        liveRoom = null;
+      } else if (liveRoom) {
+        try { await liveRoom.disconnect(); } catch (eDisc) { /* ignore */ }
+        liveRoom = null;
+      }
       if (!isRetry) {
         var errMsg = err && err.message ? String(err.message) : "error";
         enterChatOnlyMode(
@@ -1726,8 +1766,10 @@
     if (name === "NotFoundError" || msg.indexOf("not found") >= 0 || msg.indexOf("device") >= 0) {
       return kind === "mic" ? "No microphone found on this device." : "No camera found on this device.";
     }
-    if (msg.indexOf("timeout") >= 0) {
-      return kind === "mic" ? "Microphone timed out — try again." : "Camera timed out — try again.";
+    if (msg.indexOf("timeout") >= 0 || msg.indexOf("publication of local") >= 0 || msg.indexOf("no response") >= 0) {
+      return kind === "mic"
+        ? "Mic is slow — tap Mic again. Allow mic in browser settings if asked."
+        : "Camera is slow — tap Cam again. Allow camera in browser settings if asked.";
     }
     return (err && err.message) || (kind === "mic" ? "Could not use microphone." : "Could not use camera.");
   }
@@ -1758,7 +1800,15 @@
       return;
     }
 
-    if (!liveVideoJoined || !liveRoom) return;
+    if (!liveVideoJoined || !liveRoom) {
+      var camConnected = await ensureLiveVideoReady(35000);
+      if (!camConnected) {
+        if (typeof showClassroomToast === "function") {
+          showClassroomToast("Could not connect video — tap Cam again", true);
+        }
+        return;
+      }
+    }
     var btn = document.getElementById("btn-cam");
     var localEl = document.getElementById("video-local");
     var c = lk();
@@ -2001,6 +2051,8 @@
       if (!await ensureLiveVideoReady(35000)) {
         throw new Error("Video not connected — tap Mic to retry");
       }
+      if (typeof refreshLiveKitToken === "function") await refreshLiveKitToken();
+      if (typeof refreshRoomToken === "function") await refreshRoomToken();
       if (!await ensureStudentPublishReady("mic")) {
         throw new Error("Server has not approved your mic yet — wait a few seconds");
       }
@@ -2017,8 +2069,12 @@
       }
     } catch (e) {
       applyLocalMicGrant();
+      var micMsg = friendlyMediaError(e, "mic");
       if (typeof showClassroomToast === "function") {
-        showClassroomToast("Tap Mic to turn on your microphone", true);
+        showClassroomToast(micMsg, true);
+      }
+      if (typeof addChatMessage === "function") {
+        addChatMessage("", micMsg, true);
       }
     } finally {
       window._sxMicEnableBusy = false;
@@ -2063,6 +2119,8 @@
       if (!await ensureLiveVideoReady(35000)) {
         throw new Error("Video not connected — tap Cam to retry");
       }
+      if (typeof refreshLiveKitToken === "function") await refreshLiveKitToken();
+      if (typeof refreshRoomToken === "function") await refreshRoomToken();
       if (!await ensureStudentPublishReady("cam")) {
         throw new Error("Server has not approved your camera yet — wait a few seconds");
       }
@@ -2080,8 +2138,12 @@
         showClassroomToast("Camera is on");
       }
     } catch (e) {
+      var camMsg = friendlyMediaError(e, "cam");
       if (typeof showClassroomToast === "function") {
-        showClassroomToast("Tap Cam button to turn on camera", true);
+        showClassroomToast(camMsg, true);
+      }
+      if (typeof addChatMessage === "function") {
+        addChatMessage("", camMsg, true);
       }
     }
   }
