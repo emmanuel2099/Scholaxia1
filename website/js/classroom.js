@@ -240,14 +240,50 @@ var _boardRedrawScheduled = false;
 var _boardTypeSendTimer = null;
 var _lastBoardTypeStream = "";
 var _lastRemoteTextStream = "";
+var _boardCacheCanvas = null;
+var _boardCacheHistoryLen = -1;
+
+function invalidateBoardCache() {
+  _boardCacheCanvas = null;
+  _boardCacheHistoryLen = -1;
+}
 
 function scheduleRedrawBoard() {
   if (_boardRedrawScheduled) return;
   _boardRedrawScheduled = true;
   requestAnimationFrame(function () {
     _boardRedrawScheduled = false;
+    if (board.liveText && redrawBoardLiveTextFast()) return;
     redrawBoard();
   });
+}
+
+function redrawBoardLiveTextFast() {
+  if (!board.ctx || !board.canvas || !board.liveText) return false;
+  if (!_boardCacheCanvas || _boardCacheHistoryLen !== board.history.length) return false;
+  board.ctx.clearRect(0, 0, board.canvas.width, board.canvas.height);
+  board.ctx.drawImage(_boardCacheCanvas, 0, 0);
+  drawBoardTextWrapped({
+    x: board.textX,
+    y: board.textY,
+    text: board.liveText,
+    size: board.fontSize
+  }, false);
+  updateBoardCursor();
+  return true;
+}
+
+function cacheBoardHistoryBitmap() {
+  if (!board.ctx || !board.canvas || board.liveText) return;
+  try {
+    _boardCacheCanvas = document.createElement("canvas");
+    _boardCacheCanvas.width = board.canvas.width;
+    _boardCacheCanvas.height = board.canvas.height;
+    _boardCacheCanvas.getContext("2d").drawImage(board.canvas, 0, 0);
+    _boardCacheHistoryLen = board.history.length;
+  } catch (eCache) {
+    invalidateBoardCache();
+  }
 }
 
 function refreshLiveKitRosterDebounced() {
@@ -562,6 +598,10 @@ function findParticipantVideoSlot(studentId) {
 
 function showStudentSelfPreview(track) {
   if (isTeacherRole() || !track) return;
+  if (track.isMuted === true) return;
+  try {
+    if (track.mediaStreamTrack && !track.mediaStreamTrack.enabled) return;
+  } catch (eTr) { /* ignore */ }
   var wrap = document.getElementById("student-self-video");
   var panel = document.getElementById("student-self-panel");
   if (!wrap || !panel) return;
@@ -583,6 +623,7 @@ function showStudentSelfPreview(track) {
   }
   wrap.appendChild(el);
   panel.classList.remove("hidden");
+  panel.classList.add("has-live-cam");
   var status = document.getElementById("student-self-status");
   if (status) status.textContent = "Your camera is on";
 }
@@ -591,7 +632,15 @@ function hideStudentSelfPreview() {
   var wrap = document.getElementById("student-self-video");
   var panel = document.getElementById("student-self-panel");
   if (wrap) wrap.innerHTML = "";
-  if (panel) panel.classList.add("hidden");
+  if (panel) {
+    panel.classList.add("hidden");
+    panel.classList.remove("has-live-cam");
+  }
+  var localEl = document.getElementById("video-local");
+  if (localEl && !isTeacherRole()) {
+    localEl.innerHTML = "";
+    localEl.classList.add("hidden");
+  }
 }
 
 window.showClassroomToast = showClassroomToast;
@@ -2382,6 +2431,7 @@ function initWhiteboard() {
   if (!isTeacherRole()) {
     var ovStudent = document.getElementById("board-overlay");
     if (ovStudent) ovStudent.classList.add("view-only");
+    hideStudentSelfPreview();
     startStudentBoardHttpSync();
   }
 }
@@ -2399,6 +2449,8 @@ function redrawBoard() {
           text: board.liveText,
           size: board.fontSize
         }, false);
+      } else {
+        cacheBoardHistoryBitmap();
       }
       updateBoardCursor();
       return;
@@ -2613,6 +2665,7 @@ function commitBoardLine() {
       size: board.fontSize
     };
     board.history.push({ type: "text", data: data });
+    invalidateBoardCache();
     sendBoardEvent("text", data);
   }
   // Clear the live stream marker so remotes drop the in-progress line.
@@ -2796,6 +2849,7 @@ function onBoardPointerMove(ev) {
   applyDrawStroke(stroke, false);
   sendBoardEvent("draw", stroke);
   board.history.push({ type: "draw", data: stroke });
+  invalidateBoardCache();
   board.lastX = p.x;
   board.lastY = p.y;
 }
@@ -2890,6 +2944,7 @@ function applyBoardText(data, save) {
 
 function clearBoardCanvas(broadcast) {
   if (!board.ctx || !board.canvas) return;
+  invalidateBoardCache();
   board.history = [];
   board.liveText = "";
   board.liveTextId = "";
@@ -3028,16 +3083,25 @@ function handleBoardMessage(msg) {
       });
       if (!isTeacherRole()) {
         addChatMessage("", "Teacher opened the board.", true);
-        if (window._sxBoardSyncPoll) {
-          clearInterval(window._sxBoardSyncPoll);
-          window._sxBoardSyncPoll = null;
-        }
         if (liveSocket && liveSocket.readyState === WebSocket.OPEN) {
           try {
             liveSocket.send(JSON.stringify({ event: "request_board_sync" }));
           } catch (eSync) { /* ignore */ }
         }
       }
+    } else if (!isTeacherRole()) {
+      hideBoardForStudent();
+      invalidateBoardCache();
+      if (typeof syncRemoteSubscriptions === "function") syncRemoteSubscriptions();
+      setTimeout(function () {
+        if (typeof window.reattachTeacherScreenShare === "function" && window.remoteTeacherScreenActive && window.remoteTeacherScreenActive()) {
+          reattachTeacherScreenShare();
+        } else if (typeof reattachTeacherMainStage === "function") {
+          reattachTeacherMainStage();
+        }
+        if (typeof attachExistingRemoteTracks === "function") attachExistingRemoteTracks();
+        if (typeof applySpotlight === "function") applySpotlight("teacher", true);
+      }, 80);
     }
     return;
   }
@@ -3050,6 +3114,7 @@ function handleBoardMessage(msg) {
         && h.data.x1 === drData.x1 && h.data.y1 === drData.y1;
     });
     if (!dupDraw) {
+      invalidateBoardCache();
       applyDrawStroke(drData, false);
       board.history.push({ type: "draw", data: drData });
     }
@@ -3069,6 +3134,7 @@ function handleBoardMessage(msg) {
     return;
   }
   if (msg.action === "text") {
+    invalidateBoardCache();
     applyBoardText(data, true);
     board.liveText = "";
     if (data && typeof data.y === "number") {
@@ -3104,6 +3170,7 @@ function handleBoardMessage(msg) {
     return;
   }
   if (msg.action === "clear") {
+    invalidateBoardCache();
     board.history = [];
     board.liveText = "";
     board.liveTextId = "";
@@ -3197,10 +3264,11 @@ function connectChat(isReconnect) {
       if (window._sxBoardSyncPoll) clearInterval(window._sxBoardSyncPoll);
       window._sxBoardSyncPoll = setInterval(function () {
         if (!liveSocket || liveSocket.readyState !== WebSocket.OPEN) return;
+        if (board.open) return;
         try {
           liveSocket.send(JSON.stringify({ event: "request_board_sync" }));
         } catch (ePoll) { /* ignore */ }
-      }, board.open ? 3000 : 8000);
+      }, 8000);
     } else if (board.open) {
       setTimeout(function () { syncBoardToRoom(); }, 400);
     }
@@ -3447,16 +3515,27 @@ function connectChat(isReconnect) {
           }
           syncMainStageLayers();
           hideVideoPlaceholder();
-          if (typeof attachExistingRemoteTracks === "function") {
+          if (typeof syncRemoteSubscriptions === "function") syncRemoteSubscriptions();
+          if (msg.active && typeof reattachTeacherScreenShare === "function") {
+            setTimeout(function () { reattachTeacherScreenShare(); }, 120);
+            setTimeout(function () { reattachTeacherScreenShare(); }, 800);
+          } else if (typeof attachExistingRemoteTracks === "function") {
             attachExistingRemoteTracks();
           } else if (window.LiveClassMedia && LiveClassMedia.reattachRemoteTracks) {
             LiveClassMedia.reattachRemoteTracks();
           }
+          if (!msg.active && typeof reattachTeacherMainStage === "function") {
+            setTimeout(function () { reattachTeacherMainStage(); }, 200);
+          }
         }
       } else if (msg.event === "whiteboard") {
         queueBoardMessage(msg);
-        if (msg.action === "board_open" && msg.data && msg.data.open && typeof applySpotlight === "function") {
-          applySpotlight("board", true);
+        if (!isTeacherRole() && msg.action === "board_open" && msg.data) {
+          if (msg.data.open && typeof applySpotlight === "function") {
+            applySpotlight("board", true);
+          } else if (!msg.data.open && typeof applySpotlight === "function") {
+            applySpotlight("teacher", true);
+          }
         }
       } else if (msg.event === "whiteboard_access_granted") {
         board.canDraw = true;

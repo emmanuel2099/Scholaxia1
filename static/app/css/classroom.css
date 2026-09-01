@@ -839,7 +839,14 @@ body:not(.classroom-chrome-hidden) .classroom-chrome-toggle {
     border: 1px solid #7c3aed;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
   }
-  .student-self-panel.hidden {
+  .student-self-panel.hidden,
+  .student-self-panel:not(.has-live-cam) {
+    display: none !important;
+  }
+  body.classroom-board-open.meet-v2.student-view .student-self-panel {
+    display: none !important;
+  }
+  body.meet-v2.student-view #video-local {
     display: none !important;
   }
   .student-self-title,

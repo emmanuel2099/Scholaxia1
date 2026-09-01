@@ -375,7 +375,8 @@
       return ranked.slice(0, MAX_SIDEBAR_VIDEOS).indexOf(studentId) >= 0;
     }
     if (!isTeacherParticipant(participant)) return false;
-    if (window.board && window.board.open && !remoteTeacherScreenActive()) return false;
+    if (remoteTeacherScreenActive()) return false;
+    if (window.board && window.board.open) return false;
     return true;
   }
 
@@ -697,8 +698,29 @@
     applyStudentVideoBudget();
   }
 
+  function reattachTeacherScreenShare() {
+    if (!liveRoom || isTeacherRole()) return;
+    var c = lk();
+    if (!c) return;
+    var attached = false;
+    liveRoom.remoteParticipants.forEach(function (participant) {
+      if (!isTeacherParticipant(participant)) return;
+      participant.trackPublications.forEach(function (pub) {
+        if (!isScreenPublication(pub) || !pub.track || pub.isMuted) return;
+        setPublicationSubscribed(pub, true);
+        attachRemoteVideoToMainStage(pub.track, pub);
+        attached = true;
+      });
+    });
+    return attached;
+  }
+
   function reattachTeacherMainStage() {
     if (isTeacherRole() || !teacherVideoTrack) return;
+    if (remoteTeacherScreenActive()) {
+      reattachTeacherScreenShare();
+      return;
+    }
     if (window.board && window.board.open && !remoteTeacherScreenActive()) return;
     if (typeof isParticipantVideoLive === "function" && !isParticipantVideoLive(teacherVideoTrack)) {
       teacherVideoTrack = null;
@@ -752,6 +774,7 @@
       if (!isTeacherRole() && isCameraPublication(publication)) {
         if (isTeacherParticipant(participant)) {
           teacherVideoTrack = { track: track, publication: publication, participant: participant };
+          if (remoteTeacherScreenActive()) return;
           if (!window.board || !window.board.open) {
             attachRemoteVideoToMainStage(track, publication);
           }
@@ -2237,6 +2260,8 @@
   window.getLocalClassRecordStream = getLocalClassRecordStream;
   window.reattachParticipantVideos = reattachParticipantVideos;
   window.reattachTeacherMainStage = reattachTeacherMainStage;
+  window.reattachTeacherScreenShare = reattachTeacherScreenShare;
+  window.remoteTeacherScreenActive = remoteTeacherScreenActive;
   window.reattachRemoteClassAudio = reattachRemoteClassAudio;
   window.reattachTeacherAudio = reattachTeacherAudio;
   window.syncRemoteSubscriptions = syncRemoteSubscriptions;
