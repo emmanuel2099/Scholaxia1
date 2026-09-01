@@ -459,11 +459,14 @@ function setJoinOverlay(show, text) {
 window.setJoinOverlay = setJoinOverlay;
 
 function maybeHideJoinOverlay() {
-  var chatOk = liveSocket && liveSocket.readyState === WebSocket.OPEN;
-  var videoOk = window.LiveClassMedia && LiveClassMedia.isJoined && LiveClassMedia.isJoined();
-  if (chatOk || videoOk) {
-    setJoinOverlay(false);
+  if (isTeacherRole()) {
+    var chatOk = liveSocket && liveSocket.readyState === WebSocket.OPEN;
+    var videoOk = window.LiveClassMedia && LiveClassMedia.isJoined && LiveClassMedia.isJoined();
+    if (chatOk || videoOk) setJoinOverlay(false);
+    return;
   }
+  // Students: never block the whole class behind a spinner — chat/video connect in background.
+  setJoinOverlay(false);
 }
 
 function applySessionStatus(status) {
@@ -472,7 +475,8 @@ function applySessionStatus(status) {
   if (!isTeacherRole()) {
     showLobbyBanner(s === "LOBBY" || s === "SCHEDULED");
     if (s === "LOBBY" || s === "SCHEDULED") {
-      setJoinOverlay(true, "Waiting for your teacher to start…");
+      setJoinOverlay(false);
+      setStatus("Waiting for your teacher to start…");
     } else if (s === "LIVE") {
       showLobbyBanner(false);
       maybeHideJoinOverlay();
@@ -4042,7 +4046,12 @@ window.onload = function () {
 
   setVideoControlsEnabled(false);
   setStatus("Connecting…");
-  setJoinOverlay(true, "Joining class…");
+  if (isTeacherRole()) {
+    setJoinOverlay(true, "Joining class…");
+  } else {
+    setJoinOverlay(true, "Joining class…");
+    setTimeout(function () { maybeHideJoinOverlay(); }, 1800);
+  }
   if (liveSession.session_status) {
     applySessionStatus(liveSession.session_status);
   }
@@ -4091,10 +4100,8 @@ window.onload = function () {
   }
 
   setTimeout(function () {
-    if (liveSession && (liveSession.session_status === "LIVE" || liveSession.is_live)) {
-      maybeHideJoinOverlay();
-    }
-  }, 15000);
+    maybeHideJoinOverlay();
+  }, 4000);
 
   // If chat never opens, keep retrying so status does not freeze on Connecting…
   var chatRetry = 0;

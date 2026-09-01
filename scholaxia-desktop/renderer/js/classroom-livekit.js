@@ -18,6 +18,7 @@
   var sidebarVideoOrder = []; // student ids with mounted cam tiles (budgeted)
   var MAX_SIDEBAR_VIDEOS = 24;
   var JOIN_TIMEOUT_MS = 45000;
+  var STUDENT_JOIN_TIMEOUT_MS = 18000;
   var PUBLISH_TIMEOUT_MS = 45000;
   var AUDIO_CAPTURE_OPTS = {
     echoCancellation: { ideal: true },
@@ -1546,7 +1547,8 @@
     if (!isTeacherRole()) {
       friendly = formatStudentVideoMessage(friendly);
       liveVideoJoined = false;
-      if (typeof setStatus === "function") setStatus("Chat connected — tap Mic when allowed");
+      if (typeof setStatus === "function") setStatus("Connected — video loading in background");
+      if (typeof maybeHideJoinOverlay === "function") maybeHideJoinOverlay();
       if (!camOn && !window.localPreviewStream && typeof showVideoPlaceholder === "function") {
         showVideoPlaceholder(friendly);
       }
@@ -1660,7 +1662,7 @@
       if (!liveVideoJoined) {
         await withTimeout(
           liveRoom.connect(url, token, { autoSubscribe: false }),
-          JOIN_TIMEOUT_MS,
+          isTeacherRole() ? JOIN_TIMEOUT_MS : STUDENT_JOIN_TIMEOUT_MS,
           "Video join timed out"
         );
       }
@@ -2390,6 +2392,9 @@
 
   function initLiveVideo() {
     loadLiveKitScript(function () {
+      if (!isTeacherRole() && typeof maybeHideJoinOverlay === "function") {
+        maybeHideJoinOverlay();
+      }
       // Connect immediately — never wait on /livekit/status (Render cold starts hang it).
       if (isTeacherRole() && typeof startLocalPreviewOnly === "function") {
         startLocalPreviewOnly().catch(function () {});
