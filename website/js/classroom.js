@@ -2187,19 +2187,17 @@ function startStudentMicPermissionPoll() {
   if (isTeacherRole() || studentMicPollTimer) return;
   studentMicPollTimer = setInterval(async function () {
     if (!liveSession) return;
+    if (window._sxMicEnableBusy) return;
     try {
       var classId = liveSession.class_id || liveSession.classId;
       if (!classId) return;
+      if (typeof isLocalMicPublished === "function" && isLocalMicPublished()) return;
       var data = await api("/api/v1/live-classes/" + classId + "/token");
-      var micBtn = document.getElementById("btn-mic");
-      var micOff = micBtn && micBtn.classList.contains("off");
       if (data && data.mic_allowed && typeof enableStudentMic === "function") {
-        enableStudentMic().catch(function () { /* retry on next poll */ });
-      } else if (window.studentMicAllowed && micOff && typeof enableStudentMic === "function") {
-        enableStudentMic().catch(function () { /* retry publish */ });
+        enableStudentMic({ silent: true }).catch(function () { /* retry on next poll */ });
       }
     } catch (e) { /* ignore */ }
-  }, 4000);
+  }, 8000);
 }
 
 window.grantStudentMic = grantStudentMic;
@@ -2330,14 +2328,15 @@ function syncMainStageLayers() {
   var overlay = document.getElementById("board-overlay");
   var screenOn = remote && remote.classList.contains("screen-active");
   if (overlay) {
-    overlay.classList.toggle("stage-visible", board.open && !overlay.classList.contains("hidden"));
-    overlay.classList.toggle("stage-on-top", board.open && !screenOn);
+    var boardVisible = board.open && !overlay.classList.contains("hidden") && !screenOn;
+    overlay.classList.toggle("stage-visible", boardVisible);
+    overlay.classList.toggle("stage-on-top", boardVisible);
   }
   if (remote) {
     remote.classList.toggle("stage-on-top", screenOn);
   }
-  document.body.classList.toggle("classroom-board-open", board.open);
-  if (board.open && typeof hideVideoPlaceholder === "function") hideVideoPlaceholder();
+  document.body.classList.toggle("classroom-board-open", board.open && !screenOn);
+  if (board.open && !screenOn && typeof hideVideoPlaceholder === "function") hideVideoPlaceholder();
 }
 window.syncMainStageLayers = syncMainStageLayers;
 
@@ -2364,6 +2363,8 @@ function hideBoardForStudent() {
   if (overlay) overlay.classList.add("hidden");
   syncMainStageLayers();
   if (typeof syncRemoteSubscriptions === "function") syncRemoteSubscriptions();
+  if (typeof reattachTeacherScreenShare === "function") reattachTeacherScreenShare();
+  if (typeof reattachTeacherMainStage === "function") reattachTeacherMainStage();
 }
 window.hideBoardForStudent = hideBoardForStudent;
 window.showBoardForStudent = showBoardForStudent;
@@ -3455,10 +3456,10 @@ function connectChat(isReconnect) {
         if (!isTeacherRole() && isMicEventForMe(msg)) {
           var handBtnGrant = document.getElementById("btn-hand");
           if (handBtnGrant) handBtnGrant.classList.remove("active");
-          showClassroomToast("You may speak — turning on your mic…");
+          showClassroomToast("You may speak now");
           var turnOnMic = function () {
             if (typeof enableStudentMic === "function") {
-              enableStudentMic().catch(function () { /* student can tap Mic */ });
+              enableStudentMic({ silent: true }).catch(function () { /* student can tap Mic */ });
             }
           };
           if (typeof refreshLiveKitToken === "function") {
@@ -3469,8 +3470,10 @@ function connectChat(isReconnect) {
         }
       } else if (msg.event === "mic_access_update") {
         if (!isTeacherRole() && isMicEventForMe(msg) && msg.has_mic) {
-          if (typeof enableStudentMic === "function") {
-            enableStudentMic().catch(function () { /* retry on poll */ });
+          if (typeof isLocalMicPublished === "function" && isLocalMicPublished()) {
+            /* already on */
+          } else if (typeof enableStudentMic === "function") {
+            enableStudentMic({ silent: true }).catch(function () { /* retry on poll */ });
           }
         }
         if (!isTeacherRole() && isMicEventForMe(msg) && !msg.has_mic && typeof disableStudentMic === "function") {
@@ -3489,15 +3492,20 @@ function connectChat(isReconnect) {
         }
       } else if (msg.event === "camera_access_granted") {
         if (!isTeacherRole() && isMicEventForMe(msg) && typeof enableStudentCamera === "function") {
-          enableStudentCamera().catch(function (err) {
-            addChatMessage("", "Camera: " + (err.message || "turn on Cam button"), true);
-          });
+          enableStudentCamera({ silent: true }).catch(function () { /* tap Cam */ });
+        }
+        if (isTeacherRole()) {
+          setTimeout(function () {
+            if (typeof reattachParticipantVideos === "function") reattachParticipantVideos();
+          }, 300);
         }
       } else if (msg.event === "camera_access_update") {
         if (!isTeacherRole() && msg.has_camera && isMicEventForMe(msg) && typeof enableStudentCamera === "function") {
-          enableStudentCamera().catch(function (err) {
-            addChatMessage("", "Camera: " + (err.message || "turn on Cam button"), true);
-          });
+          if (typeof isLocalCamPublished === "function" && isLocalCamPublished()) {
+            /* already on */
+          } else {
+            enableStudentCamera({ silent: true }).catch(function () { /* tap Cam */ });
+          }
         }
         if (isTeacherRole() && msg.has_camera) {
           if (typeof reattachParticipantVideos === "function") reattachParticipantVideos();
@@ -3518,7 +3526,6 @@ function connectChat(isReconnect) {
         if (!isTeacherRole()) {
           if (msg.active) {
             hideBoardForStudent();
-            addChatMessage("", "Teacher is sharing their screen…", true);
           } else {
             addChatMessage("", "Screen share ended.", true);
           }
@@ -3526,8 +3533,8 @@ function connectChat(isReconnect) {
           hideVideoPlaceholder();
           if (typeof syncRemoteSubscriptions === "function") syncRemoteSubscriptions();
           if (msg.active && typeof reattachTeacherScreenShare === "function") {
-            setTimeout(function () { reattachTeacherScreenShare(); }, 120);
-            setTimeout(function () { reattachTeacherScreenShare(); }, 800);
+            reattachTeacherScreenShare();
+            setTimeout(function () { reattachTeacherScreenShare(); }, 200);
           } else if (typeof attachExistingRemoteTracks === "function") {
             attachExistingRemoteTracks();
           } else if (window.LiveClassMedia && LiveClassMedia.reattachRemoteTracks) {

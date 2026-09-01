@@ -369,8 +369,9 @@
     if (!isCameraPublication(pub)) return false;
     if (isTeacherRole()) {
       if (isTeacherParticipant(participant)) return false;
+      if (!isCameraPublication(pub)) return false;
       var studentId = resolveStudentIdFromParticipant(participant);
-      if (!studentId) return false;
+      if (!studentId) return true;
       var ranked = prioritizeSidebarVideoIds();
       return ranked.slice(0, MAX_SIDEBAR_VIDEOS).indexOf(studentId) >= 0;
     }
@@ -456,9 +457,26 @@
     };
   }
 
+  /** Student IDs with an active (or pending) camera publication — not only already-attached tracks. */
+  function collectStudentCameraIds() {
+    var ids = Object.keys(participantVideoTracks);
+    if (!liveRoom) return ids;
+    liveRoom.remoteParticipants.forEach(function (participant) {
+      if (isTeacherParticipant(participant)) return;
+      var studentId = resolveStudentIdFromParticipant(participant);
+      if (!studentId) return;
+      participant.trackPublications.forEach(function (pub) {
+        if (isCameraPublication(pub) && !pub.isMuted && ids.indexOf(studentId) < 0) {
+          ids.push(studentId);
+        }
+      });
+    });
+    return ids;
+  }
+
   function prioritizeSidebarVideoIds() {
     var raised = (typeof window.raisedHands === "object" && window.raisedHands) || {};
-    var ids = Object.keys(participantVideoTracks);
+    var ids = collectStudentCameraIds();
     ids.sort(function (a, b) {
       var ar = raised[a] ? 1 : 0;
       var br = raised[b] ? 1 : 0;
@@ -648,6 +666,9 @@
     if (typeof window.syncMainStageLayers === "function") window.syncMainStageLayers();
     if (isScreen && typeof window.onScreenShareStageChange === "function") {
       window.onScreenShareStageChange(true);
+    }
+    if (isScreen && !isTeacherRole() && typeof window.hideBoardForStudent === "function") {
+      window.hideBoardForStudent();
     }
     if (!isTeacherRole() && !isScreen && typeof maybeShowSaveClassHint === "function") {
       maybeShowSaveClassHint();
@@ -1074,8 +1095,21 @@
     }
     room.on(c.RoomEvent.TrackPublished, function (publication, participant) {
       if (!participant || participant.isLocal) return;
+      if (!isTeacherRole() && isTeacherParticipant(participant) && isScreenPublication(publication)) {
+        if (typeof window.hideBoardForStudent === "function") window.hideBoardForStudent();
+        setPublicationSubscribed(publication, true);
+        if (publication.track) {
+          attachRemoteVideoToMainStage(publication.track, publication);
+        }
+        return;
+      }
       if (shouldSubscribePublication(publication, participant)) {
         setPublicationSubscribed(publication, true);
+      }
+      if (isTeacherRole() && isCameraPublication(publication)) {
+        setTimeout(function () {
+          if (typeof reattachParticipantVideos === "function") reattachParticipantVideos();
+        }, 100);
       }
     });
     room.on(c.RoomEvent.ParticipantConnected, function (participant) {
@@ -1366,13 +1400,14 @@
   }
 
   /** Connect (or reconnect) LiveKit before mic/cam publish — students often sit in chat-only mode. */
-  async function ensureLiveVideoReady(maxMs) {
+  async function ensureLiveVideoReady(maxMs, opts) {
+    opts = opts || {};
     if (liveRoom && await waitForRoomConnected(1500)) {
       liveVideoJoined = true;
       return true;
     }
     if (liveVideoJoined && liveRoom) return true;
-    if (typeof showClassroomToast === "function") {
+    if (!opts.silent && typeof showClassroomToast === "function") {
       showClassroomToast("Connecting video…");
     }
     var deadline = Date.now() + (maxMs || 35000);
@@ -1394,20 +1429,25 @@
 
   async function ensureStudentPublishReady(kind) {
     if (isTeacherRole()) return true;
-    var deadline = Date.now() + 15000;
-    while (Date.now() < deadline) {
-      if (!liveVideoJoined || !liveRoom) {
-        await ensureLiveVideoReady(12000);
-      }
-      await refreshLiveKitToken();
-      await refreshRoomToken();
-      var allowed = kind === "cam"
+    if (!liveVideoJoined || !liveRoom) {
+      if (!await ensureLiveVideoReady(20000, { silent: true })) return false;
+    }
+    var checkAllowed = function () {
+      return kind === "cam"
         ? window.studentCameraAllowed === true ||
           !!(liveSession && (liveSession.camera_allowed || liveSession.can_publish))
         : window.studentMicAllowed === true ||
           !!(liveSession && (liveSession.mic_allowed || liveSession.can_publish));
-      if (allowed && await waitForRoomConnected(4000)) return true;
-      await new Promise(function (r) { setTimeout(r, 400); });
+    };
+    await refreshLiveKitToken();
+    await refreshRoomToken();
+    if (checkAllowed() && await waitForRoomConnected(3000)) return true;
+    var deadline = Date.now() + 6000;
+    while (Date.now() < deadline) {
+      await refreshLiveKitToken();
+      await refreshRoomToken();
+      if (checkAllowed() && await waitForRoomConnected(2000)) return true;
+      await new Promise(function (r) { setTimeout(r, 500); });
     }
     return false;
   }
@@ -1726,12 +1766,18 @@
     }
     var btn = document.getElementById("btn-mic");
     if (on === micOn && isLocalMicPublished() === on) return;
+    if (!isTeacherRole() && on) {
+      micOn = true;
+      if (typeof updateMediaButton === "function") updateMediaButton(btn, true);
+    }
     try {
       if (!isTeacherRole() && on) {
         var micReady = await ensureStudentPublishReady("mic");
         if (!micReady) throw new Error("Mic not approved yet — wait a moment and tap again");
       }
       await publishWithRetries("mic", on);
+      micOn = on;
+      if (typeof updateMediaButton === "function") updateMediaButton(btn, on);
     } catch (e) {
       if (!isTeacherRole() && on) {
         micOn = false;
@@ -1819,6 +1865,10 @@
     }
     if (on === camOn && !screenOn && hasLiveCamPub === on) return;
     if (on && screenOn) await setScreenShare(false);
+    if (!isTeacherRole() && on) {
+      camOn = true;
+      if (typeof updateMediaButton === "function") updateMediaButton(btn, true);
+    }
     try {
       if (!isTeacherRole() && on) {
         var camReady = await ensureStudentPublishReady("cam");
@@ -1888,12 +1938,20 @@
           }
         } catch (eMic) { /* ignore */ }
       }
-      // Wait briefly for the track to publish, then force local + remote attach path
-      setTimeout(function () {
-        attachLocalScreenPreview();
-        attachExistingRemoteTracks();
-      }, 400);
       attachLocalScreenPreview();
+      var screenReady = document.getElementById("video-remote") &&
+        document.getElementById("video-remote").querySelector("video");
+      if (!screenReady) {
+        for (var waitI = 0; waitI < 20; waitI++) {
+          await new Promise(function (r) { setTimeout(r, 50); });
+          attachLocalScreenPreview();
+          screenReady = document.getElementById("video-remote") &&
+            document.getElementById("video-remote").querySelector("video");
+          if (screenReady) break;
+        }
+      }
+      if (typeof window.syncMainStageLayers === "function") window.syncMainStageLayers();
+      attachExistingRemoteTracks();
       if (typeof updateMediaButton === "function") updateMediaButton(btn, true);
       if (typeof addChatMessage === "function") {
         addChatMessage("", "You are sharing your screen — students should see it on the main screen.", true);
@@ -2036,19 +2094,33 @@
     }
   }
 
-  async function enableStudentMic() {
+  async function enableStudentMic(opts) {
+    opts = opts || {};
+    if (isLocalMicPublished()) {
+      micOn = true;
+      if (typeof updateMediaButton === "function") {
+        updateMediaButton(document.getElementById("btn-mic"), true);
+      }
+      return;
+    }
     if (window._sxMicEnableBusy) {
       var busyMs = Date.now() - (window._sxMicEnableBusyAt || 0);
-      if (busyMs < 25000) return;
+      if (busyMs < 15000) return;
     }
     window._sxMicEnableBusy = true;
     window._sxMicEnableBusyAt = Date.now();
     applyLocalMicGrant();
-    if (typeof showClassroomToast === "function") {
+    if (!opts.silent) {
+      micOn = true;
+      if (typeof updateMediaButton === "function") {
+        updateMediaButton(document.getElementById("btn-mic"), true);
+      }
+    }
+    if (!opts.silent && typeof showClassroomToast === "function") {
       showClassroomToast("Turning on your mic…");
     }
     try {
-      if (!await ensureLiveVideoReady(35000)) {
+      if (!await ensureLiveVideoReady(20000, { silent: true })) {
         throw new Error("Video not connected — tap Mic to retry");
       }
       if (typeof refreshLiveKitToken === "function") await refreshLiveKitToken();
@@ -2064,16 +2136,20 @@
       }
       if (typeof reattachTeacherAudio === "function") reattachTeacherAudio();
       await ensureRoomAudioPlayback();
-      if (typeof showClassroomToast === "function") {
+      if (!opts.silent && typeof showClassroomToast === "function") {
         showClassroomToast("Mic is on — you can speak");
       }
     } catch (e) {
       applyLocalMicGrant();
+      micOn = false;
+      if (typeof updateMediaButton === "function") {
+        updateMediaButton(document.getElementById("btn-mic"), false);
+      }
       var micMsg = friendlyMediaError(e, "mic");
-      if (typeof showClassroomToast === "function") {
+      if (!opts.silent && typeof showClassroomToast === "function") {
         showClassroomToast(micMsg, true);
       }
-      if (typeof addChatMessage === "function") {
+      if (!opts.silent && typeof addChatMessage === "function") {
         addChatMessage("", micMsg, true);
       }
     } finally {
@@ -2102,21 +2178,33 @@
     if (micBtn) micBtn.disabled = true;
   }
 
-  async function enableStudentCamera() {
+  async function enableStudentCamera(opts) {
+    opts = opts || {};
+    if (isLocalCamPublished()) {
+      camOn = true;
+      attachLocalCameraPreview();
+      if (typeof updateMediaButton === "function") {
+        updateMediaButton(document.getElementById("btn-cam"), true);
+      }
+      return;
+    }
     window.studentCameraAllowed = true;
     liveSession = window.liveSession || liveSession;
     if (liveSession) {
       liveSession.camera_allowed = true;
       if (typeof persistLiveSession === "function") persistLiveSession(liveSession);
     }
-    if (typeof showClassroomToast === "function") {
-      showClassroomToast("Camera access approved — turning on your camera");
-    }
-    if (typeof addChatMessage === "function") {
-      addChatMessage("", "Your teacher let you use your camera. Turning it on…", true);
+    if (!opts.silent) {
+      camOn = true;
+      if (typeof updateMediaButton === "function") {
+        updateMediaButton(document.getElementById("btn-cam"), true);
+      }
+      if (typeof showClassroomToast === "function") {
+        showClassroomToast("Turning on your camera…");
+      }
     }
     try {
-      if (!await ensureLiveVideoReady(35000)) {
+      if (!await ensureLiveVideoReady(20000, { silent: true })) {
         throw new Error("Video not connected — tap Cam to retry");
       }
       if (typeof refreshLiveKitToken === "function") await refreshLiveKitToken();
@@ -2134,15 +2222,20 @@
       if (typeof updateMediaButton === "function") {
         updateMediaButton(camBtn, true);
       }
-      if (typeof showClassroomToast === "function") {
+      reportLocalMediaState();
+      if (!opts.silent && typeof showClassroomToast === "function") {
         showClassroomToast("Camera is on");
       }
     } catch (e) {
+      camOn = false;
+      if (typeof updateMediaButton === "function") {
+        updateMediaButton(document.getElementById("btn-cam"), false);
+      }
       var camMsg = friendlyMediaError(e, "cam");
-      if (typeof showClassroomToast === "function") {
+      if (!opts.silent && typeof showClassroomToast === "function") {
         showClassroomToast(camMsg, true);
       }
-      if (typeof addChatMessage === "function") {
+      if (!opts.silent && typeof addChatMessage === "function") {
         addChatMessage("", camMsg, true);
       }
     }
@@ -2286,6 +2379,8 @@
     return out;
   }
 
+  window.isLocalMicPublished = isLocalMicPublished;
+  window.isLocalCamPublished = isLocalCamPublished;
   window.LiveClassMedia = {
     isJoined: isJoined,
     getMediaMode: getMediaMode,
