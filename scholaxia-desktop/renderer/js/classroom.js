@@ -139,8 +139,8 @@ var board = {
   textY: 48,
   liveText: "",
   liveTextId: "live-line",
-  fontSize: 28,
-  lineHeight: 36,
+  fontSize: 64,
+  lineHeight: 80,
   imageCache: {}
 };
 var boardWsQueue = [];
@@ -522,6 +522,9 @@ function updateCamRailLayout() {
 
 function findOrCreateCamRailSlot(studentId) {
   if (!isTeacherRole() || !studentId) return null;
+  var sess = window.liveSession || liveSession;
+  var teacherId = sess && (sess.teacher_id || sess.teacherId || sess.identity);
+  if (teacherId && String(studentId).toLowerCase() === String(teacherId).toLowerCase()) return null;
   var rail = document.getElementById("student-cam-rail");
   if (!rail) return null;
   var sid = String(studentId);
@@ -2589,7 +2592,7 @@ function onBoardTypeInput() {
     if (streamPayload === _lastBoardTypeStream) return;
     _lastBoardTypeStream = streamPayload;
     sendBoardEvent("text_stream", JSON.parse(streamPayload));
-  }, 90);
+  }, 35);
 }
 
 function onBoardTypeKeydown(e) {
@@ -2671,7 +2674,7 @@ function ensureBoardCanvasFitsContent() {
       board.ctx.lineCap = "round";
       board.ctx.lineJoin = "round";
       board.ctx.strokeStyle = "#e8f5ec";
-      board.ctx.lineWidth = 3;
+      board.ctx.lineWidth = 6;
     }
   }
 }
@@ -2679,8 +2682,16 @@ function ensureBoardCanvasFitsContent() {
 function scrollBoardToTypingCursor() {
   var scroller = document.getElementById("board-scroll");
   if (!scroller || !board.canvas) return;
-  var target = Math.max(0, board.textY - scroller.clientHeight * 0.55);
-  scroller.scrollTop = target;
+  var scale = scroller.clientWidth > 0 ? scroller.clientWidth / board.canvas.width : 1;
+  var cursorY = (board.textY + board.lineHeight) * scale;
+  if (isTeacherRole()) {
+    var target = Math.max(0, board.textY * scale - scroller.clientHeight * 0.55);
+    scroller.scrollTop = target;
+    return;
+  }
+  if (cursorY > scroller.scrollTop + scroller.clientHeight - 48) {
+    scroller.scrollTop = Math.max(0, cursorY - scroller.clientHeight * 0.35);
+  }
 }
 
 function resizeBoardCanvas() {
@@ -2699,7 +2710,7 @@ function resizeBoardCanvas() {
     board.ctx.lineCap = "round";
     board.ctx.lineJoin = "round";
     board.ctx.strokeStyle = "#e8f5ec";
-    board.ctx.lineWidth = 3;
+    board.ctx.lineWidth = 6;
   }
   redrawBoard();
   scrollBoardToTypingCursor();
@@ -2780,7 +2791,7 @@ function onBoardPointerMove(ev) {
   }
   var stroke = {
     x0: board.lastX, y0: board.lastY, x1: p.x, y1: p.y,
-    color: "#e8f5ec", width: 3
+    color: "#e8f5ec", width: 6
   };
   applyDrawStroke(stroke, false);
   sendBoardEvent("draw", stroke);
@@ -2812,7 +2823,7 @@ function applyEraseStroke(data, save) {
 function applyDrawStroke(data, save) {
   if (!board.ctx || !data) return;
   board.ctx.strokeStyle = data.color || "#e8f5ec";
-  board.ctx.lineWidth = data.width || 3;
+  board.ctx.lineWidth = data.width || 6;
   board.ctx.beginPath();
   board.ctx.moveTo(data.x0, data.y0);
   board.ctx.lineTo(data.x1, data.y1);
@@ -2831,13 +2842,7 @@ function placeSymbol(x, y, text, broadcast) {
 function getBoardTextMaxWidth(fromX) {
   if (!board.canvas) return 400;
   var x = typeof fromX === "number" ? fromX : board.textX;
-  var maxFromCanvas = board.canvas.width - x - 20;
-  var scroller = document.getElementById("board-scroll");
-  if (scroller && scroller.clientWidth > 0) {
-    var visible = scroller.clientWidth - x - 20;
-    if (visible > 0) maxFromCanvas = Math.min(maxFromCanvas, visible);
-  }
-  return Math.max(80, maxFromCanvas);
+  return Math.max(160, board.canvas.width - x - 32);
 }
 
 function wrapBoardTextLines(text, maxWidth, fontSize) {
@@ -2888,12 +2893,19 @@ function clearBoardCanvas(broadcast) {
   board.history = [];
   board.liveText = "";
   board.liveTextId = "";
+  board.textX = 24;
+  board.textY = 48;
+  _lastRemoteTextStream = "";
+  _lastBoardTypeStream = "";
   var inp = document.getElementById("board-type-input");
   if (inp) inp.value = "";
+  board.canvas.height = getBoardMinCanvasHeight();
   try {
     board.ctx.clearRect(0, 0, board.canvas.width, board.canvas.height);
   } catch (e) { /* ignore */ }
   redrawBoard();
+  var scroller = document.getElementById("board-scroll");
+  if (scroller) scroller.scrollTop = 0;
   if (broadcast !== false && board.canDraw) {
     sendBoardEvent("clear", { ts: Date.now() });
     // Also clear any in-progress live typing on remotes
@@ -3031,8 +3043,16 @@ function handleBoardMessage(msg) {
   }
   if (!isTeacherRole()) showBoardForStudent(true);
   if (msg.action === "draw") {
-    applyDrawStroke(data, true);
-    redrawBoard();
+    var drData = msg.data || {};
+    var dupDraw = board.history.some(function (h) {
+      return h.type === "draw" && h.data
+        && h.data.x0 === drData.x0 && h.data.y0 === drData.y0
+        && h.data.x1 === drData.x1 && h.data.y1 === drData.y1;
+    });
+    if (!dupDraw) {
+      applyDrawStroke(drData, false);
+      board.history.push({ type: "draw", data: drData });
+    }
     return;
   }
   if (msg.action === "erase") {
@@ -3087,14 +3107,19 @@ function handleBoardMessage(msg) {
     board.history = [];
     board.liveText = "";
     board.liveTextId = "";
+    board.textX = 24;
+    board.textY = 48;
+    _lastRemoteTextStream = "";
     var inpClear = document.getElementById("board-type-input");
     if (inpClear) inpClear.value = "";
+    if (board.canvas) board.canvas.height = getBoardMinCanvasHeight();
     if (board.ctx && board.canvas) {
       try {
         board.ctx.clearRect(0, 0, board.canvas.width, board.canvas.height);
       } catch (e) { /* ignore */ }
     }
-    redrawBoard();
+    var scClear = document.getElementById("board-scroll");
+    if (scClear) scClear.scrollTop = 0;
     return;
   }
 }
@@ -3172,15 +3197,10 @@ function connectChat(isReconnect) {
       if (window._sxBoardSyncPoll) clearInterval(window._sxBoardSyncPoll);
       window._sxBoardSyncPoll = setInterval(function () {
         if (!liveSocket || liveSocket.readyState !== WebSocket.OPEN) return;
-        if (board.open) {
-          clearInterval(window._sxBoardSyncPoll);
-          window._sxBoardSyncPoll = null;
-          return;
-        }
         try {
           liveSocket.send(JSON.stringify({ event: "request_board_sync" }));
         } catch (ePoll) { /* ignore */ }
-      }, 8000);
+      }, board.open ? 3000 : 8000);
     } else if (board.open) {
       setTimeout(function () { syncBoardToRoom(); }, 400);
     }

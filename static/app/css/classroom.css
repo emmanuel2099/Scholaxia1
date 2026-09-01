@@ -2167,6 +2167,61 @@ body.meet-stage-fullscreen #btn-stage-fullscreen {
   object-fit: contain !important;
 }
 
+/* Screen share — fill width on mobile (landscape share in portrait phone) */
+@media (max-width: 900px) {
+  body.meet-v2 .video-stage[data-spotlight="screen"],
+  body.meet-v2 .video-stage:has(#video-remote.screen-active) {
+    align-items: flex-start !important;
+    justify-content: flex-start !important;
+    overflow: hidden !important;
+  }
+  #video-remote.screen-active,
+  .video-remote.screen-active {
+    position: absolute !important;
+    inset: 0 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    display: block !important;
+  }
+  .video-remote.screen-active .remote-user.screen-share {
+    width: 100% !important;
+    min-width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    display: block !important;
+    background: #000;
+  }
+  .video-remote.screen-active .remote-user.screen-share video {
+    width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    object-fit: contain !important;
+    display: block !important;
+  }
+  body.meet-v2.host-view #video-local.video-tile.local:not(.hidden),
+  body.meet-v2:not(.student-view) #video-local.video-tile.local:not(.hidden) {
+    display: none !important;
+  }
+  body.meet-v2.host-view .main-stage-wrap:has(#video-remote.screen-active) #video-local,
+  body.meet-v2:not(.student-view) .main-stage-wrap:has(#video-remote.screen-active) #video-local {
+    display: none !important;
+  }
+}
+
+/* Board — readable text when canvas is scaled down on phones */
+@media (max-width: 900px) {
+  .board-scroll {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  .whiteboard-canvas {
+    min-height: 100%;
+  }
+}
+
 /* Meet sidebar + raised-hand buttons (dark theme — no white defaults) */
 .meet-sidebar .meet-side-btn,
 .meet-strip-head .meet-side-btn {

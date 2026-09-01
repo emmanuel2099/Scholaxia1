@@ -905,7 +905,16 @@
     liveRoom.localParticipant.videoTrackPublications.forEach(function (pub) {
       if (!isCameraPublication(pub) || !pub.track) return;
       if (isTeacherRole()) {
+        if (screenOn) {
+          if (localEl) localEl.classList.add("hidden");
+          return;
+        }
         if (getStageSpotlightMode() === "teacher" && attachTeacherCameraToMainStage()) {
+          if (localEl) localEl.classList.add("hidden");
+          return;
+        }
+        var remoteWrap = document.getElementById("video-remote");
+        if (remoteWrap && remoteWrap.querySelector(".remote-user.teacher-self video")) {
           if (localEl) localEl.classList.add("hidden");
           return;
         }
@@ -956,14 +965,7 @@
     var localEl = document.getElementById("video-local");
     if (localEl) {
       localEl.innerHTML = "";
-      var el = screenPub.track.attach();
-      el.style.width = "100%";
-      el.style.height = "100%";
-      el.muted = true;
-      el.autoplay = true;
-      el.playsInline = true;
-      localEl.appendChild(el);
-      localEl.classList.remove("hidden");
+      localEl.classList.add("hidden");
     }
   }
 
