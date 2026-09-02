@@ -3,21 +3,24 @@ Public Past Questions shop — browse and buy PDFs without a student account.
 """
 from __future__ import annotations
 
+import logging
 import secrets
 import uuid
 from datetime import timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
-from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import or_, select
+from pydantic import BaseModel, EmailStr
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.datetime_utils import naive_utc_now
-from app.models.content import Book, LibraryTarget, PastQuestionGuestAccess
+from app.models.content import Book, PastQuestionGuestAccess
 from app.services.media_service import fetch_book_bytes
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/past-questions", tags=["Past Questions Shop"])
 
@@ -30,12 +33,17 @@ def _is_past_question_book(book: Book) -> bool:
 
 
 def _public_card(book: Book) -> dict:
+    year = getattr(book, "year", None)
+    try:
+        year = int(year) if year is not None else None
+    except (TypeError, ValueError):
+        year = None
     return {
         "id": str(book.id),
         "title": book.title,
         "subject": book.subject,
-        "exam_type": book.exam_type or "ALL",
-        "year": getattr(book, "year", None),
+        "exam_type": (book.exam_type or "ALL"),
+        "year": year,
         "description": book.description,
         "cover_image_url": book.cover_image_url,
         "price": float(getattr(book, "price", 0) or 0),
@@ -43,6 +51,24 @@ def _public_card(book: Book) -> dict:
         "currency": "NGN",
         "category": getattr(book, "category", PAST_CATEGORY) or PAST_CATEGORY,
     }
+
+
+def _matches_filters(card: dict, exam_type: Optional[str], subject: Optional[str], year: Optional[int], q: Optional[str]) -> bool:
+    if exam_type and exam_type.upper() not in {"ALL", ""}:
+        if str(card.get("exam_type") or "").upper() != exam_type.strip().upper():
+            return False
+    if subject and str(card.get("subject") or "").lower() != subject.strip().lower():
+        return False
+    if year is not None and card.get("year") != year:
+        return False
+    if q:
+        hay = " ".join(
+            str(card.get(k) or "")
+            for k in ("title", "subject", "exam_type", "year", "description")
+        ).lower()
+        if q.strip().lower() not in hay:
+            return False
+    return True
 
 
 @router.get("/catalog")
@@ -54,38 +80,88 @@ async def past_questions_catalog(
     db: AsyncSession = Depends(get_db),
 ):
     """Public catalog — no login required. Never returns PDF URLs."""
-    query = select(Book).where(
-        Book.is_active.is_(True),
-        Book.library_target == LibraryTarget.student,
-        or_(
-            Book.category.ilike("%past%"),
-            Book.category == PAST_CATEGORY,
-        ),
-    )
-    if exam_type and exam_type.upper() not in {"ALL", ""}:
-        query = query.where(Book.exam_type.ilike(exam_type.strip()))
-    if subject:
-        query = query.where(Book.subject.ilike(subject.strip()))
-    if year:
-        query = query.where(Book.year == year)
-    if q:
-        term = f"%{q.strip()}%"
-        query = query.where(
-            or_(
-                Book.title.ilike(term),
-                Book.subject.ilike(term),
-                Book.description.ilike(term),
-                Book.exam_type.ilike(term),
+    try:
+        try:
+            await db.execute(text("ALTER TABLE books ADD COLUMN IF NOT EXISTS year INTEGER NULL"))
+        except Exception:
+            logger.exception("past_questions catalog: year column ensure failed")
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+
+        rows = (
+            await db.execute(
+                text(
+                    """
+                    SELECT
+                      id::text AS id,
+                      title,
+                      subject,
+                      exam_type,
+                      year,
+                      description,
+                      cover_image_url,
+                      COALESCE(price, 0) AS price,
+                      COALESCE(is_free, false) AS is_free,
+                      COALESCE(category, 'Past Questions') AS category,
+                      COALESCE(library_target::text, 'student') AS library_target
+                    FROM books
+                    WHERE COALESCE(is_active, true) = true
+                      AND (
+                        category ILIKE '%past%'
+                        OR category = :past_category
+                      )
+                    ORDER BY created_at DESC NULLS LAST
+                    """
+                ),
+                {"past_category": PAST_CATEGORY},
+            )
+        ).mappings().all()
+
+        products = []
+        for row in rows:
+            target = str(row.get("library_target") or "student").replace("LibraryTarget.", "").lower()
+            if target != "student":
+                continue
+            year_val = row.get("year")
+            try:
+                year_val = int(year_val) if year_val is not None else None
+            except (TypeError, ValueError):
+                year_val = None
+            card = {
+                "id": str(row["id"]),
+                "title": row.get("title") or "",
+                "subject": row.get("subject") or "",
+                "exam_type": row.get("exam_type") or "ALL",
+                "year": year_val,
+                "description": row.get("description"),
+                "cover_image_url": row.get("cover_image_url"),
+                "price": float(row.get("price") or 0),
+                "is_free": bool(row.get("is_free")),
+                "currency": "NGN",
+                "category": row.get("category") or PAST_CATEGORY,
+            }
+            if _matches_filters(card, exam_type, subject, year, q):
+                products.append(card)
+
+        products.sort(
+            key=lambda p: (
+                str(p.get("exam_type") or ""),
+                str(p.get("subject") or ""),
+                -(p.get("year") or 0),
+                str(p.get("title") or ""),
             )
         )
-    query = query.order_by(Book.exam_type, Book.subject, Book.year.desc().nullslast(), Book.title)
-    books = (await db.execute(query)).scalars().all()
-    return {
-        "products": [_public_card(b) for b in books],
-        "filters": {
-            "exam_types": ["ALL", "JAMB", "WAEC", "NECO", "COMMON_ENTRANCE"],
-        },
-    }
+        return {
+            "products": products,
+            "filters": {
+                "exam_types": ["ALL", "JAMB", "WAEC", "NECO", "COMMON_ENTRANCE"],
+            },
+        }
+    except Exception:
+        logger.exception("past_questions catalog failed")
+        raise HTTPException(status_code=500, detail="Unable to load past questions")
 
 
 @router.get("/products/{book_id}")

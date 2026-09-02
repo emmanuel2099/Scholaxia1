@@ -5,26 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="Browse and buy JAMB, WAEC, NECO and Common Entrance Past Questions as PDFs. No student account required."
+      content="Browse and buy authentic JAMB, WAEC, NECO and Common Entrance past questions as PDFs. Instant access after Paystack payment — no student account required."
     />
-    <title>Past Questions — Scholaxia</title>
+    <title>Past Questions Marketplace — Scholaxia</title>
     <link rel="icon" type="image/png" href="media/logo-main.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Sora:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Sora:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="css/marketplace.css?v=20260902pq" />
-    <link rel="stylesheet" href="css/past-questions.css?v=20260902a" />
+    <link rel="stylesheet" href="css/past-questions.css?v=20260902sunny" />
   </head>
-  <body class="mkt-body pq-body">
-    <header class="mkt-top">
-      <a class="mkt-brand" href="past-questions.html" aria-label="Past Questions home">
-        <img src="media/logo-main.png" alt="" />
-        <span>Past <em>Questions</em></span>
+  <body class="pq-page">
+    <header class="pq-nav">
+      <a class="pq-nav-brand" href="past-questions.html" aria-label="Past Questions home">
+        <img src="media/logo-main.png" alt="" width="36" height="36" />
+        <span>Scholaxia <em>Past Questions</em></span>
       </a>
-      <nav class="mkt-nav" aria-label="Site">
+      <button type="button" class="pq-nav-toggle" id="pqNavToggle" aria-label="Open menu" aria-expanded="false">
+        <span></span><span></span><span></span>
+      </button>
+      <nav class="pq-nav-links" id="pqNavLinks" aria-label="Site">
         <a href="index.html">Home</a>
         <a href="marketplace.html">Marketplace</a>
         <a href="portal.html">Sign in</a>
@@ -32,30 +34,125 @@
     </header>
 
     <main>
-      <section class="pq-hero">
-        <h1>Past Questions Marketplace</h1>
-        <p>Browse JAMB, WAEC, NECO and Common Entrance PDFs. Pay with Paystack — no student account needed.</p>
+      <section class="pq-hero" aria-labelledby="pqHeroTitle">
+        <div class="pq-hero-inner">
+          <div class="pq-hero-copy">
+            <p class="pq-kicker">Past Questions</p>
+            <h1 id="pqHeroTitle">Prepare smarter. Practice better. Pass with confidence.</h1>
+            <p class="pq-hero-lead">
+              Get authentic JAMB, WAEC, NECO and Common Entrance past questions in one place.
+            </p>
+            <form class="pq-hero-search" id="pqHeroSearchForm" role="search">
+              <label class="visually-hidden" for="pqSearch">Search past questions</label>
+              <input
+                type="search"
+                id="pqSearch"
+                placeholder="Search Mathematics, English, Biology, 2025…"
+                autocomplete="off"
+              />
+              <button type="submit" class="pq-hero-search-btn">Search</button>
+            </form>
+            <ul class="pq-trust-pills" aria-label="Benefits">
+              <li>Instant PDF access</li>
+              <li>Secure Paystack payment</li>
+              <li>No account required</li>
+            </ul>
+          </div>
+          <div class="pq-hero-art" aria-hidden="true">
+            <div class="pq-hero-stack">
+              <div class="pq-hero-doc pq-hero-doc-a">
+                <span>JAMB</span>
+                <strong>Maths</strong>
+                <em>2025</em>
+              </div>
+              <div class="pq-hero-doc pq-hero-doc-b">
+                <span>WAEC</span>
+                <strong>English</strong>
+                <em>2024</em>
+              </div>
+              <div class="pq-hero-doc pq-hero-doc-c">
+                <span>NECO</span>
+                <strong>Biology</strong>
+                <em>PDF</em>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
-      <section class="mkt-shelf" id="shelf">
-        <div class="mkt-shelf-head">
-          <h2>Browse papers</h2>
-          <label class="mkt-search">
-            <span class="visually-hidden">Search</span>
-            <input type="search" id="pqSearch" placeholder="Search subject, year, title…" autocomplete="off" />
+      <section class="pq-cats" aria-label="Exam categories">
+        <div class="pq-cats-track" id="pqExamTabs" role="tablist"></div>
+      </section>
+
+      <section class="pq-browse" id="shelf" aria-labelledby="pqBrowseTitle">
+        <div class="pq-browse-head">
+          <div>
+            <h2 id="pqBrowseTitle">Find the right past questions</h2>
+            <p class="pq-browse-sub" id="pqResultCount">Loading catalog…</p>
+          </div>
+        </div>
+
+        <div class="pq-filters" id="pqFilters">
+          <label>
+            <span>Exam</span>
+            <select id="pqFilterExam" aria-label="Filter by exam">
+              <option value="ALL">All exams</option>
+              <option value="JAMB">JAMB</option>
+              <option value="WAEC">WAEC</option>
+              <option value="NECO">NECO</option>
+              <option value="COMMON_ENTRANCE">Common Entrance</option>
+            </select>
+          </label>
+          <label>
+            <span>Subject</span>
+            <select id="pqFilterSubject" aria-label="Filter by subject">
+              <option value="">All subjects</option>
+            </select>
+          </label>
+          <label>
+            <span>Year</span>
+            <select id="pqFilterYear" aria-label="Filter by year">
+              <option value="">All years</option>
+            </select>
           </label>
         </div>
-        <div class="mkt-tabs" id="pqExamTabs" role="tablist"></div>
-        <div class="pq-subject-row" id="pqSubjectTabs"></div>
-        <div class="mkt-grid" id="pqGrid">
-          <div class="mkt-empty">Loading Past Questions…</div>
+
+        <div id="pqVerifyMount"></div>
+        <div class="pq-grid" id="pqGrid" aria-live="polite">
+          <div class="pq-loading">Loading past questions…</div>
+        </div>
+      </section>
+
+      <section class="pq-why" aria-labelledby="pqWhyTitle">
+        <h2 id="pqWhyTitle">Why buy from Scholaxia?</h2>
+        <div class="pq-why-grid">
+          <article class="pq-why-card">
+            <div class="pq-why-icon" aria-hidden="true">📄</div>
+            <h3>Authentic study materials</h3>
+            <p>Get organized past questions in PDF format, ready for revision.</p>
+          </article>
+          <article class="pq-why-card">
+            <div class="pq-why-icon" aria-hidden="true">⚡</div>
+            <h3>Instant access</h3>
+            <p>Download immediately after a successful Paystack payment.</p>
+          </article>
+          <article class="pq-why-card">
+            <div class="pq-why-icon" aria-hidden="true">🔒</div>
+            <h3>Secure payment</h3>
+            <p>Payments are securely processed through Paystack — no account needed.</p>
+          </article>
+          <article class="pq-why-card">
+            <div class="pq-why-icon" aria-hidden="true">🎓</div>
+            <h3>Multiple exams</h3>
+            <p>JAMB, WAEC, NECO and Common Entrance in one sunny marketplace.</p>
+          </article>
         </div>
       </section>
     </main>
 
-    <div class="mkt-drawer-bg" id="pqDrawerBg" hidden></div>
-    <aside class="mkt-drawer" id="pqDrawer" hidden aria-label="Buy Past Question">
-      <button type="button" class="mkt-drawer-close" id="pqDrawerClose" aria-label="Close">×</button>
+    <div class="pq-drawer-bg" id="pqDrawerBg" hidden></div>
+    <aside class="pq-drawer" id="pqDrawer" hidden aria-label="Buy Past Question">
+      <button type="button" class="pq-drawer-close" id="pqDrawerClose" aria-label="Close">×</button>
       <div id="pqDrawerBody"></div>
     </aside>
 
@@ -63,14 +160,17 @@
       <a href="index.html">Scholaxia</a>
       <span>·</span>
       <a href="marketplace.html">Marketplace</a>
+      <span>·</span>
+      <a href="past-questions.html">Past Questions</a>
     </footer>
 
     <script>
-      window.SCHOLAXIA_API_BASE = window.SCHOLAXIA_API_BASE ||
+      window.SCHOLAXIA_API_BASE =
+        window.SCHOLAXIA_API_BASE ||
         (location.hostname.indexOf("onrender.com") >= 0 || location.hostname.indexOf("scholaxia") >= 0
           ? location.origin
           : "https://scholaxia1.onrender.com");
     </script>
-    <script src="js/past-questions-shop.js?v=20260902a"></script>
+    <script src="js/past-questions-shop.js?v=20260902sunny"></script>
   </body>
 </html>
