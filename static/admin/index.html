@@ -337,7 +337,27 @@
           <button class="btn-sm" onclick="loadCbt()">Refresh list</button>
         </div>
       </div>
-      <p class="page-desc">Upload questions into the bank. How many each student sees is controlled in <strong>CBT Settings</strong>, not by upload size. Coupon codes are under <strong>CBT Coupons</strong> in the menu.</p>
+      <p class="page-desc">Separate banks for each exam. Upload and manage questions by exam type and subject. How many each student sees is controlled in <strong>CBT Settings</strong>.</p>
+
+      <div class="cbt-bank-tabs" id="cbt-bank-tabs" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+        <button type="button" class="btn-sm cbt-bank-tab is-active" data-bank="JAMB" onclick="setCbtBank('JAMB')">JAMB</button>
+        <button type="button" class="btn-sm cbt-bank-tab" data-bank="WAEC" onclick="setCbtBank('WAEC')">WAEC</button>
+        <button type="button" class="btn-sm cbt-bank-tab" data-bank="NECO" onclick="setCbtBank('NECO')">NECO</button>
+        <button type="button" class="btn-sm cbt-bank-tab" data-bank="COMMON_ENTRANCE" onclick="setCbtBank('COMMON_ENTRANCE')">Common Entrance</button>
+      </div>
+      <div id="cbt-bank-summary" class="panel" style="margin-bottom:16px;padding:12px 14px">
+        <div class="loading">Loading bank counts…</div>
+      </div>
+      <div class="form-row" style="gap:10px;margin-bottom:14px;flex-wrap:wrap">
+        <label style="min-width:180px"><span>Filter subject</span>
+          <select id="cbt-filter-subject" onchange="loadCbt()">
+            <option value="">All subjects</option>
+          </select>
+        </label>
+        <label style="min-width:220px;flex:1"><span>Search</span>
+          <input id="cbt-filter-search" type="search" placeholder="Search title or subject…" oninput="debounceCbtSearch()" />
+        </label>
+      </div>
 
       <div class="panel" style="margin-bottom:16px">
         <h3>Upload CBT practice questions</h3>
@@ -419,7 +439,6 @@
               <option>JAMB</option>
               <option>WAEC</option>
               <option>NECO</option>
-              <option>JUNIOR_WAEC</option>
               <option>COMMON_ENTRANCE</option>
             </select>
           </label>
@@ -525,7 +544,6 @@
               <option>JAMB</option>
               <option>WAEC</option>
               <option>NECO</option>
-              <option>JUNIOR_WAEC</option>
               <option>COMMON_ENTRANCE</option>
             </select>
           </label>
@@ -774,6 +792,7 @@
           <label><span>Material type *</span>
             <select id="lib-category" onchange="onLibraryCategoryChange()">
               <option value="" selected disabled>Select type…</option>
+              <option value="Past Questions">Past Questions (PDF marketplace)</option>
               <option value="Lesson Notes">Lesson Notes</option>
               <option value="Study Materials">Study Materials</option>
               <option value="Scheme of Work">Scheme of Work</option>
@@ -813,6 +832,7 @@
             </select>
           </label>
           <label id="lib-price-wrap"><span>Price (₦) *</span><input id="lib-price" type="number" min="100" step="50" placeholder="e.g. 1500" /></label>
+          <label><span>Year (Past Questions)</span><input id="lib-year" type="number" min="1990" max="2100" placeholder="e.g. 2025" /></label>
           <label><span>Student download *</span>
             <select id="lib-downloadable">
               <option value="no" selected>Read only — not downloadable</option>

@@ -216,21 +216,7 @@
     };
 
     if (vis === "private") {
-      var sel = $("hostInvitedStudents");
-      var invited = sel
-        ? Array.prototype.slice.call(sel.selectedOptions).map(function (o) {
-            return o.value;
-          }).filter(Boolean)
-        : [];
-      var emailRaw = (($("hostInviteEmails") && $("hostInviteEmails").value) || "").trim();
-      var emails = emailRaw
-        ? emailRaw.split(/[\n,;]+/).map(function (e) { return e.trim().toLowerCase(); }).filter(Boolean)
-        : [];
-      if (!invited.length && !emails.length) {
-        throw new Error("Invite at least one student by email (or select an assigned student).");
-      }
-      if (invited.length) body.invited_student_ids = invited;
-      if (emails.length) body.invited_student_emails = emails;
+      // Code-only private class — no email invites required.
     }
     if (vis === "school_group") {
       var gid = ($("hostSchoolGroup") && $("hostSchoolGroup").value) || "";

@@ -3,15 +3,32 @@ var currentAdminPage = "dashboard";
 document.addEventListener("DOMContentLoaded", function () {
   if (getAdminToken()) {
     showApp();
-    loadDashboard();
+    var role = localStorage.getItem("sia_admin_role") || "admin";
+    if (role === "school_admin") {
+      showAdminPage("school-office");
+    } else {
+      loadDashboard();
+    }
   } else {
     showAuth();
   }
 
-  document.getElementById("tab-login").addEventListener("click", function () { switchAuthTab("login"); });
-  document.getElementById("tab-register").addEventListener("click", function () { switchAuthTab("register"); });
-  document.getElementById("form-login").addEventListener("submit", adminLogin);
-  document.getElementById("form-register").addEventListener("submit", adminRegister);
+  // Login/register click handlers live in admin-auth.js (syntax-isolated).
+  // Keep a fallback only if auth script failed to load.
+  if (typeof window.adminLoginFromAuth !== "function") {
+    document.getElementById("tab-login").addEventListener("click", function () { switchAuthTab("login"); });
+    document.getElementById("tab-register").addEventListener("click", function () { switchAuthTab("register"); });
+    document.getElementById("form-login").addEventListener("submit", adminLogin);
+    document.getElementById("btn-login").addEventListener("click", adminLogin);
+    document.getElementById("form-register").addEventListener("submit", adminRegister);
+  }
+  try {
+    var lastEmail = localStorage.getItem("sia_admin_email_last");
+    if (lastEmail && document.getElementById("login-email") && !document.getElementById("login-email").value) {
+      document.getElementById("login-email").value = lastEmail;
+    }
+  } catch (e) {}
+  syncMarketplaceFileFields();
 });
 
 function showAuth() {
@@ -23,7 +40,10 @@ function showApp() {
   document.getElementById("auth-screen").classList.add("hidden");
   document.getElementById("app-screen").classList.remove("hidden");
   var u = getAdminUser();
-  document.getElementById("admin-user-label").textContent = u.name + " · " + u.email;
+  var role = localStorage.getItem("sia_admin_role") || "admin";
+  var school = localStorage.getItem("sia_school_name") || "";
+  document.getElementById("admin-user-label").textContent = (role === "school_admin" ? (school || "School admin") + " · " : "") + u.name + " · " + u.email;
+  document.body.classList.toggle("school-admin-mode", role === "school_admin");
 }
 
 function switchAuthTab(tab) {
@@ -37,34 +57,95 @@ function switchAuthTab(tab) {
 }
 
 async function adminLogin(e) {
-  e.preventDefault();
+  if (e && e.preventDefault) e.preventDefault();
+  if (e && e.stopPropagation) e.stopPropagation();
   var email = document.getElementById("login-email").value.trim();
   var password = document.getElementById("login-password").value;
   var err = document.getElementById("login-error");
   var btn = document.getElementById("btn-login");
   err.textContent = "";
+  if (email) {
+    try { localStorage.setItem("sia_admin_email_last", email); } catch (e0) {}
+  }
+  if (!email || !password) {
+    err.textContent = "Enter email and password.";
+    return false;
+  }
   btn.disabled = true;
+  btn.textContent = "Signing in…";
+  // Wake in background — do not block the login button for 45s
+  if (typeof wakeAdminServer === "function") {
+    try { wakeAdminServer(); } catch (wakeErr) { /* continue */ }
+  }
   try {
-    var res = await fetch(API_BASE + "/api/v1/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: email, password: password }),
-      signal: fetchTimeout(45000),
-    });
-    var data = await res.json();
-    if (!res.ok) { err.textContent = formatApiError(data.detail) || "Login failed."; return; }
-    if (data.role !== "admin") {
-      err.textContent = "This email is a " + data.role + " account, not an admin. Open the Register tab to create an admin account (use a different email if this one is already taken).";
-      return;
+    var data = null;
+    try {
+      data = await adminXhrJson("/api/v1/auth/login", {
+        method: "POST",
+        timeout: 25000,
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ email: email, password: password }),
+      });
+    } catch (xhrErr) {
+      if (xhrErr && xhrErr.status && xhrErr.status >= 400 && xhrErr.status < 500) throw xhrErr;
+      var res = await fetch(API_BASE + "/api/v1/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email, password: password }),
+        signal: fetchTimeout(25000),
+      });
+      data = await res.json().catch(function () { return {}; });
+      if (!res.ok) {
+        var msg = formatApiError(data.detail) || data.message || ("Login failed (" + res.status + ")");
+        var errObj = new Error(msg);
+        errObj.status = res.status;
+        errObj.data = data;
+        throw errObj;
+      }
     }
-    saveAdminSession(data, email, data.user && data.user.full_name);
+    var role = String(data.role || (data.user && data.user.role) || "").toLowerCase().replace(/^userrole\./, "");
+    if (role !== "admin" && role !== "school_admin") {
+      err.textContent = "This email is a " + (role || "unknown") + " account, not an admin. Use the student/teacher sign-in on the website.";
+      return false;
+    }
+    if (!data.access_token) {
+      err.textContent = "Login succeeded but no token was returned. Try again.";
+      return false;
+    }
+    saveAdminSession(data, email, (data.user && data.user.full_name) || email);
+    if (data.user && data.user.school_id) {
+      localStorage.setItem("sia_school_id", data.user.school_id);
+    }
+    if (data.user && data.user.school_name) {
+      localStorage.setItem("sia_school_name", data.user.school_name);
+    }
+    if (role === "school_admin" && !(data.user && data.user.school_id)) {
+      err.textContent = "This school admin is not linked to a school yet. Ask the main Scholaxia admin to assign the school.";
+      clearAdminSession();
+      return false;
+    }
     showApp();
-    loadDashboard();
+    if (role === "school_admin") {
+      try {
+        showAdminPage("school-office");
+      } catch (pageErr) {
+        err.textContent = pageErr.message || "Signed in, but School office failed to open.";
+        showAuth();
+      }
+    } else {
+      loadDashboard();
+    }
   } catch (ex) {
-    err.textContent = "Network error. Check your connection.";
+    if (ex && ex.name === "AbortError") {
+      err.textContent = "Server took too long (waking up). Wait 20 seconds and try again.";
+    } else {
+      err.textContent = (ex && ex.message) || "Network error. Check your connection and try again.";
+    }
   } finally {
     btn.disabled = false;
+    btn.textContent = "LOG IN";
   }
+  return false;
 }
 
 async function adminRegister(e) {
@@ -112,15 +193,22 @@ function showAdminPage(page) {
   else if (page === "vendors") loadVendors();
   else if (page === "kind") loadKind();
   else if (page === "kind-games") loadKindGamesAdmin();
+  else if (page === "kind-library") loadKindLibraryAdmin();
+  else if (page === "kind-videos") loadKindVideosAdmin();
   else if (page === "requests") loadRequests();
   else if (page === "live-subs") loadLiveSubscriptions();
   else if (page === "skills-enroll") loadSkillsEnrollments();
-  else if (page === "cbt") { initCbtBuilder(); loadCbt(); }
+  else if (page === "cbt-settings") { loadCbtSettings(); }
+  else if (page === "cbt") { cbtMode = "practice"; initCbtBuilder(); setCbtBank(cbtActiveBank || "JAMB"); }
+  else if (page === "coupons") loadCbtCoupons();
+  else if (page === "past-questions") { cbtMode = "past"; loadPastQuestionsAdmin(); }
   else if (page === "library") loadLibraryAdmin();
   else if (page === "videos") loadAdminVideos();
+  else if (page === "schools") loadSchoolsAdmin();
+  else if (page === "school-office") loadSchoolOffice();
   else if (page === "internal-exams") loadInternalExamsAdmin();
   else if (page === "recommendations") loadRecommendations();
-  else if (page === "student-groups") loadPendingStudentGroups();
+  else if (page === "student-groups") loadStudentGroupsAdmin();
   else if (page === "community") loadCommunityPosts();
   else if (page === "marketplace") loadMarketplace();
 }
@@ -150,29 +238,53 @@ async function loadDashboard() {
 }
 
 /* ── Students ── */
+var _studentsCache = [];
+
 async function loadStudents() {
   var el = document.getElementById("students-table");
   el.innerHTML = '<div class="loading">Loading…</div>';
   try {
-    var rows = await adminApi("/api/v1/admin/students?active_only=true");
+    var q = ((document.getElementById("students-search") || {}).value || "").trim();
+    var url = "/api/v1/admin/students?active_only=true";
+    if (q) url += "&q=" + encodeURIComponent(q);
+    var rows = await adminApi(url);
     if (!rows) return;
     rows = rows.filter(function (s) { return s.is_active; });
-    if (!rows.length) { el.innerHTML = '<div class="empty-state">No students yet.</div>'; return; }
-    el.innerHTML = '<table class="data-table"><thead><tr><th>Name</th><th>Email</th><th>Exam</th><th>Level</th><th>Subjects</th><th>Status</th><th></th></tr></thead><tbody>' +
-      rows.map(function (s) {
-        var subs = (s.selected_subjects || []).map(function (x) {
-          return '<span class="subj-tag">' + escHtml(x) + '</span>';
-        }).join("");
-        var exam = (s.exam_type || "—").replace(/^ExamType\./, "");
-        return '<tr><td>' + escHtml(s.full_name) + '</td><td>' + escHtml(s.email) + '</td>' +
-          '<td>' + escHtml(exam) + '</td><td>' + escHtml(s.education_level || "—") + '</td>' +
-          '<td><div class="subj-tags">' + (subs || "—") + '</div></td>' +
-          '<td><span class="badge ' + (s.is_active ? "ok" : "muted") + '">' + (s.is_active ? "Active" : "Disabled") + '</span></td>' +
-          '<td class="actions">' + (s.is_active ? '<button class="btn-sm danger" onclick="deleteStudent(\'' + s.id + '\')">Remove</button>' : '') + '</td></tr>';
-      }).join("") + '</tbody></table>';
+    _studentsCache = rows;
+    renderStudentsTable(rows);
   } catch (e) {
     el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + '</div>';
   }
+}
+
+function filterStudentsTable() {
+  var q = ((document.getElementById("students-search") || {}).value || "").trim().toLowerCase();
+  if (!q) {
+    renderStudentsTable(_studentsCache);
+    return;
+  }
+  renderStudentsTable(_studentsCache.filter(function (s) {
+    return String(s.email || "").toLowerCase().indexOf(q) >= 0 ||
+      String(s.full_name || "").toLowerCase().indexOf(q) >= 0;
+  }));
+}
+
+function renderStudentsTable(rows) {
+  var el = document.getElementById("students-table");
+  if (!el) return;
+  if (!rows.length) { el.innerHTML = '<div class="empty-state">No matching students.</div>'; return; }
+  el.innerHTML = '<table class="data-table"><thead><tr><th>Name</th><th>Email</th><th>Exam</th><th>Level</th><th>Subjects</th><th>Status</th><th></th></tr></thead><tbody>' +
+    rows.map(function (s) {
+      var subs = (s.selected_subjects || []).map(function (x) {
+        return '<span class="subj-tag">' + escHtml(x) + '</span>';
+      }).join("");
+      var exam = (s.exam_type || "—").replace(/^ExamType\./, "");
+      return '<tr><td>' + escHtml(s.full_name) + '</td><td>' + escHtml(s.email) + '</td>' +
+        '<td>' + escHtml(exam) + '</td><td>' + escHtml(s.education_level || "—") + '</td>' +
+        '<td><div class="subj-tags">' + (subs || "—") + '</div></td>' +
+        '<td><span class="badge ' + (s.is_active ? "ok" : "muted") + '">' + (s.is_active ? "Active" : "Disabled") + '</span></td>' +
+        '<td class="actions">' + (s.is_active ? '<button class="btn-sm danger" onclick="deleteStudent(\'' + s.id + '\')">Remove</button>' : '') + '</td></tr>';
+    }).join("") + '</tbody></table>';
 }
 
 async function refreshDashboardStats() {
@@ -182,39 +294,23 @@ async function refreshDashboardStats() {
 }
 
 async function deleteStudent(id) {
-  if (!confirm("Delete this student permanently? They will be removed from the list.")) return;
+  if (!confirm("Delete this student permanently? They will be removed from the database.")) return;
   try {
     await adminApi("/api/v1/admin/students/" + id, { method: "DELETE" });
+    alert("Student deleted.");
     loadStudents();
     refreshDashboardStats();
-  } catch (e) { alert(e.message); }
+  } catch (e) {
+    alert((e && e.message) || "Could not delete this student. They may have linked records — try again or contact support.");
+  }
 }
 
 async function removeAllStudents() {
-  if (!confirm("DELETE ALL students permanently? This cannot be undone. Every student email will be removed.")) return;
-  try {
-    var r = await adminApi("/api/v1/admin/students/remove-all", { method: "POST" });
-    alert("Deleted " + (r.removed || 0) + " student(s).");
-    loadStudents();
-    refreshDashboardStats();
-  } catch (e) { alert(e.message); }
+  alert("Bulk delete is disabled so staff cannot wipe student accounts by mistake.");
 }
 
 async function purgeAllUsers() {
-  if (!confirm("DELETE ALL student, teacher, and kid accounts?\n\nEvery email will be permanently removed from the database. Admin accounts are kept. This cannot be undone.")) return;
-  try {
-    var r = await adminApi("/api/v1/admin/users/purge-all", { method: "POST" });
-    alert(
-      "Purged:\n" +
-      "Students: " + (r.students || 0) + "\n" +
-      "Teachers: " + (r.teachers || 0) + "\n" +
-      "Kids: " + (r.kind || 0) + "\n" +
-      "Total: " + (r.total || 0)
-    );
-    loadStudents();
-    loadTeachers();
-    refreshDashboardStats();
-  } catch (e) { alert(e.message); }
+  alert("Bulk delete is disabled so staff cannot wipe all accounts by mistake.");
 }
 
 /* ── Teachers ── */
@@ -329,19 +425,38 @@ async function loadKind() {
     var rows = await adminApi("/api/v1/admin/kind-learners");
     if (!rows) return;
     if (!rows.length) { el.innerHTML = '<div class="empty-state">No kind learners yet.</div>'; return; }
-    el.innerHTML = '<table class="data-table"><thead><tr><th>Name</th><th>Email</th><th>Age</th><th>Grade</th><th>Parent</th><th>Interests</th></tr></thead><tbody>' +
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Name</th><th>Email</th><th>Age</th><th>Grade</th><th>Parent</th><th>Status</th><th>Actions</th></tr></thead><tbody>' +
       rows.map(function (k) {
-        var subs = (k.favorite_subjects || []).map(function (x) {
-          return '<span class="subj-tag">' + escHtml(x) + '</span>';
-        }).join("");
+        var active = k.is_active !== false;
         return '<tr><td>' + escHtml(k.full_name) + '</td><td>' + escHtml(k.email) + '</td>' +
           '<td>' + escHtml(k.age_group || "—") + '</td><td>' + escHtml(k.grade_level || "—") + '</td>' +
           '<td>' + escHtml(k.parent_email || "—") + '</td>' +
-          '<td><div class="subj-tags">' + (subs || "—") + '</div></td></tr>';
+          '<td>' + (active ? "Active" : '<span style="color:#b91c1c;font-weight:700">Restricted</span>') + '</td>' +
+          '<td>' +
+          (active
+            ? '<button class="btn-sm" onclick="restrictKindLearner(\'' + k.id + '\', true)">Restrict</button> '
+            : '<button class="btn-sm primary" onclick="restrictKindLearner(\'' + k.id + '\', false)">Unrestrict</button> ') +
+          '<button class="btn-sm danger" onclick="deleteKindLearner(\'' + k.id + '\', ' + JSON.stringify(k.full_name || k.email || "learner") + ')">Delete</button>' +
+          '</td></tr>';
       }).join("") + '</tbody></table>';
   } catch (e) {
     el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + '</div>';
   }
+}
+
+async function restrictKindLearner(id, restricted) {
+  try {
+    await adminApi("/api/v1/admin/kind-learners/" + id + "/restrict?restricted=" + (restricted ? "true" : "false"), { method: "POST" });
+    loadKind();
+  } catch (e) { alert(e.message); }
+}
+
+async function deleteKindLearner(id, name) {
+  if (!confirm("Permanently delete kind learner \"" + name + "\"?")) return;
+  try {
+    await adminApi("/api/v1/admin/kind-learners/" + id, { method: "DELETE" });
+    loadKind();
+  } catch (e) { alert(e.message); }
 }
 
 /* ── Kids game questions (admin) ── */
@@ -811,6 +926,116 @@ async function updateRequest(id, status) {
 
 /* ── CBT Exam Builder ── */
 var cbtMode = "practice";
+var cbtActiveBank = "JAMB";
+var cbtSearchTimer = null;
+var CBT_CE_SUBJECTS = [
+  "Mathematics / Quantitative Reasoning",
+  "English Language / Verbal Reasoning",
+  "General Knowledge",
+  "Mathematics",
+  "English Language",
+  "Basic Science",
+  "Social Studies",
+  "Verbal Reasoning",
+  "Quantitative Reasoning",
+  "Civic Education",
+  "Computer Studies/ICT",
+  "Christian Religious Studies",
+  "Islamic Religious Studies",
+  "Creative Arts",
+];
+
+function setCbtBank(bank) {
+  cbtActiveBank = bank || "JAMB";
+  document.querySelectorAll("#cbt-bank-tabs .cbt-bank-tab").forEach(function (btn) {
+    btn.classList.toggle("is-active", btn.getAttribute("data-bank") === cbtActiveBank);
+  });
+  var typeSel = document.getElementById("cbt-import-type");
+  var createType = document.getElementById("cbt-type");
+  if (typeSel) typeSel.value = cbtActiveBank;
+  if (createType) createType.value = cbtActiveBank;
+  syncCbtSubjectOptionsForBank();
+  loadCbtBankSummary();
+  loadCbt();
+}
+
+function syncCbtSubjectOptionsForBank() {
+  var filter = document.getElementById("cbt-filter-subject");
+  var importSub = document.getElementById("cbt-import-subject");
+  var createSub = document.getElementById("cbt-subject");
+  function ensureCeOptions(sel) {
+    if (!sel) return;
+    if (cbtActiveBank !== "COMMON_ENTRANCE") return;
+    CBT_CE_SUBJECTS.forEach(function (name) {
+      var exists = Array.prototype.some.call(sel.options, function (o) {
+        return o.value === name || o.textContent === name;
+      });
+      if (!exists) {
+        var opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        sel.appendChild(opt);
+      }
+    });
+  }
+  ensureCeOptions(importSub);
+  ensureCeOptions(createSub);
+  if (filter) {
+    var current = filter.value;
+    var opts = ['<option value="">All subjects</option>'];
+    if (cbtActiveBank === "COMMON_ENTRANCE") {
+      CBT_CE_SUBJECTS.forEach(function (s) {
+        opts.push('<option value="' + escHtml(s) + '">' + escHtml(s) + "</option>");
+      });
+    } else if (importSub) {
+      Array.prototype.forEach.call(importSub.options, function (o) {
+        if (!o.value) return;
+        opts.push('<option value="' + escHtml(o.value) + '">' + escHtml(o.textContent) + "</option>");
+      });
+    }
+    filter.innerHTML = opts.join("");
+    if (current) filter.value = current;
+  }
+}
+
+function debounceCbtSearch() {
+  if (cbtSearchTimer) clearTimeout(cbtSearchTimer);
+  cbtSearchTimer = setTimeout(function () { loadCbt(); }, 280);
+}
+
+async function loadCbtBankSummary() {
+  var el = document.getElementById("cbt-bank-summary");
+  if (!el) return;
+  try {
+    var data = await adminApi("/api/v1/admin/cbt/question-bank/summary");
+    var byBoard = (data && data.by_exam_type) || [];
+    var bySubject = ((data && data.by_subject) || []).filter(function (r) {
+      return r.exam_type === cbtActiveBank;
+    });
+    var total = 0;
+    byBoard.forEach(function (b) {
+      if (b.exam_type === cbtActiveBank) total = b.total_questions;
+    });
+    var boardChips = byBoard.map(function (b) {
+      var active = b.exam_type === cbtActiveBank ? " style=\"font-weight:700\"" : "";
+      return "<span" + active + ">" + escHtml(b.exam_type.replace("_", " ")) + ": <strong>" +
+        b.total_questions + "</strong></span>";
+    }).join(" · ");
+    var subjectRows = bySubject.length
+      ? '<table class="data-table" style="margin-top:8px"><thead><tr><th>Subject</th><th>Questions</th><th>Exam sets</th><th>Published Qs</th></tr></thead><tbody>' +
+        bySubject.map(function (r) {
+          return "<tr><td>" + escHtml(r.subject) + "</td><td>" + r.total_questions +
+            "</td><td>" + r.exam_count + "</td><td>" + r.published_questions + "</td></tr>";
+        }).join("") + "</tbody></table>"
+      : '<p class="cbt-hint small" style="margin:8px 0 0">No questions in this bank yet. Upload below.</p>';
+    el.innerHTML = '<div class="cbt-hint small">Active bank: <strong>' + escHtml(cbtActiveBank.replace(/_/g, " ")) +
+      "</strong> · " + total + " questions</div>" +
+      '<div class="cbt-hint small" style="margin-top:4px">' + (boardChips || "No bank data yet") + "</div>" +
+      subjectRows;
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
+  }
+}
 var cbtQuestions = [];
 
 function emptyQuestion() {
@@ -841,45 +1066,21 @@ function fillCbtYearSelects() {
 
 function initCbtBuilder() {
   fillCbtYearSelects();
+  cbtMode = "practice";
   if (!cbtQuestions.length) cbtQuestions = [emptyQuestion()];
-  switchCbtMode(cbtMode, true);
   renderCbtQuestions();
 }
 
 function switchCbtMode(mode, skipReset) {
-  cbtMode = mode;
-  var isPractice = mode === "practice";
-  var isPast = mode === "past";
-  var isSchool = mode === "school";
-  document.getElementById("cbt-tab-practice").classList.toggle("active", isPractice);
-  var pastTab = document.getElementById("cbt-tab-past");
-  if (pastTab) pastTab.classList.toggle("active", isPast);
-  document.getElementById("cbt-tab-school").classList.toggle("active", isSchool);
-  document.getElementById("cbt-tab-school").classList.toggle("school-tab", isSchool);
-  document.getElementById("school-fields").classList.toggle("hidden", !isSchool);
-  document.getElementById("cbt-form-title").textContent = isSchool
-    ? "New School Exam"
-    : (isPast ? "New Past Questions paper" : "New Practice CBT");
-  var hint = document.getElementById("cbt-mode-hint");
-  hint.className = "cbt-hint " + (isSchool ? "school-hint" : "practice-hint");
-  hint.textContent = isSchool
-    ? "Scheduled school exam — set open/close times. Camera proctoring is recommended."
-    : (isPast
-      ? "This paper shows under student Past Questions. Students sit it as timed CBT — it will not appear in CBT Practice."
-      : "Practice exams for JAMB / WAEC / NECO, or Primary 6 Common Entrance for the Kids app.");
-  document.getElementById("btn-create-cbt").textContent = isSchool
-    ? "Create school exam"
-    : (isPast ? "Create past questions paper" : "Create practice exam");
-  if (!skipReset) {
-    cbtQuestions = [emptyQuestion()];
-    renderCbtQuestions();
-  }
+  cbtMode = mode === "past" ? "past" : "practice";
 }
 
 function addCbtQuestion() {
+  syncAllQuestions();
   cbtQuestions.push(emptyQuestion());
   renderCbtQuestions();
   var list = document.getElementById("cbt-questions-list");
+  if (!list) return;
   var cards = list.querySelectorAll(".q-card");
   if (cards.length) cards[cards.length - 1].scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
@@ -912,6 +1113,7 @@ function syncAllQuestions() {
 
 function renderCbtQuestions() {
   var list = document.getElementById("cbt-questions-list");
+  if (!list) return;
   list.innerHTML = cbtQuestions.map(function (q, idx) {
     var prefix = "q-" + idx + "-";
     var opts = ["A", "B", "C", "D"].map(function (letter) {
@@ -924,7 +1126,8 @@ function renderCbtQuestions() {
         '</div>';
     }).join("");
     var imgBlock = q.image_url || q.image_preview
-      ? '<img src="' + escHtml(q.image_preview || q.image_url) + '" alt="Diagram" />'
+      ? '<img src="' + escHtml(q.image_preview || q.image_url) + '" alt="Diagram" />' +
+        '<button type="button" class="btn-sm" style="margin-top:6px" onclick="clearQuestionImage(' + idx + ')">Remove diagram</button>'
       : "";
     var uploading = q.uploading ? '<div class="uploading">Uploading diagram…</div>' : "";
     return '<div class="q-card" data-idx="' + idx + '">' +
@@ -970,26 +1173,386 @@ async function onQuestionImage(idx, input) {
   }
 }
 
+function clearQuestionImage(idx) {
+  syncAllQuestions();
+  if (!cbtQuestions[idx]) return;
+  cbtQuestions[idx].image_url = "";
+  cbtQuestions[idx].image_preview = "";
+  cbtQuestions[idx].uploading = false;
+  renderCbtQuestions();
+}
+
+var cbtEditExamId = null;
+var cbtEditQuestions = [];
+
+function syncEditQuestionFromDom(idx) {
+  var q = cbtEditQuestions[idx];
+  if (!q) return;
+  var prefix = "eq-" + idx + "-";
+  var textEl = document.getElementById(prefix + "text");
+  if (!textEl) return;
+  q.question_text = textEl.value;
+  q.option_a = document.getElementById(prefix + "a").value;
+  q.option_b = document.getElementById(prefix + "b").value;
+  q.option_c = document.getElementById(prefix + "c").value;
+  q.option_d = document.getElementById(prefix + "d").value;
+  var correct = document.querySelector('input[name="' + prefix + 'correct"]:checked');
+  q.correct_option = correct ? correct.value : "A";
+  q.topic = (document.getElementById(prefix + "topic") || {}).value || "";
+  q.explanation = (document.getElementById(prefix + "explain") || {}).value || "";
+}
+
+function syncAllEditQuestions() {
+  for (var i = 0; i < cbtEditQuestions.length; i++) syncEditQuestionFromDom(i);
+}
+
+function renderCbtEditQuestions() {
+  var list = document.getElementById("cbt-edit-questions-list");
+  if (!list) return;
+  list.innerHTML = cbtEditQuestions.map(function (q, idx) {
+    var prefix = "eq-" + idx + "-";
+    var opts = ["A", "B", "C", "D"].map(function (letter) {
+      var key = "option_" + letter.toLowerCase();
+      var val = escHtml(q[key] || "");
+      var checked = q.correct_option === letter ? " checked" : "";
+      return '<div class="q-opt-row">' +
+        '<input type="radio" name="' + prefix + 'correct" value="' + letter + '"' + checked + ' />' +
+        '<input type="text" id="' + prefix + letter.toLowerCase() + '" placeholder="Option ' + letter + '" value="' + val + '" />' +
+        '</div>';
+    }).join("");
+    var imgBlock = q.image_url || q.image_preview
+      ? '<img src="' + escHtml(q.image_preview || q.image_url) + '" alt="Diagram" />' +
+        '<button type="button" class="btn-sm" style="margin-top:6px" onclick="clearEditQuestionImage(' + idx + ')">Remove diagram</button>'
+      : "";
+    var uploading = q.uploading ? '<div class="uploading">Uploading diagram…</div>' : "";
+    return '<div class="q-card" data-idx="' + idx + '">' +
+      '<div class="q-card-head"><strong>Question ' + (idx + 1) + '</strong>' +
+      (cbtEditQuestions.length > 1 ? '<button type="button" class="q-remove" onclick="removeCbtEditQuestion(' + idx + ')">Delete question</button>' : '') +
+      '</div>' +
+      '<textarea id="' + prefix + 'text" placeholder="Type the question here…">' + escHtml(q.question_text || "") + '</textarea>' +
+      '<div class="q-diagram">' +
+      '<label><span>Diagram / figure (optional) — JPEG, PNG, WebP</span>' +
+      '<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onchange="onEditQuestionImage(' + idx + ', this)" />' +
+      uploading + imgBlock + '</label></div>' +
+      '<div class="q-options">' + opts + '</div>' +
+      '<p class="cbt-hint small">Click the circle next to the correct answer.</p>' +
+      '<div class="q-meta">' +
+      '<input type="text" id="' + prefix + 'topic" placeholder="Topic (optional)" value="' + escHtml(q.topic || "") + '" />' +
+      '<input type="text" id="' + prefix + 'explain" placeholder="Explanation (optional)" value="' + escHtml(q.explanation || "") + '" />' +
+      '</div></div>';
+  }).join("");
+}
+
+function addCbtEditQuestion() {
+  syncAllEditQuestions();
+  cbtEditQuestions.push(emptyQuestion());
+  renderCbtEditQuestions();
+}
+
+function removeCbtEditQuestion(idx) {
+  if (cbtEditQuestions.length <= 1) {
+    alert("This is the only question in the set. Delete the exam set from the list instead.");
+    return;
+  }
+  if (!confirm("Delete this question?\n\nCancel | Delete\n\nThis permanently removes it from the database.")) return;
+  syncAllEditQuestions();
+  var q = cbtEditQuestions[idx];
+  if (q && q.id) {
+    adminApi("/api/v1/admin/cbt/questions/" + encodeURIComponent(q.id), { method: "DELETE" })
+      .then(function () {
+        cbtEditQuestions.splice(idx, 1);
+        renderCbtEditQuestions();
+        loadCbt();
+        loadCbtBankSummary();
+      })
+      .catch(function (e) {
+        alert(e.message || "Could not delete question");
+      });
+    return;
+  }
+  cbtEditQuestions.splice(idx, 1);
+  renderCbtEditQuestions();
+}
+
+async function onEditQuestionImage(idx, input) {
+  var file = input.files && input.files[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) { alert("Image must be under 5MB."); input.value = ""; return; }
+  syncAllEditQuestions();
+  cbtEditQuestions[idx].uploading = true;
+  cbtEditQuestions[idx].image_preview = URL.createObjectURL(file);
+  renderCbtEditQuestions();
+  try {
+    var url = await uploadCbtImage(file);
+    syncAllEditQuestions();
+    cbtEditQuestions[idx].image_url = url;
+    cbtEditQuestions[idx].image_preview = url;
+    cbtEditQuestions[idx].uploading = false;
+    renderCbtEditQuestions();
+  } catch (e) {
+    syncAllEditQuestions();
+    cbtEditQuestions[idx].uploading = false;
+    cbtEditQuestions[idx].image_url = "";
+    cbtEditQuestions[idx].image_preview = "";
+    renderCbtEditQuestions();
+    alert("Diagram upload failed: " + e.message);
+  }
+}
+
+function clearEditQuestionImage(idx) {
+  syncAllEditQuestions();
+  if (!cbtEditQuestions[idx]) return;
+  cbtEditQuestions[idx].image_url = "";
+  cbtEditQuestions[idx].image_preview = "";
+  cbtEditQuestions[idx].uploading = false;
+  renderCbtEditQuestions();
+}
+
+async function openCbtExamEdit(id) {
+  var panel = document.getElementById("cbt-edit-panel");
+  var err = document.getElementById("cbt-edit-error");
+  if (err) err.textContent = "";
+  try {
+    var data = await adminApi("/api/v1/admin/cbt/exams/" + encodeURIComponent(id));
+    cbtEditExamId = id;
+    document.getElementById("cbt-edit-title").value = data.title || "";
+    document.getElementById("cbt-edit-duration").value = data.duration_minutes || 30;
+    document.getElementById("cbt-edit-publish").checked = !!data.is_published;
+    document.getElementById("cbt-edit-heading").textContent =
+      "Preview / edit — " + (data.subject || "") + " (" + (data.exam_type || "") + ")";
+    cbtEditQuestions = (data.questions || []).map(function (q) {
+      return {
+        id: q.id || null,
+        question_text: q.question_text || "",
+        option_a: q.option_a || "",
+        option_b: q.option_b || "",
+        option_c: q.option_c || "",
+        option_d: q.option_d || "",
+        correct_option: (q.correct_option || "A").toUpperCase().slice(0, 1),
+        topic: q.topic || "",
+        explanation: q.explanation || "",
+        image_url: q.image_url || "",
+        image_preview: q.image_url || "",
+        uploading: false,
+      };
+    });
+    if (!cbtEditQuestions.length) cbtEditQuestions = [emptyQuestion()];
+    renderCbtEditQuestions();
+    if (panel) {
+      panel.style.display = "block";
+      panel.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  } catch (e) {
+    alert(e.message || "Could not load exam");
+  }
+}
+
+function cancelCbtExamEdit() {
+  cbtEditExamId = null;
+  cbtEditQuestions = [];
+  var panel = document.getElementById("cbt-edit-panel");
+  if (panel) panel.style.display = "none";
+}
+
+async function saveCbtExamEdit() {
+  var err = document.getElementById("cbt-edit-error");
+  var btn = document.getElementById("btn-save-cbt-edit");
+  if (!cbtEditExamId) return;
+  if (err) err.textContent = "";
+  syncAllEditQuestions();
+  var title = (document.getElementById("cbt-edit-title").value || "").trim();
+  if (!title) {
+    if (err) err.textContent = "Enter an exam title.";
+    return;
+  }
+  var questions = [];
+  for (var i = 0; i < cbtEditQuestions.length; i++) {
+    var q = cbtEditQuestions[i];
+    if (!q.question_text.trim()) {
+      if (err) err.textContent = "Question " + (i + 1) + " is empty.";
+      return;
+    }
+    if (!q.option_a.trim() || !q.option_b.trim() || !q.option_c.trim() || !q.option_d.trim()) {
+      if (err) err.textContent = "Fill in all four options for question " + (i + 1) + ".";
+      return;
+    }
+    if (q.uploading) {
+      if (err) err.textContent = "Wait for the diagram on question " + (i + 1) + " to finish uploading.";
+      return;
+    }
+    var item = {
+      question_text: q.question_text.trim(),
+      option_a: q.option_a.trim(),
+      option_b: q.option_b.trim(),
+      option_c: q.option_c.trim(),
+      option_d: q.option_d.trim(),
+      correct_option: q.correct_option,
+    };
+    if ((q.topic || "").trim()) item.topic = q.topic.trim();
+    if ((q.explanation || "").trim()) item.explanation = q.explanation.trim();
+    if (q.image_url) item.image_url = q.image_url;
+    questions.push(item);
+  }
+  if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+  try {
+    await adminApi("/api/v1/admin/cbt/exams/" + encodeURIComponent(cbtEditExamId), {
+      method: "PUT",
+      body: JSON.stringify({
+        title: title,
+        duration_minutes: parseInt(document.getElementById("cbt-edit-duration").value, 10) || 30,
+        is_published: !!document.getElementById("cbt-edit-publish").checked,
+        questions: questions,
+      }),
+    });
+    alert("Exam updated.");
+    cancelCbtExamEdit();
+    if (currentAdminPage === "past-questions") loadPastQuestionsAdmin();
+    else loadCbt();
+  } catch (e) {
+    if (err) err.textContent = e.message;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Save changes"; }
+  }
+}
+
+async function loadCbtSettings() {
+  var msg = document.getElementById("cbt-settings-msg");
+  var bankEl = document.getElementById("cbt-bank-table");
+  try {
+    var data = await adminApi("/api/v1/admin/cbt-settings");
+    var s = (data && data.settings) || {};
+    function setSel(id, val) {
+      var el = document.getElementById(id);
+      if (el) el.value = val ? "true" : "false";
+    }
+    function setNum(id, val) {
+      var el = document.getElementById(id);
+      if (el) el.value = val != null ? val : "";
+    }
+    setSel("cbt-set-enabled", s.cbt_enabled !== false);
+    setSel("cbt-set-rand-q", s.randomize_questions !== false);
+    setSel("cbt-set-rand-opt", s.randomize_options !== false);
+    setSel("cbt-set-resume", s.allow_resume !== false);
+    setSel("cbt-set-autosubmit", s.auto_submit_on_timeout !== false);
+    setNum("cbt-set-jamb-q", s.jamb_questions_per_subject);
+    setNum("cbt-set-jamb-eng", s.jamb_english_questions);
+    setNum("cbt-set-jamb-dur", s.jamb_duration_minutes);
+    setNum("cbt-set-jamb-subj", s.jamb_subjects_required);
+    setNum("cbt-set-waec-q", s.waec_questions_per_subject);
+    setNum("cbt-set-waec-dur", s.waec_duration_minutes);
+    setNum("cbt-set-neco-q", s.neco_questions_per_subject);
+    setNum("cbt-set-neco-dur", s.neco_duration_minutes);
+    var bank = (data && data.question_bank) || [];
+    if (bankEl) {
+      if (!bank.length) {
+        bankEl.innerHTML = '<div class="empty-state">No published practice questions in the bank yet.</div>';
+      } else {
+        bankEl.innerHTML = '<table class="data-table"><thead><tr><th>Exam</th><th>Subject</th><th>Questions in bank</th></tr></thead><tbody>' +
+          bank.map(function (r) {
+            return "<tr><td>" + escHtml(r.exam_type) + "</td><td>" + escHtml(r.subject) + "</td><td>" +
+              escHtml(r.total_questions) + "</td></tr>";
+          }).join("") + "</tbody></table>";
+      }
+    }
+    if (msg) msg.textContent = "";
+  } catch (e) {
+    if (msg) msg.textContent = e.message;
+    if (bankEl) bankEl.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
+  }
+}
+
+async function saveCbtSettings() {
+  var msg = document.getElementById("cbt-settings-msg");
+  function boolVal(id) {
+    return (document.getElementById(id) || {}).value === "true";
+  }
+  function numVal(id) {
+    return parseInt((document.getElementById(id) || {}).value || "0", 10);
+  }
+  try {
+    await adminApi("/api/v1/admin/cbt-settings", {
+      method: "PUT",
+      body: JSON.stringify({
+        cbt_enabled: boolVal("cbt-set-enabled"),
+        randomize_questions: boolVal("cbt-set-rand-q"),
+        randomize_options: boolVal("cbt-set-rand-opt"),
+        allow_resume: boolVal("cbt-set-resume"),
+        auto_submit_on_timeout: boolVal("cbt-set-autosubmit"),
+        jamb_questions_per_subject: numVal("cbt-set-jamb-q"),
+        jamb_english_questions: numVal("cbt-set-jamb-eng"),
+        jamb_duration_minutes: numVal("cbt-set-jamb-dur"),
+        jamb_subjects_required: numVal("cbt-set-jamb-subj"),
+        waec_questions_per_subject: numVal("cbt-set-waec-q"),
+        waec_duration_minutes: numVal("cbt-set-waec-dur"),
+        neco_questions_per_subject: numVal("cbt-set-neco-q"),
+        neco_duration_minutes: numVal("cbt-set-neco-dur"),
+      }),
+    });
+    if (msg) msg.textContent = "Settings saved.";
+    loadCbtSettings();
+  } catch (e) {
+    if (msg) msg.textContent = e.message;
+  }
+}
+
 async function loadCbt() {
   var el = document.getElementById("cbt-table");
+  if (!el) return;
+  el.innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    var params = new URLSearchParams();
+    params.set("exam_type", cbtActiveBank || "JAMB");
+    params.set("paper_kind", "cbt_practice");
+    var subject = ((document.getElementById("cbt-filter-subject") || {}).value || "").trim();
+    var q = ((document.getElementById("cbt-filter-search") || {}).value || "").trim();
+    if (subject) params.set("subject", subject);
+    if (q) params.set("q", q);
+    var rows = await adminApi("/api/v1/admin/cbt/exams?" + params.toString());
+    if (!rows) return;
+    rows = rows.filter(function (e) {
+      return !e.is_school_exam && e.paper_kind !== "past_questions";
+    });
+    loadCbtBankSummary();
+    if (!rows.length) {
+      el.innerHTML = '<div class="empty-state">No ' + escHtml((cbtActiveBank || "").replace(/_/g, " ")) +
+        " practice exams yet. Upload questions for this bank above.</div>";
+      return;
+    }
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Title</th><th>Subject</th><th>Type</th><th>Questions</th><th>Status</th><th></th></tr></thead><tbody>' +
+      rows.map(function (e) {
+        var typeBadge = '<span class="badge ok">' + escHtml(e.exam_type) + "</span>";
+        var pub = e.is_published ? '<span class="badge ok">Published</span>' : '<span class="badge muted">Draft</span>';
+        return "<tr><td>" + escHtml(e.title) + "</td><td>" + escHtml(e.subject) + "</td>" +
+          "<td>" + typeBadge + "</td><td>" + e.total_questions + "</td><td>" + pub + "</td>" +
+          '<td class="actions">' +
+          '<button class="btn-sm" onclick="openCbtExamEdit(\'' + e.id + '\')">Edit questions</button>' +
+          '<button class="btn-sm" onclick="toggleCbtPublish(\'' + e.id + '\')">Toggle publish</button>' +
+          '<button class="btn-sm danger" onclick="deleteCbt(\'' + e.id + '\')">Delete set</button>' +
+          "</td></tr>";
+      }).join("") + "</tbody></table>";
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
+  }
+}
+
+async function loadPastQuestionsAdmin() {
+  var el = document.getElementById("pq-table");
+  if (!el) return;
   el.innerHTML = '<div class="loading">Loading…</div>';
   try {
     var rows = await adminApi("/api/v1/admin/cbt/exams");
     if (!rows) return;
-    if (!rows.length) { el.innerHTML = '<div class="empty-state">No CBT exams. Create one or click Seed Exams.</div>'; return; }
-    el.innerHTML = '<table class="data-table"><thead><tr><th>Title</th><th>Subject</th><th>Type</th><th>Questions</th><th>Status</th><th></th></tr></thead><tbody>' +
+    rows = rows.filter(function (e) { return e.paper_kind === "past_questions"; });
+    if (!rows.length) { el.innerHTML = '<div class="empty-state">No past question papers yet. Upload one above.</div>'; return; }
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Title</th><th>Subject</th><th>Board</th><th>Questions</th><th>Status</th><th></th></tr></thead><tbody>' +
       rows.map(function (e) {
-        var typeBadge = e.is_school_exam
-          ? '<span class="badge school">School</span>'
-          : (e.paper_kind === "past_questions"
-            ? '<span class="badge ok">Past Questions</span>'
-            : '<span class="badge ok">' + escHtml(e.exam_type) + '</span>');
         var pub = e.is_published ? '<span class="badge ok">Published</span>' : '<span class="badge muted">Draft</span>';
         return '<tr><td>' + escHtml(e.title) + '</td><td>' + escHtml(e.subject) + '</td>' +
-          '<td>' + typeBadge + '</td><td>' + e.total_questions + '</td><td>' + pub + '</td>' +
+          '<td><span class="badge ok">' + escHtml(e.exam_type) + '</span></td><td>' + e.total_questions + '</td><td>' + pub + '</td>' +
           '<td class="actions">' +
+          '<button class="btn-sm" onclick="openCbtExamEdit(\'' + e.id + '\')">Edit questions &amp; images</button>' +
           '<button class="btn-sm" onclick="toggleCbtPublish(\'' + e.id + '\')">Toggle publish</button>' +
-          '<button class="btn-sm danger" onclick="deleteCbt(\'' + e.id + '\')">Delete</button>' +
+          '<button class="btn-sm danger" onclick="deleteCbt(\'' + e.id + '\')">Delete set</button>' +
           '</td></tr>';
       }).join("") + '</tbody></table>';
   } catch (e) {
@@ -1000,12 +1563,14 @@ async function loadCbt() {
 async function createCbt() {
   var err = document.getElementById("cbt-form-error");
   var btn = document.getElementById("btn-create-cbt");
+  if (!err || !btn) return;
   err.textContent = "";
   syncAllQuestions();
 
-  var title = document.getElementById("cbt-title").value.trim();
-  var subject = document.getElementById("cbt-subject").value.trim();
-  var yearRaw = document.getElementById("cbt-year").value.trim();
+  var title = (document.getElementById("cbt-title") || {}).value || "";
+  var subject = (document.getElementById("cbt-subject") || {}).value || "";
+  title = String(title).trim();
+  subject = String(subject).trim();
   if (!title) {
     err.textContent = "Enter an exam title.";
     return;
@@ -1013,19 +1578,6 @@ async function createCbt() {
   if (!subject) {
     err.textContent = "Pick a subject.";
     return;
-  }
-  if (!yearRaw) {
-    err.textContent = "Pick the exam year.";
-    return;
-  }
-  var year = parseInt(yearRaw, 10);
-
-  var isSchool = cbtMode === "school";
-  if (isSchool) {
-    if (!document.getElementById("cbt-start").value || !document.getElementById("cbt-end").value) {
-      err.textContent = "School exams need an open and close date/time.";
-      return;
-    }
   }
 
   var questions = [];
@@ -1060,21 +1612,13 @@ async function createCbt() {
   var body = {
     title: title,
     subject: subject,
-    year: year,
-    exam_type: document.getElementById("cbt-type").value,
-    duration_minutes: parseInt(document.getElementById("cbt-duration").value, 10) || 30,
-    is_school_exam: isSchool,
-    paper_kind: cbtMode === "past" ? "past_questions" : "cbt_practice",
-    camera_required: isSchool && document.getElementById("cbt-camera").checked,
-    block_minimize: isSchool && document.getElementById("cbt-block-min").checked,
-    is_published: document.getElementById("cbt-publish").checked,
+    exam_type: (document.getElementById("cbt-type") || {}).value || "JAMB",
+    duration_minutes: parseInt((document.getElementById("cbt-duration") || {}).value, 10) || 30,
+    is_school_exam: false,
+    paper_kind: "cbt_practice",
+    is_published: !!(document.getElementById("cbt-publish") || {}).checked,
     questions: questions,
   };
-
-  if (isSchool) {
-    body.scheduled_start = new Date(document.getElementById("cbt-start").value).toISOString();
-    body.scheduled_end = new Date(document.getElementById("cbt-end").value).toISOString();
-  }
 
   btn.disabled = true;
   btn.textContent = "Creating…";
@@ -1082,34 +1626,36 @@ async function createCbt() {
     await adminApi("/api/v1/admin/cbt/exams", { method: "POST", body: JSON.stringify(body) });
     document.getElementById("cbt-title").value = "";
     document.getElementById("cbt-subject").value = "";
-    document.getElementById("cbt-year").value = "";
-    document.getElementById("cbt-start").value = "";
-    document.getElementById("cbt-end").value = "";
     cbtQuestions = [emptyQuestion()];
     renderCbtQuestions();
     err.textContent = "";
-    alert(isSchool ? "School exam created!" : "Practice CBT created!");
+    alert("Practice CBT created!");
     loadCbt();
   } catch (e) {
     err.textContent = e.message;
   } finally {
     btn.disabled = false;
-    btn.textContent = isSchool ? "Create school exam" : "Create practice exam";
+    btn.textContent = "Create practice exam";
   }
 }
 
 async function toggleCbtPublish(id) {
   try {
     await adminApi("/api/v1/admin/cbt/exams/" + id + "/publish", { method: "PATCH" });
-    loadCbt();
+    if (currentAdminPage === "past-questions") loadPastQuestionsAdmin();
+    else loadCbt();
   } catch (e) { alert(e.message); }
 }
 
 async function deleteCbt(id) {
-  if (!confirm("Delete this exam permanently?")) return;
+  if (!confirm("Delete this exam set permanently?\n\nThis removes the set and all of its questions. It does not delete other subjects.")) return;
   try {
     await adminApi("/api/v1/admin/cbt/exams/" + id, { method: "DELETE" });
-    loadCbt();
+    if (currentAdminPage === "past-questions") loadPastQuestionsAdmin();
+    else {
+      loadCbt();
+      loadCbtBankSummary();
+    }
   } catch (e) { alert(e.message); }
 }
 
@@ -1133,72 +1679,84 @@ async function seedCbt() {
 }
 
 async function importCbtFile() {
-  var err = document.getElementById("cbt-import-error");
-  var ok = document.getElementById("cbt-import-success");
-  var btn = document.getElementById("btn-import-cbt");
-  var input = document.getElementById("cbt-import-file");
-  err.textContent = "";
-  ok.textContent = "";
+  cbtMode = "practice";
+  return importPaperFile({
+    prefix: "cbt",
+    paperKind: "cbt_practice",
+    btnLabel: "Upload & create exam(s)",
+    afterSave: loadCbt,
+  });
+}
+
+async function importPastQuestionsFile() {
+  cbtMode = "past";
+  return importPaperFile({
+    prefix: "pq",
+    paperKind: "past_questions",
+    btnLabel: "Upload & create paper(s)",
+    afterSave: loadPastQuestionsAdmin,
+  });
+}
+
+async function importPaperFile(opts) {
+  var prefix = opts.prefix;
+  var err = document.getElementById(prefix + "-import-error");
+  var ok = document.getElementById(prefix + "-import-success");
+  var btn = document.getElementById(prefix === "pq" ? "btn-import-pq" : "btn-import-cbt");
+  var input = document.getElementById(prefix + "-import-file");
+  if (err) err.textContent = "";
+  if (ok) ok.textContent = "";
 
   if (!input || !input.files || !input.files[0]) {
-    err.textContent = "Choose a .json, .csv, .pdf, or .docx file first.";
+    if (err) err.textContent = "Choose a .json, .csv, .pdf, or .docx file first.";
     return;
   }
 
   var file = input.files[0];
-  var yearRaw = (document.getElementById("cbt-import-year") || {}).value || "";
-  yearRaw = String(yearRaw).trim();
   var fields = {
-    title: document.getElementById("cbt-import-title").value.trim(),
-    subject: document.getElementById("cbt-import-subject").value.trim(),
-    year: yearRaw,
-    exam_type: document.getElementById("cbt-import-type").value,
-    duration_minutes: parseInt(document.getElementById("cbt-import-duration").value, 10) || 60,
-    is_published: document.getElementById("cbt-import-publish").checked,
-    skip_duplicates: document.getElementById("cbt-import-skip-dup").checked,
-    paper_kind: cbtMode === "past" ? "past_questions" : "cbt_practice",
+    title: (document.getElementById(prefix + "-import-title") || {}).value || "",
+    subject: (document.getElementById(prefix + "-import-subject") || {}).value || "",
+    year: "",
+    exam_type: (document.getElementById(prefix + "-import-type") || {}).value || "JAMB",
+    duration_minutes: parseInt((document.getElementById(prefix + "-import-duration") || {}).value, 10) || 60,
+    is_published: !!(document.getElementById(prefix + "-import-publish") || {}).checked,
+    skip_duplicates: !!(document.getElementById(prefix + "-import-skip-dup") || {}).checked,
+    paper_kind: opts.paperKind,
   };
+  fields.title = String(fields.title).trim();
+  fields.subject = String(fields.subject).trim();
 
   if (!fields.subject) {
-    err.textContent = "Pick a subject so students can find this exam.";
-    return;
-  }
-  if (!fields.year) {
-    err.textContent = "Pick the exam year (required for past questions).";
+    if (err) err.textContent = "Pick a subject so students can find this exam.";
     return;
   }
   if (!fields.title) {
-    fields.title = fields.exam_type + " " + fields.subject + " " + fields.year;
+    fields.title = fields.exam_type + " " + fields.subject;
   }
 
   var needsPreview = /\.(pdf|docx)$/i.test(file.name || "");
   if (needsPreview) {
-    btn.disabled = true;
-    btn.textContent = "Extracting questions…";
+    if (btn) { btn.disabled = true; btn.textContent = "Extracting questions…"; }
     try {
       var preview = await previewCbtFile(file);
       if (!preview) return;
-      // Show review panel so admin can fix answers before it becomes student CBT.
-      renderCbtPreview(preview);
-      ok.textContent = "Review the extracted questions below, then click Confirm & save exam.";
-      btn.disabled = false;
-      btn.textContent = "Upload & create exam(s)";
+      renderPaperPreview(prefix, preview);
+      if (ok) ok.textContent = "Review the extracted questions below, then click Confirm & save.";
     } catch (e) {
-      err.textContent = e.message;
-      btn.disabled = false;
-      btn.textContent = "Upload & create exam(s)";
+      if (err) err.textContent = e.message;
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = opts.btnLabel; }
     }
     return;
   }
 
-  btn.disabled = true;
-  btn.textContent = "Uploading…";
+  if (btn) { btn.disabled = true; btn.textContent = "Uploading…"; }
   try {
     var r = await uploadCbtExamFile(file, fields);
     if (!r) return;
     var lines = [];
     if (r.created_count) {
-      lines.push("Created " + r.created_count + " exam(s) for " + fields.subject + " " + fields.year + ":");
+      lines.push("Created " + r.created_count + " exam(s) for " + fields.subject + ":");
       (r.created || []).forEach(function (e) {
         lines.push("• " + e.title + " (" + e.total_questions + " questions)");
       });
@@ -1206,14 +1764,13 @@ async function importCbtFile() {
     if (r.skipped_count) {
       lines.push("Skipped " + r.skipped_count + " duplicate title(s).");
     }
-    ok.textContent = lines.join(" ");
+    if (ok) ok.textContent = lines.join(" ");
     input.value = "";
-    loadCbt();
+    if (opts.afterSave) opts.afterSave();
   } catch (e) {
-    err.textContent = e.message;
+    if (err) err.textContent = e.message;
   } finally {
-    btn.disabled = false;
-    btn.textContent = "Upload & create exam(s)";
+    if (btn) { btn.disabled = false; btn.textContent = opts.btnLabel; }
   }
 }
 
@@ -1227,101 +1784,136 @@ async function downloadCbtTemplate() {
 
 /* ── PDF import preview / confirm ── */
 var cbtPreviewData = null;
+var cbtPreviewPrefix = "cbt";
 
 function renderCbtPreview(preview) {
+  renderPaperPreview("cbt", preview);
+}
+
+function renderPaperPreview(prefix, preview) {
   cbtPreviewData = preview;
-  var panel = document.getElementById("cbt-preview-panel");
-  var list = document.getElementById("cbt-preview-list");
-  var summary = document.getElementById("cbt-preview-summary");
-  var warnBox = document.getElementById("cbt-preview-warnings");
-  document.getElementById("cbt-preview-error").textContent = "";
+  cbtPreviewPrefix = prefix || "cbt";
+  var panel = document.getElementById(prefix + "-preview-panel");
+  var list = document.getElementById(prefix + "-preview-list");
+  var summary = document.getElementById(prefix + "-preview-summary");
+  var warnBox = document.getElementById(prefix + "-preview-warnings");
+  var errEl = document.getElementById(prefix + "-preview-error");
+  if (errEl) errEl.textContent = "";
 
   var lowConf = preview.low_confidence_count || 0;
-  summary.textContent = preview.total_questions + " question(s) extracted" +
-    (preview.answer_key_found ? " (answer key found)" : " (no answer key found)") +
-    (lowConf ? " — " + lowConf + " need review" : "");
+  if (summary) {
+    summary.textContent = preview.total_questions + " question(s) extracted" +
+      (preview.answer_key_found ? " (answer key found)" : " (no answer key found)") +
+      (lowConf ? " — " + lowConf + " need review" : "");
+  }
 
-  warnBox.innerHTML = (preview.warnings || []).map(function (w) {
-    return '<p class="cbt-hint small" style="color:#c47f17">&#9888; ' + escHtml(w) + '</p>';
-  }).join("");
+  if (warnBox) {
+    warnBox.innerHTML = (preview.warnings || []).map(function (w) {
+      return '<p class="cbt-hint small" style="color:#c47f17">&#9888; ' + escHtml(w) + '</p>';
+    }).join("");
+  }
 
   var threshold = preview.low_confidence_threshold || 0;
-  list.innerHTML = (preview.questions || []).map(function (q, i) {
-    var flagged = (q.confidence != null && q.confidence < threshold) || (q.issues || []).length > 0;
-    var issues = (q.issues || []).map(function (s) {
-      return '<p class="cbt-hint small" style="color:#c47f17;margin:2px 0">&#9888; ' + escHtml(s) + '</p>';
+  var idPrefix = prefix + "-pv";
+  if (list) {
+    list.innerHTML = (preview.questions || []).map(function (q, i) {
+      var flagged = (q.confidence != null && q.confidence < threshold) || (q.issues || []).length > 0;
+      var issues = (q.issues || []).map(function (s) {
+        return '<p class="cbt-hint small" style="color:#c47f17;margin:2px 0">&#9888; ' + escHtml(s) + '</p>';
+      }).join("");
+      var optSel = ["", "A", "B", "C", "D"].map(function (o) {
+        var label = o || "— pick answer —";
+        var sel = (q.correct_option || "") === o ? " selected" : "";
+        return '<option value="' + o + '"' + sel + ">" + label + "</option>";
+      }).join("");
+      return '<div class="panel" style="margin:10px 0;padding:12px;' +
+        (flagged ? "border:1px solid #e8a33d" : "") + '" id="' + idPrefix + '-q-' + i + '">' +
+        '<div class="form-row" style="justify-content:space-between;align-items:center">' +
+          '<label class="chk-label"><input type="checkbox" id="' + idPrefix + '-inc-' + i + '" checked /> ' +
+          "Question " + escHtml(String(q.number || i + 1)) +
+          (q.confidence != null ? ' <span class="cbt-hint small">(confidence ' + Math.round(q.confidence * 100) + "%)</span>" : "") +
+          "</label>" +
+        "</div>" +
+        issues +
+        '<label><span>Question</span><textarea id="' + idPrefix + '-text-' + i + '" rows="2" style="width:100%">' + escHtml(q.question_text) + "</textarea></label>" +
+        '<div class="form-grid">' +
+          '<label><span>Option A</span><input id="' + idPrefix + '-a-' + i + '" value="' + escHtml(q.option_a) + '" /></label>' +
+          '<label><span>Option B</span><input id="' + idPrefix + '-b-' + i + '" value="' + escHtml(q.option_b) + '" /></label>' +
+          '<label><span>Option C</span><input id="' + idPrefix + '-c-' + i + '" value="' + escHtml(q.option_c) + '" /></label>' +
+          '<label><span>Option D</span><input id="' + idPrefix + '-d-' + i + '" value="' + escHtml(q.option_d) + '" /></label>' +
+          '<label><span>Correct option</span><select id="' + idPrefix + '-ans-' + i + '">' + optSel + "</select></label>" +
+        "</div>" +
+      "</div>";
     }).join("");
-    var optSel = ["", "A", "B", "C", "D"].map(function (o) {
-      var label = o || "— pick answer —";
-      var sel = (q.correct_option || "") === o ? " selected" : "";
-      return '<option value="' + o + '"' + sel + ">" + label + "</option>";
-    }).join("");
-    return '<div class="panel" style="margin:10px 0;padding:12px;' +
-      (flagged ? "border:1px solid #e8a33d" : "") + '" id="pv-q-' + i + '">' +
-      '<div class="form-row" style="justify-content:space-between;align-items:center">' +
-        '<label class="chk-label"><input type="checkbox" id="pv-inc-' + i + '" checked /> ' +
-        "Question " + escHtml(String(q.number || i + 1)) +
-        (q.confidence != null ? ' <span class="cbt-hint small">(confidence ' + Math.round(q.confidence * 100) + "%)</span>" : "") +
-        "</label>" +
-      "</div>" +
-      issues +
-      '<label><span>Question</span><textarea id="pv-text-' + i + '" rows="2" style="width:100%">' + escHtml(q.question_text) + "</textarea></label>" +
-      '<div class="form-grid">' +
-        '<label><span>Option A</span><input id="pv-a-' + i + '" value="' + escHtml(q.option_a) + '" /></label>' +
-        '<label><span>Option B</span><input id="pv-b-' + i + '" value="' + escHtml(q.option_b) + '" /></label>' +
-        '<label><span>Option C</span><input id="pv-c-' + i + '" value="' + escHtml(q.option_c) + '" /></label>' +
-        '<label><span>Option D</span><input id="pv-d-' + i + '" value="' + escHtml(q.option_d) + '" /></label>' +
-        '<label><span>Correct option</span><select id="pv-ans-' + i + '">' + optSel + "</select></label>" +
-      "</div>" +
-    "</div>";
-  }).join("");
+  }
 
-  panel.style.display = "";
-  panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (panel) {
+    panel.style.display = "";
+    panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 }
 
 function cancelCbtPreview() {
+  cancelPaperPreview("cbt");
+}
+
+function cancelPastPreview() {
+  cancelPaperPreview("pq");
+}
+
+function cancelPaperPreview(prefix) {
   cbtPreviewData = null;
-  document.getElementById("cbt-preview-panel").style.display = "none";
-  document.getElementById("cbt-preview-list").innerHTML = "";
+  var panel = document.getElementById(prefix + "-preview-panel");
+  var list = document.getElementById(prefix + "-preview-list");
+  if (panel) panel.style.display = "none";
+  if (list) list.innerHTML = "";
 }
 
 async function confirmCbtPreviewUi() {
-  if (!cbtPreviewData) return;
-  var err = document.getElementById("cbt-preview-error");
-  var btn = document.getElementById("btn-confirm-cbt-preview");
-  err.textContent = "";
+  return confirmPaperPreviewUi("cbt", "cbt_practice", loadCbt);
+}
 
-  var subject = document.getElementById("cbt-import-subject").value.trim();
-  var year = (document.getElementById("cbt-import-year") || {}).value || "";
-  year = String(year).trim();
-  var examType = document.getElementById("cbt-import-type").value;
-  var title = document.getElementById("cbt-import-title").value.trim() ||
-    (examType + " " + subject + " " + year);
-  if (!subject) { err.textContent = "Pick a subject in the upload form above."; return; }
-  if (!year) { err.textContent = "Pick the exam year in the upload form above."; return; }
+async function confirmPastPreviewUi() {
+  return confirmPaperPreviewUi("pq", "past_questions", loadPastQuestionsAdmin);
+}
+
+async function confirmPaperPreviewUi(prefix, paperKind, afterSave) {
+  if (!cbtPreviewData) return;
+  var err = document.getElementById(prefix + "-preview-error");
+  var btn = document.getElementById(prefix === "pq" ? "btn-confirm-pq-preview" : "btn-confirm-cbt-preview");
+  if (err) err.textContent = "";
+
+  var subject = ((document.getElementById(prefix + "-import-subject") || {}).value || "").trim();
+  var examType = (document.getElementById(prefix + "-import-type") || {}).value || "JAMB";
+  var title = ((document.getElementById(prefix + "-import-title") || {}).value || "").trim() ||
+    (examType + " " + subject);
+  if (!subject) {
+    if (err) err.textContent = "Pick a subject in the upload form above.";
+    return;
+  }
 
   var threshold = cbtPreviewData.low_confidence_threshold || 0;
   var questions = [];
+  var idPrefix = prefix + "-pv";
   for (var i = 0; i < cbtPreviewData.questions.length; i++) {
-    var inc = document.getElementById("pv-inc-" + i);
+    var inc = document.getElementById(idPrefix + "-inc-" + i);
     if (!inc || !inc.checked) continue;
     var orig = cbtPreviewData.questions[i];
     var q = {
-      question_text: document.getElementById("pv-text-" + i).value.trim(),
-      option_a: document.getElementById("pv-a-" + i).value.trim(),
-      option_b: document.getElementById("pv-b-" + i).value.trim(),
-      option_c: document.getElementById("pv-c-" + i).value.trim(),
-      option_d: document.getElementById("pv-d-" + i).value.trim(),
-      correct_option: document.getElementById("pv-ans-" + i).value,
+      question_text: document.getElementById(idPrefix + "-text-" + i).value.trim(),
+      option_a: document.getElementById(idPrefix + "-a-" + i).value.trim(),
+      option_b: document.getElementById(idPrefix + "-b-" + i).value.trim(),
+      option_c: document.getElementById(idPrefix + "-c-" + i).value.trim(),
+      option_d: document.getElementById(idPrefix + "-d-" + i).value.trim(),
+      correct_option: document.getElementById(idPrefix + "-ans-" + i).value,
     };
     if (!q.question_text || !q.option_a || !q.option_b || !q.option_c || !q.option_d || !q.correct_option) {
-      err.textContent = "Question " + (orig.number || i + 1) +
-        " is incomplete — fill in the text, all four options, and the correct answer (or untick it).";
+      if (err) {
+        err.textContent = "Question " + (orig.number || i + 1) +
+          " is incomplete — fill in the text, all four options, and the correct answer (or untick it).";
+      }
       return;
     }
-    // An edited-and-completed question counts as reviewed; only carry the low
-    // confidence flag when nothing was fixed and the extractor flagged it.
     var edited = q.question_text !== (orig.question_text || "").trim() ||
       q.correct_option !== (orig.correct_option || "");
     if (orig.confidence != null && orig.confidence < threshold && !edited) {
@@ -1330,39 +1922,42 @@ async function confirmCbtPreviewUi() {
     questions.push(q);
   }
   if (!questions.length) {
-    err.textContent = "Keep at least one question ticked.";
+    if (err) err.textContent = "Keep at least one question ticked.";
     return;
   }
 
   var payload = {
     title: title,
     subject: subject,
-    year: parseInt(year, 10),
+    year: null,
     exam_type: examType,
-    duration_minutes: parseInt(document.getElementById("cbt-import-duration").value, 10) || 60,
-    is_published: document.getElementById("cbt-import-publish").checked,
-    skip_duplicates: document.getElementById("cbt-import-skip-dup").checked,
-    paper_kind: cbtMode === "past" ? "past_questions" : "cbt_practice",
+    duration_minutes: parseInt((document.getElementById(prefix + "-import-duration") || {}).value, 10) || 60,
+    is_published: !!(document.getElementById(prefix + "-import-publish") || {}).checked,
+    skip_duplicates: !!(document.getElementById(prefix + "-import-skip-dup") || {}).checked,
+    paper_kind: paperKind,
     questions: questions,
   };
 
-  btn.disabled = true;
-  btn.textContent = "Saving…";
+  if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
   try {
     var r = await confirmCbtImport(payload);
     if (!r) return;
     var msg = "Created \"" + r.title + "\" with " + r.total_questions + " question(s)." +
       (r.is_published ? "" : " Saved unpublished.");
     if (r.note) msg += " " + r.note;
-    document.getElementById("cbt-import-success").textContent = msg;
-    document.getElementById("cbt-import-file").value = "";
-    cancelCbtPreview();
-    loadCbt();
+    var ok = document.getElementById(prefix + "-import-success");
+    if (ok) ok.textContent = msg;
+    var fileInput = document.getElementById(prefix + "-import-file");
+    if (fileInput) fileInput.value = "";
+    cancelPaperPreview(prefix);
+    if (afterSave) afterSave();
   } catch (e) {
-    err.textContent = e.message;
+    if (err) err.textContent = e.message;
   } finally {
-    btn.disabled = false;
-    btn.textContent = "Confirm & save exam";
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = prefix === "pq" ? "Confirm & save paper" : "Confirm & save exam";
+    }
   }
 }
 
@@ -1445,56 +2040,191 @@ async function removeAllRecommendations() {
   } catch (e) { alert(e.message); }
 }
 
-/* ── Student group approval ── */
-async function loadPendingStudentGroups() {
+/* ── Student group management ── */
+var sgGroupsCache = [];
+var sgSearchTimer = null;
+
+function debounceStudentGroupsSearch() {
+  if (sgSearchTimer) clearTimeout(sgSearchTimer);
+  sgSearchTimer = setTimeout(loadStudentGroupsAdmin, 300);
+}
+
+function renderStudentGroupsTable(rows) {
+  var el = document.getElementById("student-groups-table");
+  if (!el) return;
+  if (!rows || !rows.length) {
+    el.innerHTML = '<div class="empty-state">No groups match this filter.</div>';
+    return;
+  }
+  el.innerHTML =
+    '<table class="data-table"><thead><tr><th>Group</th><th>Creator</th><th>Status</th><th>Members</th><th>Listed?</th><th>Created</th><th>Actions</th></tr></thead><tbody>' +
+    rows.map(function (g) {
+      var status = g.is_approved
+        ? '<span style="color:#15803d;font-weight:700">Approved</span>'
+        : '<span style="color:#b45309;font-weight:700">Pending</span>';
+      if (g.is_restricted) status += '<br><span style="color:#b91c1c;font-weight:700">Restricted</span>';
+      var actions =
+        '<button class="btn-sm" onclick="viewGroupChat(\'' + g.id + '\', ' + JSON.stringify(g.name || "Group") + ')">View chat</button> ';
+      if (!g.is_approved) {
+        actions +=
+          '<button class="btn-sm primary" onclick="approveStudentGroup(\'' + g.id + '\')">Approve</button> ' +
+          '<button class="btn-sm" onclick="rejectStudentGroup(\'' + g.id + '\')">Reject</button> ';
+      }
+      actions += g.is_restricted
+        ? '<button class="btn-sm primary" onclick="restrictStudentGroup(\'' + g.id + '\', false)">Unrestrict</button> '
+        : '<button class="btn-sm" onclick="restrictStudentGroup(\'' + g.id + '\', true)">Restrict</button> ';
+      actions += '<button class="btn-sm danger" onclick="deleteStudentGroup(\'' + g.id + '\', ' + JSON.stringify(g.name || "Group") + ')">Delete</button>';
+      return (
+        '<tr><td><strong>' + escHtml(g.name) + '</strong><br><span style="font-size:.8rem;color:#8aa896">' +
+        escHtml(g.description || "") + '</span></td>' +
+        '<td>' + escHtml(g.creator_name) + '<br><span style="font-size:.75rem;color:#6b8f75">' + escHtml(g.creator_email) + '</span></td>' +
+        '<td>' + status + '</td>' +
+        '<td>' + (g.member_count || 0) + '</td>' +
+        '<td>' + (g.is_community_listed ? "Yes" : "No") + '</td>' +
+        '<td>' + fmtDate(g.created_at) + '</td>' +
+        '<td class="actions">' + actions + '</td></tr>'
+      );
+    }).join("") +
+    "</tbody></table>";
+}
+
+async function adminCreateStudentGroup() {
+  var msg = document.getElementById("sg-create-msg");
+  var nameEl = document.getElementById("sg-create-name");
+  var descEl = document.getElementById("sg-create-desc");
+  var name = ((nameEl && nameEl.value) || "").trim();
+  var desc = ((descEl && descEl.value) || "").trim();
+  if (msg) msg.textContent = "";
+  try {
+    await adminApi("/api/v1/admin/student-groups", {
+      method: "POST",
+      body: JSON.stringify({ name: name, description: desc, is_public: true, is_community_listed: true }),
+    });
+    if (nameEl) nameEl.value = "";
+    if (descEl) descEl.value = "";
+    if (msg) msg.textContent = "Group created and listed for students.";
+    loadStudentGroupsAdmin();
+  } catch (e) {
+    if (msg) msg.textContent = e.message;
+  }
+}
+
+async function restrictStudentGroup(id, restricted) {
+  try {
+    await adminApi("/api/v1/admin/student-groups/" + id + "/restrict?restricted=" + (restricted ? "true" : "false"), { method: "POST" });
+    loadStudentGroupsAdmin();
+  } catch (e) { alert(e.message); }
+}
+
+async function loadStudentGroupsAdmin() {
   var el = document.getElementById("student-groups-table");
   if (!el) return;
   el.innerHTML = '<div class="loading">Loading…</div>';
   try {
-    var rows = await adminApi("/api/v1/admin/student-groups/pending");
-    if (!rows || !rows.length) {
-      el.innerHTML = '<div class="empty-state">No groups waiting for approval.</div>';
-      return;
-    }
-    el.innerHTML =
-      '<table class="data-table"><thead><tr><th>Group</th><th>Creator</th><th>Members</th><th>Listed?</th><th>Date</th><th></th></tr></thead><tbody>' +
-      rows.map(function (g) {
-        return (
-          '<tr><td><strong>' + escHtml(g.name) + '</strong><br><span style="font-size:.8rem;color:#8aa896">' +
-          escHtml(g.description || "") + '</span></td>' +
-          '<td>' + escHtml(g.creator_name) + '<br><span style="font-size:.75rem;color:#6b8f75">' + escHtml(g.creator_email) + '</span></td>' +
-          '<td>' + (g.member_count || 0) + '</td>' +
-          '<td>' + (g.is_community_listed ? "Yes" : "No") + '</td>' +
-          '<td>' + fmtDate(g.created_at) + '</td>' +
-          '<td class="actions">' +
-          '<button class="btn-sm primary" onclick="approveStudentGroup(\'' + g.id + '\')">Approve</button> ' +
-          '<button class="btn-sm danger" onclick="rejectStudentGroup(\'' + g.id + '\')">Reject</button>' +
-          '</td></tr>'
-        );
-      }).join("") +
-      "</tbody></table>";
+    var status = ((document.getElementById("sg-filter") || {}).value || "all").trim();
+    var q = ((document.getElementById("sg-search") || {}).value || "").trim();
+    var url = "/api/v1/admin/student-groups?status=" + encodeURIComponent(status);
+    if (q) url += "&q=" + encodeURIComponent(q);
+    var rows = await adminApi(url);
+    sgGroupsCache = Array.isArray(rows) ? rows : [];
+    renderStudentGroupsTable(sgGroupsCache);
   } catch (e) {
     el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + '</div>';
   }
 }
 
+async function loadPendingStudentGroups() {
+  var filter = document.getElementById("sg-filter");
+  if (filter) filter.value = "pending";
+  return loadStudentGroupsAdmin();
+}
+
+function closeGroupChatPanel() {
+  var panel = document.getElementById("sg-chat-panel");
+  if (panel) panel.style.display = "none";
+  var msgs = document.getElementById("sg-chat-messages");
+  if (msgs) msgs.innerHTML = "";
+  var mem = document.getElementById("sg-members-wrap");
+  if (mem) mem.innerHTML = "";
+}
+
+async function viewGroupChat(id, name) {
+  if (!id) return;
+  var panel = document.getElementById("sg-chat-panel");
+  var title = document.getElementById("sg-chat-title");
+  var msgs = document.getElementById("sg-chat-messages");
+  var memWrap = document.getElementById("sg-members-wrap");
+  if (title) title.textContent = "Chat — " + (name || "Group");
+  if (panel) panel.style.display = "block";
+  if (msgs) msgs.innerHTML = '<div class="loading">Loading chat…</div>';
+  if (memWrap) memWrap.innerHTML = "";
+  if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  try {
+    var members = await adminApi("/api/v1/admin/student-groups/" + id + "/members");
+    if (memWrap && Array.isArray(members) && members.length) {
+      memWrap.innerHTML =
+        "<strong>Members (" + members.length + "):</strong> " +
+        members.map(function (m) {
+          return escHtml(m.name || m.email) + (m.role === "admin" ? " (admin)" : "");
+        }).join(", ");
+    }
+    var data = await adminApi("/api/v1/admin/student-groups/" + id + "/messages?limit=300");
+    var list = (data && data.messages) || [];
+    if (!msgs) return;
+    if (!list.length) {
+      msgs.innerHTML = '<div class="empty-state">No chat messages in this group yet.</div>';
+      return;
+    }
+    msgs.innerHTML = list
+      .map(function (m) {
+        return (
+          '<article class="sg-chat-msg"><div class="sg-chat-meta"><strong>' +
+          escHtml(m.author_name || "User") +
+          '</strong><span>' +
+          escHtml(m.author_email || "") +
+          " · " +
+          fmtDate(m.created_at) +
+          '</span></div><div class="sg-chat-body">' +
+          escHtml(m.content || "") +
+          "</div></article>"
+        );
+      })
+      .join("");
+    msgs.scrollTop = msgs.scrollHeight;
+  } catch (e) {
+    if (msgs) msgs.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
+  }
+}
+
 async function approveStudentGroup(id) {
-  if (!confirm("Approve this group? Students can chat once approved.")) return;
+  if (!confirm("Approve this group? The creator and members can chat once approved.")) return;
   try {
     var res = await adminApi("/api/v1/admin/student-groups/" + id + "/approve", { method: "POST" });
     alert((res && res.message) || "Group approved.");
-    loadPendingStudentGroups();
+    loadStudentGroupsAdmin();
   } catch (e) {
     alert(e.message);
   }
 }
 
 async function rejectStudentGroup(id) {
-  if (!confirm("Reject this group? It will stay inactive.")) return;
+  if (!confirm("Reject this group? It will stay inactive (not deleted).")) return;
   try {
     var res = await adminApi("/api/v1/admin/student-groups/" + id + "/reject", { method: "POST" });
     alert((res && res.message) || "Group rejected.");
-    loadPendingStudentGroups();
+    loadStudentGroupsAdmin();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+async function deleteStudentGroup(id, name) {
+  if (!confirm('Delete group "' + (name || "this group") + '" permanently? All chat and members will be removed.')) return;
+  try {
+    var res = await adminApi("/api/v1/admin/student-groups/" + id, { method: "DELETE" });
+    alert((res && res.message) || "Group deleted.");
+    closeGroupChatPanel();
+    loadStudentGroupsAdmin();
   } catch (e) {
     alert(e.message);
   }
@@ -1666,6 +2396,50 @@ async function loadMarketplaceBookings() {
   }
 }
 
+function isMarketplaceDigitalCategory(category) {
+  return category === "soft_copy" || category === "software";
+}
+
+function syncMarketplaceFileFields() {
+  var sel = document.getElementById("mp-category");
+  var pdfWrap = document.getElementById("mp-pdf-wrap");
+  var imageLabel = document.getElementById("mp-image-label");
+  var digital = sel && isMarketplaceDigitalCategory(sel.value);
+  if (pdfWrap) pdfWrap.classList.toggle("hidden", !digital);
+  if (imageLabel) {
+    var span = imageLabel.querySelector("span");
+    if (span) span.textContent = digital ? "Cover image (optional)" : "Product image *";
+  }
+  if (!digital) {
+    var pdfInput = document.getElementById("mp-pdf-file");
+    var pdfName = document.getElementById("mp-pdf-name");
+    if (pdfInput) pdfInput.value = "";
+    if (pdfName) {
+      pdfName.textContent = "";
+      pdfName.classList.add("hidden");
+    }
+  }
+}
+
+function previewMarketplacePdf(input) {
+  var nameEl = document.getElementById("mp-pdf-name");
+  if (!nameEl) return;
+  var file = input && input.files && input.files[0];
+  if (!file) {
+    nameEl.textContent = "";
+    nameEl.classList.add("hidden");
+    return;
+  }
+  nameEl.textContent = "Selected: " + file.name;
+  nameEl.classList.remove("hidden");
+}
+
+function buildMarketplaceDescription(text, meta) {
+  var clean = String(text || "").trim();
+  if (!meta) return clean || null;
+  return (clean ? clean + "\n\n" : "") + "---\nSIA_META:" + JSON.stringify(meta);
+}
+
 function previewMarketplaceImage(input) {
   var img = document.getElementById("mp-image-preview");
   if (!img) return;
@@ -1720,40 +2494,73 @@ async function createMarketplaceProduct() {
   var image = (document.getElementById("mp-image").value || "").trim();
   var desc = (document.getElementById("mp-desc").value || "").trim();
   var fileInput = document.getElementById("mp-image-file");
+  var pdfInput = document.getElementById("mp-pdf-file");
+  var digital = isMarketplaceDigitalCategory(category);
   if (!title) {
     msg.textContent = "Title is required.";
     return;
   }
   var hasFile = fileInput && fileInput.files && fileInput.files[0];
-  if (!hasFile && !image) {
+  var hasPdf = pdfInput && pdfInput.files && pdfInput.files[0];
+  if (digital && !hasPdf) {
+    msg.textContent = "Upload a PDF (or ZIP) for this soft copy.";
+    return;
+  }
+  if (!digital && !hasFile && !image) {
     msg.textContent = "Add a product image (file or URL).";
     return;
   }
   msg.textContent = "Saving…";
   try {
+    var digitalUrl = "";
+    var digitalName = "";
+    if (hasPdf) {
+      msg.textContent = "Uploading PDF…";
+      var pdfUp = await uploadMarketplaceFile(pdfInput.files[0]);
+      if (!pdfUp) return;
+      digitalUrl = (pdfUp.file_url || pdfUp.image_url || pdfUp.secure_url || "").trim();
+      digitalName = pdfUp.filename || pdfInput.files[0].name || "file.pdf";
+      if (!digitalUrl) {
+        msg.textContent = "PDF upload failed — try again.";
+        return;
+      }
+    }
     if (hasFile) {
       msg.textContent = "Uploading image…";
       var up = await uploadMarketplaceImage(fileInput.files[0]);
       if (!up) return;
       image = (up.image_url || up.secure_url || image || "").trim();
     }
-    if (!image) {
+    if (!digital && !image) {
       msg.textContent = "Image upload failed — try again or paste a URL.";
       return;
     }
+    var meta = digital
+      ? {
+          product_type: "digital",
+          digital_url: digitalUrl,
+          digital_name: digitalName,
+          images: image ? [image] : [],
+        }
+      : null;
     var created = await adminApi("/api/v1/admin/marketplace/products", {
       method: "POST",
       body: JSON.stringify({
         title: title,
         category: category,
         price: price,
-        description: desc || null,
-        image_url: image,
+        description: buildMarketplaceDescription(desc, meta),
+        image_url: image || null,
         currency: "NGN",
         is_available: true,
+        is_free: !!(document.getElementById("mp-free") && document.getElementById("mp-free").checked) || price <= 0,
       }),
     });
-    if (!created || !(created.image_url || image)) {
+    if (!created) {
+      msg.textContent = "Could not save product.";
+      return;
+    }
+    if (!digital && !(created.image_url || image)) {
       msg.textContent = "Product saved but image URL missing — re-upload the photo.";
       loadMarketplaceProducts();
       return;
@@ -1763,6 +2570,12 @@ async function createMarketplaceProduct() {
     document.getElementById("mp-image").value = "";
     document.getElementById("mp-desc").value = "";
     if (fileInput) fileInput.value = "";
+    if (pdfInput) pdfInput.value = "";
+    var pdfName = document.getElementById("mp-pdf-name");
+    if (pdfName) {
+      pdfName.textContent = "";
+      pdfName.classList.add("hidden");
+    }
     var prev = document.getElementById("mp-image-preview");
     if (prev) {
       if (prev._blobUrl) {
@@ -1774,7 +2587,9 @@ async function createMarketplaceProduct() {
       prev.classList.add("hidden");
       prev.removeAttribute("src");
     }
-    msg.textContent = "Product posted with image — it should appear in the student Marketplace now.";
+    msg.textContent = digital
+      ? "Soft copy posted — it should appear in the student Marketplace now."
+      : "Product posted with image — it should appear in the student Marketplace now.";
     loadMarketplaceProducts();
   } catch (e) {
     msg.textContent = e.message || "Failed to post product.";
@@ -2089,36 +2904,156 @@ document.addEventListener("change", function (ev) {
 });
 
 /* ── Library ── */
+var librarySearchTimer = null;
+var kindLibrarySearchTimer = null;
+var kindVideosSearchTimer = null;
+
+function onLibraryAdminSearchInput() {
+  clearTimeout(librarySearchTimer);
+  librarySearchTimer = setTimeout(loadLibraryAdmin, 300);
+}
+
+function onKindLibrarySearchInput() {
+  clearTimeout(kindLibrarySearchTimer);
+  kindLibrarySearchTimer = setTimeout(loadKindLibraryAdmin, 300);
+}
+
+function onKindVideosSearchInput() {
+  clearTimeout(kindVideosSearchTimer);
+  kindVideosSearchTimer = setTimeout(loadKindVideosAdmin, 300);
+}
+
+function renderLibraryAdminTable(el, rows, reloadFn) {
+  if (!el) return;
+  if (!rows || !rows.length) {
+    el.innerHTML = '<div class="empty-state">No materials match your search.</div>';
+    return;
+  }
+  el.innerHTML =
+    '<table class="data-table"><thead><tr><th>Title</th><th>Audience</th><th>Type</th><th>Subject</th><th>Board</th><th>Year</th><th>Access</th><th>Download</th><th></th></tr></thead><tbody>' +
+    rows.map(function (b) {
+      var access = b.is_free ? "Free" : "₦" + Number(b.price || 0).toLocaleString();
+      var dl = !!b.is_downloadable;
+      var aud = (b.library_target && (b.library_target.value || b.library_target)) || "student";
+      var isPast = /past/i.test(String(b.category || ""));
+      var priceBtn = isPast
+        ? ' <button class="btn-sm" onclick="editLibraryPrice(\'' + b.id + "', " + Number(b.price || 0) + ')">Price</button>'
+        : "";
+      return "<tr><td>" + escHtml(b.title) + "</td><td>" + escHtml(String(aud)) + "</td><td>" + escHtml(b.category || "Books") +
+        "</td><td>" + escHtml(b.subject || "—") +
+        "</td><td>" + escHtml(b.exam_type || "—") +
+        "</td><td>" + escHtml(b.year != null ? String(b.year) : "—") +
+        "</td><td>" + escHtml(access) +
+        '</td><td><span class="badge ' + (dl ? "ok" : "muted") + '">' + (dl ? "Downloadable" : "Read only") +
+        '</span></td><td class="actions"><button class="btn-sm" onclick=\'changeLibraryCategory(' +
+        JSON.stringify(String(b.id)) +
+        ", " +
+        JSON.stringify(String(b.category || "Books")) +
+        ")\'>Change type</button> <button class=\"btn-sm\" onclick=\"toggleLibraryDownloadable('" +
+        b.id + "', " + (dl ? "true" : "false") + ')">' +
+        (dl ? "Make read-only" : "Allow download") +
+        '</button>' + priceBtn + ' <button class="btn-sm" onclick="replaceLibraryPdf(\'' +
+        b.id +
+        "')\">Replace PDF</button> <button class=\"btn-sm danger\" onclick=\"deleteLibraryBook('" +
+        b.id + "')\">Remove</button></td></tr>";
+    }).join("") +
+    "</tbody></table>";
+}
+
+async function editLibraryPrice(id, currentPrice) {
+  var next = window.prompt("Set price in Naira (₦)", String(currentPrice || 0));
+  if (next == null) return;
+  var price = Number(String(next).replace(/,/g, "").trim());
+  if (!(price > 0)) {
+    alert("Enter a price greater than zero.");
+    return;
+  }
+  try {
+    await adminApi("/api/v1/admin/library/books/" + encodeURIComponent(id), {
+      method: "PATCH",
+      body: JSON.stringify({ price: price, is_free: false }),
+    });
+    loadLibraryAdmin();
+  } catch (e) {
+    alert(e.message || "Could not update price.");
+  }
+
 async function loadLibraryAdmin() {
   var el = document.getElementById("library-table");
   if (!el) return;
   el.innerHTML = '<div class="loading">Loading…</div>';
   try {
-    var rows = await adminApi("/api/v1/admin/library/books");
-    if (!rows || !rows.length) {
-      el.innerHTML = '<div class="empty-state">No library materials yet.</div>';
-      return;
-    }
-    el.innerHTML =
-      '<table class="data-table"><thead><tr><th>Title</th><th>Type</th><th>Subject</th><th>Board</th><th>Access</th><th>Download</th><th></th></tr></thead><tbody>' +
-      rows.map(function (b) {
-        var access = b.is_free ? "Free" : "₦" + Number(b.price || 0).toLocaleString();
-        var dl = !!b.is_downloadable;
-        return "<tr><td>" + escHtml(b.title) + "</td><td>" + escHtml(b.category || "Books") +
-          "</td><td>" + escHtml(b.subject || "—") +
-          "</td><td>" + escHtml(b.exam_type || "—") + "</td><td>" + escHtml(access) +
-          '</td><td><span class="badge ' + (dl ? "ok" : "muted") + '">' + (dl ? "Downloadable" : "Read only") +
-          '</span></td><td class="actions"><button class="btn-sm" onclick="toggleLibraryDownloadable(\'' +
-          b.id + "', " + (dl ? "true" : "false") + ')">' +
-          (dl ? "Make read-only" : "Allow download") +
-          '</button> <button class="btn-sm" onclick="replaceLibraryPdf(\'' +
-          b.id +
-          "')\">Replace PDF</button> <button class=\"btn-sm danger\" onclick=\"deleteLibraryBook('" +
-          b.id + "')\">Remove</button></td></tr>";
-      }).join("") +
-      "</tbody></table>";
+    var target = (document.getElementById("lib-target-filter") || {}).value || "student";
+    var q = ((document.getElementById("lib-search") || {}).value || "").trim();
+    var path = "/api/v1/admin/library/books?library_target=" + encodeURIComponent(target);
+    if (q) path += "&q=" + encodeURIComponent(q);
+    var rows = await adminApi(path);
+    renderLibraryAdminTable(el, rows, loadLibraryAdmin);
   } catch (e) {
     el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
+  }
+}
+
+async function loadKindLibraryAdmin() {
+  var el = document.getElementById("kind-library-table");
+  if (!el) return;
+  el.innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    var q = ((document.getElementById("klib-search") || {}).value || "").trim();
+    var path = "/api/v1/admin/library/books?library_target=kind";
+    if (q) path += "&q=" + encodeURIComponent(q);
+    var rows = await adminApi(path);
+    renderLibraryAdminTable(el, rows, loadKindLibraryAdmin);
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
+  }
+}
+
+async function uploadKindLibraryBook() {
+  var err = document.getElementById("klib-form-error");
+  var ok = document.getElementById("klib-form-ok");
+  if (err) err.textContent = "";
+  if (ok) ok.textContent = "";
+  var title = ((document.getElementById("klib-title") || {}).value || "").trim();
+  var subject = ((document.getElementById("klib-subject") || {}).value || "").trim();
+  var category = (document.getElementById("klib-category") || {}).value || "Books";
+  var level = (document.getElementById("klib-level") || {}).value || "";
+  var desc = ((document.getElementById("klib-desc") || {}).value || "").trim();
+  var fileInput = document.getElementById("klib-file");
+  var file = fileInput && fileInput.files && fileInput.files[0];
+  var isFree = (document.getElementById("klib-access") || {}).value !== "paid";
+  var price = Number((document.getElementById("klib-price") || {}).value || 0);
+  if (!title || !subject) {
+    if (err) err.textContent = "Title and subject are required.";
+    return;
+  }
+  if (!file) {
+    if (err) err.textContent = "Choose a PDF file.";
+    return;
+  }
+  try {
+    var up = await uploadLibraryPdf(file);
+    if (!up || !up.file_key) throw new Error("Upload did not return a file key.");
+    await adminApi("/api/v1/admin/library/books", {
+      method: "POST",
+      body: JSON.stringify({
+        title: title,
+        subject: subject,
+        file_key: up.file_key,
+        description: desc || null,
+        category: category,
+        education_level: level || null,
+        library_target: "kind",
+        is_free: isFree,
+        price: isFree ? 0 : price,
+        is_downloadable: true,
+      }),
+    });
+    if (fileInput) fileInput.value = "";
+    if (ok) ok.textContent = "Uploaded to Kids Library.";
+    loadKindLibraryAdmin();
+  } catch (e) {
+    if (err) err.textContent = e.message || "Upload failed.";
   }
 }
 
@@ -2128,6 +3063,8 @@ function onLibraryCategoryChange() {
     var access = document.getElementById("lib-access");
     if (access) access.value = "paid";
     if (typeof toggleLibraryPrice === "function") toggleLibraryPrice();
+    var yearEl = document.getElementById("lib-year");
+    if (yearEl) yearEl.focus();
   }
 }
 
@@ -2156,6 +3093,7 @@ function onLibraryPdfPicked(input) {
   }
   if (err) err.textContent = "";
   if (nameEl) nameEl.textContent = "Selected: " + file.name;
+  // Auto-fill title from filename when Title is still empty
   if (titleEl && !String(titleEl.value || "").trim()) {
     titleEl.value = String(file.name || "")
       .replace(/\.pdf$/i, "")
@@ -2177,9 +3115,12 @@ function showLibraryFormMsg(kind, text) {
 }
 
 async function uploadLibraryBook() {
+  var err = document.getElementById("lib-form-error");
+  var ok = document.getElementById("lib-form-ok");
   var btn = document.getElementById("btn-lib-upload");
   var nameEl = document.getElementById("lib-file-name");
-  showLibraryFormMsg("err", "");
+  if (err) err.textContent = "";
+  if (ok) ok.textContent = "";
   var titleEl = document.getElementById("lib-title");
   var title = (titleEl && titleEl.value || "").trim();
   var subject = document.getElementById("lib-subject").value.trim();
@@ -2191,6 +3132,8 @@ async function uploadLibraryBook() {
   var term = document.getElementById("lib-term").value;
   var week = Number(document.getElementById("lib-week").value || 0);
   var topic = document.getElementById("lib-topic").value.trim();
+  var yearRaw = (document.getElementById("lib-year") || {}).value;
+  var year = yearRaw ? Number(yearRaw) : null;
   var isFree = document.getElementById("lib-access").value === "free";
   var price = Number(document.getElementById("lib-price").value || 0);
   var isDownloadable = (document.getElementById("lib-downloadable") || {}).value === "yes";
@@ -2219,7 +3162,13 @@ async function uploadLibraryBook() {
     return;
   }
   if (!exam) {
-    showLibraryFormMsg("err", "Choose Class / level (e.g. SS2).");
+    showLibraryFormMsg("err", category === "Past Questions"
+      ? "Choose exam type (JAMB / WAEC / NECO / COMMON_ENTRANCE)."
+      : "Choose Class / level (e.g. SS2).");
+    return;
+  }
+  if (category === "Past Questions" && (!year || year < 1990 || year > 2100)) {
+    showLibraryFormMsg("err", "Enter a valid exam year for Past Questions (e.g. 2025).");
     return;
   }
   var pdfName = (file.name || "").toLowerCase();
@@ -2258,6 +3207,7 @@ async function uploadLibraryBook() {
         term: term || null,
         scheme_week: week || null,
         scheme_topic: topic || null,
+        year: year || null,
         library_target: "student",
         is_free: isFree,
         price: isFree ? 0 : price,
@@ -2273,6 +3223,8 @@ async function uploadLibraryBook() {
     document.getElementById("lib-price").value = "";
     document.getElementById("lib-week").value = "";
     document.getElementById("lib-topic").value = "";
+    var yearEl = document.getElementById("lib-year");
+    if (yearEl) yearEl.value = "";
     fileInput.value = "";
     if (nameEl) nameEl.textContent = "Choose a .pdf (not a photo).";
     var dlSel = document.getElementById("lib-downloadable");
@@ -2283,6 +3235,11 @@ async function uploadLibraryBook() {
     var savedTitle = created.title || title;
     showLibraryFormMsg(
       "ok",
+      "Saved «" + savedTitle + "» as " + savedCat + ". Refreshing list…"
+    );
+    await loadLibraryAdmin();
+    showLibraryFormMsg(
+      "ok",
       "Saved «" +
         savedTitle +
         "» as " +
@@ -2291,7 +3248,6 @@ async function uploadLibraryBook() {
         savedCat +
         "»."
     );
-    await loadLibraryAdmin();
   } catch (e) {
     showLibraryFormMsg("err", e.message || "Upload failed.");
   } finally {
@@ -2323,6 +3279,25 @@ async function replaceLibraryPdf(id) {
   input.click();
 }
 
+async function changeLibraryCategory(id, currentCategory) {
+  var next = window.prompt(
+    "Set material type:\nPast Questions\nLesson Notes\nStudy Materials\nScheme of Work\nBooks",
+    currentCategory || "Lesson Notes"
+  );
+  if (next == null) return;
+  next = String(next || "").trim();
+  if (!next) return;
+  try {
+    await adminApi("/api/v1/admin/library/books/" + encodeURIComponent(id), {
+      method: "PATCH",
+      body: JSON.stringify({ category: next }),
+    });
+    loadLibraryAdmin();
+  } catch (e) {
+    alert(e.message || "Could not change type.");
+  }
+}
+
 async function toggleLibraryDownloadable(id, currentlyDownloadable) {
   try {
     await adminApi("/api/v1/admin/library/books/" + encodeURIComponent(id), {
@@ -2345,65 +3320,146 @@ async function deleteLibraryBook(id) {
   }
 }
 
-/* ── Video Tutorials ── */
-async function loadAdminVideos() {
-  var el = document.getElementById("videos-table");
-  if (!el) return;
-  el.innerHTML = '<div class="loading">Loading…</div>';
+async function generateCbtCoupons() {
+  var msg = document.getElementById("coupon-msg");
+  var email = ((document.getElementById("coupon-student-email") || {}).value || "").trim();
   try {
-    var data = await adminApi("/api/v1/admin/videos");
-    var rows = (data && data.videos) || [];
-    if (!rows.length) {
-      el.innerHTML = '<div class="empty-state">No video tutorials yet. Publish one above.</div>';
-      return;
-    }
-    el.innerHTML =
-      '<table class="data-table"><thead><tr><th>Title</th><th>Subject</th><th>URL</th><th></th></tr></thead><tbody>' +
-      rows
-        .map(function (v) {
-          return (
-            "<tr><td>" +
-            escHtml(v.title) +
-            "</td><td>" +
-            escHtml(v.subject) +
-            "</td><td>" +
-            escHtml(v.video_url) +
-            '</td><td><button class="btn-sm danger" onclick="deleteAdminVideo(\'' +
-            v.id +
-            "')\">Remove</button></td></tr>"
-          );
-        })
-        .join("") +
-      "</tbody></table>";
+    var body = {
+      package_id: document.getElementById("coupon-package").value,
+      count: parseInt(document.getElementById("coupon-count").value || "1", 10),
+      max_uses: parseInt(document.getElementById("coupon-uses").value || "1", 10),
+    };
+    if (email) body.student_email = email;
+    var data = await adminApi("/api/v1/admin/cbt-coupons", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    var codes = ((data && data.coupons) || []).map(function (c) { return c.code; }).join(", ");
+    if (msg) msg.textContent = "Created: " + codes;
+    loadCbtCoupons();
+  } catch (e) {
+    if (msg) msg.textContent = e.message;
+  }
+}
+
+async function loadCbtCoupons() {
+  var el = document.getElementById("coupon-table");
+  if (!el) return;
+  el.innerHTML = '<div class="loading">Loading coupons…</div>';
+  try {
+    var data = await adminApi("/api/v1/admin/cbt-coupons");
+    var rows = (data && data.coupons) || [];
+    if (!rows.length) { el.innerHTML = '<div class="empty-state">No coupons yet.</div>'; return; }
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Code</th><th>Package</th><th>Student / Redeemed by</th><th>Used</th><th>Active</th><th></th></tr></thead><tbody>' +
+      rows.map(function (c) {
+        var who = "";
+        if (c.assigned_email) who += "Assigned: " + escHtml(c.assigned_email);
+        var red = (c.redeemed_by || []).map(function (r) {
+          return escHtml((r.name || "") + (r.email ? (" (" + r.email + ")") : ""));
+        }).join("<br>");
+        if (red) who += (who ? "<br>" : "") + "Used by: " + red;
+        if (!who) who = "—";
+        return '<tr><td><strong>' + escHtml(c.code) + '</strong></td><td>' + escHtml(c.package_id) + '</td><td>' +
+          who + '</td><td>' +
+          escHtml(c.used_count + " / " + c.max_uses) + '</td><td>' + (c.is_active ? "Yes" : "No") +
+          '</td><td>' + (c.is_active ? '<button class="btn-sm danger" onclick="deactivateCbtCoupon(\'' + c.id + '\')">Disable</button>' : "") + "</td></tr>";
+      }).join("") + "</tbody></table>";
   } catch (e) {
     el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
   }
 }
 
-async function createAdminVideo() {
-  var msg = document.getElementById("vid-msg");
-  var title = (document.getElementById("vid-title") && document.getElementById("vid-title").value || "").trim();
-  var subject = (document.getElementById("vid-subject") && document.getElementById("vid-subject").value || "General").trim();
-  var url = (document.getElementById("vid-url") && document.getElementById("vid-url").value || "").trim();
-  if (!title || !url) {
-    if (msg) msg.textContent = "Title and video URL are required.";
-    return;
+async function deactivateCbtCoupon(id) {
+  try {
+    await adminApi("/api/v1/admin/cbt-coupons/" + id + "/deactivate", { method: "POST" });
+    loadCbtCoupons();
+  } catch (e) { alert(e.message); }
+}
+
+async function loadAdminVideos() {
+  var el = document.getElementById("videos-table");
+  if (!el) return;
+  el.innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    var data = await adminApi("/api/v1/admin/videos?audience=student");
+    var rows = (data && data.videos) || [];
+    if (!rows.length) { el.innerHTML = '<div class="empty-state">No student videos yet.</div>'; return; }
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Title</th><th>Subject</th><th>Tutor</th><th>URL</th><th></th></tr></thead><tbody>' +
+      rows.map(function (v) {
+        return '<tr><td>' + escHtml(v.title) + '</td><td>' + escHtml(v.subject) + '</td><td>' + escHtml(v.tutor_name || "—") +
+          '</td><td>' + escHtml(v.video_url) +
+          '</td><td><button class="btn-sm danger" onclick="deleteAdminVideo(\'' + v.id + '\')">Remove</button></td></tr>';
+      }).join("") + "</tbody></table>";
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
   }
+}
+
+async function loadKindVideosAdmin() {
+  var el = document.getElementById("kind-videos-table");
+  if (!el) return;
+  el.innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    var q = ((document.getElementById("kvid-search") || {}).value || "").trim();
+    var path = "/api/v1/admin/videos?audience=kind";
+    if (q) path += "&q=" + encodeURIComponent(q);
+    var data = await adminApi(path);
+    var rows = (data && data.videos) || [];
+    if (!rows.length) { el.innerHTML = '<div class="empty-state">No kids videos yet.</div>'; return; }
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Title</th><th>Subject</th><th>Tutor</th><th>URL</th><th></th></tr></thead><tbody>' +
+      rows.map(function (v) {
+        return '<tr><td>' + escHtml(v.title) + '</td><td>' + escHtml(v.subject) + '</td><td>' + escHtml(v.tutor_name || "—") +
+          '</td><td>' + escHtml(v.video_url) +
+          '</td><td><button class="btn-sm danger" onclick="deleteAdminVideo(\'' + v.id + '\')">Remove</button></td></tr>';
+      }).join("") + "</tbody></table>";
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
+  }
+}
+
+async function createKindAdminVideo() {
+  var msg = document.getElementById("kvid-msg");
   try {
     await adminApi("/api/v1/admin/videos", {
       method: "POST",
       body: JSON.stringify({
-        title: title,
-        subject: subject || "General",
-        video_url: url,
+        title: (document.getElementById("kvid-title").value || "").trim(),
+        subject: (document.getElementById("kvid-subject").value || "General").trim(),
+        tutor_name: (document.getElementById("kvid-tutor") && document.getElementById("kvid-tutor").value || "").trim(),
+        video_url: (document.getElementById("kvid-url").value || "").trim(),
+        audience: "kind",
       }),
     });
-    if (document.getElementById("vid-title")) document.getElementById("vid-title").value = "";
-    if (document.getElementById("vid-url")) document.getElementById("vid-url").value = "";
-    if (msg) msg.textContent = "Published. Students can watch it under Video Tutorials.";
+    document.getElementById("kvid-title").value = "";
+    document.getElementById("kvid-url").value = "";
+    if (document.getElementById("kvid-tutor")) document.getElementById("kvid-tutor").value = "";
+    if (msg) msg.textContent = "Published to Kids app.";
+    loadKindVideosAdmin();
+  } catch (e) {
+    if (msg) msg.textContent = e.message;
+  }
+}
+
+async function createAdminVideo() {
+  var msg = document.getElementById("vid-msg");
+  try {
+    await adminApi("/api/v1/admin/videos", {
+      method: "POST",
+      body: JSON.stringify({
+        title: (document.getElementById("vid-title").value || "").trim(),
+        subject: (document.getElementById("vid-subject").value || "General").trim(),
+        tutor_name: (document.getElementById("vid-tutor") && document.getElementById("vid-tutor").value || "").trim(),
+        video_url: (document.getElementById("vid-url").value || "").trim(),
+        audience: "student",
+      }),
+    });
+    document.getElementById("vid-title").value = "";
+    document.getElementById("vid-url").value = "";
+    if (document.getElementById("vid-tutor")) document.getElementById("vid-tutor").value = "";
+    if (msg) msg.textContent = "Published to student Video Tutorials.";
     loadAdminVideos();
   } catch (e) {
-    if (msg) msg.textContent = e.message || "Could not publish.";
+    if (msg) msg.textContent = e.message;
   }
 }
 
@@ -2412,8 +3468,243 @@ async function deleteAdminVideo(id) {
   try {
     await adminApi("/api/v1/admin/videos/" + id, { method: "DELETE" });
     loadAdminVideos();
+  } catch (e) { alert(e.message); }
+}
+
+function selectedSchoolId() {
+  var el = document.getElementById("so-school-id");
+  return (el && el.value) || localStorage.getItem("sia_school_id") || "";
+}
+
+function schoolOfficeQuery(extra) {
+  var parts = [];
+  var sid = selectedSchoolId();
+  if (sid) parts.push("school_id=" + encodeURIComponent(sid));
+  if (extra) parts.push(extra);
+  return parts.length ? "?" + parts.join("&") : "";
+}
+
+async function loadSchoolsAdmin() {
+  var el = document.getElementById("schools-table");
+  if (!el) return;
+  el.innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    var data = await adminApi("/api/v1/admin/schools");
+    var rows = (data && data.schools) || [];
+    if (!rows.length) { el.innerHTML = '<div class="empty-state">No schools yet. Add the first school above.</div>'; return; }
+    el.innerHTML = '<table class="data-table"><thead><tr><th>School</th><th>Code</th><th>City</th><th>School admins</th></tr></thead><tbody>' +
+      rows.map(function (s) {
+        var ads = (s.admins || []).map(function (a) { return escHtml(a.full_name) + " (" + escHtml(a.email) + ")"; }).join("<br>");
+        return "<tr><td>" + escHtml(s.name) + "</td><td>" + escHtml(s.code || "—") + "</td><td>" + escHtml(s.city || "—") + "</td><td>" + (ads || "—") + "</td></tr>";
+      }).join("") + "</tbody></table>";
   } catch (e) {
-    alert(e.message);
+    el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
   }
 }
+
+async function createSchoolCampus() {
+  var msg = document.getElementById("sch-msg");
+  try {
+    await adminApi("/api/v1/admin/schools", {
+      method: "POST",
+      body: JSON.stringify({
+        name: document.getElementById("sch-name").value.trim(),
+        city: document.getElementById("sch-city").value.trim() || null,
+        state: document.getElementById("sch-state").value.trim() || null,
+        admin_full_name: (document.getElementById("sch-admin-name") && document.getElementById("sch-admin-name").value.trim()) || document.getElementById("sch-admin-email").value.trim().split("@")[0],
+        admin_email: document.getElementById("sch-admin-email").value.trim(),
+        admin_password: document.getElementById("sch-admin-pass").value,
+      }),
+    });
+    if (msg) msg.textContent = "School created. Send that email and password. They log in on the website Schools tab.";
+    document.getElementById("sch-admin-pass").value = "";
+    loadSchoolsAdmin();
+  } catch (e) {
+    if (msg) msg.textContent = e.message;
+  }
+}
+
+async function loadSchoolOffice() {
+  try {
+    var me = await adminApi("/api/v1/admin/school-office/me");
+    var sel = document.getElementById("so-school-id");
+    var lab = document.getElementById("so-school-label");
+    var pick = document.getElementById("so-school-pick");
+    if (me && me.role === "school_admin") {
+      if (pick) pick.style.display = "none";
+      if (lab) lab.textContent = me.school_name || "";
+      if (me.school_id) localStorage.setItem("sia_school_id", me.school_id);
+      if (me.school_name) localStorage.setItem("sia_school_name", me.school_name);
+    } else if (sel) {
+      if (pick) pick.style.display = "";
+      var cur = sel.value;
+      sel.innerHTML = '<option value="">Select a school…</option>' + ((me && me.schools) || []).map(function (s) {
+        return '<option value="' + escHtml(s.id) + '">' + escHtml(s.name) + "</option>";
+      }).join("");
+      if (cur) sel.value = cur;
+    }
+  } catch (e) {
+    var lab2 = document.getElementById("so-school-label");
+    if (lab2) lab2.textContent = e.message || "";
+  }
+  loadSchoolCandidates();
+  loadSchoolResults();
+  loadSchoolExamCounts();
+}
+
+async function registerSchoolCandidate() {
+  var msg = document.getElementById("so-reg-msg");
+  var subjects = (document.getElementById("so-subjects").value || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+  try {
+    var row = await adminApi("/api/v1/admin/school-office/candidates", {
+      method: "POST",
+      body: JSON.stringify({
+        school_id: selectedSchoolId() || null,
+        class_name: document.getElementById("so-class").value,
+        full_name: document.getElementById("so-name").value.trim(),
+        email: document.getElementById("so-email").value.trim() || null,
+        phone: document.getElementById("so-phone").value.trim() || null,
+        subjects: subjects,
+      }),
+    });
+    if (msg) msg.textContent = "Registered. Rec: " + row.rec_number + " · Access: " + row.access_code;
+    printSchoolSlip(row);
+    loadSchoolCandidates();
+  } catch (e) {
+    if (msg) msg.textContent = e.message;
+  }
+}
+
+async function loadSchoolCandidates() {
+  var el = document.getElementById("so-candidates");
+  if (!el) return;
+  var q = (document.getElementById("so-search") && document.getElementById("so-search").value) || "";
+  try {
+    var data = await adminApi("/api/v1/admin/school-office/candidates" + schoolOfficeQuery(q ? "q=" + encodeURIComponent(q) : ""));
+    var rows = (data && data.candidates) || [];
+    if (!rows.length) { el.innerHTML = '<div class="empty-state">No registered exam students yet.</div>'; return; }
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Name</th><th>Class</th><th>Email</th><th>Rec</th><th>Access</th><th></th></tr></thead><tbody>' +
+      rows.map(function (r) {
+        return '<tr><td>' + escHtml(r.full_name) + '</td><td>' + escHtml(r.class_name) + '</td><td>' + escHtml(r.email || "—") +
+          '</td><td>' + escHtml(r.rec_number) + '</td><td>' + escHtml(r.access_code) +
+          '</td><td><button class="btn-sm" onclick="printSchoolSlipById(\'' + r.id + '\')">Print slip</button></td></tr>';
+      }).join("") + "</tbody></table>";
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
+  }
+}
+
+function printSchoolSlip(row) {
+  var w = window.open("", "_blank");
+  if (!w) { alert("Allow pop-ups to print the slip."); return; }
+  w.document.write("<html><head><title>Registration slip</title><style>body{font-family:Georgia,serif;padding:32px}h1{font-size:20px}table{border-collapse:collapse;width:100%}td{padding:8px;border-bottom:1px solid #ddd}</style></head><body>");
+  w.document.write("<h1>" + (row.print_title || (row.school_name || "Scholaxia") + " — Exam registration slip") + "</h1>");
+  w.document.write("<table><tr><td>Name</td><td>" + (row.full_name || "") + "</td></tr><tr><td>Class</td><td>" + (row.class_name || "") + "</td></tr><tr><td>Rec number</td><td><strong>" + (row.rec_number || "") + "</strong></td></tr><tr><td>Access code</td><td><strong>" + (row.access_code || "") + "</strong></td></tr><tr><td>Subjects</td><td>" + ((row.subjects || []).join(", ")) + "</td></tr></table><p>Keep this slip. You need the access code and rec number on exam day.</p><script>window.print()<\/script></body></html>");
+  w.document.close();
+}
+
+async function printSchoolSlipById(id) {
+  try {
+    var row = await adminApi("/api/v1/admin/school-office/candidates/" + id + "/slip");
+    printSchoolSlip(row);
+  } catch (e) { alert(e.message); }
+}
+
+async function loadSchoolResults() {
+  var el = document.getElementById("so-results");
+  if (!el) return;
+  var cls = (document.getElementById("so-res-class") || {}).value || "";
+  var sub = (document.getElementById("so-res-subject") || {}).value || "";
+  var qs = [];
+  var sid = selectedSchoolId();
+  if (sid) qs.push("school_id=" + encodeURIComponent(sid));
+  if (cls) qs.push("class_name=" + encodeURIComponent(cls));
+  if (sub) qs.push("subject=" + encodeURIComponent(sub));
+  try {
+    var data = await adminApi("/api/v1/admin/school-office/results" + (qs.length ? "?" + qs.join("&") : ""));
+    var rows = (data && data.results) || [];
+    if (!rows.length) { el.innerHTML = '<div class="empty-state">No submitted school-exam results yet.</div>'; return; }
+    el.innerHTML = '<p class="cbt-hint small">' + rows.length + ' result(s). Use your browser Print.</p><table class="data-table"><thead><tr><th>Student</th><th>Email</th><th>Exam</th><th>Subject</th><th>%</th></tr></thead><tbody>' +
+      rows.map(function (r) {
+        return '<tr><td>' + escHtml(r.student_name) + '</td><td>' + escHtml(r.email) + '</td><td>' + escHtml(r.exam_title) + '</td><td>' + escHtml(r.subject) + '</td><td>' + escHtml(r.percentage) + "</td></tr>";
+      }).join("") + "</tbody></table>";
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
+  }
+}
+
+async function loadSchoolExamCounts() {
+  var el = document.getElementById("so-exam-counts");
+  if (!el) return;
+  try {
+    var data = await adminApi("/api/v1/admin/school-office/exam-counts" + schoolOfficeQuery());
+    var rows = (data && data.exams) || [];
+    if (!rows.length) { el.innerHTML = ""; return; }
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Exam ID</th><th>Title</th><th>Subject</th><th>Taken</th></tr></thead><tbody>' +
+      rows.map(function (r) {
+        return '<tr><td><code>' + escHtml(r.id) + '</code></td><td>' + escHtml(r.title) + '</td><td>' + escHtml(r.subject) + '</td><td>' + escHtml(r.taken_count) + "</td></tr>";
+      }).join("") + "</tbody></table>";
+  } catch (_) {}
+}
+
+async function grantSchoolRetake() {
+  var msg = document.getElementById("so-retake-msg");
+  try {
+    var data = await adminApi("/api/v1/admin/school-office/retake", {
+      method: "POST",
+      body: JSON.stringify({
+        student_email: document.getElementById("so-retake-email").value.trim(),
+        exam_id: document.getElementById("so-retake-exam").value.trim(),
+      }),
+    });
+    if (msg) msg.textContent = data.message || "Retake granted.";
+  } catch (e) {
+    if (msg) msg.textContent = e.message;
+  }
+}
+
+async function addSchoolTeacher() {
+  var msg = document.getElementById("so-t-msg");
+  try {
+    await adminApi("/api/v1/admin/school-office/teachers", {
+      method: "POST",
+      body: JSON.stringify({
+        school_id: selectedSchoolId() || null,
+        full_name: document.getElementById("so-t-name").value.trim(),
+        email: document.getElementById("so-t-email").value.trim(),
+        password: document.getElementById("so-t-pass").value,
+        subjects: (document.getElementById("so-t-subjects").value || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean),
+        academic_classes: (document.getElementById("so-t-classes").value || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean),
+      }),
+    });
+    if (msg) msg.textContent = "Teacher created and approved.";
+    document.getElementById("so-t-pass").value = "";
+  } catch (e) {
+    if (msg) msg.textContent = e.message;
+  }
+}
+
+async function hostSchoolLiveClass(startNow) {
+  var msg = document.getElementById("so-live-msg");
+  try {
+    var created = await adminApi("/api/v1/admin/school-office/live-classes", {
+      method: "POST",
+      body: JSON.stringify({
+        school_id: selectedSchoolId() || null,
+        title: document.getElementById("so-live-title").value.trim(),
+        subject: document.getElementById("so-live-subject").value.trim(),
+        start_now: startNow,
+        visibility: document.getElementById("so-live-vis").value,
+        academic_class: document.getElementById("so-live-class").value,
+      }),
+    });
+    if (msg) msg.textContent = startNow ? "Class is live." : "Class created.";
+    if (startNow && created && created.id && confirm("Open classroom now?")) {
+      adminEnterClassroom(created.id, document.getElementById("so-live-title").value.trim(), document.getElementById("so-live-subject").value.trim());
+    }
+  } catch (e) {
+    if (msg) msg.textContent = e.message;
+  }
+}
+
 

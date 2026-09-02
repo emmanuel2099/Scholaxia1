@@ -604,7 +604,7 @@ async def _student_can_access_class(
         invited = _parse_id_list(live_class.invited_student_ids)
         if student_id in invited:
             return True, ""
-        return False, "This is a private class. You were not invited."
+        return False, "This is a private class. Enter the class access code to join."
     if vis == LiveClassVisibility.class_level.value:
         want = (live_class.academic_class or "").replace(" ", "").upper()
         have = (profile.education_level if profile else "") or ""
@@ -676,7 +676,7 @@ async def _notify_for_class(
         elif vis == LiveClassVisibility.private.value:
             title = "Private live class starting now" if live_now else "Private live class scheduled"
             body_live = f"Â«{live_class.title}Â» â€” code {live_class.join_code} is in your Access Code tab."
-            body_up = f"Â«{live_class.title}Â» is scheduled. Only invited students can join."
+            body_up = f"«{live_class.title}» is scheduled. Share code {live_class.join_code} with your students."
             for sid in _parse_id_list(live_class.invited_student_ids):
                 await send_user_notification(db, sid, title, body_live if live_now else body_up, "live_class", data)
         elif vis == LiveClassVisibility.school_group.value and live_class.school_group_id:
@@ -802,36 +802,10 @@ async def create_class(
     if vis not in {v.value for v in LiveClassVisibility}:
         vis = LiveClassVisibility.public.value
 
-    invited_ids: list[str] = [str(x).strip() for x in (payload.invited_student_ids or []) if str(x).strip()]
-    unresolved_emails: list[str] = []
-    if vis == LiveClassVisibility.private.value:
-        # Resolve any emails supplied by the teacher into student ids.
-        seen = set(invited_ids)
-        for raw in (payload.invited_student_emails or []):
-            email = str(raw).strip().lower()
-            if not email:
-                continue
-            res = await db.execute(
-                select(User).where(
-                    User.email == email,
-                    User.role == UserRole.student,
-                    User.is_active == True,  # noqa: E712
-                )
-            )
-            user = res.scalar_one_or_none()
-            if user and str(user.id) not in seen:
-                invited_ids.append(str(user.id))
-                seen.add(str(user.id))
-            elif not user:
-                unresolved_emails.append(email)
-        if unresolved_emails:
-            raise HTTPException(
-                status_code=400,
-                detail="No student found for: " + ", ".join(unresolved_emails),
-            )
+    # Public + Private: code-join only. Do not require (or resolve) email invites.
+    invited_ids: list[str] = []
 
-    if vis == LiveClassVisibility.private.value and not invited_ids:
-        raise HTTPException(status_code=400, detail="Select at least one student for a private class.")
+    # Private classes are code-join only. Email/ID invites are not used.
     if vis == LiveClassVisibility.school_group.value and not payload.school_group_id:
         raise HTTPException(status_code=400, detail="Select a school group for this class.")
 
@@ -862,7 +836,7 @@ async def create_class(
         room_id=room_id,
         join_code=join_code,
         visibility=vis,
-        invited_student_ids=json.dumps(invited_ids) if vis == LiveClassVisibility.private.value else None,
+        invited_student_ids=json.dumps(invited_ids) if vis == LiveClassVisibility.private.value else None,  # filled as students join by code
         school_group_id=school_group_uuid,
         academic_class=(payload.academic_class or "").strip().upper() or None,
         is_live=is_live,
@@ -1005,7 +979,10 @@ async def join_class(
         if visibility == LiveClassVisibility.private.value:
             invited = _parse_id_list(invited_raw)
             if sid not in invited:
-                raise HTTPException(status_code=403, detail="This is a private class. You were not invited.")
+                raise HTTPException(
+                    status_code=403,
+                    detail="This is a private class. Enter the class access code to join.",
+                )
         elif visibility == LiveClassVisibility.school_group.value and school_group_id:
             try:
                 group_res = await db.execute(

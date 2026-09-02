@@ -17,7 +17,7 @@ from datetime import timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -65,6 +65,7 @@ PRODUCT_CLASS_PACKAGE = "class_package"
 PRODUCT_MARKETPLACE_BOOKING = "marketplace_booking"
 PRODUCT_MARKETPLACE_ORDER = "marketplace_order"
 PRODUCT_SKILL_ENROLLMENT = "skill_enrollment"
+PRODUCT_PAST_QUESTION_PDF = "past_question_pdf"
 PRODUCT_TYPES = {
     PRODUCT_LIBRARY_BOOK,
     PRODUCT_CBT_PACKAGE,
@@ -72,6 +73,7 @@ PRODUCT_TYPES = {
     PRODUCT_MARKETPLACE_BOOKING,
     PRODUCT_MARKETPLACE_ORDER,
     PRODUCT_SKILL_ENROLLMENT,
+    PRODUCT_PAST_QUESTION_PDF,
 }
 
 ENTITLEMENT_CBT_PACKAGE = "cbt_package"
@@ -107,6 +109,7 @@ def _new_reference(product_type: str) -> str:
         "marketplace_booking": "market",
         "marketplace_order": "morder",
         "skill_enrollment": "skill",
+        "past_question_pdf": "pastq",
     }[product_type]
     return f"pstk-{short}-{uuid.uuid4().hex}"
 
@@ -297,6 +300,8 @@ async def _resolve_skill_product(
 # ── Idempotent fulfillment ────────────────────────────────────────────────────
 
 async def _grant_book(db: AsyncSession, payment: Payment) -> None:
+    if not payment.student_id:
+        return
     book_uuid = parse_uuid(payment.product_id)
     existing = await db.execute(
         select(BookPurchase).where(
@@ -306,6 +311,28 @@ async def _grant_book(db: AsyncSession, payment: Payment) -> None:
     )
     if existing.scalar_one_or_none() is None:
         db.add(BookPurchase(student_id=payment.student_id, book_id=book_uuid, payment_id=payment.id))
+
+
+async def _grant_past_question_guest(db: AsyncSession, payment: Payment, tx_data: dict | None = None) -> None:
+    """Grant guest PDF access after Paystack success (no student account)."""
+    from app.routers.past_questions_shop import grant_guest_past_question_access
+
+    email = ""
+    meta = (tx_data or {}).get("metadata") if isinstance(tx_data, dict) else None
+    if isinstance(meta, dict):
+        email = str(meta.get("guest_email") or "").strip().lower()
+    desc = payment.description or ""
+    if not email and "guest_email=" in desc:
+        email = desc.split("guest_email=", 1)[1].split("|", 1)[0].strip().lower()
+    if not email:
+        email = "buyer@unknown.local"
+    await grant_guest_past_question_access(
+        db,
+        book_id=parse_uuid(payment.product_id or ""),
+        email=email,
+        payment_id=payment.id,
+        payment_reference=payment.provider_reference,
+    )
 
 
 async def _grant_cbt_package(db: AsyncSession, payment: Payment) -> None:
@@ -425,6 +452,8 @@ async def _fulfill(db: AsyncSession, payment: Payment, tx_data: dict) -> None:
 
     if payment.product_type == PRODUCT_LIBRARY_BOOK:
         await _grant_book(db, payment)
+    elif payment.product_type == PRODUCT_PAST_QUESTION_PDF:
+        await _grant_past_question_guest(db, payment, tx_data)
     elif payment.product_type == PRODUCT_CBT_PACKAGE:
         await _grant_cbt_package(db, payment)
     elif payment.product_type == PRODUCT_CLASS_PACKAGE:
@@ -745,8 +774,8 @@ async def verify_payment(
     return _fulfillment_response(payment)
 
 
-def _fulfillment_response(payment: Payment) -> dict:
-    return {
+def _fulfillment_response(payment: Payment, access_token: str | None = None) -> dict:
+    out = {
         "paid": True,
         "payment_id": str(payment.id),
         "reference": payment.provider_reference,
@@ -754,6 +783,147 @@ def _fulfillment_response(payment: Payment) -> dict:
         "product_id": payment.product_id,
         "has_access": True,
     }
+    if access_token:
+        out["access_token"] = access_token
+        out["download_path"] = f"/api/v1/past-questions/download/{access_token}"
+    return out
+
+
+class GuestPastQuestionInitialize(BaseModel):
+    book_id: str
+    email: EmailStr
+    full_name: Optional[str] = None
+
+
+@router.post("/guest/past-question/initialize")
+async def guest_initialize_past_question(
+    payload: GuestPastQuestionInitialize,
+    db: AsyncSession = Depends(get_db),
+):
+    """Start Paystack checkout for a Past Questions PDF — no student account required."""
+    _require_configured()
+    email = str(payload.email).strip().lower()
+    book_id = (payload.book_id or "").strip()
+    if not book_id:
+        raise HTTPException(status_code=400, detail="book_id is required")
+    try:
+        book_uuid = parse_uuid(book_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid book id")
+
+    book = (
+        await db.execute(select(Book).where(Book.id == book_uuid, Book.is_active.is_(True)))
+    ).scalar_one_or_none()
+    if not book:
+        raise HTTPException(status_code=404, detail="Past question product not found")
+    cat = (getattr(book, "category", "") or "").lower()
+    if "past" not in cat:
+        raise HTTPException(status_code=400, detail="This product is not a Past Questions PDF")
+    if book.is_free or not book.price or float(book.price) <= 0:
+        raise HTTPException(status_code=400, detail="This Past Question is not available for paid purchase")
+
+    amount_naira = float(book.price)
+    amount_kobo = paystack_service.naira_to_kobo(amount_naira)
+    reference = _new_reference(PRODUCT_PAST_QUESTION_PDF)
+    payment = Payment(
+        student_id=None,
+        amount=amount_naira,
+        currency="NGN",
+        status=PaymentStatus.pending,
+        provider=PROVIDER,
+        provider_reference=reference,
+        product_type=PRODUCT_PAST_QUESTION_PDF,
+        product_id=str(book.id),
+        book_id=book.id,
+        description=f"past_question_pdf: {book.title} | guest_email={email}"[:255],
+    )
+    db.add(payment)
+    await db.flush()
+
+    callback = (
+        (settings.PAYSTACK_CALLBACK_URL or "").strip()
+        or "https://scholaxia1.onrender.com/app/past-questions.html"
+    )
+    if "past-questions" not in callback:
+        callback = "https://scholaxia1.onrender.com/app/past-questions.html"
+
+    try:
+        data = await paystack_service.initialize_transaction(
+            email=email,
+            amount_kobo=amount_kobo,
+            reference=reference,
+            callback_url=callback,
+            metadata={
+                "product_type": PRODUCT_PAST_QUESTION_PDF,
+                "product_id": str(book.id),
+                "payment_id": str(payment.id),
+                "guest_email": email,
+                "full_name": (payload.full_name or "")[:120],
+            },
+        )
+    except PaystackError as exc:
+        raise HTTPException(status_code=502, detail=f"Paystack error: {exc}")
+
+    return {
+        "authorization_url": data.get("authorization_url"),
+        "access_code": data.get("access_code"),
+        "reference": reference,
+        "payment_id": str(payment.id),
+        "amount": amount_naira,
+        "amount_kobo": amount_kobo,
+        "currency": "NGN",
+        "public_key": settings.PAYSTACK_PUBLIC_KEY,
+        "product_type": PRODUCT_PAST_QUESTION_PDF,
+        "product_id": str(book.id),
+        "title": book.title,
+        "customer": {"email": email, "name": payload.full_name},
+    }
+
+
+@router.post("/guest/past-question/verify")
+async def guest_verify_past_question(
+    payload: VerifyRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Verify guest Past Questions payment server-side, then return download token."""
+    from app.models.content import PastQuestionGuestAccess
+
+    _require_configured()
+    reference = (payload.reference or "").strip()
+    if not reference:
+        raise HTTPException(status_code=400, detail="reference is required")
+
+    payment = (
+        await db.execute(
+            select(Payment).where(
+                Payment.provider == PROVIDER,
+                Payment.provider_reference == reference,
+                Payment.product_type == PRODUCT_PAST_QUESTION_PDF,
+            )
+        )
+    ).scalar_one_or_none()
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment reference not found")
+
+    if payment.status != PaymentStatus.success:
+        try:
+            tx_data = await paystack_service.verify_transaction(reference)
+        except PaystackError as exc:
+            raise HTTPException(status_code=400, detail=f"Payment verification failed: {exc}")
+        _validate_success(payment, tx_data)
+        await _fulfill(db, payment, tx_data)
+    else:
+        await _fulfill(db, payment, {})
+
+    access = (
+        await db.execute(
+            select(PastQuestionGuestAccess).where(
+                PastQuestionGuestAccess.payment_reference == reference
+            )
+        )
+    ).scalar_one_or_none()
+    token = access.access_token if access else None
+    return _fulfillment_response(payment, access_token=token)
 
 
 @router.post("/webhook")

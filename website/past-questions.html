@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Browse and buy JAMB, WAEC, NECO and Common Entrance Past Questions as PDFs. No student account required."
+    />
+    <title>Past Questions — Scholaxia</title>
+    <link rel="icon" type="image/png" href="media/logo-main.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Sora:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="css/marketplace.css?v=20260902pq" />
+    <link rel="stylesheet" href="css/past-questions.css?v=20260902a" />
+  </head>
+  <body class="mkt-body pq-body">
+    <header class="mkt-top">
+      <a class="mkt-brand" href="past-questions.html" aria-label="Past Questions home">
+        <img src="media/logo-main.png" alt="" />
+        <span>Past <em>Questions</em></span>
+      </a>
+      <nav class="mkt-nav" aria-label="Site">
+        <a href="index.html">Home</a>
+        <a href="marketplace.html">Marketplace</a>
+        <a href="portal.html">Sign in</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="pq-hero">
+        <h1>Past Questions Marketplace</h1>
+        <p>Browse JAMB, WAEC, NECO and Common Entrance PDFs. Pay with Paystack — no student account needed.</p>
+      </section>
+
+      <section class="mkt-shelf" id="shelf">
+        <div class="mkt-shelf-head">
+          <h2>Browse papers</h2>
+          <label class="mkt-search">
+            <span class="visually-hidden">Search</span>
+            <input type="search" id="pqSearch" placeholder="Search subject, year, title…" autocomplete="off" />
+          </label>
+        </div>
+        <div class="mkt-tabs" id="pqExamTabs" role="tablist"></div>
+        <div class="pq-subject-row" id="pqSubjectTabs"></div>
+        <div class="mkt-grid" id="pqGrid">
+          <div class="mkt-empty">Loading Past Questions…</div>
+        </div>
+      </section>
+    </main>
+
+    <div class="mkt-drawer-bg" id="pqDrawerBg" hidden></div>
+    <aside class="mkt-drawer" id="pqDrawer" hidden aria-label="Buy Past Question">
+      <button type="button" class="mkt-drawer-close" id="pqDrawerClose" aria-label="Close">×</button>
+      <div id="pqDrawerBody"></div>
+    </aside>
+
+    <footer class="pq-foot">
+      <a href="index.html">Scholaxia</a>
+      <span>·</span>
+      <a href="marketplace.html">Marketplace</a>
+    </footer>
+
+    <script>
+      window.SCHOLAXIA_API_BASE = window.SCHOLAXIA_API_BASE ||
+        (location.hostname.indexOf("onrender.com") >= 0 || location.hostname.indexOf("scholaxia") >= 0
+          ? location.origin
+          : "https://scholaxia1.onrender.com");
+    </script>
+    <script src="js/past-questions-shop.js?v=20260902a"></script>
+  </body>
+</html>

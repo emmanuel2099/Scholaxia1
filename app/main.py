@@ -32,6 +32,7 @@ from app.routers import marketplace
 from app.routers import kid_games
 from app.routers import sil
 from app.routers import cbt_coupons, cbt_practice, videos, school_office, schools, external_exams
+from app.routers import past_questions_shop
 from app.websockets.live_class_ws import live_class_endpoint
 
 
@@ -93,6 +94,7 @@ app.include_router(paystack_payments.payments_router, prefix="/api/v1")
 app.include_router(reviews_reports.router, prefix="/api/v1")
 app.include_router(teacher_ai.router, prefix="/api/v1")
 app.include_router(library.router, prefix="/api/v1")
+app.include_router(past_questions_shop.router, prefix="/api/v1")
 app.include_router(marketplace.router, prefix="/api/v1")
 app.include_router(marketplace.admin_router, prefix="/api/v1")
 app.include_router(marketplace.vendor_router, prefix="/api/v1")

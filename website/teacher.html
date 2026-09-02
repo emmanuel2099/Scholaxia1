@@ -78,17 +78,13 @@
                 <label class="vis-opt"><input type="radio" name="host-visibility" value="school_group" /> School group</label>
               </div>
               <div id="hostPrivateWrap" class="extra-panel" hidden>
-                <strong style="font-size:0.9rem">Private invite</strong>
-                <label>Student emails (one per line)
-                  <textarea id="hostInviteEmails" rows="3" placeholder="student1@email.com&#10;student2@email.com"></textarea>
-                </label>
-                <p class="hint">Each invited student must already have a Scholaxia account. They get the class access code.</p>
-                <label>Or pick assigned students
-                  <select id="hostInvitedStudents" multiple size="4"></select>
-                </label>
-                <p class="hint">Hold Ctrl / Cmd to select multiple. Private classes go live without admin approval.</p>
+                <strong style="font-size:0.9rem">Private class — join with code</strong>
+                <p class="hint">After you create the class, Scholaxia generates a unique access code (e.g. SX-…). Share that code with your students. They join with the code — no email-by-email invitations.</p>
+                <p class="hint">Private classes are free to join with the code. Students do not need to be invited individually.</p>
               </div>
               <div id="hostSchoolWrap" class="extra-panel" hidden>
+                <strong style="font-size:0.9rem">School class — school students + code</strong>
+                <p class="hint">Only students in the selected school group can join. They must use their school account and the class access code.</p>
                 <label>School group
                   <select id="hostSchoolGroup"><option value="">Loading…</option></select>
                 </label>

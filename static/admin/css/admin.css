@@ -445,6 +445,13 @@ body {
   background: rgba(240, 113, 120, 0.28);
 }
 
+.cbt-bank-tab.is-active {
+  background: var(--ad-gold, #c9a227);
+  color: #0b1220;
+  border-color: var(--ad-gold, #c9a227);
+  font-weight: 700;
+}
+
 .btn-sm.secondary {
   background: transparent;
   color: var(--ad-muted);

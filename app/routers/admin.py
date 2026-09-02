@@ -370,6 +370,7 @@ class AddBookRequest(BaseModel):
     term: Optional[str] = None
     scheme_week: Optional[int] = None
     scheme_topic: Optional[str] = None
+    year: Optional[int] = None
     library_target: LibraryTarget = LibraryTarget.student
     is_free: bool = True
     price: float = 0.0
@@ -379,6 +380,15 @@ class AddBookRequest(BaseModel):
 class PatchBookRequest(BaseModel):
     is_downloadable: Optional[bool] = None
     category: Optional[str] = None
+    title: Optional[str] = None
+    subject: Optional[str] = None
+    exam_type: Optional[str] = None
+    description: Optional[str] = None
+    year: Optional[int] = None
+    price: Optional[float] = None
+    is_free: Optional[bool] = None
+    is_active: Optional[bool] = None
+    cover_image_url: Optional[str] = None
 
 
 def normalize_book_category(raw: str | None) -> str:
@@ -388,10 +398,12 @@ def normalize_book_category(raw: str | None) -> str:
         return "Lesson Notes"
     if cat_key in {"study material", "study materials", "materials"}:
         return "Study Materials"
-    if cat_key in {"scheme", "scheme of work", "schemes of work"}:
+    if (cat_key in {"scheme", "scheme of work", "schemes of work"}):
         return "Scheme of Work"
     if cat_key in {"book", "books"}:
         return "Books"
+    if "past" in cat_key:
+        return "Past Questions"
     return category
 
 
@@ -477,6 +489,7 @@ async def add_book(
         term=payload.term,
         scheme_week=payload.scheme_week,
         scheme_topic=payload.scheme_topic,
+        year=payload.year,
         library_target=payload.library_target or LibraryTarget.student,
         is_free=is_free,
         price=0.0 if is_free else max(price, 0),
@@ -536,10 +549,13 @@ async def add_book(
 async def list_all_books(
     library_target: Optional[LibraryTarget] = None,
     q: Optional[str] = None,
+    include_inactive: bool = False,
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    query = select(Book).where(Book.is_active == True)  # noqa: E712
+    query = select(Book)
+    if not include_inactive:
+        query = query.where(Book.is_active == True)  # noqa: E712
     if library_target:
         query = query.where(Book.library_target == library_target)
     if q and q.strip():
@@ -552,6 +568,7 @@ async def list_all_books(
                 Book.description.ilike(term),
                 Book.category.ilike(term),
                 Book.scheme_topic.ilike(term),
+                Book.exam_type.ilike(term),
             )
         )
     result = await db.execute(query.order_by(Book.created_at.desc()))
@@ -562,10 +579,12 @@ async def list_all_books(
              "term": getattr(b, "term", None),
              "scheme_week": getattr(b, "scheme_week", None),
              "scheme_topic": getattr(b, "scheme_topic", None),
+             "year": getattr(b, "year", None),
              "library_target": b.library_target, "exam_type": b.exam_type,
              "is_free": getattr(b, "is_free", True),
              "price": float(getattr(b, "price", 0) or 0),
              "is_downloadable": bool(getattr(b, "is_downloadable", False)),
+             "is_active": bool(getattr(b, "is_active", True)),
              "created_at": b.created_at}
             for b in books]
 
@@ -585,10 +604,44 @@ async def patch_library_book(
         book.is_downloadable = bool(payload.is_downloadable)
     if payload.category is not None and str(payload.category).strip():
         book.category = normalize_book_category(payload.category)
+    if payload.title is not None and str(payload.title).strip():
+        book.title = str(payload.title).strip()
+    if payload.subject is not None and str(payload.subject).strip():
+        book.subject = str(payload.subject).strip()
+    if payload.exam_type is not None:
+        book.exam_type = str(payload.exam_type).strip() or None
+    if payload.description is not None:
+        book.description = str(payload.description).strip() or None
+    if payload.year is not None:
+        y = int(payload.year)
+        book.year = y if 1990 <= y <= 2100 else None
+    if payload.cover_image_url is not None:
+        book.cover_image_url = str(payload.cover_image_url).strip() or None
+    if payload.is_free is not None:
+        book.is_free = bool(payload.is_free)
+    if payload.price is not None:
+        book.price = max(float(payload.price), 0.0)
+    if payload.is_active is not None:
+        book.is_active = bool(payload.is_active)
+    cat = (getattr(book, "category", "") or "").lower()
+    if "past" in cat:
+        book.is_free = False
+        if float(book.price or 0) <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Past Questions must have a price greater than zero.",
+            )
     await db.flush()
     return {
         "id": str(book.id),
+        "title": book.title,
+        "subject": book.subject,
+        "exam_type": book.exam_type,
+        "year": getattr(book, "year", None),
         "category": getattr(book, "category", None),
+        "price": float(getattr(book, "price", 0) or 0),
+        "is_free": bool(getattr(book, "is_free", True)),
+        "is_active": bool(getattr(book, "is_active", True)),
         "is_downloadable": bool(book.is_downloadable),
     }
 
@@ -818,13 +871,85 @@ async def create_cbt_exam(
 
 @router.get("/cbt/exams", response_model=list[CBTExamResponse])
 async def admin_list_cbt_exams(
+    exam_type: Optional[str] = None,
+    subject: Optional[str] = None,
+    paper_kind: Optional[str] = None,
+    q: Optional[str] = None,
     current_user: dict = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Admin lists all CBT exams including unpublished."""
+    """Admin lists CBT exams. Optional filters: exam_type, subject, paper_kind, q (title search)."""
+    from app.services.cbt_access import normalize_board
+
     result = await db.execute(select(CBTExam).order_by(CBTExam.exam_type, CBTExam.subject))
     exams = result.scalars().all()
-    return [_exam_to_response(e) for e in exams]
+    out = []
+    needle = (q or "").strip().lower()
+    want_subject = (subject or "").strip().lower()
+    want_board = normalize_board(exam_type) if exam_type else ""
+    want_kind = normalize_paper_kind(paper_kind) if paper_kind else ""
+    for e in exams:
+        if want_board and normalize_board(e.exam_type) != want_board:
+            continue
+        if want_subject and (e.subject or "").strip().lower() != want_subject:
+            continue
+        if want_kind and normalize_paper_kind(getattr(e, "paper_kind", None)) != want_kind:
+            continue
+        if needle and needle not in (e.title or "").lower() and needle not in (e.subject or "").lower():
+            continue
+        out.append(_exam_to_response(e))
+    return out
+
+
+@router.get("/cbt/question-bank/summary")
+async def admin_cbt_question_bank_summary(
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Per exam-type / subject question counts for Admin bank tabs (practice papers only)."""
+    from app.services.cbt_access import normalize_board
+
+    exams = (
+        await db.execute(
+            select(CBTExam).where(
+                CBTExam.is_school_exam.is_(False),
+                CBTExam.paper_kind == "cbt_practice",
+            )
+        )
+    ).scalars().all()
+    counts: dict[tuple[str, str], dict] = {}
+    board_totals: dict[str, int] = {}
+    for ex in exams:
+        board = normalize_board(ex.exam_type)
+        if board not in {"JAMB", "WAEC", "NECO", "COMMON_ENTRANCE", "JUNIOR_WAEC"}:
+            continue
+        n = (
+            await db.execute(select(CBTQuestion).where(CBTQuestion.exam_id == ex.id))
+        ).scalars().all()
+        qty = len(n)
+        subj = (ex.subject or "").strip() or "Uncategorized"
+        key = (board, subj)
+        if key not in counts:
+            counts[key] = {
+                "exam_type": board,
+                "subject": subj,
+                "total_questions": 0,
+                "exam_count": 0,
+                "published_questions": 0,
+            }
+        counts[key]["total_questions"] += qty
+        counts[key]["exam_count"] += 1
+        if ex.is_published:
+            counts[key]["published_questions"] += qty
+        board_totals[board] = board_totals.get(board, 0) + qty
+    return {
+        "by_subject": [counts[k] for k in sorted(counts.keys())],
+        "by_exam_type": [
+            {"exam_type": b, "total_questions": board_totals[b]}
+            for b in ("JAMB", "WAEC", "NECO", "COMMON_ENTRANCE", "JUNIOR_WAEC")
+            if b in board_totals
+        ],
+    }
 
 
 @router.get("/cbt/exams/{exam_id}")
@@ -988,6 +1113,50 @@ async def delete_cbt_exam(
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
     await _delete_cbt_exam_cascade(db, exam)
+
+
+@router.delete("/cbt/questions/{question_id}")
+async def delete_cbt_question(
+    question_id: str,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete one question from the bank. Does not delete the subject or exam set.
+
+    If this is the last question on an exam, refuse — Admin must delete the exam instead.
+    """
+    question = (
+        await db.execute(select(CBTQuestion).where(CBTQuestion.id == question_id))
+    ).scalar_one_or_none()
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+
+    exam = (
+        await db.execute(select(CBTExam).where(CBTExam.id == question.exam_id))
+    ).scalar_one_or_none()
+    siblings = (
+        await db.execute(select(CBTQuestion).where(CBTQuestion.exam_id == question.exam_id))
+    ).scalars().all()
+    if len(siblings) <= 1:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "This is the only question in this exam set. "
+                "Delete the exam set instead of the last question."
+            ),
+        )
+
+    await db.delete(question)
+    if exam:
+        remaining = max(0, int(exam.total_questions or len(siblings)) - 1)
+        exam.total_questions = remaining
+    await db.flush()
+    return {
+        "deleted": True,
+        "question_id": str(question_id),
+        "exam_id": str(exam.id) if exam else None,
+        "exam_total_questions": exam.total_questions if exam else None,
+    }
 
 
 @router.delete("/cbt/exams", status_code=200)

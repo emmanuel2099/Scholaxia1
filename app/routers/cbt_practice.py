@@ -89,7 +89,7 @@ async def _bank_counts(db: AsyncSession) -> list[dict[str, Any]]:
     counts: dict[tuple[str, str], int] = {}
     for ex in exams:
         board = normalize_board(ex.exam_type)
-        if board not in {"JAMB", "WAEC", "NECO"}:
+        if board not in {"JAMB", "WAEC", "NECO", "COMMON_ENTRANCE", "JUNIOR_WAEC"}:
             continue
         n = (
             await db.execute(
@@ -171,6 +171,7 @@ async def practice_home(
             await board_block("JAMB"),
             await board_block("WAEC"),
             await board_block("NECO"),
+            await board_block("COMMON_ENTRANCE"),
         ],
         "profile": {
             "jamb_subjects": jamb_subjects,

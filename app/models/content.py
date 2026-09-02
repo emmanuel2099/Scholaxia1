@@ -30,6 +30,7 @@ class Book(Base):
     term: Mapped[str] = mapped_column(String(40), nullable=True)
     scheme_week: Mapped[int] = mapped_column(Integer, nullable=True)
     scheme_topic: Mapped[str] = mapped_column(String(255), nullable=True)
+    year: Mapped[int] = mapped_column(Integer, nullable=True)
 
     # Library target — who can see this book
     library_target: Mapped[LibraryTarget] = mapped_column(
@@ -63,6 +64,20 @@ class BookPurchase(Base):
     book_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("books.id"), index=True)
     payment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("payments.id"), nullable=True)
     purchased_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class PastQuestionGuestAccess(Base):
+    """Guest (no student account) paid access to a Past Questions PDF."""
+    __tablename__ = "past_question_guest_access"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    book_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("books.id"), index=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    access_token: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    payment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("payments.id"), nullable=True)
+    payment_reference: Mapped[str] = mapped_column(String(100), nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=True)
 
 
 class SavedBook(Base):

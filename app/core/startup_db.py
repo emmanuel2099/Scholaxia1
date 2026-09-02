@@ -227,6 +227,35 @@ async def _run_schema_migrations(conn) -> None:
         "ALTER TABLE books ADD COLUMN IF NOT EXISTS scheme_topic VARCHAR(255) NULL"
     ))
     await conn.execute(text(
+        "ALTER TABLE books ADD COLUMN IF NOT EXISTS year INTEGER NULL"
+    ))
+    await conn.execute(text(
+        "ALTER TABLE payments ALTER COLUMN student_id DROP NOT NULL"
+    ))
+    await conn.execute(text(
+        """
+        CREATE TABLE IF NOT EXISTS past_question_guest_access (
+            id UUID PRIMARY KEY,
+            book_id UUID NOT NULL REFERENCES books(id),
+            email VARCHAR(255) NOT NULL,
+            access_token VARCHAR(64) NOT NULL UNIQUE,
+            payment_id UUID NULL REFERENCES payments(id),
+            payment_reference VARCHAR(100) NULL,
+            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+            expires_at TIMESTAMP WITHOUT TIME ZONE NULL
+        )
+        """
+    ))
+    await conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_pq_guest_access_token ON past_question_guest_access (access_token)"
+    ))
+    await conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_pq_guest_email ON past_question_guest_access (email)"
+    ))
+    await conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_pq_guest_book ON past_question_guest_access (book_id)"
+    ))
+    await conn.execute(text(
         "ALTER TABLE books ADD COLUMN IF NOT EXISTS library_target VARCHAR(20) NOT NULL DEFAULT 'student'"
     ))
     await conn.execute(text(

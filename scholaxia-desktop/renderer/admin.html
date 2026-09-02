@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/admin.css?v=20260815d" />
+  <link rel="stylesheet" href="css/admin.css?v=20260827a" />
   <link rel="stylesheet" href="css/responsive.css?v=20260805e" />
 </head>
 <body>
@@ -22,16 +22,16 @@
         <h1>Scholaxia Academy</h1>
       </div>
     </div>
-    <p class="sub">School control centre — students, teachers, library, CBT, marketplace and live classes. Built for a high-school campus team.</p>
+    <p class="sub">Main Scholaxia admin adds schools. Each school then logs in with its own admin to run exams, slips, results and live classes.</p>
     <div class="auth-tabs">
       <button type="button" id="tab-login" class="auth-tab active">Log in</button>
       <button type="button" id="tab-register" class="auth-tab">Register</button>
     </div>
-    <form id="form-login" class="auth-form">
+    <form id="form-login" class="auth-form" onsubmit="return false;">
       <label><span>Email</span><input type="email" id="login-email" required autocomplete="email" /></label>
       <label><span>Password</span><input type="password" id="login-password" required autocomplete="current-password" /></label>
       <p id="login-error" class="error-msg"></p>
-      <button type="submit" class="btn-primary" id="btn-login">LOG IN</button>
+      <button type="button" class="btn-primary" id="btn-login">LOG IN</button>
     </form>
     <form id="form-register" class="auth-form hidden">
       <label><span>Full name</span><input type="text" id="reg-name" required /></label>
@@ -57,20 +57,27 @@
     </div>
     <nav class="admin-nav">
       <div class="nav-section">Overview</div>
-      <button class="nav-btn active" data-page="dashboard" onclick="showAdminPage('dashboard')">Dashboard</button>
+      <button class="nav-btn" data-page="dashboard" onclick="showAdminPage('dashboard')">Dashboard</button>
+      <button class="nav-btn main-admin-only" data-page="schools" onclick="showAdminPage('schools')">Schools</button>
       <div class="nav-section">People</div>
       <button class="nav-btn" data-page="students" onclick="showAdminPage('students')">Students</button>
       <button class="nav-btn" data-page="teachers" onclick="showAdminPage('teachers')">Teachers</button>
       <button class="nav-btn" data-page="vendors" onclick="showAdminPage('vendors')">Vendors</button>
       <button class="nav-btn" data-page="kind" onclick="showAdminPage('kind')">Kind (Kids)</button>
       <button class="nav-btn" data-page="kind-games" onclick="showAdminPage('kind-games')">Kids Games Qs</button>
+      <button class="nav-btn" data-page="kind-library" onclick="showAdminPage('kind-library')">Kids Library</button>
+      <button class="nav-btn" data-page="kind-videos" onclick="showAdminPage('kind-videos')">Kids Videos</button>
       <div class="nav-section">Learning</div>
       <button class="nav-btn" data-page="requests" onclick="showAdminPage('requests')">Session Requests</button>
       <button class="nav-btn" data-page="live-subs" onclick="showAdminPage('live-subs')">Live Subscriptions</button>
       <button class="nav-btn" data-page="skills-enroll" onclick="showAdminPage('skills-enroll')">Skills Enrollments</button>
-      <button class="nav-btn" data-page="cbt" onclick="showAdminPage('cbt')">CBT Exams</button>
-      <button class="nav-btn" data-page="library" onclick="showAdminPage('library')">Library</button>
+      <button class="nav-btn" data-page="cbt-settings" onclick="showAdminPage('cbt-settings')">CBT Settings</button>
+      <button class="nav-btn" data-page="cbt" onclick="showAdminPage('cbt')">CBT Question Bank</button>
+      <button class="nav-btn" data-page="coupons" onclick="showAdminPage('coupons')">CBT Coupons</button>
+      <button class="nav-btn" data-page="past-questions" onclick="showAdminPage('past-questions')">Past Questions</button>
+      <button class="nav-btn" data-page="school-office" onclick="showAdminPage('school-office')">School office</button>
       <button class="nav-btn" data-page="videos" onclick="showAdminPage('videos')">Video Tutorials</button>
+      <button class="nav-btn" data-page="library" onclick="showAdminPage('library')">Library</button>
       <button class="nav-btn" data-page="internal-exams" onclick="showAdminPage('internal-exams')">Internal Exams</button>
       <button class="nav-btn" data-page="recommendations" onclick="showAdminPage('recommendations')">Recommendations</button>
       <div class="nav-section">Community</div>
@@ -93,17 +100,36 @@
     </div>
     <section id="page-dashboard" class="admin-page active">
       <div class="page-head"><h2>Dashboard</h2><button class="btn-sm" onclick="loadDashboard()">Refresh</button></div>
-      <div class="page-head" style="margin-top:-8px">
-        <button class="btn-sm danger" onclick="purgeAllUsers()">Delete all emails / accounts</button>
-      </div>
       <div id="stats-grid" class="stats-grid"><div class="loading">Loading…</div></div>
+    </section>
+
+    <section id="page-schools" class="admin-page">
+      <div class="page-head">
+        <h2>Schools</h2>
+        <button class="btn-sm" onclick="loadSchoolsAdmin()">Refresh</button>
+      </div>
+      <p class="page-desc">Create each school and its login here. That school admin can then sign in on this same admin page (School office only) or on the public website Schools tab.</p>
+      <div class="panel" style="margin-bottom:1rem">
+        <h3>Add school + school admin</h3>
+        <div class="form-grid">
+          <label><span>School name *</span><input id="sch-name" placeholder="e.g. Hope Academy, Uyo" /></label>
+          <label><span>City</span><input id="sch-city" /></label>
+          <label><span>State</span><input id="sch-state" /></label>
+          <label><span>School admin name *</span><input id="sch-admin-name" /></label>
+          <label><span>School admin email *</span><input id="sch-admin-email" type="email" /></label>
+          <label><span>School admin password *</span><input id="sch-admin-pass" type="password" minlength="8" /></label>
+        </div>
+        <button class="btn-primary" style="width:auto;padding:12px 22px;margin-top:8px" onclick="createSchoolCampus()">Create school</button>
+        <p id="sch-msg" class="cbt-hint small"></p>
+      </div>
+      <div id="schools-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
     </section>
 
     <section id="page-students" class="admin-page">
       <div class="page-head">
         <h2>Students &amp; Subjects</h2>
         <div class="form-row">
-          <button class="btn-sm danger" onclick="removeAllStudents()">Remove all</button>
+          <input type="search" id="students-search" class="admin-search" placeholder="Search by email or name to find &amp; remove…" autocomplete="off" oninput="filterStudentsTable()" />
           <button class="btn-sm" onclick="loadStudents()">Refresh</button>
         </div>
       </div>
@@ -132,7 +158,39 @@
 
     <section id="page-kind" class="admin-page">
       <div class="page-head"><h2>Kind Learners (Kids)</h2><button class="btn-sm" onclick="loadKind()">Refresh</button></div>
+      <p class="cbt-hint small">Restrict blocks login. Delete permanently removes the kid account.</p>
       <div id="kind-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+    </section>
+
+    <section id="page-coupons" class="admin-page">
+      <div class="page-head">
+        <h2>CBT Coupons</h2>
+        <button class="btn-sm" onclick="loadCbtCoupons()">Refresh</button>
+      </div>
+      <p class="page-desc">Generate package codes for students. Optionally tag a student email so you can find their code later. Redeemers appear after a student uses a code.</p>
+      <div class="panel" style="margin-bottom:16px">
+        <h3>Generate coupon</h3>
+        <div class="form-grid">
+          <label><span>Coupon type</span>
+            <select id="coupon-package">
+              <option value="jamb">JAMB</option>
+              <option value="waec">WAEC</option>
+              <option value="neco">NECO</option>
+              <option value="all">ALL (JAMB + WAEC + NECO)</option>
+              <option value="junior_waec">Junior WAEC</option>
+              <option value="common_entrance">Common Entrance</option>
+            </select>
+          </label>
+          <label><span>Student email (optional)</span><input id="coupon-student-email" type="email" placeholder="student@email.com" /></label>
+          <label><span>How many codes</span><input id="coupon-count" type="number" min="1" max="50" value="1" /></label>
+          <label><span>Max uses each</span><input id="coupon-uses" type="number" min="1" value="1" /></label>
+        </div>
+        <div class="form-row" style="margin:8px 0">
+          <button type="button" class="btn-primary" style="width:auto;padding:12px 22px" onclick="generateCbtCoupons()">Generate coupon</button>
+        </div>
+        <p id="coupon-msg" class="cbt-hint small"></p>
+      </div>
+      <div id="coupon-table" class="data-table-wrap"><div class="loading">Open this page to load coupons…</div></div>
     </section>
 
     <section id="page-kind-games" class="admin-page">
@@ -212,68 +270,177 @@
       <div id="skills-enroll-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
     </section>
 
+    <section id="page-cbt-settings" class="admin-page">
+      <div class="page-head">
+        <h2>CBT Settings</h2>
+        <div class="form-row">
+          <button class="btn-sm" onclick="loadCbtSettings()">Refresh</button>
+          <button class="btn-primary" style="width:auto;padding:10px 18px" onclick="saveCbtSettings()">Save settings</button>
+        </div>
+      </div>
+      <p class="page-desc">Global control for how many questions students get, exam duration, and randomization. Question uploads go to the <strong>Question Bank</strong> — these settings decide how many are drawn per attempt.</p>
+      <div class="panel" style="margin-bottom:16px">
+        <h3>General</h3>
+        <div class="form-grid">
+          <label><span>CBT enabled</span>
+            <select id="cbt-set-enabled"><option value="true">Yes</option><option value="false">No</option></select>
+          </label>
+          <label><span>Randomize questions</span>
+            <select id="cbt-set-rand-q"><option value="true">Yes</option><option value="false">No</option></select>
+          </label>
+          <label><span>Randomize answer options</span>
+            <select id="cbt-set-rand-opt"><option value="true">Yes</option><option value="false">No</option></select>
+          </label>
+          <label><span>Allow resume</span>
+            <select id="cbt-set-resume"><option value="true">Yes</option><option value="false">No</option></select>
+          </label>
+          <label><span>Auto-submit on timeout</span>
+            <select id="cbt-set-autosubmit"><option value="true">Yes</option><option value="false">No</option></select>
+          </label>
+        </div>
+      </div>
+      <div class="panel" style="margin-bottom:16px">
+        <h3>JAMB (combined package)</h3>
+        <div class="form-grid">
+          <label><span>Questions per subject</span><input id="cbt-set-jamb-q" type="number" min="1" max="200" /></label>
+          <label><span>English questions</span><input id="cbt-set-jamb-eng" type="number" min="1" max="200" /></label>
+          <label><span>Duration (minutes)</span><input id="cbt-set-jamb-dur" type="number" min="5" max="480" /></label>
+          <label><span>Subjects required</span><input id="cbt-set-jamb-subj" type="number" min="1" max="6" /></label>
+        </div>
+      </div>
+      <div class="panel" style="margin-bottom:16px">
+        <h3>WAEC</h3>
+        <div class="form-grid">
+          <label><span>Questions per subject</span><input id="cbt-set-waec-q" type="number" min="1" max="200" /></label>
+          <label><span>Duration (minutes)</span><input id="cbt-set-waec-dur" type="number" min="5" max="480" /></label>
+        </div>
+      </div>
+      <div class="panel" style="margin-bottom:16px">
+        <h3>NECO</h3>
+        <div class="form-grid">
+          <label><span>Questions per subject</span><input id="cbt-set-neco-q" type="number" min="1" max="200" /></label>
+          <label><span>Duration (minutes)</span><input id="cbt-set-neco-dur" type="number" min="5" max="480" /></label>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>Question bank totals</h3>
+        <p class="cbt-hint small">Published practice questions available to draw from (by exam type + subject).</p>
+        <div id="cbt-bank-table" class="data-table-wrap"><div class="loading">Load settings to see bank…</div></div>
+        <p id="cbt-settings-msg" class="cbt-hint small"></p>
+      </div>
+    </section>
+
     <section id="page-cbt" class="admin-page">
       <div class="page-head">
-        <h2>CBT Exams</h2>
+        <h2>CBT Question Bank</h2>
         <div class="form-row">
-          <button class="btn-sm" onclick="seedCbt()">Seed sample exams</button>
-          <button class="btn-sm danger" onclick="deleteAllCbt()">Delete all exams</button>
           <button class="btn-sm" onclick="loadCbt()">Refresh list</button>
         </div>
       </div>
+      <p class="page-desc">Separate banks for each exam. Upload and manage questions by exam type and subject. How many each student sees is controlled in <strong>CBT Settings</strong>.</p>
 
-      <div class="cbt-type-tabs">
-        <button type="button" id="cbt-tab-practice" class="cbt-type-tab active" onclick="switchCbtMode('practice')">
-          Practice CBT
-        </button>
-        <button type="button" id="cbt-tab-past" class="cbt-type-tab" onclick="switchCbtMode('past')">
-          Past Questions
-        </button>
-        <button type="button" id="cbt-tab-school" class="cbt-type-tab" onclick="switchCbtMode('school')">
-          School Exam
-        </button>
+      <div class="cbt-bank-tabs" id="cbt-bank-tabs" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+        <button type="button" class="btn-sm cbt-bank-tab is-active" data-bank="JAMB" onclick="setCbtBank('JAMB')">JAMB</button>
+        <button type="button" class="btn-sm cbt-bank-tab" data-bank="WAEC" onclick="setCbtBank('WAEC')">WAEC</button>
+        <button type="button" class="btn-sm cbt-bank-tab" data-bank="NECO" onclick="setCbtBank('NECO')">NECO</button>
+        <button type="button" class="btn-sm cbt-bank-tab" data-bank="COMMON_ENTRANCE" onclick="setCbtBank('COMMON_ENTRANCE')">Common Entrance</button>
+      </div>
+      <div id="cbt-bank-summary" class="panel" style="margin-bottom:16px;padding:12px 14px">
+        <div class="loading">Loading bank counts…</div>
+      </div>
+      <div class="form-row" style="gap:10px;margin-bottom:14px;flex-wrap:wrap">
+        <label style="min-width:180px"><span>Filter subject</span>
+          <select id="cbt-filter-subject" onchange="loadCbt()">
+            <option value="">All subjects</option>
+          </select>
+        </label>
+        <label style="min-width:220px;flex:1"><span>Search</span>
+          <input id="cbt-filter-search" type="search" placeholder="Search title or subject…" oninput="debounceCbtSearch()" />
+        </label>
       </div>
 
       <div class="panel" style="margin-bottom:16px">
-        <h3>Upload CBT file</h3>
-        <p class="cbt-hint small">
-          Upload a <strong>.json</strong>, <strong>.csv</strong>, <strong>.pdf</strong>, or <strong>.docx</strong> past-question paper.
-          You <strong>must pick the subject and year</strong> — students will practise it as a timed CBT on the website and desktop.
-          PDF/Word files with selectable text are extracted into questions (scanned photo PDFs are not supported).
-        </p>
+        <h3>Upload CBT practice questions</h3>
+        <div class="cbt-hint" style="margin-bottom:14px">
+          Papers uploaded here go into the <strong>question bank</strong>. How many questions each student sees is set under <strong>CBT Settings</strong>. Past papers have their own <strong>Past Questions</strong> tab.
+        </div>
+        <ol class="cbt-hint small" style="margin:0 0 16px 18px;line-height:1.55">
+          <li>Pick a <strong>.json</strong>, <strong>.csv</strong>, <strong>.pdf</strong>, or <strong>.docx</strong> file of questions.</li>
+          <li>Select the <strong>subject</strong> and <strong>exam board</strong>.</li>
+          <li>Click <strong>Upload &amp; create exam(s)</strong>. For PDF/Word, review the questions, then confirm.</li>
+          <li>Optional: download the JSON template to see the exact question format.</li>
+        </ol>
         <div class="form-grid">
-          <label><span>JSON / CSV / PDF / DOCX file</span>
+          <label><span>Question file *</span>
             <input id="cbt-import-file" type="file" accept=".json,.csv,.pdf,.docx,application/json,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
           </label>
-          <label><span>Title (optional)</span><input id="cbt-import-title" placeholder="e.g. WAEC Physics 2022" /></label>
+          <label><span>Title (optional)</span><input id="cbt-import-title" placeholder="e.g. JAMB Mathematics practice" /></label>
           <label><span>Subject *</span>
             <select id="cbt-import-subject">
               <option value="">Select subject</option>
-              <option>Mathematics</option>
-              <option>English Language</option>
-              <option>Biology</option>
-              <option>Chemistry</option>
-              <option>Physics</option>
-              <option>Economics</option>
-              <option>Government</option>
-              <option>Geography</option>
-              <option>Literature</option>
               <option>Agricultural Science</option>
-              <option>Commerce</option>
-              <option>CRS</option>
-              <option>IRS</option>
-              <option>Further Mathematics</option>
-              <option>Civic Education</option>
-              <option>Basic Science</option>
+              <option>Arabic</option>
               <option>Basic Technology</option>
+              <option>Beauty and Cosmetology</option>
+              <option>Biology</option>
+              <option>Business Studies</option>
+              <option>Catering and Craft Practice</option>
+              <option>Chemistry</option>
+              <option>Christian Religious Studies</option>
+              <option>Citizenship and Heritage Studies (Civic)</option>
+              <option>Commerce</option>
+              <option>Computer Hardware and GSM Repairs</option>
+              <option>Computer Studies/ICT</option>
+              <option>Cultural and Creative Art</option>
+              <option>Digital Technologies</option>
+              <option>Economics</option>
+              <option>English Language</option>
+              <option>Fashion Design</option>
+              <option>Fashion Design And Garment Making</option>
+              <option>Financial Accounting</option>
+              <option>Food and Nutrition</option>
+              <option>French</option>
+              <option>Further Mathematics</option>
+              <option>Geography</option>
+              <option>Government</option>
+              <option>Hausa</option>
+              <option>Home Economics</option>
+              <option>Horticulture And Crop Production</option>
+              <option>Ibibio</option>
+              <option>Igbo</option>
+              <option>Insurance</option>
+              <option>Intermediate Science</option>
+              <option>Islamic Religious Studies</option>
+              <option>Literature in English</option>
+              <option>Livestock Farming</option>
+              <option>Marketing</option>
+              <option>Mathematics</option>
+              <option>Music</option>
+              <option>Nigerian History</option>
+              <option>Physical and Health Education</option>
+              <option>Animal Husbandry</option>
+              <option>Book Keeping</option>
+              <option>Data Processing</option>
+              <option>Fine Arts</option>
+              <option>Home Management</option>
+              <option>Office Practice</option>
+              <option>Physical Education</option>
+              <option>Physics</option>
               <option>Social Studies</option>
+              <option>Solar Photovoltaic Installation</option>
+              <option>Store Management</option>
+              <option>Technical Drawing</option>
+              <option>Visual Arts</option>
+              <option>Yoruba</option>
             </select>
           </label>
-          <label><span>Year *</span>
-            <select id="cbt-import-year"></select>
-          </label>
           <label><span>Exam board</span>
-            <select id="cbt-import-type"><option>JAMB</option><option>WAEC</option><option>NECO</option><option>JUNIOR_WAEC</option><option>COMMON_ENTRANCE</option></select>
+            <select id="cbt-import-type">
+              <option>JAMB</option>
+              <option>WAEC</option>
+              <option>NECO</option>
+              <option>COMMON_ENTRANCE</option>
+            </select>
           </label>
           <label><span>Duration (minutes)</span><input id="cbt-import-duration" type="number" value="60" min="5" max="300" /></label>
         </div>
@@ -306,71 +473,96 @@
         <p id="cbt-preview-error" class="error-msg"></p>
       </div>
 
-      <div class="panel cbt-builder">
-        <div id="cbt-mode-hint" class="cbt-hint practice-hint">
-          Practice exams for JAMB / WAEC / NECO, or Primary 6 Common Entrance for the Kids app — learners can take these anytime to prepare.
-        </div>
-
-        <h3 id="cbt-form-title">New Practice CBT</h3>
-
+      <div class="panel cbt-builder" style="margin-bottom:16px">
+        <h3>Create CBT manually</h3>
+        <p class="cbt-hint small" style="margin-bottom:14px">
+          Type questions one by one. Add a diagram (graph, figure, or passage image) on any question.
+        </p>
         <div class="form-grid">
-          <label><span>Exam title</span><input id="cbt-title" placeholder="e.g. JAMB Mathematics Practice" /></label>
+          <label><span>Exam title *</span><input id="cbt-title" placeholder="e.g. JAMB Mathematics Practice" /></label>
           <label><span>Subject *</span>
             <select id="cbt-subject">
               <option value="">Select subject</option>
-              <option>Mathematics</option>
-              <option>English Language</option>
-              <option>Biology</option>
-              <option>Chemistry</option>
-              <option>Physics</option>
-              <option>Economics</option>
-              <option>Government</option>
-              <option>Geography</option>
-              <option>Literature</option>
               <option>Agricultural Science</option>
-              <option>Commerce</option>
-              <option>CRS</option>
-              <option>IRS</option>
-              <option>Further Mathematics</option>
-              <option>Civic Education</option>
-              <option>Basic Science</option>
+              <option>Arabic</option>
               <option>Basic Technology</option>
+              <option>Beauty and Cosmetology</option>
+              <option>Biology</option>
+              <option>Business Studies</option>
+              <option>Catering and Craft Practice</option>
+              <option>Chemistry</option>
+              <option>Christian Religious Studies</option>
+              <option>Citizenship and Heritage Studies (Civic)</option>
+              <option>Commerce</option>
+              <option>Computer Hardware and GSM Repairs</option>
+              <option>Computer Studies/ICT</option>
+              <option>Cultural and Creative Art</option>
+              <option>Digital Technologies</option>
+              <option>Economics</option>
+              <option>English Language</option>
+              <option>Fashion Design</option>
+              <option>Fashion Design And Garment Making</option>
+              <option>Financial Accounting</option>
+              <option>Food and Nutrition</option>
+              <option>French</option>
+              <option>Further Mathematics</option>
+              <option>Geography</option>
+              <option>Government</option>
+              <option>Hausa</option>
+              <option>Home Economics</option>
+              <option>Horticulture And Crop Production</option>
+              <option>Ibibio</option>
+              <option>Igbo</option>
+              <option>Insurance</option>
+              <option>Intermediate Science</option>
+              <option>Islamic Religious Studies</option>
+              <option>Literature in English</option>
+              <option>Livestock Farming</option>
+              <option>Marketing</option>
+              <option>Mathematics</option>
+              <option>Music</option>
+              <option>Nigerian History</option>
+              <option>Physical and Health Education</option>
+              <option>Animal Husbandry</option>
+              <option>Book Keeping</option>
+              <option>Data Processing</option>
+              <option>Fine Arts</option>
+              <option>Home Management</option>
+              <option>Office Practice</option>
+              <option>Physical Education</option>
+              <option>Physics</option>
               <option>Social Studies</option>
+              <option>Solar Photovoltaic Installation</option>
+              <option>Store Management</option>
+              <option>Technical Drawing</option>
+              <option>Visual Arts</option>
+              <option>Yoruba</option>
             </select>
           </label>
-          <label><span>Year *</span>
-            <select id="cbt-year"></select>
-          </label>
           <label><span>Exam board</span>
-            <select id="cbt-type"><option>JAMB</option><option>WAEC</option><option>NECO</option><option>JUNIOR_WAEC</option><option>COMMON_ENTRANCE</option></select>
+            <select id="cbt-type">
+              <option>JAMB</option>
+              <option>WAEC</option>
+              <option>NECO</option>
+              <option>COMMON_ENTRANCE</option>
+            </select>
           </label>
-          <label><span>Duration (minutes)</span><input id="cbt-duration" type="number" value="30" min="5" max="180" /></label>
+          <label><span>Duration (minutes)</span>
+            <input id="cbt-duration" type="number" value="30" min="5" max="180" />
+            <span class="cbt-hint small">How long students get to finish the paper.</span>
+          </label>
         </div>
-
-        <div id="school-fields" class="school-fields hidden">
-          <div class="form-grid">
-            <label><span>Opens (date &amp; time)</span><input id="cbt-start" type="datetime-local" /></label>
-            <label><span>Closes (date &amp; time)</span><input id="cbt-end" type="datetime-local" /></label>
-          </div>
-          <div class="form-row" style="margin-bottom:8px">
-            <label class="chk-label"><input type="checkbox" id="cbt-camera" checked /> Require camera (proctoring)</label>
-            <label class="chk-label"><input type="checkbox" id="cbt-block-min" checked /> Block minimize during exam</label>
-          </div>
-        </div>
-
-        <div class="form-row" style="margin-bottom:16px">
+        <div class="form-row" style="margin:10px 0 16px">
           <label class="chk-label"><input type="checkbox" id="cbt-publish" checked /> Publish so students can see it</label>
         </div>
-
         <div class="questions-header">
           <h3>Questions</h3>
           <button type="button" class="btn-sm" onclick="addCbtQuestion()">+ Add question</button>
         </div>
-        <p class="cbt-hint small">Add as many questions as you need. Use a diagram for graphs, figures, or passages.</p>
+        <p class="cbt-hint small">Add as many questions as you need. Use <strong>Diagram / figure</strong> for graphs, maps, or passages.</p>
         <div id="cbt-questions-list"></div>
-
-        <div class="cbt-actions">
-          <button type="button" class="btn-primary" id="btn-create-cbt" onclick="createCbt()">Create exam</button>
+        <div class="cbt-actions" style="margin-top:14px">
+          <button type="button" class="btn-primary" id="btn-create-cbt" onclick="createCbt()">Create practice exam</button>
           <p id="cbt-form-error" class="error-msg"></p>
         </div>
       </div>
@@ -378,22 +570,217 @@
       <div id="cbt-table" class="data-table-wrap" style="margin-top:20px"><div class="loading">Loading…</div></div>
     </section>
 
+    <section id="page-past-questions" class="admin-page">
+      <div class="page-head">
+        <h2>Past Questions</h2>
+        <div class="form-row">
+          <button class="btn-sm" onclick="loadPastQuestionsAdmin()">Refresh list</button>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-bottom:16px">
+        <h3>Upload past question papers</h3>
+        <div class="cbt-hint" style="margin-bottom:14px">
+          Papers uploaded here appear under the student <strong>Past Questions</strong> tab — separate from CBT Practice.
+        </div>
+        <ol class="cbt-hint small" style="margin:0 0 16px 18px;line-height:1.55">
+          <li>Pick a <strong>.json</strong>, <strong>.csv</strong>, <strong>.pdf</strong>, or <strong>.docx</strong> past paper.</li>
+          <li>Select the <strong>subject</strong> and <strong>exam board</strong>.</li>
+          <li>Click <strong>Upload &amp; create paper(s)</strong>. For PDF/Word, review the questions, then confirm.</li>
+          <li>Optional: download the JSON template to see the exact question format.</li>
+        </ol>
+        <div class="form-grid">
+          <label><span>Question file *</span>
+            <input id="pq-import-file" type="file" accept=".json,.csv,.pdf,.docx,application/json,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+          </label>
+          <label><span>Title (optional)</span><input id="pq-import-title" placeholder="e.g. WAEC Physics 2022" /></label>
+          <label><span>Subject *</span>
+            <select id="pq-import-subject">
+              <option value="">Select subject</option>
+              <option>Agricultural Science</option>
+              <option>Arabic</option>
+              <option>Basic Technology</option>
+              <option>Beauty and Cosmetology</option>
+              <option>Biology</option>
+              <option>Business Studies</option>
+              <option>Catering and Craft Practice</option>
+              <option>Chemistry</option>
+              <option>Christian Religious Studies</option>
+              <option>Citizenship and Heritage Studies (Civic)</option>
+              <option>Commerce</option>
+              <option>Computer Hardware and GSM Repairs</option>
+              <option>Computer Studies/ICT</option>
+              <option>Cultural and Creative Art</option>
+              <option>Digital Technologies</option>
+              <option>Economics</option>
+              <option>English Language</option>
+              <option>Fashion Design</option>
+              <option>Fashion Design And Garment Making</option>
+              <option>Financial Accounting</option>
+              <option>Food and Nutrition</option>
+              <option>French</option>
+              <option>Further Mathematics</option>
+              <option>Geography</option>
+              <option>Government</option>
+              <option>Hausa</option>
+              <option>Home Economics</option>
+              <option>Horticulture And Crop Production</option>
+              <option>Ibibio</option>
+              <option>Igbo</option>
+              <option>Insurance</option>
+              <option>Intermediate Science</option>
+              <option>Islamic Religious Studies</option>
+              <option>Literature in English</option>
+              <option>Livestock Farming</option>
+              <option>Marketing</option>
+              <option>Mathematics</option>
+              <option>Music</option>
+              <option>Nigerian History</option>
+              <option>Physical and Health Education</option>
+              <option>Animal Husbandry</option>
+              <option>Book Keeping</option>
+              <option>Data Processing</option>
+              <option>Fine Arts</option>
+              <option>Home Management</option>
+              <option>Office Practice</option>
+              <option>Physical Education</option>
+              <option>Physics</option>
+              <option>Social Studies</option>
+              <option>Solar Photovoltaic Installation</option>
+              <option>Store Management</option>
+              <option>Technical Drawing</option>
+              <option>Visual Arts</option>
+              <option>Yoruba</option>
+            </select>
+          </label>
+          <label><span>Exam board</span>
+            <select id="pq-import-type">
+              <option>JAMB</option>
+              <option>WAEC</option>
+              <option>NECO</option>
+              <option>JUNIOR_WAEC</option>
+              <option>COMMON_ENTRANCE</option>
+            </select>
+          </label>
+          <label><span>Duration (minutes)</span><input id="pq-import-duration" type="number" value="60" min="5" max="300" /></label>
+        </div>
+        <div class="form-row" style="margin:8px 0">
+          <label class="chk-label"><input type="checkbox" id="pq-import-publish" checked /> Publish immediately</label>
+          <label class="chk-label"><input type="checkbox" id="pq-import-skip-dup" checked /> Skip if title already exists</label>
+        </div>
+        <div class="cbt-actions">
+          <button type="button" class="btn-primary" id="btn-import-pq" onclick="importPastQuestionsFile()">Upload &amp; create paper(s)</button>
+          <button type="button" class="btn-sm" onclick="downloadCbtTemplate()">Download JSON template</button>
+        </div>
+        <p id="pq-import-error" class="error-msg"></p>
+        <p id="pq-import-success" class="cbt-hint small" style="color:#2d8a5e"></p>
+      </div>
+
+      <div class="panel" id="pq-preview-panel" style="display:none;margin-bottom:16px">
+        <h3>Review extracted questions</h3>
+        <p class="cbt-hint small">
+          Check every question, fix any mistakes, and set the correct option where it is missing.
+          Untick a question to leave it out.
+        </p>
+        <p id="pq-preview-summary" class="cbt-hint small" style="font-weight:600"></p>
+        <div id="pq-preview-warnings"></div>
+        <div id="pq-preview-list"></div>
+        <div class="cbt-actions">
+          <button type="button" class="btn-primary" id="btn-confirm-pq-preview" onclick="confirmPastPreviewUi()">Confirm &amp; save paper</button>
+          <button type="button" class="btn-sm" onclick="cancelPastPreview()">Cancel</button>
+        </div>
+        <p id="pq-preview-error" class="error-msg"></p>
+      </div>
+
+      <div id="pq-table" class="data-table-wrap" style="margin-top:20px"><div class="loading">Loading…</div></div>
+    </section>
+
     <section id="page-library" class="admin-page">
       <div class="page-head">
         <h2>Library</h2>
         <button class="btn-sm" onclick="loadLibraryAdmin()">Refresh</button>
       </div>
-      <p class="page-desc">Upload PDF materials for students. Choose whether they may download the file to their device.</p>
+      <p class="page-desc">Upload PDF materials for students. They appear on the student site under <strong>Library</strong>. Use <strong>search</strong> below to find materials to edit, replace PDF, or remove. Kids materials go under <strong>Kids Library</strong> (separate).</p>
+      <div class="form-row" style="margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem">
+        <input type="search" id="lib-search" class="admin-search" style="flex:1;min-width:200px" placeholder="Search title, subject, author, type…" oninput="onLibraryAdminSearchInput()" />
+        <select id="lib-target-filter" onchange="loadLibraryAdmin()">
+          <option value="student">Show: Students</option>
+          <option value="teacher">Show: Teachers</option>
+        </select>
+      </div>
       <div class="panel">
         <h3>Upload material</h3>
         <div class="form-grid">
-          <label><span>Title *</span><input id="lib-title" placeholder="e.g. WAEC Maths past questions" /></label>
+          <label><span>Title *</span><input id="lib-title" placeholder="e.g. SS2 Mathematics notes" /></label>
           <label><span>Author</span><input id="lib-author" placeholder="Optional" /></label>
           <label><span>Subject *</span>
-            <input id="lib-subject" type="text" placeholder="Type subject, e.g. Mathematics" autocomplete="off" />
+            <select id="lib-subject">
+              <option value="">Select subject</option>
+              <option>Agricultural Science</option>
+              <option>Arabic</option>
+              <option>Basic Technology</option>
+              <option>Beauty and Cosmetology</option>
+              <option>Biology</option>
+              <option>Business Studies</option>
+              <option>Catering and Craft Practice</option>
+              <option>Chemistry</option>
+              <option>Christian Religious Studies</option>
+              <option>Citizenship and Heritage Studies (Civic)</option>
+              <option>Commerce</option>
+              <option>Computer Hardware and GSM Repairs</option>
+              <option>Computer Studies/ICT</option>
+              <option>Cultural and Creative Art</option>
+              <option>Digital Technologies</option>
+              <option>Economics</option>
+              <option>English Language</option>
+              <option>Fashion Design</option>
+              <option>Fashion Design And Garment Making</option>
+              <option>Financial Accounting</option>
+              <option>Food and Nutrition</option>
+              <option>French</option>
+              <option>Further Mathematics</option>
+              <option>Geography</option>
+              <option>Government</option>
+              <option>Hausa</option>
+              <option>Home Economics</option>
+              <option>Horticulture And Crop Production</option>
+              <option>Ibibio</option>
+              <option>Igbo</option>
+              <option>Insurance</option>
+              <option>Intermediate Science</option>
+              <option>Islamic Religious Studies</option>
+              <option>Literature in English</option>
+              <option>Livestock Farming</option>
+              <option>Marketing</option>
+              <option>Mathematics</option>
+              <option>Music</option>
+              <option>Nigerian History</option>
+              <option>Physical and Health Education</option>
+              <option>Animal Husbandry</option>
+              <option>Book Keeping</option>
+              <option>Data Processing</option>
+              <option>Fine Arts</option>
+              <option>Home Management</option>
+              <option>Office Practice</option>
+              <option>Physical Education</option>
+              <option>Physics</option>
+              <option>Social Studies</option>
+              <option>Solar Photovoltaic Installation</option>
+              <option>Store Management</option>
+              <option>Technical Drawing</option>
+              <option>Visual Arts</option>
+              <option>Yoruba</option>
+            </select>
           </label>
-          <label><span>Exam board *</span>
+          <label><span>Class / level *</span>
             <select id="lib-exam">
+              <option value="">Select class</option>
+              <option>JSS1</option>
+              <option>JSS2</option>
+              <option>JSS3</option>
+              <option>SS1</option>
+              <option>SS2</option>
+              <option>SS3</option>
               <option>JAMB</option>
               <option>WAEC</option>
               <option>NECO</option>
@@ -405,6 +792,7 @@
           <label><span>Material type *</span>
             <select id="lib-category" onchange="onLibraryCategoryChange()">
               <option value="" selected disabled>Select type…</option>
+              <option value="Past Questions">Past Questions (PDF marketplace)</option>
               <option value="Lesson Notes">Lesson Notes</option>
               <option value="Study Materials">Study Materials</option>
               <option value="Scheme of Work">Scheme of Work</option>
@@ -414,6 +802,12 @@
           <label><span>Education level</span>
             <select id="lib-level">
               <option value="">All levels</option>
+              <option>JSS1</option>
+              <option>JSS2</option>
+              <option>JSS3</option>
+              <option>SS1</option>
+              <option>SS2</option>
+              <option>SS3</option>
               <option>Nursery</option>
               <option>Primary</option>
               <option>Junior Secondary</option>
@@ -438,6 +832,7 @@
             </select>
           </label>
           <label id="lib-price-wrap"><span>Price (₦) *</span><input id="lib-price" type="number" min="100" step="50" placeholder="e.g. 1500" /></label>
+          <label><span>Year (Past Questions)</span><input id="lib-year" type="number" min="1990" max="2100" placeholder="e.g. 2025" /></label>
           <label><span>Student download *</span>
             <select id="lib-downloadable">
               <option value="no" selected>Read only — not downloadable</option>
@@ -460,24 +855,73 @@
       <div id="library-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
     </section>
 
-    <section id="page-videos" class="admin-page">
+    <section id="page-kind-library" class="admin-page">
       <div class="page-head">
-        <h2>Video Tutorials</h2>
-        <button class="btn-sm" onclick="loadAdminVideos()">Refresh</button>
+        <h2>Kids Library</h2>
+        <button class="btn-sm" onclick="loadKindLibraryAdmin()">Refresh</button>
       </div>
-      <p class="page-desc">Paste a YouTube (or other https) link. Students see it under <strong>Video Tutorials</strong> on the website and desktop app.</p>
+      <p class="page-desc">PDFs for the <strong>Kids app</strong> only — not shown in the student Library. Search below to find and manage uploads.</p>
+      <div class="form-row" style="margin-bottom:1rem">
+        <input type="search" id="klib-search" class="admin-search" style="flex:1" placeholder="Search kids library…" oninput="onKindLibrarySearchInput()" />
+      </div>
+      <div class="panel">
+        <h3>Upload kids PDF</h3>
+        <div class="form-grid">
+          <label><span>Title *</span><input id="klib-title" placeholder="e.g. Primary 4 Maths fun book" /></label>
+          <label><span>Subject *</span><input id="klib-subject" placeholder="Mathematics" /></label>
+          <label><span>Category</span>
+            <select id="klib-category">
+              <option>Books</option>
+              <option>Study Materials</option>
+              <option>Lesson Notes</option>
+              <option>Story Books</option>
+            </select>
+          </label>
+          <label><span>Class / level</span>
+            <select id="klib-level">
+              <option>Primary 1</option><option>Primary 2</option><option>Primary 3</option>
+              <option>Primary 4</option><option>Primary 5</option><option>Primary 6</option>
+              <option>JSS1</option><option>JSS2</option><option>JSS3</option>
+            </select>
+          </label>
+          <label><span>Access</span>
+            <select id="klib-access"><option value="free" selected>Free</option><option value="paid">Paid</option></select>
+          </label>
+          <label><span>Price (₦)</span><input id="klib-price" type="number" min="0" placeholder="0" /></label>
+          <label><span>PDF file *</span><input id="klib-file" type="file" accept=".pdf,application/pdf" /></label>
+          <label><span>Description</span><input id="klib-desc" placeholder="Short note for kids" /></label>
+        </div>
+        <div class="cbt-actions">
+          <button type="button" class="btn-primary" onclick="uploadKindLibraryBook()">Upload to Kids Library</button>
+        </div>
+        <p id="klib-form-error" class="error-msg"></p>
+        <p id="klib-form-ok" class="cbt-hint small" style="color:#3dd68c"></p>
+      </div>
+      <div id="kind-library-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+    </section>
+
+    <section id="page-kind-videos" class="admin-page">
+      <div class="page-head">
+        <h2>Kids Videos</h2>
+        <button class="btn-sm" onclick="loadKindVideosAdmin()">Refresh</button>
+      </div>
+      <p class="page-desc">Videos for the <strong>Kids app</strong> only — separate from student Video Tutorials.</p>
       <div class="panel" style="margin-bottom:1rem">
         <div class="form-grid">
-          <label><span>Title *</span><input id="vid-title" placeholder="e.g. Mole concept — SS2 Chemistry" /></label>
-          <label><span>Subject</span><input id="vid-subject" placeholder="Chemistry" /></label>
-          <label><span>Video URL *</span><input id="vid-url" placeholder="https://www.youtube.com/watch?v=…" /></label>
+          <label><span>Title *</span><input id="kvid-title" placeholder="e.g. Fun fractions for Primary 4" /></label>
+          <label><span>Subject / topic</span><input id="kvid-subject" placeholder="Mathematics" /></label>
+          <label><span>Tutor name</span><input id="kvid-tutor" placeholder="Scholaxia Kids" /></label>
+          <label><span>Video URL *</span><input id="kvid-url" placeholder="https://www.youtube.com/watch?v=…" /></label>
         </div>
         <div class="form-row" style="margin-top:8px">
-          <button class="btn-primary" style="width:auto;padding:12px 22px" onclick="createAdminVideo()">Publish video</button>
+          <button class="btn-primary" style="width:auto;padding:12px 22px" onclick="createKindAdminVideo()">Publish kids video</button>
         </div>
-        <p id="vid-msg" class="cbt-hint small"></p>
+        <p id="kvid-msg" class="cbt-hint small"></p>
       </div>
-      <div id="videos-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+      <div class="form-row" style="margin-bottom:1rem">
+        <input type="search" id="kvid-search" class="admin-search" style="flex:1" placeholder="Search kids videos…" oninput="onKindVideosSearchInput()" />
+      </div>
+      <div id="kind-videos-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
     </section>
 
     <section id="page-internal-exams" class="admin-page">
@@ -502,6 +946,13 @@
               <option>English Language</option>
               <option>Biology</option>
               <option>Chemistry</option>
+              <option>Animal Husbandry</option>
+              <option>Book Keeping</option>
+              <option>Data Processing</option>
+              <option>Fine Arts</option>
+              <option>Home Management</option>
+              <option>Office Practice</option>
+              <option>Physical Education</option>
               <option>Physics</option>
               <option>Economics</option>
               <option>Government</option>
@@ -573,11 +1024,36 @@
 
     <section id="page-student-groups" class="admin-page">
       <div class="page-head">
-        <h2>Student Groups — Pending Approval</h2>
-        <button class="btn-sm" onclick="loadPendingStudentGroups()">Refresh</button>
+        <h2>Manage Student Groups</h2>
+        <button class="btn-sm" onclick="loadStudentGroupsAdmin()">Refresh</button>
       </div>
-      <p class="cbt-hint small">Students cannot activate groups until you approve them here.</p>
+      <p class="cbt-hint small">Create groups for students to join, approve new groups, restrict chat/posts, or delete a group.</p>
+      <div class="panel" style="margin-bottom:1rem;padding:1rem">
+        <h3>Create group (admin)</h3>
+        <div class="form-grid">
+          <label><span>Name *</span><input id="sg-create-name" placeholder="e.g. Holiday SS1–3" /></label>
+          <label><span>Description</span><input id="sg-create-desc" placeholder="What this group is for" /></label>
+        </div>
+        <button type="button" class="btn-sm primary" style="margin-top:8px" onclick="adminCreateStudentGroup()">Create &amp; list for students</button>
+        <p id="sg-create-msg" class="cbt-hint small"></p>
+      </div>
+      <div class="form-row" style="margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem">
+        <select id="sg-filter" onchange="loadStudentGroupsAdmin()">
+          <option value="all">All groups</option>
+          <option value="pending">Pending approval</option>
+          <option value="approved">Approved</option>
+        </select>
+        <input id="sg-search" type="search" placeholder="Search group or creator…" oninput="debounceStudentGroupsSearch()" style="min-width:220px" />
+      </div>
       <div id="student-groups-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+      <div id="sg-chat-panel" class="panel" style="display:none;margin-top:1.25rem;padding:1rem">
+        <div class="page-head" style="margin-bottom:0.75rem">
+          <h3 id="sg-chat-title">Group chat</h3>
+          <button class="btn-sm" type="button" onclick="closeGroupChatPanel()">Close</button>
+        </div>
+        <div id="sg-members-wrap" style="margin-bottom:0.85rem;font-size:0.85rem;color:#6b8f75"></div>
+        <div id="sg-chat-messages" class="sg-chat-log"><div class="loading">Loading chat…</div></div>
+      </div>
     </section>
 
     <section id="page-community" class="admin-page">
@@ -600,14 +1076,14 @@
         <h2>Marketplace</h2>
         <button class="btn-sm" onclick="loadMarketplace()">Refresh</button>
       </div>
-      <p class="cbt-hint small">Post products (gadgets, flash drives, bags, etc.). Students book with name, WhatsApp, phone &amp; email — then you chat them.</p>
+      <p class="cbt-hint small">Post products (gadgets, flash drives, bags, etc.). For Soft copy / PDF, upload the document itself — cover image is optional. Students book with name, WhatsApp, phone &amp; email — then you chat them.</p>
 
       <div class="panel" style="margin-bottom:1rem;">
         <h3>Add product</h3>
         <div class="form-grid">
           <label><span>Product title *</span><input type="text" id="mp-title" placeholder="Product title" /></label>
           <label><span>Category</span>
-            <select id="mp-category">
+            <select id="mp-category" onchange="syncMarketplaceFileFields()">
               <option value="books">Books</option>
               <option value="soft_copy">Soft copy / PDF</option>
               <option value="software">Software</option>
@@ -623,10 +1099,16 @@
               <option value="other">Other</option>
             </select>
           </label>
-          <label><span>Price (₦)</span><input type="number" id="mp-price" placeholder="Price" min="0" /></label>
+          <label><span>Price (₦)</span><input type="number" id="mp-price" placeholder="0 = free" min="0" /></label>
+          <label class="chk-label" style="align-self:end"><input type="checkbox" id="mp-free" /> List as free (students get it without payment)</label>
           <label><span>Short description</span><input type="text" id="mp-desc" placeholder="Short description" /></label>
-          <label><span>Product image *</span><input type="file" id="mp-image-file" accept="image/*" onchange="previewMarketplaceImage(this)" /></label>
+          <label id="mp-image-label"><span>Product image *</span><input type="file" id="mp-image-file" accept="image/*" onchange="previewMarketplaceImage(this)" /></label>
           <label><span>Or image URL</span><input type="text" id="mp-image" placeholder="https://… (optional if you upload a file)" oninput="previewMarketplaceImageUrl(this.value)" /></label>
+          <label id="mp-pdf-wrap" class="hidden">
+            <span>PDF / digital file *</span>
+            <input type="file" id="mp-pdf-file" accept=".pdf,.zip,.doc,.docx,application/pdf,application/zip" onchange="previewMarketplacePdf(this)" />
+          </label>
+          <p id="mp-pdf-name" class="cbt-hint small hidden" style="grid-column:1/-1;margin:0;"></p>
         </div>
         <div style="margin:8px 0 12px">
           <img id="mp-image-preview" class="mp-image-preview hidden" alt="Preview" />
@@ -644,11 +1126,157 @@
       <p class="cbt-hint small">When a student books, contact them on WhatsApp using the number below.</p>
       <div id="marketplace-bookings" class="data-table-wrap"><div class="loading">Loading…</div></div>
     </section>
+
+    <section id="page-videos" class="admin-page">
+      <div class="page-head">
+        <h2>Video Tutorials</h2>
+        <button class="btn-sm" onclick="loadAdminVideos()">Refresh</button>
+      </div>
+      <p class="cbt-hint small">Paste a YouTube (or other https) link. Shown under <strong>Video Tutorials</strong> for <strong>students only</strong> — not Kids. Kids videos go under <strong>Kids Videos</strong>.</p>
+      <div class="panel" style="margin-bottom:1rem">
+        <div class="form-grid">
+          <label><span>Title *</span><input id="vid-title" placeholder="e.g. Mole concept — SS2 Chemistry" /></label>
+          <label><span>Subject / topic</span><input id="vid-subject" placeholder="Chemistry" /></label>
+          <label><span>Tutor name</span><input id="vid-tutor" placeholder="e.g. Scholaxia" /></label>
+          <label><span>Video URL *</span><input id="vid-url" placeholder="https://www.youtube.com/watch?v=…" /></label>
+        </div>
+        <div class="form-row" style="margin-top:8px">
+          <button class="btn-primary" style="width:auto;padding:12px 22px" onclick="createAdminVideo()">Publish video</button>
+        </div>
+        <p id="vid-msg" class="cbt-hint small"></p>
+      </div>
+      <div id="videos-table" class="data-table-wrap"><div class="loading">Loading…</div></div>
+    </section>
+
+    <section id="page-school-office" class="admin-page">
+      <div class="page-head">
+        <h2>School office</h2>
+        <button class="btn-sm" onclick="loadSchoolOffice()">Refresh</button>
+      </div>
+      <p class="page-desc">Register students for <strong>this school’s</strong> exams, print slips (access code + rec number), print results, grant retakes, add teachers, and host class-based live lessons.</p>
+      <div class="panel" id="so-school-pick" style="margin-bottom:1rem">
+        <label><span>Working as school</span>
+          <select id="so-school-id" onchange="loadSchoolOffice()"></select>
+        </label>
+        <p id="so-school-label" class="cbt-hint small"></p>
+      </div>
+
+      <div class="panel" style="margin-bottom:1rem">
+        <h3>Register student for exam</h3>
+        <div class="form-grid">
+          <label id="so-school-name-wrap" class="hidden"><span>School name</span><input id="so-school" /></label>
+          <label><span>Class *</span>
+            <select id="so-class">
+              <option>JSS1</option><option>JSS2</option><option>JSS3</option>
+              <option>SS1</option><option>SS2</option><option>SS3</option>
+            </select>
+          </label>
+          <label><span>Full name *</span><input id="so-name" /></label>
+          <label><span>Email</span><input id="so-email" type="email" placeholder="needed to retake / match account" /></label>
+          <label><span>Phone</span><input id="so-phone" /></label>
+          <label><span>Subjects (comma)</span><input id="so-subjects" placeholder="English, Mathematics, Biology" /></label>
+        </div>
+        <div class="form-row" style="margin-top:8px">
+          <button class="btn-primary" style="width:auto;padding:12px 22px" onclick="registerSchoolCandidate()">Register &amp; generate slip</button>
+        </div>
+        <p id="so-reg-msg" class="cbt-hint small"></p>
+      </div>
+
+      <div class="panel" style="margin-bottom:1rem">
+        <h3>Find registered students</h3>
+        <div class="form-row">
+          <input type="search" id="so-search" class="admin-search" placeholder="Email, name, rec number, access code…" oninput="loadSchoolCandidates()" />
+        </div>
+        <div id="so-candidates" class="data-table-wrap"><div class="loading">Loading…</div></div>
+      </div>
+
+      <div class="panel" style="margin-bottom:1rem">
+        <h3>Results &amp; retake</h3>
+        <div class="form-grid">
+          <label><span>Class filter</span><input id="so-res-class" placeholder="JSS1" /></label>
+          <label><span>Subject filter</span><input id="so-res-subject" placeholder="Mathematics" /></label>
+        </div>
+        <div class="form-row" style="margin-top:8px">
+          <button class="btn-sm" onclick="loadSchoolResults()">Load &amp; print results</button>
+        </div>
+        <div id="so-results" class="data-table-wrap"></div>
+        <div class="form-grid" style="margin-top:12px">
+          <label><span>Student email</span><input id="so-retake-email" /></label>
+          <label><span>Exam ID</span><input id="so-retake-exam" placeholder="from exam counts below" /></label>
+        </div>
+        <button class="btn-sm" style="margin-top:8px" onclick="grantSchoolRetake()">Allow retake</button>
+        <p id="so-retake-msg" class="cbt-hint small"></p>
+        <div id="so-exam-counts" class="data-table-wrap" style="margin-top:12px"></div>
+      </div>
+
+      <div class="panel" style="margin-bottom:1rem">
+        <h3>Add teacher</h3>
+        <div class="form-grid">
+          <label><span>Full name *</span><input id="so-t-name" /></label>
+          <label><span>Email *</span><input id="so-t-email" type="email" /></label>
+          <label><span>Password *</span><input id="so-t-pass" type="password" minlength="8" /></label>
+          <label><span>Subjects (comma)</span><input id="so-t-subjects" /></label>
+          <label><span>Classes they teach (comma)</span><input id="so-t-classes" placeholder="JSS1, JSS2" /></label>
+        </div>
+        <button class="btn-primary" style="width:auto;padding:12px 22px;margin-top:8px" onclick="addSchoolTeacher()">Create teacher</button>
+        <p id="so-t-msg" class="cbt-hint small"></p>
+      </div>
+
+      <div class="panel">
+        <h3>School live class</h3>
+        <p class="cbt-hint small">Class-based (JSS1, SS2, …) or private (invite only). Teachers you add above can also host from the teacher portal.</p>
+        <div class="form-grid">
+          <label><span>Title *</span><input id="so-live-title" /></label>
+          <label><span>Subject *</span><input id="so-live-subject" /></label>
+          <label><span>Audience</span>
+            <select id="so-live-vis">
+              <option value="class_level">One class (JSS1 / SS1…)</option>
+              <option value="private">Private (invite only)</option>
+              <option value="public">All students</option>
+            </select>
+          </label>
+          <label><span>Class (if class-based)</span>
+            <select id="so-live-class">
+              <option>JSS1</option><option>JSS2</option><option>JSS3</option>
+              <option>SS1</option><option>SS2</option><option>SS3</option>
+            </select>
+          </label>
+        </div>
+        <div class="form-row" style="margin-top:8px">
+          <button class="btn-sm" onclick="hostSchoolLiveClass(false)">Schedule now</button>
+          <button class="btn-sm primary" onclick="hostSchoolLiveClass(true)">Go live now</button>
+        </div>
+        <p id="so-live-msg" class="cbt-hint small"></p>
+      </div>
+    </section>
+
+    <div class="panel" id="cbt-edit-panel" style="display:none;margin:16px 0 24px">
+      <h3 id="cbt-edit-heading">Preview / edit exam</h3>
+      <p class="cbt-hint small">Change text, upload diagrams, or remove any question you do not want. Save when done.</p>
+      <div class="form-grid">
+        <label><span>Exam title *</span><input id="cbt-edit-title" /></label>
+        <label><span>Duration (minutes)</span><input id="cbt-edit-duration" type="number" min="5" max="300" value="30" /></label>
+      </div>
+      <div class="form-row" style="margin:10px 0">
+        <label class="chk-label"><input type="checkbox" id="cbt-edit-publish" /> Published for students</label>
+      </div>
+      <div class="questions-header">
+        <h3>Questions</h3>
+        <button type="button" class="btn-sm" onclick="addCbtEditQuestion()">+ Add question</button>
+      </div>
+      <div id="cbt-edit-questions-list"></div>
+      <div class="cbt-actions" style="margin-top:14px">
+        <button type="button" class="btn-primary" id="btn-save-cbt-edit" onclick="saveCbtExamEdit()">Save changes</button>
+        <button type="button" class="btn-sm" onclick="cancelCbtExamEdit()">Close</button>
+        <p id="cbt-edit-error" class="error-msg"></p>
+      </div>
+    </div>
   </main>
 </div>
 
-<script src="js/admin-api.js?v=20260815d"></script>
-<script src="js/admin.js?v=20260815d"></script>
+<script src="js/admin-api.js?v=20260827f"></script>
+<script src="js/admin-auth.js?v=20260827f"></script>
+<script src="js/admin.js?v=20260827f"></script>
 <script src="js/responsive.js?v=20260805e"></script>
 </body>
 </html>

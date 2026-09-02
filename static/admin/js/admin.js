@@ -199,7 +199,7 @@ function showAdminPage(page) {
   else if (page === "live-subs") loadLiveSubscriptions();
   else if (page === "skills-enroll") loadSkillsEnrollments();
   else if (page === "cbt-settings") { loadCbtSettings(); }
-  else if (page === "cbt") { cbtMode = "practice"; initCbtBuilder(); loadCbt(); }
+  else if (page === "cbt") { cbtMode = "practice"; initCbtBuilder(); setCbtBank(cbtActiveBank || "JAMB"); }
   else if (page === "coupons") loadCbtCoupons();
   else if (page === "past-questions") { cbtMode = "past"; loadPastQuestionsAdmin(); }
   else if (page === "library") loadLibraryAdmin();
@@ -926,6 +926,116 @@ async function updateRequest(id, status) {
 
 /* ── CBT Exam Builder ── */
 var cbtMode = "practice";
+var cbtActiveBank = "JAMB";
+var cbtSearchTimer = null;
+var CBT_CE_SUBJECTS = [
+  "Mathematics / Quantitative Reasoning",
+  "English Language / Verbal Reasoning",
+  "General Knowledge",
+  "Mathematics",
+  "English Language",
+  "Basic Science",
+  "Social Studies",
+  "Verbal Reasoning",
+  "Quantitative Reasoning",
+  "Civic Education",
+  "Computer Studies/ICT",
+  "Christian Religious Studies",
+  "Islamic Religious Studies",
+  "Creative Arts",
+];
+
+function setCbtBank(bank) {
+  cbtActiveBank = bank || "JAMB";
+  document.querySelectorAll("#cbt-bank-tabs .cbt-bank-tab").forEach(function (btn) {
+    btn.classList.toggle("is-active", btn.getAttribute("data-bank") === cbtActiveBank);
+  });
+  var typeSel = document.getElementById("cbt-import-type");
+  var createType = document.getElementById("cbt-type");
+  if (typeSel) typeSel.value = cbtActiveBank;
+  if (createType) createType.value = cbtActiveBank;
+  syncCbtSubjectOptionsForBank();
+  loadCbtBankSummary();
+  loadCbt();
+}
+
+function syncCbtSubjectOptionsForBank() {
+  var filter = document.getElementById("cbt-filter-subject");
+  var importSub = document.getElementById("cbt-import-subject");
+  var createSub = document.getElementById("cbt-subject");
+  function ensureCeOptions(sel) {
+    if (!sel) return;
+    if (cbtActiveBank !== "COMMON_ENTRANCE") return;
+    CBT_CE_SUBJECTS.forEach(function (name) {
+      var exists = Array.prototype.some.call(sel.options, function (o) {
+        return o.value === name || o.textContent === name;
+      });
+      if (!exists) {
+        var opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        sel.appendChild(opt);
+      }
+    });
+  }
+  ensureCeOptions(importSub);
+  ensureCeOptions(createSub);
+  if (filter) {
+    var current = filter.value;
+    var opts = ['<option value="">All subjects</option>'];
+    if (cbtActiveBank === "COMMON_ENTRANCE") {
+      CBT_CE_SUBJECTS.forEach(function (s) {
+        opts.push('<option value="' + escHtml(s) + '">' + escHtml(s) + "</option>");
+      });
+    } else if (importSub) {
+      Array.prototype.forEach.call(importSub.options, function (o) {
+        if (!o.value) return;
+        opts.push('<option value="' + escHtml(o.value) + '">' + escHtml(o.textContent) + "</option>");
+      });
+    }
+    filter.innerHTML = opts.join("");
+    if (current) filter.value = current;
+  }
+}
+
+function debounceCbtSearch() {
+  if (cbtSearchTimer) clearTimeout(cbtSearchTimer);
+  cbtSearchTimer = setTimeout(function () { loadCbt(); }, 280);
+}
+
+async function loadCbtBankSummary() {
+  var el = document.getElementById("cbt-bank-summary");
+  if (!el) return;
+  try {
+    var data = await adminApi("/api/v1/admin/cbt/question-bank/summary");
+    var byBoard = (data && data.by_exam_type) || [];
+    var bySubject = ((data && data.by_subject) || []).filter(function (r) {
+      return r.exam_type === cbtActiveBank;
+    });
+    var total = 0;
+    byBoard.forEach(function (b) {
+      if (b.exam_type === cbtActiveBank) total = b.total_questions;
+    });
+    var boardChips = byBoard.map(function (b) {
+      var active = b.exam_type === cbtActiveBank ? " style=\"font-weight:700\"" : "";
+      return "<span" + active + ">" + escHtml(b.exam_type.replace("_", " ")) + ": <strong>" +
+        b.total_questions + "</strong></span>";
+    }).join(" · ");
+    var subjectRows = bySubject.length
+      ? '<table class="data-table" style="margin-top:8px"><thead><tr><th>Subject</th><th>Questions</th><th>Exam sets</th><th>Published Qs</th></tr></thead><tbody>' +
+        bySubject.map(function (r) {
+          return "<tr><td>" + escHtml(r.subject) + "</td><td>" + r.total_questions +
+            "</td><td>" + r.exam_count + "</td><td>" + r.published_questions + "</td></tr>";
+        }).join("") + "</tbody></table>"
+      : '<p class="cbt-hint small" style="margin:8px 0 0">No questions in this bank yet. Upload below.</p>';
+    el.innerHTML = '<div class="cbt-hint small">Active bank: <strong>' + escHtml(cbtActiveBank.replace(/_/g, " ")) +
+      "</strong> · " + total + " questions</div>" +
+      '<div class="cbt-hint small" style="margin-top:4px">' + (boardChips || "No bank data yet") + "</div>" +
+      subjectRows;
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
+  }
+}
 var cbtQuestions = [];
 
 function emptyQuestion() {
@@ -1141,11 +1251,25 @@ function addCbtEditQuestion() {
 
 function removeCbtEditQuestion(idx) {
   if (cbtEditQuestions.length <= 1) {
-    alert("Keep at least one question, or leave the exam unpublished.");
+    alert("This is the only question in the set. Delete the exam set from the list instead.");
     return;
   }
-  if (!confirm("Remove question " + (idx + 1) + "?")) return;
+  if (!confirm("Delete this question?\n\nCancel | Delete\n\nThis permanently removes it from the database.")) return;
   syncAllEditQuestions();
+  var q = cbtEditQuestions[idx];
+  if (q && q.id) {
+    adminApi("/api/v1/admin/cbt/questions/" + encodeURIComponent(q.id), { method: "DELETE" })
+      .then(function () {
+        cbtEditQuestions.splice(idx, 1);
+        renderCbtEditQuestions();
+        loadCbt();
+        loadCbtBankSummary();
+      })
+      .catch(function (e) {
+        alert(e.message || "Could not delete question");
+      });
+    return;
+  }
   cbtEditQuestions.splice(idx, 1);
   renderCbtEditQuestions();
 }
@@ -1198,6 +1322,7 @@ async function openCbtExamEdit(id) {
       "Preview / edit — " + (data.subject || "") + " (" + (data.exam_type || "") + ")";
     cbtEditQuestions = (data.questions || []).map(function (q) {
       return {
+        id: q.id || null,
         question_text: q.question_text || "",
         option_a: q.option_a || "",
         option_b: q.option_b || "",
@@ -1375,25 +1500,38 @@ async function loadCbt() {
   if (!el) return;
   el.innerHTML = '<div class="loading">Loading…</div>';
   try {
-    var rows = await adminApi("/api/v1/admin/cbt/exams");
+    var params = new URLSearchParams();
+    params.set("exam_type", cbtActiveBank || "JAMB");
+    params.set("paper_kind", "cbt_practice");
+    var subject = ((document.getElementById("cbt-filter-subject") || {}).value || "").trim();
+    var q = ((document.getElementById("cbt-filter-search") || {}).value || "").trim();
+    if (subject) params.set("subject", subject);
+    if (q) params.set("q", q);
+    var rows = await adminApi("/api/v1/admin/cbt/exams?" + params.toString());
     if (!rows) return;
     rows = rows.filter(function (e) {
       return !e.is_school_exam && e.paper_kind !== "past_questions";
     });
-    if (!rows.length) { el.innerHTML = '<div class="empty-state">No CBT practice exams yet. Upload questions above.</div>'; return; }
+    loadCbtBankSummary();
+    if (!rows.length) {
+      el.innerHTML = '<div class="empty-state">No ' + escHtml((cbtActiveBank || "").replace(/_/g, " ")) +
+        " practice exams yet. Upload questions for this bank above.</div>";
+      return;
+    }
     el.innerHTML = '<table class="data-table"><thead><tr><th>Title</th><th>Subject</th><th>Type</th><th>Questions</th><th>Status</th><th></th></tr></thead><tbody>' +
       rows.map(function (e) {
-        var typeBadge = '<span class="badge ok">' + escHtml(e.exam_type) + '</span>';
+        var typeBadge = '<span class="badge ok">' + escHtml(e.exam_type) + "</span>";
         var pub = e.is_published ? '<span class="badge ok">Published</span>' : '<span class="badge muted">Draft</span>';
-        return '<tr><td>' + escHtml(e.title) + '</td><td>' + escHtml(e.subject) + '</td>' +
-          '<td>' + typeBadge + '</td><td>' + e.total_questions + '</td><td>' + pub + '</td>' +
+        return "<tr><td>" + escHtml(e.title) + "</td><td>" + escHtml(e.subject) + "</td>" +
+          "<td>" + typeBadge + "</td><td>" + e.total_questions + "</td><td>" + pub + "</td>" +
           '<td class="actions">' +
-          '<button class="btn-sm" onclick="openCbtExamEdit(\'' + e.id + '\')">Edit questions &amp; images</button>' +
+          '<button class="btn-sm" onclick="openCbtExamEdit(\'' + e.id + '\')">Edit questions</button>' +
           '<button class="btn-sm" onclick="toggleCbtPublish(\'' + e.id + '\')">Toggle publish</button>' +
-          '</td></tr>';
-      }).join("") + '</tbody></table>';
+          '<button class="btn-sm danger" onclick="deleteCbt(\'' + e.id + '\')">Delete set</button>' +
+          "</td></tr>";
+      }).join("") + "</tbody></table>";
   } catch (e) {
-    el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + '</div>';
+    el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
   }
 }
 
@@ -1414,6 +1552,7 @@ async function loadPastQuestionsAdmin() {
           '<td class="actions">' +
           '<button class="btn-sm" onclick="openCbtExamEdit(\'' + e.id + '\')">Edit questions &amp; images</button>' +
           '<button class="btn-sm" onclick="toggleCbtPublish(\'' + e.id + '\')">Toggle publish</button>' +
+          '<button class="btn-sm danger" onclick="deleteCbt(\'' + e.id + '\')">Delete set</button>' +
           '</td></tr>';
       }).join("") + '</tbody></table>';
   } catch (e) {
@@ -1509,11 +1648,14 @@ async function toggleCbtPublish(id) {
 }
 
 async function deleteCbt(id) {
-  if (!confirm("Delete this exam permanently?")) return;
+  if (!confirm("Delete this exam set permanently?\n\nThis removes the set and all of its questions. It does not delete other subjects.")) return;
   try {
     await adminApi("/api/v1/admin/cbt/exams/" + id, { method: "DELETE" });
     if (currentAdminPage === "past-questions") loadPastQuestionsAdmin();
-    else loadCbt();
+    else {
+      loadCbt();
+      loadCbtBankSummary();
+    }
   } catch (e) { alert(e.message); }
 }
 
@@ -2788,14 +2930,20 @@ function renderLibraryAdminTable(el, rows, reloadFn) {
     return;
   }
   el.innerHTML =
-    '<table class="data-table"><thead><tr><th>Title</th><th>Audience</th><th>Type</th><th>Subject</th><th>Board</th><th>Access</th><th>Download</th><th></th></tr></thead><tbody>' +
+    '<table class="data-table"><thead><tr><th>Title</th><th>Audience</th><th>Type</th><th>Subject</th><th>Board</th><th>Year</th><th>Access</th><th>Download</th><th></th></tr></thead><tbody>' +
     rows.map(function (b) {
       var access = b.is_free ? "Free" : "₦" + Number(b.price || 0).toLocaleString();
       var dl = !!b.is_downloadable;
       var aud = (b.library_target && (b.library_target.value || b.library_target)) || "student";
+      var isPast = /past/i.test(String(b.category || ""));
+      var priceBtn = isPast
+        ? ' <button class="btn-sm" onclick="editLibraryPrice(\'' + b.id + "', " + Number(b.price || 0) + ')">Price</button>'
+        : "";
       return "<tr><td>" + escHtml(b.title) + "</td><td>" + escHtml(String(aud)) + "</td><td>" + escHtml(b.category || "Books") +
         "</td><td>" + escHtml(b.subject || "—") +
-        "</td><td>" + escHtml(b.exam_type || "—") + "</td><td>" + escHtml(access) +
+        "</td><td>" + escHtml(b.exam_type || "—") +
+        "</td><td>" + escHtml(b.year != null ? String(b.year) : "—") +
+        "</td><td>" + escHtml(access) +
         '</td><td><span class="badge ' + (dl ? "ok" : "muted") + '">' + (dl ? "Downloadable" : "Read only") +
         '</span></td><td class="actions"><button class="btn-sm" onclick=\'changeLibraryCategory(' +
         JSON.stringify(String(b.id)) +
@@ -2804,13 +2952,31 @@ function renderLibraryAdminTable(el, rows, reloadFn) {
         ")\'>Change type</button> <button class=\"btn-sm\" onclick=\"toggleLibraryDownloadable('" +
         b.id + "', " + (dl ? "true" : "false") + ')">' +
         (dl ? "Make read-only" : "Allow download") +
-        '</button> <button class="btn-sm" onclick="replaceLibraryPdf(\'' +
+        '</button>' + priceBtn + ' <button class="btn-sm" onclick="replaceLibraryPdf(\'' +
         b.id +
         "')\">Replace PDF</button> <button class=\"btn-sm danger\" onclick=\"deleteLibraryBook('" +
         b.id + "')\">Remove</button></td></tr>";
     }).join("") +
     "</tbody></table>";
 }
+
+async function editLibraryPrice(id, currentPrice) {
+  var next = window.prompt("Set price in Naira (₦)", String(currentPrice || 0));
+  if (next == null) return;
+  var price = Number(String(next).replace(/,/g, "").trim());
+  if (!(price > 0)) {
+    alert("Enter a price greater than zero.");
+    return;
+  }
+  try {
+    await adminApi("/api/v1/admin/library/books/" + encodeURIComponent(id), {
+      method: "PATCH",
+      body: JSON.stringify({ price: price, is_free: false }),
+    });
+    loadLibraryAdmin();
+  } catch (e) {
+    alert(e.message || "Could not update price.");
+  }
 
 async function loadLibraryAdmin() {
   var el = document.getElementById("library-table");
@@ -2897,6 +3063,8 @@ function onLibraryCategoryChange() {
     var access = document.getElementById("lib-access");
     if (access) access.value = "paid";
     if (typeof toggleLibraryPrice === "function") toggleLibraryPrice();
+    var yearEl = document.getElementById("lib-year");
+    if (yearEl) yearEl.focus();
   }
 }
 
@@ -2964,6 +3132,8 @@ async function uploadLibraryBook() {
   var term = document.getElementById("lib-term").value;
   var week = Number(document.getElementById("lib-week").value || 0);
   var topic = document.getElementById("lib-topic").value.trim();
+  var yearRaw = (document.getElementById("lib-year") || {}).value;
+  var year = yearRaw ? Number(yearRaw) : null;
   var isFree = document.getElementById("lib-access").value === "free";
   var price = Number(document.getElementById("lib-price").value || 0);
   var isDownloadable = (document.getElementById("lib-downloadable") || {}).value === "yes";
@@ -2992,7 +3162,13 @@ async function uploadLibraryBook() {
     return;
   }
   if (!exam) {
-    showLibraryFormMsg("err", "Choose Class / level (e.g. SS2).");
+    showLibraryFormMsg("err", category === "Past Questions"
+      ? "Choose exam type (JAMB / WAEC / NECO / COMMON_ENTRANCE)."
+      : "Choose Class / level (e.g. SS2).");
+    return;
+  }
+  if (category === "Past Questions" && (!year || year < 1990 || year > 2100)) {
+    showLibraryFormMsg("err", "Enter a valid exam year for Past Questions (e.g. 2025).");
     return;
   }
   var pdfName = (file.name || "").toLowerCase();
@@ -3031,6 +3207,7 @@ async function uploadLibraryBook() {
         term: term || null,
         scheme_week: week || null,
         scheme_topic: topic || null,
+        year: year || null,
         library_target: "student",
         is_free: isFree,
         price: isFree ? 0 : price,
@@ -3046,6 +3223,8 @@ async function uploadLibraryBook() {
     document.getElementById("lib-price").value = "";
     document.getElementById("lib-week").value = "";
     document.getElementById("lib-topic").value = "";
+    var yearEl = document.getElementById("lib-year");
+    if (yearEl) yearEl.value = "";
     fileInput.value = "";
     if (nameEl) nameEl.textContent = "Choose a .pdf (not a photo).";
     var dlSel = document.getElementById("lib-downloadable");
@@ -3102,7 +3281,7 @@ async function replaceLibraryPdf(id) {
 
 async function changeLibraryCategory(id, currentCategory) {
   var next = window.prompt(
-    "Set material type:\nLesson Notes\nStudy Materials\nScheme of Work\nBooks",
+    "Set material type:\nPast Questions\nLesson Notes\nStudy Materials\nScheme of Work\nBooks",
     currentCategory || "Lesson Notes"
   );
   if (next == null) return;
