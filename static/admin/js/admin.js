@@ -2977,6 +2977,7 @@ async function editLibraryPrice(id, currentPrice) {
   } catch (e) {
     alert(e.message || "Could not update price.");
   }
+}
 
 async function loadLibraryAdmin() {
   var el = document.getElementById("library-table");

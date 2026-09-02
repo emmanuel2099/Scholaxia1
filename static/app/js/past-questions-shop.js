@@ -6,6 +6,7 @@
     subject: "",
     year: "",
     search: "",
+    sort: "latest",
     selected: null,
     loadError: null,
   };
@@ -84,7 +85,7 @@
   }
 
   function filtered() {
-    return state.products.filter(function (p) {
+    var rows = state.products.filter(function (p) {
       if (state.exam !== "ALL" && String(p.exam_type || "").toUpperCase() !== state.exam) return false;
       if (state.subject && p.subject !== state.subject) return false;
       if (state.year && String(p.year || "") !== String(state.year)) return false;
@@ -94,6 +95,22 @@
       }
       return true;
     });
+    var sort = state.sort || "latest";
+    rows = rows.slice();
+    if (sort === "price-asc") {
+      rows.sort(function (a, b) { return Number(a.price || 0) - Number(b.price || 0); });
+    } else if (sort === "price-desc") {
+      rows.sort(function (a, b) { return Number(b.price || 0) - Number(a.price || 0); });
+    } else if (sort === "title") {
+      rows.sort(function (a, b) {
+        return String(a.title || "").localeCompare(String(b.title || ""));
+      });
+    } else {
+      rows.sort(function (a, b) {
+        return Number(b.year || 0) - Number(a.year || 0);
+      });
+    }
+    return rows;
   }
 
   function shortDesc(p) {
@@ -456,6 +473,7 @@
     var examSel = qs("pqFilterExam");
     var subSel = qs("pqFilterSubject");
     var yearSel = qs("pqFilterYear");
+    var sortSel = qs("pqFilterSort");
     var search = qs("pqSearch");
     var form = qs("pqHeroSearchForm");
 
@@ -477,6 +495,12 @@
     if (yearSel) {
       yearSel.addEventListener("change", function () {
         state.year = yearSel.value || "";
+        renderGrid();
+      });
+    }
+    if (sortSel) {
+      sortSel.addEventListener("change", function () {
+        state.sort = sortSel.value || "latest";
         renderGrid();
       });
     }

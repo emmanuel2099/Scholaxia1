@@ -12,16 +12,17 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Sora:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="css/past-questions.css?v=20260902sunny" />
+    <link rel="stylesheet" href="css/past-questions.css?v=20260902purple" />
   </head>
   <body class="pq-page">
     <header class="pq-nav">
-      <a class="pq-nav-brand" href="past-questions.html" aria-label="Past Questions home">
+      <a class="pq-nav-brand" href="past-questions.html" aria-label="Scholaxia Past Questions">
         <img src="media/logo-main.png" alt="" width="36" height="36" />
-        <span>Scholaxia <em>Past Questions</em></span>
+        <span>Scholaxia</span>
+        <em>Past Questions</em>
       </a>
       <button type="button" class="pq-nav-toggle" id="pqNavToggle" aria-label="Open menu" aria-expanded="false">
         <span></span><span></span><span></span>
@@ -29,7 +30,7 @@
       <nav class="pq-nav-links" id="pqNavLinks" aria-label="Site">
         <a href="index.html">Home</a>
         <a href="marketplace.html">Marketplace</a>
-        <a href="portal.html">Sign in</a>
+        <a class="pq-nav-cta" href="portal.html">Sign in</a>
       </nav>
     </header>
 
@@ -37,13 +38,14 @@
       <section class="pq-hero" aria-labelledby="pqHeroTitle">
         <div class="pq-hero-inner">
           <div class="pq-hero-copy">
-            <p class="pq-kicker">Past Questions</p>
+            <p class="pq-kicker">Past Questions Marketplace</p>
             <h1 id="pqHeroTitle">Prepare smarter. Practice better. Pass with confidence.</h1>
             <p class="pq-hero-lead">
               Get authentic JAMB, WAEC, NECO and Common Entrance past questions in one place.
             </p>
             <form class="pq-hero-search" id="pqHeroSearchForm" role="search">
               <label class="visually-hidden" for="pqSearch">Search past questions</label>
+              <span class="pq-search-icon" aria-hidden="true">⌕</span>
               <input
                 type="search"
                 id="pqSearch"
@@ -61,20 +63,21 @@
           <div class="pq-hero-art" aria-hidden="true">
             <div class="pq-hero-stack">
               <div class="pq-hero-doc pq-hero-doc-a">
-                <span>JAMB</span>
-                <strong>Maths</strong>
-                <em>2025</em>
+                <span class="pq-doc-badge">JAMB</span>
+                <strong>Mathematics</strong>
+                <em>2025 PDF</em>
               </div>
               <div class="pq-hero-doc pq-hero-doc-b">
-                <span>WAEC</span>
+                <span class="pq-doc-badge">WAEC</span>
                 <strong>English</strong>
-                <em>2024</em>
+                <em>Past Q</em>
               </div>
               <div class="pq-hero-doc pq-hero-doc-c">
-                <span>NECO</span>
+                <span class="pq-doc-badge">NECO</span>
                 <strong>Biology</strong>
-                <em>PDF</em>
+                <em>Ready</em>
               </div>
+              <div class="pq-hero-cap">🎓</div>
             </div>
           </div>
         </div>
@@ -115,6 +118,15 @@
               <option value="">All years</option>
             </select>
           </label>
+          <label>
+            <span>Sort by</span>
+            <select id="pqFilterSort" aria-label="Sort products">
+              <option value="latest">Latest</option>
+              <option value="price-asc">Price: low to high</option>
+              <option value="price-desc">Price: high to low</option>
+              <option value="title">Title A–Z</option>
+            </select>
+          </label>
         </div>
 
         <div id="pqVerifyMount"></div>
@@ -128,24 +140,34 @@
         <div class="pq-why-grid">
           <article class="pq-why-card">
             <div class="pq-why-icon" aria-hidden="true">📄</div>
-            <h3>Authentic study materials</h3>
+            <h3>Authentic Materials</h3>
             <p>Get organized past questions in PDF format, ready for revision.</p>
           </article>
           <article class="pq-why-card">
             <div class="pq-why-icon" aria-hidden="true">⚡</div>
-            <h3>Instant access</h3>
+            <h3>Instant Access</h3>
             <p>Download immediately after a successful Paystack payment.</p>
           </article>
           <article class="pq-why-card">
             <div class="pq-why-icon" aria-hidden="true">🔒</div>
-            <h3>Secure payment</h3>
+            <h3>Secure Payment</h3>
             <p>Payments are securely processed through Paystack — no account needed.</p>
           </article>
           <article class="pq-why-card">
             <div class="pq-why-icon" aria-hidden="true">🎓</div>
-            <h3>Multiple exams</h3>
-            <p>JAMB, WAEC, NECO and Common Entrance in one sunny marketplace.</p>
+            <h3>Multiple Exams</h3>
+            <p>JAMB, WAEC, NECO and Common Entrance in one marketplace.</p>
           </article>
+        </div>
+      </section>
+
+      <section class="pq-banner" aria-label="Study better">
+        <div class="pq-banner-inner">
+          <div class="pq-banner-copy">
+            <span class="pq-banner-icon" aria-hidden="true">🎁</span>
+            <p>Study better. Score higher. Past questions are the best way to prepare for your exams.</p>
+          </div>
+          <a class="pq-banner-btn" href="#shelf">Browse Papers</a>
         </div>
       </section>
     </main>
@@ -157,11 +179,31 @@
     </aside>
 
     <footer class="pq-foot">
-      <a href="index.html">Scholaxia</a>
-      <span>·</span>
-      <a href="marketplace.html">Marketplace</a>
-      <span>·</span>
-      <a href="past-questions.html">Past Questions</a>
+      <div class="pq-foot-grid">
+        <div>
+          <div class="pq-foot-brand">
+            <img src="media/logo-main.png" alt="" width="28" height="28" />
+            <strong>Scholaxia</strong>
+          </div>
+          <p>Helping Nigerian students prepare smarter with past questions, CBT practice and live classes.</p>
+        </div>
+        <div>
+          <h4>Explore</h4>
+          <a href="index.html">Home</a>
+          <a href="marketplace.html">Marketplace</a>
+          <a href="past-questions.html">Past Questions</a>
+          <a href="portal.html">Sign in</a>
+        </div>
+        <div>
+          <h4>Need help?</h4>
+          <p>support@scholaxia.com</p>
+          <p>Paystack-secured checkout. No student account required to buy.</p>
+        </div>
+      </div>
+      <div class="pq-foot-bottom">
+        <span>© 2026 Scholaxia. All rights reserved.</span>
+        <span>Built for students</span>
+      </div>
     </footer>
 
     <script>
@@ -171,6 +213,6 @@
           ? location.origin
           : "https://scholaxia1.onrender.com");
     </script>
-    <script src="js/past-questions-shop.js?v=20260902sunny"></script>
+    <script src="js/past-questions-shop.js?v=20260902purple"></script>
   </body>
 </html>
