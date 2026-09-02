@@ -2281,6 +2281,9 @@
       jamb_english_questions: Number(settings.jamb_english_questions) || 40,
       waec_duration_minutes: Number(settings.waec_duration_minutes) || 60,
       neco_duration_minutes: Number(settings.neco_duration_minutes) || 60,
+      ce_duration_minutes: Number(settings.ce_duration_minutes) || 60,
+      ce_questions_per_subject: Number(settings.ce_questions_per_subject) || 40,
+      ce_subjects: Array.isArray(settings.ce_subjects) ? settings.ce_subjects.slice() : [],
     });
   }
 
@@ -2421,7 +2424,9 @@
         var hint =
           board === "JAMB"
             ? "One combined CBT · your profile subjects · settings from admin"
-            : "Subject practice from your registered profile subjects";
+            : board === "COMMON_ENTRANCE"
+              ? "One combined CBT · all Common Entrance subjects · one timer"
+              : "Subject practice from your registered profile subjects";
         return (
           '<button type="button" class="card card-click" data-cbt-board="' +
           esc(board) +
@@ -2455,7 +2460,7 @@
     } catch (e) {}
     cbtHomeCache = mergeCbtHome(
       Object.assign({}, cbtHomeCache || {}, {
-        exam_types: ["JAMB", "WAEC", "NECO"].map(function (b) {
+        exam_types: ["JAMB", "WAEC", "NECO", "COMMON_ENTRANCE"].map(function (b) {
           var prev = ((cbtHomeCache && cbtHomeCache.exam_types) || []).find(function (t) {
             return t.exam_type === b;
           });
@@ -2612,6 +2617,108 @@
           if (cbtHomeCache) cbtHomeCache.settings = Object.assign({}, cbtHomeCache.settings || {}, data.settings);
           var nextDur = Number(data.settings.jamb_duration_minutes);
           if (nextDur && nextDur !== dur) openCbtBoard("JAMB", { skipUnlockModal: true });
+        })
+        .catch(function () {});
+      return;
+    }
+
+    if (board === "COMMON_ENTRANCE") {
+      var ceSubs = Array.isArray(settings.ce_subjects) ? settings.ce_subjects.filter(Boolean) : [];
+      if (!ceSubs.length) {
+        var cachedCe = cachedCbtSettings().ce_subjects;
+        if (Array.isArray(cachedCe) && cachedCe.length) ceSubs = cachedCe.filter(Boolean);
+      }
+      var ceDur =
+        Number(settings.ce_duration_minutes) ||
+        Number(cachedCbtSettings().ce_duration_minutes) ||
+        60;
+      var cePer =
+        Number(settings.ce_questions_per_subject) ||
+        Number(cachedCbtSettings().ce_questions_per_subject) ||
+        40;
+      var ceTotal = cePer * (ceSubs.length || 0);
+      if (title) title.textContent = "Common Entrance CBT";
+      if (hint) {
+        hint.textContent =
+          "One combined exam · subjects from Common Entrance CBT Settings · one timer · one submission.";
+      }
+      if (!ceSubs.length) {
+        body.innerHTML =
+          '<div class="empty-state"><strong>Common Entrance subjects not configured</strong>' +
+          "<p>Ask admin to set Common Entrance subjects under CBT Settings.</p></div>";
+        api
+          .api("/api/v1/cbt/practice/settings", { timeout: 12000, retries: 0, preferXhr: true })
+          .then(function (data) {
+            if (!data || !data.settings) return;
+            saveCachedCbtSettings(data.settings);
+            if (cbtHomeCache) {
+              cbtHomeCache.settings = Object.assign({}, cbtHomeCache.settings || {}, data.settings);
+            }
+            if ((data.settings.ce_subjects || []).length) {
+              openCbtBoard("COMMON_ENTRANCE", { skipUnlockModal: true });
+            }
+          })
+          .catch(function () {});
+        return;
+      }
+      body.innerHTML =
+        "<h3 style=\"margin:0 0 0.55rem\">Combined Common Entrance</h3>" +
+        '<p class="muted" style="margin:0 0 0.85rem">' +
+        esc(String(ceTotal)) +
+        " questions · " +
+        esc(String(ceDur)) +
+        " minutes (from Common Entrance settings)</p>" +
+        '<ol style="margin:0 0 1rem;padding:0;list-style:none;display:grid;gap:0.45rem">' +
+        ceSubs
+          .map(function (s, idx) {
+            return (
+              '<li style="display:flex;align-items:center;gap:0.75rem;padding:0.85rem 1rem;border:1px solid #e2e8f0;border-radius:12px;background:#fff">' +
+              '<span style="width:1.75rem;height:1.75rem;border-radius:999px;background:#ede9fe;color:#5b21b6;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:0.85rem">' +
+              (idx + 1) +
+              "</span>" +
+              '<span style="font-weight:700;font-size:1.02rem">' +
+              esc(s) +
+              "</span>" +
+              '<span style="margin-left:auto;color:#64748b;font-size:0.85rem">' +
+              esc(String(cePer)) +
+              " q</span></li>"
+            );
+          })
+          .join("") +
+        "</ol>" +
+        (unlocked
+          ? ""
+          : '<p style="margin:0 0 1rem;padding:0.75rem 0.9rem;border-radius:10px;background:#ecfdf5;color:#065f46;font-size:0.92rem">Preview only for now. Coupon or Paystack appears when you tap <strong>Start Common Entrance</strong>.</p>') +
+        '<div class="btn-row" style="margin-top:0.5rem">' +
+        '<button type="button" class="btn btn-primary" id="cbtStartCeBtn">' +
+        (unlocked ? "START CBT" : "Start Common Entrance") +
+        "</button>" +
+        "</div>" +
+        '<p id="cbtJambPickMsg" class="form-status" style="margin-top:0.75rem"></p>';
+      var startCe = $("cbtStartCeBtn");
+      if (startCe) {
+        startCe.onclick = function () {
+          ensureBoardUnlockedThen(board, function () {
+            startPracticeAttempt("COMMON_ENTRANCE", ceSubs.slice(), startCe);
+          });
+        };
+      }
+      api
+        .api("/api/v1/cbt/practice/settings", { timeout: 12000, retries: 0, preferXhr: true })
+        .then(function (data) {
+          if (!data || !data.settings) return;
+          saveCachedCbtSettings(data.settings);
+          if (cbtHomeCache) {
+            cbtHomeCache.settings = Object.assign({}, cbtHomeCache.settings || {}, data.settings);
+          }
+          var nextDur = Number(data.settings.ce_duration_minutes);
+          var nextSubs = data.settings.ce_subjects || [];
+          if (
+            (nextDur && nextDur !== ceDur) ||
+            (Array.isArray(nextSubs) && nextSubs.join("|") !== ceSubs.join("|"))
+          ) {
+            openCbtBoard("COMMON_ENTRANCE", { skipUnlockModal: true });
+          }
         })
         .catch(function () {});
       return;
@@ -2791,7 +2898,13 @@
 
     var durationMinutes =
       attempt.duration_minutes ||
-      Number(cachedCbtSettings().jamb_duration_minutes) ||
+      (attempt.exam_type === "COMMON_ENTRANCE"
+        ? Number(cachedCbtSettings().ce_duration_minutes)
+        : attempt.exam_type === "WAEC"
+          ? Number(cachedCbtSettings().waec_duration_minutes)
+          : attempt.exam_type === "NECO"
+            ? Number(cachedCbtSettings().neco_duration_minutes)
+            : Number(cachedCbtSettings().jamb_duration_minutes)) ||
       60;
     var remaining =
       typeof attempt.seconds_left === "number" ? attempt.seconds_left : durationMinutes * 60;

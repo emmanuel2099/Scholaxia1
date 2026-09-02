@@ -892,8 +892,63 @@
     "English Language / Verbal Reasoning",
     "General Knowledge",
   ];
+  var ceTimerId = null;
+  var ceEndsAt = null;
+
+  function clearCeTimer() {
+    if (ceTimerId) {
+      clearInterval(ceTimerId);
+      ceTimerId = null;
+    }
+  }
+
+  function formatCeClock(sec) {
+    sec = Math.max(0, Math.floor(sec || 0));
+    var m = Math.floor(sec / 60);
+    var s = sec % 60;
+    return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+  }
+
+  function updateCeTimerUi() {
+    var el = $("cbtCeTimer");
+    if (!el || !ceEndsAt) return;
+    var left = Math.max(0, Math.floor((ceEndsAt - Date.now()) / 1000));
+    el.textContent = formatCeClock(left);
+    if (left <= 0) {
+      clearCeTimer();
+      submitCbt();
+    }
+  }
+
+  function startCeTimer(secondsLeft, durationMinutes) {
+    clearCeTimer();
+    var sec =
+      typeof secondsLeft === "number" && secondsLeft > 0
+        ? secondsLeft
+        : Math.max(60, (durationMinutes || 60) * 60);
+    ceEndsAt = Date.now() + sec * 1000;
+    updateCeTimerUi();
+    ceTimerId = setInterval(updateCeTimerUi, 1000);
+  }
+
+  async function loadConfiguredCeSubjects() {
+    try {
+      var data = await api.api("/api/v1/cbt/practice/settings", {
+        timeout: 12000,
+        retries: 0,
+      });
+      var subs = data && data.settings && data.settings.ce_subjects;
+      if (Array.isArray(subs) && subs.length) {
+        CE_SUBJECTS = subs.slice();
+      }
+      return (data && data.settings) || {};
+    } catch (e) {
+      return {};
+    }
+  }
 
   function exitCbtPlayer() {
+    clearCeTimer();
     cbtState = { exam: null, session: null, answers: {}, index: 0, attemptId: null };
     if ($("cbtPlay")) {
       $("cbtPlay").hidden = true;
@@ -909,6 +964,10 @@
     var banner = $("cbtAccessBanner");
     var payCard = $("cbtPayCard");
     if (list) list.innerHTML = '<div class="loading">Loading exams…</div>';
+
+    var settings = await loadConfiguredCeSubjects();
+    var ceDur = Number(settings.ce_duration_minutes) || 60;
+    var cePer = Number(settings.ce_questions_per_subject) || 40;
 
     var hasAccess = false;
     try {
@@ -935,10 +994,14 @@
     if (!list) return;
     list.innerHTML =
       '<article class="cbt-card"><strong>Common Entrance CBT</strong>' +
-      '<p style="color:var(--muted);margin:0.4rem 0 0.85rem;font-weight:600">One combined exam · all 3 papers together (like JAMB)</p>' +
+      '<p style="color:var(--muted);margin:0.4rem 0 0.85rem;font-weight:600">One combined exam · ' +
+      esc(String(CE_SUBJECTS.length)) +
+      " subjects · " +
+      esc(String(ceDur)) +
+      " min · one submission (like JAMB)</p>" +
       '<ol style="margin:0 0 1rem;padding-left:1.2rem;color:var(--muted);font-weight:600">' +
       CE_SUBJECTS.map(function (s) {
-        return "<li>" + esc(s) + "</li>";
+        return "<li>" + esc(s) + " · " + esc(String(cePer)) + " q</li>";
       }).join("") +
       "</ol>" +
       (hasAccess
@@ -1046,6 +1109,7 @@
       btn.textContent = "Starting…";
     }
     try {
+      await loadConfiguredCeSubjects();
       var attempt = await api.api("/api/v1/cbt/practice/start", {
         method: "POST",
         body: { exam_type: "COMMON_ENTRANCE", subjects: CE_SUBJECTS.slice() },
@@ -1080,17 +1144,19 @@
       }
       if (!allQs.length) {
         throw new Error(
-          "No questions in the bank yet. Ask admin to upload COMMON_ENTRANCE practice papers for the 3 subjects."
+          "No questions in the bank yet. Ask admin to upload COMMON_ENTRANCE practice papers for the configured subjects."
         );
       }
       cbtState.exam = {
         title: "Common Entrance CBT",
         questions: allQs,
+        subjects: (attempt.subjects || CE_SUBJECTS).slice(),
       };
       cbtState.session = { attempt_id: attemptId };
       cbtState.attemptId = attemptId;
       cbtState.answers = {};
       cbtState.index = 0;
+      startCeTimer(attempt.seconds_left, attempt.duration_minutes);
       renderCbtPlayer();
     } catch (e) {
       var msg = e.message || "Could not start exam.";
@@ -1165,11 +1231,15 @@
     play.innerHTML =
       '<div class="cbt-play-head"><strong>' +
       esc(cbtState.exam.title || "Common Entrance") +
-      "</strong><span>Question " +
+      '</strong><span id="cbtCeTimer" style="font-weight:800;font-variant-numeric:tabular-nums">--:--</span><span>Question ' +
       (i + 1) +
       " / " +
       qs.length +
-      '</span></div><div class="cbt-q">' +
+      "</span></div>" +
+      (q.subject
+        ? '<p class="muted" style="margin:0 0 0.5rem;font-weight:700">' + esc(q.subject) + "</p>"
+        : "") +
+      '<div class="cbt-q">' +
       esc(q.question || q.text || q.prompt || "Question") +
       '</div><div class="cbt-opts">' +
       opts
@@ -1197,6 +1267,7 @@
         : '<button type="button" class="btn btn-primary" id="cbtSubmit">Submit</button>') +
       "</div>";
 
+    updateCeTimerUi();
     play.querySelectorAll("[data-cbt-opt]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         cbtState.answers[qid] = btn.getAttribute("data-cbt-opt");
@@ -1224,6 +1295,7 @@
   }
 
   async function submitCbt() {
+    clearCeTimer();
     try {
       var attemptId = cbtState.attemptId || (cbtState.session && cbtState.session.attempt_id);
       var result;

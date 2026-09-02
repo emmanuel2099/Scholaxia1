@@ -322,6 +322,19 @@
           <label><span>Duration (minutes)</span><input id="cbt-set-neco-dur" type="number" min="5" max="480" /></label>
         </div>
       </div>
+      <div class="panel" style="margin-bottom:16px">
+        <h3>Common Entrance</h3>
+        <p class="cbt-hint small">Independent from JAMB — one combined exam session (all configured subjects together). Changing these does not affect JAMB.</p>
+        <div class="form-grid">
+          <label><span>Questions per subject</span><input id="cbt-set-ce-q" type="number" min="1" max="200" /></label>
+          <label><span>Duration (minutes)</span><input id="cbt-set-ce-dur" type="number" min="5" max="480" /></label>
+        </div>
+        <label style="display:block;margin-top:12px">
+          <span>Combined exam subjects (one per line)</span>
+          <textarea id="cbt-set-ce-subjects" rows="4" placeholder="Mathematics&#10;English Language&#10;Basic Science&#10;Verbal Reasoning" style="width:100%"></textarea>
+        </label>
+        <p class="cbt-hint small" style="margin-top:6px">Students start one Common Entrance CBT containing every subject listed here, with one timer and one submission.</p>
+      </div>
       <div class="panel">
         <h3>Question bank totals</h3>
         <p class="cbt-hint small">Published practice questions available to draw from (by exam type + subject).</p>
@@ -360,21 +373,28 @@
       </div>
 
       <div class="panel" style="margin-bottom:16px">
-        <h3>Upload CBT practice questions</h3>
+        <h3>+ Add Questions (bulk upload)</h3>
         <div class="cbt-hint" style="margin-bottom:14px">
-          Papers uploaded here go into the <strong>question bank</strong>. How many questions each student sees is set under <strong>CBT Settings</strong>. Past papers have their own <strong>Past Questions</strong> tab.
+          Upload <strong>CSV</strong> or <strong>PDF</strong> to <strong>append</strong> questions into the selected exam bank.
+          Existing questions are never deleted or replaced. One-by-one entry remains below under <strong>Create CBT manually</strong>.
+          Past Questions marketplace PDFs are separate — use the <strong>Past Questions</strong> tab for those.
+        </div>
+        <div class="form-row" style="gap:8px;flex-wrap:wrap;margin-bottom:12px">
+          <button type="button" class="btn-primary" onclick="startBulkAdd('csv')">Upload CSV</button>
+          <button type="button" class="btn-primary" onclick="startBulkAdd('pdf')">Upload PDF</button>
+          <button type="button" class="btn-sm" onclick="document.getElementById('cbt-builder-anchor')?.scrollIntoView({behavior:'smooth'})">Add Manually</button>
+          <button type="button" class="btn-sm" onclick="downloadCbtTemplate()">Download JSON template</button>
         </div>
         <ol class="cbt-hint small" style="margin:0 0 16px 18px;line-height:1.55">
-          <li>Pick a <strong>.json</strong>, <strong>.csv</strong>, <strong>.pdf</strong>, or <strong>.docx</strong> file of questions.</li>
-          <li>Select the <strong>subject</strong> and <strong>exam board</strong>.</li>
-          <li>Click <strong>Upload &amp; create exam(s)</strong>. For PDF/Word, review the questions, then confirm.</li>
-          <li>Optional: download the JSON template to see the exact question format.</li>
+          <li>Select the <strong>subject</strong> (required) for the active exam tab above.</li>
+          <li>Choose a <strong>.csv</strong> or <strong>.pdf</strong> (JSON/DOCX also work).</li>
+          <li>Preview → review / edit / remove bad rows → <strong>Import</strong> (appends only).</li>
         </ol>
         <div class="form-grid">
           <label><span>Question file *</span>
             <input id="cbt-import-file" type="file" accept=".json,.csv,.pdf,.docx,application/json,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
           </label>
-          <label><span>Title (optional)</span><input id="cbt-import-title" placeholder="e.g. JAMB Mathematics practice" /></label>
+          <label><span>Title (optional)</span><input id="cbt-import-title" placeholder="Shown only if creating a brand-new bank set" /></label>
           <label><span>Subject *</span>
             <select id="cbt-import-subject">
               <option value="">Select subject</option>
@@ -435,45 +455,55 @@
             </select>
           </label>
           <label><span>Exam board</span>
-            <select id="cbt-import-type">
+            <select id="cbt-import-type" onchange="syncCbtImportDurationHint()">
               <option>JAMB</option>
               <option>WAEC</option>
               <option>NECO</option>
               <option>COMMON_ENTRANCE</option>
             </select>
           </label>
-          <label><span>Duration (minutes)</span><input id="cbt-import-duration" type="number" value="60" min="5" max="300" /></label>
         </div>
-        <div class="form-row" style="margin:8px 0">
-          <label class="chk-label"><input type="checkbox" id="cbt-import-publish" checked /> Publish immediately</label>
-          <label class="chk-label"><input type="checkbox" id="cbt-import-skip-dup" checked /> Skip if title already exists</label>
+        <p id="cbt-import-duration-hint" class="cbt-hint small" style="margin:8px 0 0">
+          Exam duration comes from <strong>CBT Settings</strong> for the selected board — not from this upload form.
+        </p>
+        <div class="form-row" style="margin:8px 0;flex-wrap:wrap;gap:12px">
+          <label class="chk-label"><input type="checkbox" id="cbt-import-append" checked /> Append to existing bank (recommended)</label>
+          <label class="chk-label"><input type="checkbox" id="cbt-import-publish" checked /> Publish bank set</label>
+          <label class="chk-label"><input type="checkbox" id="cbt-import-skip-dup" checked /> Skip duplicate titles (legacy create-exam mode only)</label>
         </div>
         <div class="cbt-actions">
-          <button type="button" class="btn-primary" id="btn-import-cbt" onclick="importCbtFile()">Upload &amp; create exam(s)</button>
-          <button type="button" class="btn-sm" onclick="downloadCbtTemplate()">Download JSON template</button>
+          <button type="button" class="btn-primary" id="btn-import-cbt" onclick="importCbtFile()">Preview &amp; add questions</button>
         </div>
         <p id="cbt-import-error" class="error-msg"></p>
         <p id="cbt-import-success" class="cbt-hint small" style="color:#2d8a5e"></p>
       </div>
 
       <div class="panel" id="cbt-preview-panel" style="display:none;margin-bottom:16px">
-        <h3>Review extracted questions</h3>
+        <h3>Import Preview</h3>
         <p class="cbt-hint small">
-          Check every question, fix any mistakes, and set the correct option where it is missing.
-          Untick a question to leave it out. Questions flagged in orange were extracted with low
-          confidence — the exam will be saved <strong>unpublished</strong> if any flagged question is kept unfixed.
+          Review before importing. Untick bad questions, edit text/options, then confirm.
+          Questions flagged orange need review. Duplicates are marked separately.
         </p>
         <p id="cbt-preview-summary" class="cbt-hint small" style="font-weight:600"></p>
         <div id="cbt-preview-warnings"></div>
+        <div class="form-row" style="margin:8px 0;gap:16px;flex-wrap:wrap" id="cbt-preview-mode-row">
+          <label class="chk-label"><input type="radio" name="cbt-import-mode" value="new_only" checked /> Import new questions only</label>
+          <label class="chk-label"><input type="radio" name="cbt-import-mode" value="all" /> Import all (including possible duplicates)</label>
+        </div>
+        <div class="form-row" style="margin:8px 0;gap:8px;align-items:center" id="cbt-preview-pager">
+          <button type="button" class="btn-sm" onclick="cbtPreviewPrevPage()">Prev</button>
+          <span id="cbt-preview-page-label" class="cbt-hint small"></span>
+          <button type="button" class="btn-sm" onclick="cbtPreviewNextPage()">Next</button>
+        </div>
         <div id="cbt-preview-list"></div>
         <div class="cbt-actions">
-          <button type="button" class="btn-primary" id="btn-confirm-cbt-preview" onclick="confirmCbtPreviewUi()">Confirm &amp; save exam</button>
+          <button type="button" class="btn-primary" id="btn-confirm-cbt-preview" onclick="confirmCbtPreviewUi()">Import questions</button>
           <button type="button" class="btn-sm" onclick="cancelCbtPreview()">Cancel</button>
         </div>
         <p id="cbt-preview-error" class="error-msg"></p>
       </div>
 
-      <div class="panel cbt-builder" style="margin-bottom:16px">
+      <div class="panel cbt-builder" id="cbt-builder-anchor" style="margin-bottom:16px">
         <h3>Create CBT manually</h3>
         <p class="cbt-hint small" style="margin-bottom:14px">
           Type questions one by one. Add a diagram (graph, figure, or passage image) on any question.
@@ -1274,9 +1304,9 @@
   </main>
 </div>
 
-<script src="js/admin-api.js?v=20260902adminfix"></script>
+<script src="js/admin-api.js?v=20260903ce1"></script>
 <script src="js/admin-auth.js?v=20260902adminfix"></script>
-<script src="js/admin.js?v=20260902adminfix"></script>
+<script src="js/admin.js?v=20260903ce1"></script>
 <script src="js/responsive.js?v=20260805e"></script>
 </body>
 </html>

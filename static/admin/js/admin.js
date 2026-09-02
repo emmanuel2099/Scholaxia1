@@ -955,8 +955,28 @@ function setCbtBank(bank) {
   if (typeSel) typeSel.value = cbtActiveBank;
   if (createType) createType.value = cbtActiveBank;
   syncCbtSubjectOptionsForBank();
+  syncCbtImportDurationHint();
   loadCbtBankSummary();
   loadCbt();
+}
+
+function syncCbtImportDurationHint() {
+  var hint = document.getElementById("cbt-import-duration-hint");
+  var typeSel = document.getElementById("cbt-import-type");
+  var board = (typeSel && typeSel.value) || cbtActiveBank || "JAMB";
+  if (!hint) return;
+  if (board === "COMMON_ENTRANCE") {
+    hint.innerHTML =
+      "Common Entrance uses the duration configured in <strong>Common Entrance CBT Settings</strong>. " +
+      "Subjects are combined into <strong>one exam</strong> for students (one timer, one submission). " +
+      "Uploading here only fills the subject bank (e.g. Mathematics).";
+  } else if (board === "JAMB") {
+    hint.innerHTML =
+      "JAMB duration comes from <strong>JAMB CBT Settings</strong>. Student exams combine their profile subjects into one session.";
+  } else {
+    hint.innerHTML =
+      "Exam duration comes from <strong>" + board + " CBT Settings</strong> — not from this upload form.";
+  }
 }
 
 function syncCbtSubjectOptionsForBank() {
@@ -1442,6 +1462,13 @@ async function loadCbtSettings() {
     setNum("cbt-set-waec-dur", s.waec_duration_minutes);
     setNum("cbt-set-neco-q", s.neco_questions_per_subject);
     setNum("cbt-set-neco-dur", s.neco_duration_minutes);
+    setNum("cbt-set-ce-q", s.ce_questions_per_subject);
+    setNum("cbt-set-ce-dur", s.ce_duration_minutes);
+    var ceSubEl = document.getElementById("cbt-set-ce-subjects");
+    if (ceSubEl) {
+      var ceSubs = Array.isArray(s.ce_subjects) ? s.ce_subjects : [];
+      ceSubEl.value = ceSubs.join("\n");
+    }
     var bank = (data && data.question_bank) || [];
     if (bankEl) {
       if (!bank.length) {
@@ -1486,6 +1513,12 @@ async function saveCbtSettings() {
         waec_duration_minutes: numVal("cbt-set-waec-dur"),
         neco_questions_per_subject: numVal("cbt-set-neco-q"),
         neco_duration_minutes: numVal("cbt-set-neco-dur"),
+        ce_questions_per_subject: numVal("cbt-set-ce-q"),
+        ce_duration_minutes: numVal("cbt-set-ce-dur"),
+        ce_subjects: ((document.getElementById("cbt-set-ce-subjects") || {}).value || "")
+          .split(/\n|,/)
+          .map(function (s) { return s.trim(); })
+          .filter(Boolean),
       }),
     });
     if (msg) msg.textContent = "Settings saved.";
@@ -1680,11 +1713,17 @@ async function seedCbt() {
 
 async function importCbtFile() {
   cbtMode = "practice";
+  var appendEl = document.getElementById("cbt-import-append");
+  var append = !appendEl || appendEl.checked;
   return importPaperFile({
     prefix: "cbt",
     paperKind: "cbt_practice",
-    btnLabel: "Upload & create exam(s)",
-    afterSave: loadCbt,
+    btnLabel: "Preview & add questions",
+    afterSave: function () {
+      loadCbt();
+      loadCbtBankSummary();
+    },
+    appendToBank: append,
   });
 }
 
@@ -1695,7 +1734,17 @@ async function importPastQuestionsFile() {
     paperKind: "past_questions",
     btnLabel: "Upload & create paper(s)",
     afterSave: loadPastQuestionsAdmin,
+    appendToBank: false,
   });
+}
+
+function startBulkAdd(kind) {
+  var input = document.getElementById("cbt-import-file");
+  if (!input) return;
+  if (kind === "pdf") input.accept = ".pdf,application/pdf";
+  else if (kind === "csv") input.accept = ".csv,text/csv";
+  else input.accept = ".json,.csv,.pdf,.docx,application/json,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  input.click();
 }
 
 async function importPaperFile(opts) {
@@ -1727,11 +1776,31 @@ async function importPaperFile(opts) {
   fields.subject = String(fields.subject).trim();
 
   if (!fields.subject) {
-    if (err) err.textContent = "Pick a subject so students can find this exam.";
+    if (err) err.textContent = "Pick a subject so questions go into the correct bank.";
     return;
   }
   if (!fields.title) {
     fields.title = fields.exam_type + " " + fields.subject;
+  }
+
+  // Bank append: always preview (CSV + PDF), then confirm via /cbt/bank/append
+  if (opts.appendToBank) {
+    if (btn) { btn.disabled = true; btn.textContent = "Reading file…"; }
+    try {
+      var bankPreview = await previewBankAppendFile(file, fields.exam_type, fields.subject);
+      if (!bankPreview) return;
+      bankPreview._appendMode = true;
+      bankPreview._filename = file.name;
+      renderPaperPreview(prefix, bankPreview);
+      if (ok) {
+        ok.textContent = "Preview ready — review below, then Import. Existing bank questions will stay.";
+      }
+    } catch (e) {
+      if (err) err.textContent = e.message;
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = opts.btnLabel; }
+    }
+    return;
   }
 
   var needsPreview = /\.(pdf|docx)$/i.test(file.name || "");
@@ -1740,6 +1809,7 @@ async function importPaperFile(opts) {
     try {
       var preview = await previewCbtFile(file);
       if (!preview) return;
+      preview._appendMode = false;
       renderPaperPreview(prefix, preview);
       if (ok) ok.textContent = "Review the extracted questions below, then click Confirm & save.";
     } catch (e) {
@@ -1782,75 +1852,193 @@ async function downloadCbtTemplate() {
   }
 }
 
-/* ── PDF import preview / confirm ── */
+/* ── PDF/CSV bank import preview / confirm ── */
 var cbtPreviewData = null;
 var cbtPreviewPrefix = "cbt";
+var cbtPreviewPage = 0;
+var CBT_PREVIEW_PAGE_SIZE = 40;
 
 function renderCbtPreview(preview) {
   renderPaperPreview("cbt", preview);
 }
 
-function renderPaperPreview(prefix, preview) {
-  cbtPreviewData = preview;
-  cbtPreviewPrefix = prefix || "cbt";
-  var panel = document.getElementById(prefix + "-preview-panel");
+function cbtPreviewModeValue() {
+  var checked = document.querySelector('input[name="cbt-import-mode"]:checked');
+  return checked ? checked.value : "new_only";
+}
+
+function updateCbtPreviewImportButton() {
+  var btn = document.getElementById("btn-confirm-cbt-preview");
+  if (!btn || !cbtPreviewData) return;
+  if (!cbtPreviewData._appendMode) {
+    btn.textContent = "Confirm & save exam";
+    return;
+  }
+  var mode = cbtPreviewModeValue();
+  var n = 0;
+  (cbtPreviewData.questions || []).forEach(function (q) {
+    if (q._included === false) return;
+    if (mode === "new_only" && q.is_duplicate) return;
+    n += 1;
+  });
+  btn.textContent = "Import " + n + " Questions";
+}
+
+function cbtPreviewPrevPage() {
+  if (cbtPreviewPage <= 0) return;
+  cbtPreviewFlushPageEdits();
+  cbtPreviewPage -= 1;
+  renderCbtPreviewPage();
+}
+
+function cbtPreviewNextPage() {
+  if (!cbtPreviewData) return;
+  var total = (cbtPreviewData.questions || []).length;
+  var maxPage = Math.max(0, Math.ceil(total / CBT_PREVIEW_PAGE_SIZE) - 1);
+  if (cbtPreviewPage >= maxPage) return;
+  cbtPreviewFlushPageEdits();
+  cbtPreviewPage += 1;
+  renderCbtPreviewPage();
+}
+
+function cbtPreviewFlushPageEdits() {
+  if (!cbtPreviewData || !cbtPreviewData.questions) return;
+  var idPrefix = cbtPreviewPrefix + "-pv";
+  var start = cbtPreviewPage * CBT_PREVIEW_PAGE_SIZE;
+  var end = Math.min(start + CBT_PREVIEW_PAGE_SIZE, cbtPreviewData.questions.length);
+  for (var i = start; i < end; i++) {
+    var q = cbtPreviewData.questions[i];
+    var inc = document.getElementById(idPrefix + "-inc-" + i);
+    var textEl = document.getElementById(idPrefix + "-text-" + i);
+    var a = document.getElementById(idPrefix + "-a-" + i);
+    var b = document.getElementById(idPrefix + "-b-" + i);
+    var c = document.getElementById(idPrefix + "-c-" + i);
+    var d = document.getElementById(idPrefix + "-d-" + i);
+    var ans = document.getElementById(idPrefix + "-ans-" + i);
+    if (inc) q._included = !!inc.checked;
+    if (textEl) q.question_text = textEl.value;
+    if (a) q.option_a = a.value;
+    if (b) q.option_b = b.value;
+    if (c) q.option_c = c.value;
+    if (d) q.option_d = d.value;
+    if (ans) q.correct_option = ans.value;
+  }
+}
+
+function renderCbtPreviewPage() {
+  if (!cbtPreviewData) return;
+  var prefix = cbtPreviewPrefix;
   var list = document.getElementById(prefix + "-preview-list");
-  var summary = document.getElementById(prefix + "-preview-summary");
-  var warnBox = document.getElementById(prefix + "-preview-warnings");
-  var errEl = document.getElementById(prefix + "-preview-error");
-  if (errEl) errEl.textContent = "";
-
-  var lowConf = preview.low_confidence_count || 0;
-  if (summary) {
-    summary.textContent = preview.total_questions + " question(s) extracted" +
-      (preview.answer_key_found ? " (answer key found)" : " (no answer key found)") +
-      (lowConf ? " — " + lowConf + " need review" : "");
-  }
-
-  if (warnBox) {
-    warnBox.innerHTML = (preview.warnings || []).map(function (w) {
-      return '<p class="cbt-hint small" style="color:#c47f17">&#9888; ' + escHtml(w) + '</p>';
-    }).join("");
-  }
-
-  var threshold = preview.low_confidence_threshold || 0;
+  var pageLabel = document.getElementById(prefix + "-preview-page-label");
+  var pager = document.getElementById(prefix + "-preview-pager");
+  var threshold = cbtPreviewData.low_confidence_threshold || 0;
+  var qs = cbtPreviewData.questions || [];
+  var total = qs.length;
+  var maxPage = Math.max(0, Math.ceil(total / CBT_PREVIEW_PAGE_SIZE) - 1);
+  if (cbtPreviewPage > maxPage) cbtPreviewPage = maxPage;
+  var start = cbtPreviewPage * CBT_PREVIEW_PAGE_SIZE;
+  var end = Math.min(start + CBT_PREVIEW_PAGE_SIZE, total);
   var idPrefix = prefix + "-pv";
+
+  if (pager) pager.style.display = total > CBT_PREVIEW_PAGE_SIZE ? "flex" : "none";
+  if (pageLabel) {
+    pageLabel.textContent = total
+      ? ("Showing " + (start + 1) + "–" + end + " of " + total)
+      : "No questions";
+  }
+
   if (list) {
-    list.innerHTML = (preview.questions || []).map(function (q, i) {
-      var flagged = (q.confidence != null && q.confidence < threshold) || (q.issues || []).length > 0;
+    var html = [];
+    for (var i = start; i < end; i++) {
+      var q = qs[i];
+      var flagged = (q.confidence != null && q.confidence < threshold) ||
+        (q.issues || []).length > 0 || q.needs_review || q.is_duplicate;
       var issues = (q.issues || []).map(function (s) {
-        return '<p class="cbt-hint small" style="color:#c47f17;margin:2px 0">&#9888; ' + escHtml(s) + '</p>';
+        return '<p class="cbt-hint small" style="color:#c47f17;margin:2px 0">&#9888; ' + escHtml(s) + "</p>";
       }).join("");
       var optSel = ["", "A", "B", "C", "D"].map(function (o) {
         var label = o || "— pick answer —";
         var sel = (q.correct_option || "") === o ? " selected" : "";
         return '<option value="' + o + '"' + sel + ">" + label + "</option>";
       }).join("");
-      return '<div class="panel" style="margin:10px 0;padding:12px;' +
-        (flagged ? "border:1px solid #e8a33d" : "") + '" id="' + idPrefix + '-q-' + i + '">' +
+      var included = q._included !== false;
+      html.push(
+        '<div class="panel" style="margin:10px 0;padding:12px;' +
+        (flagged ? "border:1px solid #e8a33d" : "") + '" id="' + idPrefix + "-q-" + i + '">' +
         '<div class="form-row" style="justify-content:space-between;align-items:center">' +
-          '<label class="chk-label"><input type="checkbox" id="' + idPrefix + '-inc-' + i + '" checked /> ' +
+          '<label class="chk-label"><input type="checkbox" id="' + idPrefix + "-inc-" + i + '"' +
+          (included ? " checked" : "") + ' onchange="updateCbtPreviewImportButton()" /> ' +
           "Question " + escHtml(String(q.number || i + 1)) +
+          (q.is_duplicate ? ' <span class="cbt-hint small" style="color:#b45309">(possible duplicate)</span>' : "") +
           (q.confidence != null ? ' <span class="cbt-hint small">(confidence ' + Math.round(q.confidence * 100) + "%)</span>" : "") +
           "</label>" +
         "</div>" +
         issues +
-        '<label><span>Question</span><textarea id="' + idPrefix + '-text-' + i + '" rows="2" style="width:100%">' + escHtml(q.question_text) + "</textarea></label>" +
+        '<label><span>Question</span><textarea id="' + idPrefix + "-text-" + i + '" rows="2" style="width:100%">' + escHtml(q.question_text) + "</textarea></label>" +
         '<div class="form-grid">' +
-          '<label><span>Option A</span><input id="' + idPrefix + '-a-' + i + '" value="' + escHtml(q.option_a) + '" /></label>' +
-          '<label><span>Option B</span><input id="' + idPrefix + '-b-' + i + '" value="' + escHtml(q.option_b) + '" /></label>' +
-          '<label><span>Option C</span><input id="' + idPrefix + '-c-' + i + '" value="' + escHtml(q.option_c) + '" /></label>' +
-          '<label><span>Option D</span><input id="' + idPrefix + '-d-' + i + '" value="' + escHtml(q.option_d) + '" /></label>' +
-          '<label><span>Correct option</span><select id="' + idPrefix + '-ans-' + i + '">' + optSel + "</select></label>" +
+          '<label><span>Option A</span><input id="' + idPrefix + "-a-" + i + '" value="' + escHtml(q.option_a) + '" /></label>' +
+          '<label><span>Option B</span><input id="' + idPrefix + "-b-" + i + '" value="' + escHtml(q.option_b) + '" /></label>' +
+          '<label><span>Option C</span><input id="' + idPrefix + "-c-" + i + '" value="' + escHtml(q.option_c) + '" /></label>' +
+          '<label><span>Option D</span><input id="' + idPrefix + "-d-" + i + '" value="' + escHtml(q.option_d) + '" /></label>' +
+          '<label><span>Correct option</span><select id="' + idPrefix + "-ans-" + i + '">' + optSel + "</select></label>" +
         "</div>" +
-      "</div>";
+      "</div>"
+      );
+    }
+    list.innerHTML = html.join("");
+  }
+  updateCbtPreviewImportButton();
+}
+
+function renderPaperPreview(prefix, preview) {
+  cbtPreviewData = preview;
+  cbtPreviewPrefix = prefix || "cbt";
+  cbtPreviewPage = 0;
+  var panel = document.getElementById(prefix + "-preview-panel");
+  var summary = document.getElementById(prefix + "-preview-summary");
+  var warnBox = document.getElementById(prefix + "-preview-warnings");
+  var errEl = document.getElementById(prefix + "-preview-error");
+  var modeRow = document.getElementById(prefix + "-preview-mode-row");
+  if (errEl) errEl.textContent = "";
+
+  var lowConf = preview.low_confidence_count || preview.needs_review_count || 0;
+  var dup = preview.duplicate_count || 0;
+  var valid = preview.valid_count != null ? preview.valid_count : preview.total_questions;
+  if (summary) {
+    var parts = [
+      "File: " + (preview._filename || preview.filename || preview.source || "upload"),
+      "Detected: " + (preview.total_questions || 0),
+      "Valid: " + valid,
+      "Needs review: " + lowConf
+    ];
+    if (preview.bank_count_before != null) parts.push("Current bank: " + preview.bank_count_before);
+    if (dup) parts.push("Possible duplicates: " + dup);
+    if (preview.new_count != null) parts.push("New: " + preview.new_count);
+    summary.textContent = parts.join(" · ");
+  }
+
+  if (warnBox) {
+    warnBox.innerHTML = (preview.warnings || []).map(function (w) {
+      return '<p class="cbt-hint small" style="color:#c47f17">&#9888; ' + escHtml(w) + "</p>";
     }).join("");
   }
+
+  if (modeRow) modeRow.style.display = preview._appendMode ? "flex" : "none";
+
+  (preview.questions || []).forEach(function (q) {
+    if (q._included == null) q._included = true;
+  });
+
+  renderCbtPreviewPage();
 
   if (panel) {
     panel.style.display = "";
     panel.scrollIntoView({ behavior: "smooth", block: "start" });
   }
+
+  document.querySelectorAll('input[name="cbt-import-mode"]').forEach(function (el) {
+    el.onchange = updateCbtPreviewImportButton;
+  });
 }
 
 function cancelCbtPreview() {
@@ -1863,6 +2051,7 @@ function cancelPastPreview() {
 
 function cancelPaperPreview(prefix) {
   cbtPreviewData = null;
+  cbtPreviewPage = 0;
   var panel = document.getElementById(prefix + "-preview-panel");
   var list = document.getElementById(prefix + "-preview-list");
   if (panel) panel.style.display = "none";
@@ -1870,7 +2059,10 @@ function cancelPaperPreview(prefix) {
 }
 
 async function confirmCbtPreviewUi() {
-  return confirmPaperPreviewUi("cbt", "cbt_practice", loadCbt);
+  return confirmPaperPreviewUi("cbt", "cbt_practice", function () {
+    loadCbt();
+    loadCbtBankSummary();
+  });
 }
 
 async function confirmPastPreviewUi() {
@@ -1879,6 +2071,7 @@ async function confirmPastPreviewUi() {
 
 async function confirmPaperPreviewUi(prefix, paperKind, afterSave) {
   if (!cbtPreviewData) return;
+  cbtPreviewFlushPageEdits();
   var err = document.getElementById(prefix + "-preview-error");
   var btn = document.getElementById(prefix === "pq" ? "btn-confirm-pq-preview" : "btn-confirm-cbt-preview");
   if (err) err.textContent = "";
@@ -1894,18 +2087,22 @@ async function confirmPaperPreviewUi(prefix, paperKind, afterSave) {
 
   var threshold = cbtPreviewData.low_confidence_threshold || 0;
   var questions = [];
-  var idPrefix = prefix + "-pv";
+  var importMode = cbtPreviewModeValue();
+  var appendMode = !!cbtPreviewData._appendMode;
+
   for (var i = 0; i < cbtPreviewData.questions.length; i++) {
-    var inc = document.getElementById(idPrefix + "-inc-" + i);
-    if (!inc || !inc.checked) continue;
     var orig = cbtPreviewData.questions[i];
+    if (orig._included === false) continue;
     var q = {
-      question_text: document.getElementById(idPrefix + "-text-" + i).value.trim(),
-      option_a: document.getElementById(idPrefix + "-a-" + i).value.trim(),
-      option_b: document.getElementById(idPrefix + "-b-" + i).value.trim(),
-      option_c: document.getElementById(idPrefix + "-c-" + i).value.trim(),
-      option_d: document.getElementById(idPrefix + "-d-" + i).value.trim(),
-      correct_option: document.getElementById(idPrefix + "-ans-" + i).value,
+      question_text: (orig.question_text || "").trim(),
+      option_a: (orig.option_a || "").trim(),
+      option_b: (orig.option_b || "").trim(),
+      option_c: (orig.option_c || "").trim(),
+      option_d: (orig.option_d || "").trim(),
+      correct_option: orig.correct_option || "",
+      explanation: orig.explanation || null,
+      topic: orig.topic || null,
+      is_duplicate: !!orig.is_duplicate
     };
     if (!q.question_text || !q.option_a || !q.option_b || !q.option_c || !q.option_d || !q.correct_option) {
       if (err) {
@@ -1914,39 +2111,59 @@ async function confirmPaperPreviewUi(prefix, paperKind, afterSave) {
       }
       return;
     }
-    var edited = q.question_text !== (orig.question_text || "").trim() ||
-      q.correct_option !== (orig.correct_option || "");
-    if (orig.confidence != null && orig.confidence < threshold && !edited) {
-      q.confidence = orig.confidence;
+    if (appendMode && importMode === "new_only" && orig.is_duplicate) continue;
+    if (!appendMode) {
+      var edited = q.question_text !== (orig.question_text || "").trim() ||
+        q.correct_option !== (orig.correct_option || "");
+      if (orig.confidence != null && orig.confidence < threshold && !edited) {
+        q.confidence = orig.confidence;
+      }
     }
     questions.push(q);
   }
   if (!questions.length) {
-    if (err) err.textContent = "Keep at least one question ticked.";
+    if (err) err.textContent = "Keep at least one question ticked (or choose Import all if only duplicates remain).";
     return;
   }
 
-  var payload = {
-    title: title,
-    subject: subject,
-    year: null,
-    exam_type: examType,
-    duration_minutes: parseInt((document.getElementById(prefix + "-import-duration") || {}).value, 10) || 60,
-    is_published: !!(document.getElementById(prefix + "-import-publish") || {}).checked,
-    skip_duplicates: !!(document.getElementById(prefix + "-import-skip-dup") || {}).checked,
-    paper_kind: paperKind,
-    questions: questions,
-  };
-
-  if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+  if (btn) { btn.disabled = true; btn.textContent = "Importing…"; }
   try {
-    var r = await confirmCbtImport(payload);
-    if (!r) return;
-    var msg = "Created \"" + r.title + "\" with " + r.total_questions + " question(s)." +
-      (r.is_published ? "" : " Saved unpublished.");
-    if (r.note) msg += " " + r.note;
-    var ok = document.getElementById(prefix + "-import-success");
-    if (ok) ok.textContent = msg;
+    var r;
+    if (appendMode) {
+      r = await appendBankQuestions({
+        exam_type: examType,
+        subject: subject,
+        duration_minutes: parseInt((document.getElementById(prefix + "-import-duration") || {}).value, 10) || 60,
+        import_mode: importMode,
+        questions: questions
+      });
+      if (!r) return;
+      var msg = "Appended " + r.inserted_count + " question(s) to " + r.exam_type + " / " + r.subject +
+        ". Bank: " + r.bank_count_before + " → " + r.bank_count_after + ".";
+      if (r.skipped_duplicate_count) msg += " Skipped " + r.skipped_duplicate_count + " duplicate(s).";
+      if (r.skipped_invalid_count) msg += " Skipped " + r.skipped_invalid_count + " invalid.";
+      var ok = document.getElementById(prefix + "-import-success");
+      if (ok) ok.textContent = msg;
+    } else {
+      var payload = {
+        title: title,
+        subject: subject,
+        year: null,
+        exam_type: examType,
+        duration_minutes: parseInt((document.getElementById(prefix + "-import-duration") || {}).value, 10) || 60,
+        is_published: !!(document.getElementById(prefix + "-import-publish") || {}).checked,
+        skip_duplicates: !!(document.getElementById(prefix + "-import-skip-dup") || {}).checked,
+        paper_kind: paperKind,
+        questions: questions
+      };
+      r = await confirmCbtImport(payload);
+      if (!r) return;
+      var msg2 = "Created \"" + r.title + "\" with " + r.total_questions + " question(s)." +
+        (r.is_published ? "" : " Saved unpublished.");
+      if (r.note) msg2 += " " + r.note;
+      var ok2 = document.getElementById(prefix + "-import-success");
+      if (ok2) ok2.textContent = msg2;
+    }
     var fileInput = document.getElementById(prefix + "-import-file");
     if (fileInput) fileInput.value = "";
     cancelPaperPreview(prefix);
@@ -1956,7 +2173,10 @@ async function confirmPaperPreviewUi(prefix, paperKind, afterSave) {
   } finally {
     if (btn) {
       btn.disabled = false;
-      btn.textContent = prefix === "pq" ? "Confirm & save paper" : "Confirm & save exam";
+      updateCbtPreviewImportButton();
+      if (!cbtPreviewData) {
+        btn.textContent = prefix === "pq" ? "Confirm & save paper" : "Import questions";
+      }
     }
   }
 }

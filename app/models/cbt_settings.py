@@ -31,6 +31,12 @@ class CbtGlobalSettings(Base):
     neco_questions_per_subject: Mapped[int] = mapped_column(Integer, default=50)
     neco_duration_minutes: Mapped[int] = mapped_column(Integer, default=60)
 
+    # Common Entrance — independent from JAMB
+    ce_questions_per_subject: Mapped[int] = mapped_column(Integer, default=40)
+    ce_duration_minutes: Mapped[int] = mapped_column(Integer, default=60)
+    # Combined-exam subject list (like JAMB subjects, but admin-configured)
+    ce_subjects: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
     randomize_questions: Mapped[bool] = mapped_column(Boolean, default=True)
     randomize_options: Mapped[bool] = mapped_column(Boolean, default=True)
     allow_resume: Mapped[bool] = mapped_column(Boolean, default=True)

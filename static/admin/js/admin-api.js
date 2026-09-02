@@ -233,11 +233,39 @@ async function previewCbtFile(file) {
   return data;
 }
 
+async function previewBankAppendFile(file, examType, subject) {
+  var fd = new FormData();
+  fd.append("file", file);
+  fd.append("exam_type", examType || "JAMB");
+  fd.append("subject", subject || "");
+  var res = await fetch(API_BASE + "/api/v1/admin/cbt/bank/preview", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + getAdminToken() },
+    body: fd,
+    signal: fetchTimeout(180000),
+  });
+  var data = await res.json().catch(function () { return {}; });
+  if (res.status === 401) {
+    kickAdminToLogin(formatApiError(data.detail) || "Session expired. Please sign in again.");
+    return null;
+  }
+  if (!res.ok) throw new Error(formatApiError(data.detail) || "Could not read the file (" + res.status + ")");
+  return data;
+}
+
 async function confirmCbtImport(payload) {
   return adminApi("/api/v1/admin/cbt/import/confirm", {
     method: "POST",
     body: JSON.stringify(payload),
     timeout: 120000,
+  });
+}
+
+async function appendBankQuestions(payload) {
+  return adminApi("/api/v1/admin/cbt/bank/append", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    timeout: 180000,
   });
 }
 

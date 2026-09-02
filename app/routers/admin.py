@@ -1454,6 +1454,152 @@ async def confirm_cbt_import(
     }
 
 
+@router.post("/cbt/bank/preview")
+async def preview_bank_append(
+    file: UploadFile = File(...),
+    exam_type: str = Form(...),
+    subject: str = Form(...),
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Parse CSV/PDF/DOCX/JSON for bulk ADD into an existing exam+subject bank.
+    Does NOT write questions. Marks duplicates against the current bank.
+    """
+    from app.services import cbt_bank_import as bank_import
+
+    form_subject = (subject or "").strip()
+    if not form_subject:
+        raise HTTPException(status_code=400, detail="Select a subject before uploading")
+    try:
+        board = normalize_exam_type(exam_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+    if len(content) > 15 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large. Maximum size is 15MB.")
+
+    try:
+        parsed = bank_import.parse_upload_questions(file.filename or "upload.csv", content)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    existing = await bank_import.existing_question_norms(db, board, form_subject)
+    before = await bank_import.count_bank_questions(db, board, form_subject)
+    annotated = bank_import.annotate_preview(parsed["questions"], existing)
+
+    warnings = list(parsed.get("warnings") or [])
+    if annotated["needs_review_count"]:
+        warnings.append(
+            "Some questions could not be detected reliably. Please review them before importing."
+        )
+    if annotated["duplicate_count"]:
+        warnings.append(
+            f"{annotated['duplicate_count']} possible duplicate(s) already exist in this bank."
+        )
+
+    return {
+        "source": parsed.get("source"),
+        "filename": file.filename,
+        "exam_type": board,
+        "subject": form_subject,
+        "bank_count_before": before,
+        "answer_key_found": parsed.get("answer_key_found"),
+        "warnings": warnings,
+        "low_confidence_threshold": parsed.get(
+            "low_confidence_threshold", bank_import.LOW_CONFIDENCE_THRESHOLD
+        ),
+        **annotated,
+    }
+
+
+class CBTBankAppendQuestion(BaseModel):
+    question_text: str
+    option_a: str
+    option_b: str
+    option_c: str
+    option_d: str
+    correct_option: str
+    explanation: Optional[str] = None
+    topic: Optional[str] = None
+    image_url: Optional[str] = None
+    confidence: Optional[float] = None
+    is_duplicate: Optional[bool] = None
+
+
+class CBTBankAppendRequest(BaseModel):
+    exam_type: str
+    subject: str
+    duration_minutes: int = 60
+    # new_only = skip duplicates; all = import even if text matches existing
+    import_mode: str = "new_only"
+    questions: list[CBTBankAppendQuestion]
+
+
+@router.post("/cbt/bank/append")
+async def append_bank_questions(
+    payload: CBTBankAppendRequest,
+    current_user: dict = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Bulk APPEND reviewed questions into the selected exam + subject bank.
+    Never deletes or replaces existing questions.
+    """
+    from app.services import cbt_bank_import as bank_import
+
+    subject = (payload.subject or "").strip()
+    if not subject:
+        raise HTTPException(status_code=400, detail="Select a subject before importing")
+    try:
+        board = normalize_exam_type(payload.exam_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    mode = (payload.import_mode or "new_only").strip().lower()
+    if mode not in {"new_only", "all"}:
+        raise HTTPException(status_code=400, detail="import_mode must be new_only or all")
+
+    # Duration for the bank exam shell comes from CBT Settings, not the upload form.
+    from app.services import cbt_engine as _cbt_engine
+
+    settings = await _cbt_engine.get_cbt_settings(db)
+    if board == "JAMB":
+        duration = int(settings.get("jamb_duration_minutes") or 60)
+    elif board == "WAEC":
+        duration = int(settings.get("waec_duration_minutes") or 60)
+    elif board == "NECO":
+        duration = int(settings.get("neco_duration_minutes") or 60)
+    elif board == "COMMON_ENTRANCE":
+        duration = int(settings.get("ce_duration_minutes") or 60)
+    else:
+        duration = int(payload.duration_minutes or 60)
+
+    questions = [q.model_dump() if hasattr(q, "model_dump") else q.dict() for q in payload.questions]
+    try:
+        result = await bank_import.append_questions_to_bank(
+            db,
+            exam_type=board,
+            subject=subject,
+            created_by=current_user["sub"],
+            duration_minutes=duration,
+            questions=questions,
+            import_mode=mode,
+        )
+        await db.commit()
+    except ValueError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception:
+        await db.rollback()
+        raise
+
+    return result
+
+
 @router.post("/seed-cbt")
 async def seed_cbt(
     current_user: dict = Depends(require_admin),

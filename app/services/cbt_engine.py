@@ -31,6 +31,13 @@ DEFAULT_SETTINGS = {
     "waec_duration_minutes": 60,
     "neco_questions_per_subject": 50,
     "neco_duration_minutes": 60,
+    "ce_questions_per_subject": 40,
+    "ce_duration_minutes": 60,
+    "ce_subjects": [
+        "Mathematics / Quantitative Reasoning",
+        "English Language / Verbal Reasoning",
+        "General Knowledge",
+    ],
     "randomize_questions": True,
     "randomize_options": True,
     "allow_resume": True,
@@ -59,6 +66,9 @@ async def ensure_cbt_settings_schema() -> None:
             waec_duration_minutes INTEGER DEFAULT 60,
             neco_questions_per_subject INTEGER DEFAULT 50,
             neco_duration_minutes INTEGER DEFAULT 60,
+            ce_questions_per_subject INTEGER DEFAULT 40,
+            ce_duration_minutes INTEGER DEFAULT 60,
+            ce_subjects JSON DEFAULT NULL,
             randomize_questions BOOLEAN DEFAULT TRUE,
             randomize_options BOOLEAN DEFAULT TRUE,
             allow_resume BOOLEAN DEFAULT TRUE,
@@ -66,6 +76,9 @@ async def ensure_cbt_settings_schema() -> None:
             updated_at TIMESTAMP DEFAULT NOW()
         )
         """,
+        "ALTER TABLE cbt_global_settings ADD COLUMN IF NOT EXISTS ce_questions_per_subject INTEGER DEFAULT 40",
+        "ALTER TABLE cbt_global_settings ADD COLUMN IF NOT EXISTS ce_duration_minutes INTEGER DEFAULT 60",
+        "ALTER TABLE cbt_global_settings ADD COLUMN IF NOT EXISTS ce_subjects JSON DEFAULT NULL",
         """
         CREATE TABLE IF NOT EXISTS cbt_practice_attempts (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -113,6 +126,24 @@ async def ensure_cbt_settings_schema() -> None:
         logger.warning("ensure_cbt_settings_schema failed: %s", exc)
 
 
+def _default_ce_subjects() -> list[str]:
+    return list(DEFAULT_SETTINGS["ce_subjects"])
+
+
+def _normalize_ce_subjects(raw) -> list[str]:
+    if raw is None:
+        return _default_ce_subjects()
+    if isinstance(raw, str):
+        # Allow newline- or comma-separated admin input
+        parts = [p.strip() for p in raw.replace("\n", ",").split(",")]
+        out = [p for p in parts if p]
+        return out or _default_ce_subjects()
+    if isinstance(raw, (list, tuple)):
+        out = [str(s).strip() for s in raw if str(s).strip()]
+        return out or _default_ce_subjects()
+    return _default_ce_subjects()
+
+
 def settings_to_dict(row: CbtGlobalSettings | None) -> dict[str, Any]:
     if not row:
         return dict(DEFAULT_SETTINGS)
@@ -126,6 +157,9 @@ def settings_to_dict(row: CbtGlobalSettings | None) -> dict[str, Any]:
         "waec_duration_minutes": int(row.waec_duration_minutes or 60),
         "neco_questions_per_subject": int(row.neco_questions_per_subject or 50),
         "neco_duration_minutes": int(row.neco_duration_minutes or 60),
+        "ce_questions_per_subject": int(getattr(row, "ce_questions_per_subject", None) or 40),
+        "ce_duration_minutes": int(getattr(row, "ce_duration_minutes", None) or 60),
+        "ce_subjects": _normalize_ce_subjects(getattr(row, "ce_subjects", None)),
         "randomize_questions": bool(row.randomize_questions if row.randomize_questions is not None else True),
         "randomize_options": bool(row.randomize_options if row.randomize_options is not None else True),
         "allow_resume": bool(row.allow_resume if row.allow_resume is not None else True),
@@ -152,8 +186,12 @@ async def update_cbt_settings(db: AsyncSession, payload: dict[str, Any]) -> dict
         row = CbtGlobalSettings(id=1)
         db.add(row)
     for key in DEFAULT_SETTINGS:
-        if key in payload and payload[key] is not None:
-            setattr(row, key, payload[key])
+        if key not in payload or payload[key] is None:
+            continue
+        value = payload[key]
+        if key == "ce_subjects":
+            value = _normalize_ce_subjects(value)
+        setattr(row, key, value)
     row.updated_at = naive_utc_now()
     await db.flush()
     return settings_to_dict(row)
@@ -169,10 +207,14 @@ def _subject_keys(subject: str) -> set[str]:
     keys = {n} if n else set()
     if not n:
         return keys
-    if n in {"math", "maths", "mathematics", "further mathematics", "addmath"} or "math" in n:
-        keys |= {"math", "maths", "mathematics"}
-    if n in ENGLISH_ALIASES or "english" in n:
-        keys |= set(ENGLISH_ALIASES) | {n}
+    if n in {"math", "maths", "mathematics", "further mathematics", "addmath"} or "math" in n or "quantitative" in n:
+        keys |= {"math", "maths", "mathematics", "quantitative reasoning"}
+    if n in ENGLISH_ALIASES or "english" in n or "verbal" in n:
+        keys |= set(ENGLISH_ALIASES) | {n, "verbal reasoning"}
+    if "basic science" in n or n in {"basic science", "general science"}:
+        keys |= {"basic science", "general science", "intermediate science"}
+    if "general knowledge" in n or n == "gk":
+        keys |= {"general knowledge", "gk"}
     if n in {"crs", "crk", "christian religious studies", "christian religious knowledge"} or (
         "christian" in n and "relig" in n
     ):
@@ -442,7 +484,7 @@ async def ensure_section_built(
             else int(settings["jamb_questions_per_subject"] or 40)
         )
     elif board == "COMMON_ENTRANCE":
-        count = int(settings.get("jamb_questions_per_subject") or 40)
+        count = int(settings.get("ce_questions_per_subject") or 40)
     elif board == "WAEC":
         count = int(settings["waec_questions_per_subject"] or 50)
     else:
@@ -565,28 +607,24 @@ async def start_practice_attempt(
             )
             sections.append(section_stub(sub, n))
     elif board == "COMMON_ENTRANCE":
-        from app.core.subjects import COMMON_ENTRANCE_SUBJECTS
-
-        need = 3
-        profile_ce = list(
-            (profile.ssce_subjects if profile else None)
-            or (profile.selected_subjects if profile else None)
-            or []
-        )
-        if len(subjects_clean) != need:
-            if len(profile_ce) == need:
-                subjects_clean = [str(s).strip() for s in profile_ce if str(s).strip()]
-            else:
-                subjects_clean = list(COMMON_ENTRANCE_SUBJECTS)
-        if len(subjects_clean) != need:
+        # Combined package like JAMB: subjects come from Admin CE settings (not one-at-a-time).
+        configured = _normalize_ce_subjects(settings.get("ce_subjects"))
+        if subjects_clean:
+            # Keep caller order but only allow configured subjects when configured list exists
+            allowed = {_norm_subject(s) for s in configured}
+            filtered = [s for s in subjects_clean if _norm_subject(s) in allowed or any(
+                subjects_match(s, cfg) for cfg in configured
+            )]
+            subjects_clean = filtered or list(configured)
+        else:
+            subjects_clean = list(configured)
+        if len(subjects_clean) < 1:
             raise ValueError(
-                "Common Entrance is one combined CBT with exactly 3 subjects "
-                "(Mathematics/Quantitative Reasoning, English Language/Verbal Reasoning, "
-                "and General Knowledge)."
+                "Common Entrance subjects are not configured. "
+                "Ask admin to set Common Entrance subjects in CBT Settings."
             )
-        # Same timing pattern as JAMB: one sitting for all papers
-        duration = int(settings.get("jamb_duration_minutes") or 90)
-        per = int(settings.get("jamb_questions_per_subject") or 40)
+        duration = int(settings.get("ce_duration_minutes") or 60)
+        per = int(settings.get("ce_questions_per_subject") or 40)
         sections = [section_stub(sub, per) for sub in subjects_clean]
     else:
         profile_ssce = list(

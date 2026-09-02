@@ -32,6 +32,9 @@ class CbtSettingsUpdate(BaseModel):
     waec_duration_minutes: Optional[int] = Field(None, ge=5, le=480)
     neco_questions_per_subject: Optional[int] = Field(None, ge=1, le=200)
     neco_duration_minutes: Optional[int] = Field(None, ge=5, le=480)
+    ce_questions_per_subject: Optional[int] = Field(None, ge=1, le=200)
+    ce_duration_minutes: Optional[int] = Field(None, ge=5, le=480)
+    ce_subjects: Optional[list[str]] = None
     randomize_questions: Optional[bool] = None
     randomize_options: Optional[bool] = None
     allow_resume: Optional[bool] = None
@@ -166,6 +169,9 @@ async def practice_home(
             "jamb_english_questions": int(settings.get("jamb_english_questions") or 40),
             "waec_duration_minutes": int(settings.get("waec_duration_minutes") or 60),
             "neco_duration_minutes": int(settings.get("neco_duration_minutes") or 60),
+            "ce_duration_minutes": int(settings.get("ce_duration_minutes") or 60),
+            "ce_questions_per_subject": int(settings.get("ce_questions_per_subject") or 40),
+            "ce_subjects": list(settings.get("ce_subjects") or []),
         },
         "exam_types": [
             await board_block("JAMB"),
@@ -199,6 +205,9 @@ async def practice_settings_public(
             "waec_questions_per_subject": int(settings.get("waec_questions_per_subject") or 50),
             "neco_duration_minutes": int(settings.get("neco_duration_minutes") or 60),
             "neco_questions_per_subject": int(settings.get("neco_questions_per_subject") or 50),
+            "ce_duration_minutes": int(settings.get("ce_duration_minutes") or 60),
+            "ce_questions_per_subject": int(settings.get("ce_questions_per_subject") or 40),
+            "ce_subjects": list(settings.get("ce_subjects") or []),
         }
     }
 
