@@ -91,8 +91,6 @@
     "#about .section-head",
     "#product .section-head",
     "#product .feature-grid article",
-    "#demo .showcase-copy",
-    "#demo .showcase-frame",
     "#instructors .instructors-copy",
     "#instructors .instructor-slider",
     "#stories .section-head",
@@ -129,8 +127,6 @@
     el.dataset.d = String(120 + i * 100);
   });
 
-  document.querySelectorAll("#demo .showcase-copy").forEach((el) => el.classList.add("reveal-left"));
-  document.querySelectorAll("#demo .showcase-frame").forEach((el) => el.classList.add("reveal-right"));
   document.querySelectorAll("#get-app").forEach((el) => el.classList.add("reveal-pop"));
 
   const delayTimers = new WeakMap();
@@ -255,5 +251,171 @@
       },
       { passive: true }
     );
+  }
+})();
+
+/* ─────────────────────────────────────────────────────────────
+   TEACHERS — fetch from API and render into #teacherGrid
+   GET https://scholaxia1.onrender.com/api/v1/profiles/teachers
+   Response: [{ user_id, full_name, subjects[], bio, profile_picture }]
+   ───────────────────────────────────────────────────────────── */
+(() => {
+  const API  = 'https://scholaxia1.onrender.com/api/v1/profiles/teachers';
+  const grid = document.getElementById('teacherGrid');
+  if (!grid) return;
+  let teacherSlideTimer = null;
+
+  function startTeacherSlider() {
+    if (teacherSlideTimer) clearInterval(teacherSlideTimer);
+    const cards = Array.from(grid.querySelectorAll('.instructor-card'));
+    if (cards.length < 2 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    let index = 0;
+    teacherSlideTimer = setInterval(() => {
+      const first = cards[0];
+      if (!first || !first.isConnected) return;
+      const gap = parseFloat(getComputedStyle(grid).gap) || 20;
+      const step = first.getBoundingClientRect().width + gap;
+      const maxScroll = Math.max(0, grid.scrollWidth - grid.clientWidth);
+      index += 1;
+      const next = index * step;
+      if (next >= maxScroll + step * 0.5) {
+        index = 0;
+        grid.scrollTo({ left: 0, behavior: 'smooth' });
+      } else {
+        grid.scrollTo({ left: Math.min(next, maxScroll), behavior: 'smooth' });
+      }
+    }, 3200);
+  }
+
+  /* initials from full name */
+  function initials(name) {
+    return (name || '').split(' ').filter(Boolean).slice(0, 2)
+      .map(w => w[0].toUpperCase()).join('');
+  }
+
+  /* up to 3 subjects joined by · */
+  function subjectLine(subjects) {
+    if (!Array.isArray(subjects) || subjects.length === 0) return 'Instructor';
+    return subjects.slice(0, 3).join(' · ') + (subjects.length > 3 ? ' …' : '');
+  }
+
+  /* build one <article> card */
+  function buildCard(teacher) {
+    const { user_id, full_name, subjects, bio, profile_picture } = teacher;
+    const name = full_name || 'Scholaxia Teacher';
+    const abbr = initials(name);
+    const subs = subjectLine(subjects);
+
+    const article = document.createElement('article');
+    article.className = 'instructor-card';
+
+    /* photo or placeholder initials */
+    const photoDiv = document.createElement('div');
+    if (profile_picture) {
+      photoDiv.className = 'instructor-photo';
+      const img = document.createElement('img');
+      img.src     = profile_picture;
+      img.alt     = name;
+      img.loading = 'lazy';
+      img.onerror = () => {
+        photoDiv.className = 'instructor-photo placeholder';
+        photoDiv.innerHTML = '<span>' + abbr + '</span>';
+      };
+      photoDiv.appendChild(img);
+    } else {
+      photoDiv.className = 'instructor-photo placeholder';
+      photoDiv.innerHTML = '<span>' + abbr + '</span>';
+    }
+
+    const h3 = document.createElement('h3');
+    h3.textContent = name;
+
+    const subEl = document.createElement('p');
+    subEl.className   = 'instructor-subjects';
+    subEl.textContent = subs;
+
+    const link = document.createElement('a');
+    link.className   = 'btn btn-profile';
+    link.href        = 'portal.html?teacher=' + encodeURIComponent(user_id || '');
+    link.textContent = 'View Profile';
+
+    article.appendChild(photoDiv);
+    article.appendChild(h3);
+    article.appendChild(subEl);
+    article.appendChild(link);
+    return article;
+  }
+
+  /* stagger card entrance animations */
+  function animateCards(cards) {
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    cards.forEach((card, i) => {
+      if (reduce) return;
+      card.style.opacity   = '0';
+      card.style.transform = 'translateY(28px) scale(0.94)';
+      card.style.transition = 'opacity 0.5s ease, transform 0.5s cubic-bezier(0.16,1,0.3,1)';
+      setTimeout(() => {
+        card.style.opacity   = '1';
+        card.style.transform = 'translateY(0) scale(1)';
+      }, 60 + i * 60);
+    });
+  }
+
+  /* error state with retry button */
+  function showError() {
+    grid.innerHTML =
+      '<div class="teachers-error">' +
+        '<p>⚠️ Could not load instructors right now.</p>' +
+        '<button type="button" id="retryTeachers">Try again</button>' +
+      '</div>';
+    const btn = document.getElementById('retryTeachers');
+    if (btn) btn.addEventListener('click', loadTeachers);
+  }
+
+  /* main fetch function */
+  function loadTeachers() {
+    /* restore skeleton while retrying */
+    grid.innerHTML = Array(8).fill(
+      '<div class="teacher-skeleton" aria-hidden="true">' +
+        '<div class="skel-avatar"></div>' +
+        '<div class="skel-line"></div>' +
+        '<div class="skel-line short"></div>' +
+        '<div class="skel-btn"></div>' +
+      '</div>'
+    ).join('');
+
+    fetch(API, { method: 'GET', headers: { 'Accept': 'application/json' } })
+      .then(res => {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      })
+      .then(data => {
+        const teachers = Array.isArray(data) ? data : (data.teachers || data.data || []);
+        if (teachers.length === 0) {
+          grid.innerHTML =
+            '<div class="teachers-error"><p>No instructors found yet. Check back soon!</p></div>';
+          return;
+        }
+        grid.innerHTML = '';
+        const cards = teachers.map(buildCard);
+        cards.forEach(c => grid.appendChild(c));
+        animateCards(cards);
+        startTeacherSlider();
+      })
+      .catch(() => showError());
+  }
+
+  /* kick off — use IntersectionObserver so we only fetch when section scrolls into view */
+  const section = document.getElementById('instructors');
+  if (section && 'IntersectionObserver' in window) {
+    const io = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) {
+        io.disconnect();
+        loadTeachers();
+      }
+    }, { rootMargin: '200px' });
+    io.observe(section);
+  } else {
+    loadTeachers();
   }
 })();

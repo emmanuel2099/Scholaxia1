@@ -1,41 +1,83 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" dir="ltr">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta
-      name="description"
-      content="Scholaxia — smart, simple learning for modern students. Live classes, CBT, AI tutor, library, marketplace, and community."
-    />
+    <meta name="description" content="Scholaxia — smart, simple learning for modern students. Live classes, CBT, AI tutor, library, marketplace, and community." />
+    <meta name="theme-color" content="#7c3aed" />
+    <!-- SEO / Open Graph -->
+    <meta property="og:title" content="Scholaxia — Smart. Simple. Learning." />
+    <meta property="og:description" content="Live classes, CBT practice, and Sia AI — built for WAEC, NECO, JAMB, IGCSE, SAT, KCSE & BECE students." />
+    <meta property="og:image" content="media/hero-bg.png" />
+    <!-- Timezone auto-detect hint (used by JS) -->
+    <meta name="tz-auto" content="true" />
     <title>Scholaxia — Smart. Simple. Learning.</title>
     <link rel="icon" type="image/png" href="media/logo-main.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap"
-      rel="stylesheet"
-    />
-    <link rel="stylesheet" href="css/site.css?v=20" />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="css/site.css?v=32" />
   </head>
   <body>
+
+    <!-- ══ TOPBAR ══ -->
     <header class="topbar" id="topbar">
       <a class="logo logo-main" href="#top" aria-label="Scholaxia home">
         <img src="media/logo-main.png" alt="Scholaxia Online School" />
       </a>
 
       <nav class="nav" aria-label="Primary">
-        <a href="#top" class="is-active">Home</a>
-        <a href="portal.html">CBT Practice</a>
-        <a href="past-questions.html">Past questions</a>
-        <a href="marketplace.html">Marketplace</a>
-        <a href="#affiliate">Affiliate</a>
-        <a href="#contact">Contact</a>
-        <a href="#about">About</a>
+        <a href="#top" class="is-active" data-i18n="nav_home">Home</a>
+        <a href="portal.html" data-i18n="nav_cbt">CBT Practice</a>
+        <a href="past-questions.html" data-i18n="nav_pq">Past questions</a>
+        <a href="marketplace.html" data-i18n="nav_market">Marketplace</a>
+        <a href="#affiliate" data-i18n="nav_affiliate">Affiliate</a>
+        <a href="#contact" data-i18n="nav_contact">Contact</a>
+        <a href="#about" data-i18n="nav_about">About</a>
       </nav>
 
       <div class="top-actions">
-        <a class="btn btn-red btn-pill" href="marketplace.html">Marketplace</a>
-        <a class="btn btn-ghost" href="portal.html?mode=signup&role=student&switch=1">Join</a>
+        <!-- Language picker dropdown -->
+        <div class="lang-wrap" id="langWrap">
+          <button class="lang-btn" id="langBtn" aria-haspopup="listbox" aria-expanded="false" aria-label="Select language">
+            <span id="langFlag">🇬🇧</span>
+            <span id="langLabel">EN</span>
+            <span class="lang-arrow" aria-hidden="true">▾</span>
+          </button>
+          <div class="lang-dropdown" id="langDropdown" role="listbox">
+            <div class="lang-option active" data-lang="en" role="option" tabindex="0">
+              <span class="lang-flag">🇬🇧</span> English
+            </div>
+            <div class="lang-option" data-lang="fr" role="option" tabindex="0">
+              <span class="lang-flag">🇫🇷</span> Français
+            </div>
+            <div class="lang-option" data-lang="pt" role="option" tabindex="0">
+              <span class="lang-flag">🇧🇷</span> Português
+            </div>
+            <div class="lang-option" data-lang="ar" role="option" tabindex="0">
+              <span class="lang-flag">🇸🇦</span> العربية
+            </div>
+          </div>
+        </div>
+
+        <!-- Currency picker dropdown -->
+        <div class="lang-wrap" id="currWrap">
+          <button class="lang-btn" id="currBtn" aria-haspopup="listbox" aria-expanded="false" aria-label="Select currency">
+            <span id="currSymbol">$</span>
+            <span id="currLabel">USD</span>
+            <span class="lang-arrow" aria-hidden="true">▾</span>
+          </button>
+          <div class="lang-dropdown" id="currDropdown" role="listbox">
+            <div class="lang-option active" data-currency="USD" role="option" tabindex="0">$ USD — US Dollar</div>
+            <div class="lang-option" data-currency="GBP" role="option" tabindex="0">£ GBP — British Pound</div>
+            <div class="lang-option" data-currency="NGN" role="option" tabindex="0">₦ NGN — Nigerian Naira</div>
+            <div class="lang-option" data-currency="KES" role="option" tabindex="0">KES — Kenyan Shilling</div>
+            <div class="lang-option" data-currency="GHS" role="option" tabindex="0">GHS — Ghanaian Cedi</div>
+          </div>
+        </div>
+
+        <a class="btn btn-red btn-pill" href="marketplace.html" data-i18n="btn_marketplace">Marketplace</a>
+        <a class="btn btn-ghost" href="portal.html?mode=signup&role=student&switch=1" data-i18n="btn_join">Join</a>
         <button class="icon-btn menu-btn" type="button" aria-label="Menu" id="menuBtn">
           <svg viewBox="0 0 24 24" fill="none" width="20" height="20" aria-hidden="true">
             <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
@@ -44,36 +86,50 @@
       </div>
     </header>
 
+    <!-- ══ MOBILE NAV ══ -->
     <div class="mobile-nav" id="mobileNav" hidden>
-      <a href="#top">Home</a>
-      <a href="portal.html">CBT Practice</a>
-      <a href="past-questions.html">Past questions</a>
-      <a href="marketplace.html">Marketplace</a>
-      <a href="#affiliate">Affiliate</a>
-      <a href="#contact">Contact</a>
-      <a href="#about">About</a>
-      <a class="btn btn-red" href="portal.html">Join</a>
+      <a href="#top" data-i18n="nav_home">Home</a>
+      <a href="portal.html" data-i18n="nav_cbt">CBT Practice</a>
+      <a href="past-questions.html" data-i18n="nav_pq">Past questions</a>
+      <a href="marketplace.html" data-i18n="nav_market">Marketplace</a>
+      <a href="#affiliate" data-i18n="nav_affiliate">Affiliate</a>
+      <a href="#contact" data-i18n="nav_contact">Contact</a>
+      <a href="#about" data-i18n="nav_about">About</a>
+      <a class="btn btn-red" href="portal.html" data-i18n="btn_join">Join</a>
     </div>
 
     <main id="top">
+
+      <!-- ══ HERO ══ -->
       <section class="hero-banner" id="home" aria-roledescription="carousel" aria-label="Scholaxia banner">
+
+        <div class="hero-sun-rays" aria-hidden="true">
+          <span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span>
+          <span></span><span></span><span></span><span></span>
+        </div>
+
+        <div class="hero-particles" aria-hidden="true">
+          <div class="hp"></div><div class="hp"></div><div class="hp"></div>
+          <div class="hp"></div><div class="hp"></div><div class="hp"></div>
+          <div class="hp"></div><div class="hp"></div><div class="hp"></div>
+          <div class="hp"></div>
+        </div>
+
+        <div class="hero-stars" aria-hidden="true">
+          <div class="hstar">✦</div><div class="hstar">✦</div>
+          <div class="hstar">✦</div><div class="hstar">✦</div>
+          <div class="hstar">✦</div><div class="hstar">✦</div>
+        </div>
+
         <div class="hero-slider" id="heroSlider">
           <div class="hero-track" id="heroTrack">
-            <div class="hero-slide is-active" data-slide="0">
-              <img src="media/hero-bg.png" alt="Scholaxia learning community" />
-            </div>
-            <div class="hero-slide" data-slide="1">
-              <img src="media/banner-1.png" alt="Scholaxia student" />
-            </div>
-            <div class="hero-slide" data-slide="2">
-              <img src="media/banner-2.png" alt="Scholaxia team learning" />
-            </div>
-            <div class="hero-slide" data-slide="3">
-              <img src="media/banner-3.png" alt="Scholaxia live teaching" />
-            </div>
-            <div class="hero-slide" data-slide="4">
-              <img src="media/banner-4.png" alt="Scholaxia focused study" />
-            </div>
+            <div class="hero-slide is-active" data-slide="0"><img src="media/hero-bg.png" alt="Scholaxia learning community" /></div>
+            <div class="hero-slide" data-slide="1"><img src="media/banner-1.png" alt="Scholaxia student" /></div>
+            <div class="hero-slide" data-slide="2"><img src="media/banner-2.png" alt="Scholaxia team learning" /></div>
+            <div class="hero-slide" data-slide="3"><img src="media/banner-3.png" alt="Scholaxia live teaching" /></div>
+            <div class="hero-slide" data-slide="4"><img src="media/banner-4.png" alt="Scholaxia focused study" /></div>
           </div>
         </div>
 
@@ -81,355 +137,304 @@
         <div class="hero-sparkle" aria-hidden="true"></div>
 
         <div class="hero-inner">
-          <div class="hero-copy reveal-drop">
+          <div class="hero-copy">
+
+            <div class="hero-badge" aria-hidden="true">
+              <span class="hero-badge-dot"></span>
+              <span data-i18n="hero_badge">Now live — WAEC &amp; JAMB 2026</span>
+            </div>
+
             <h1>
-              Study online.
-              <span class="accent">Pass with confidence.</span>
+              <span data-i18n="hero_h1_a">Study online.</span>
+              <span class="accent" data-i18n="hero_h1_b">Pass with confidence.</span>
             </h1>
-            <p class="hero-sub">
-              Live classes, CBT practice, and Sia AI — built for WAEC, NECO &amp; JAMB students.
+
+            <!-- Exam types row -->
+            <div class="hero-exams" aria-label="Supported exams">
+              <span class="exam-tag">WAEC</span>
+              <span class="exam-tag">NECO</span>
+              <span class="exam-tag">JAMB</span>
+              <span class="exam-tag">IGCSE</span>
+              <span class="exam-tag">SAT</span>
+              <span class="exam-tag">KCSE</span>
+              <span class="exam-tag">BECE</span>
+              <span class="exam-tag" data-i18n="exam_more">+ more</span>
+            </div>
+
+            <p class="hero-sub" data-i18n="hero_sub">
+              Live classes, CBT practice, and Sia AI — built for students across Africa and beyond.
             </p>
+
             <div class="hero-actions">
-              <a class="btn btn-join" href="marketplace.html">
-                Marketplace
+              <a class="btn btn-join btn-magnetic" href="marketplace.html">
+                <span data-i18n="btn_marketplace">Marketplace</span>
                 <span class="btn-circle" aria-hidden="true">→</span>
               </a>
-              <a class="btn btn-ai" href="portal.html?mode=signup&role=student&switch=1">Join</a>
+              <a class="btn btn-ai btn-magnetic" href="portal.html?mode=signup&role=student&switch=1" data-i18n="btn_join_free">Join free</a>
             </div>
+
           </div>
         </div>
       </section>
 
+      <!-- ══ TRUST STRIP ══ -->
       <section class="trust-strip" aria-label="Scholaxia highlights">
         <div class="trust-inner">
-          <article><strong>10k+</strong><span>Students enrolled</span></article>
-          <article><strong>200+</strong><span>Courses &amp; materials</span></article>
-          <article><strong>85%</strong><span>Completion rate</span></article>
-          <article><strong>4.8★</strong><span>Average rating</span></article>
+          <article>
+            <strong data-i18n="stat_students">10,000+</strong>
+            <span data-i18n="stat_students_label">Students enrolled</span>
+          </article>
+          <article>
+            <strong data-i18n="stat_courses">200+</strong>
+            <span data-i18n="stat_courses_label">Courses &amp; materials</span>
+          </article>
+          <article>
+            <strong data-i18n="stat_completion">85%</strong>
+            <span data-i18n="stat_completion_label">Completion rate</span>
+          </article>
+          <article>
+            <strong data-i18n="stat_rating">4.8★</strong>
+            <span data-i18n="stat_rating_label">Average rating</span>
+          </article>
+          <!-- Global reach row -->
+          <div class="trust-global">
+            <span class="trust-globe">🌍</span>
+            <span data-i18n="trust_global">Trusted by 10,000+ students across 20+ countries</span>
+          </div>
         </div>
       </section>
 
+      <!-- ══ ABOUT ══ -->
       <section class="section about" id="about">
         <div class="section-head">
-          <p class="kicker">About</p>
-          <h2>Built for modern education</h2>
-          <p>
+          <p class="kicker" data-i18n="kicker_about">About</p>
+          <h2 data-i18n="about_h2">Built for modern education</h2>
+          <p data-i18n="about_p">
             Scholaxia brings every student tool into one mature platform —
-            clear, reliable, and ready for schools and learners.
+            clear, reliable, and ready for schools and learners worldwide.
           </p>
         </div>
       </section>
 
+      <!-- ══ PRODUCT ══ -->
       <section class="section product" id="product">
         <div class="section-head">
-          <p class="kicker">Product</p>
-          <h2>Everything students need. One platform.</h2>
+          <p class="kicker" data-i18n="kicker_product">Product</p>
+          <h2 data-i18n="product_h2">Everything students need. One platform.</h2>
         </div>
         <div class="feature-grid">
           <article>
-            <div class="feature-media">
-              <img src="media/feature-live.png" alt="Live class on laptop" loading="lazy" />
-            </div>
+            <div class="feature-media"><img src="media/feature-live.png" alt="Live class on laptop" loading="lazy" /></div>
             <div class="ico">Live</div>
-            <h3>Live Classes</h3>
-            <p>HD lessons with whiteboard, raise-hand, and screen share.</p>
+            <h3 data-i18n="feat_live_h">Live Classes</h3>
+            <p data-i18n="feat_live_p">HD lessons with whiteboard, raise-hand, and screen share.</p>
           </article>
           <article>
-            <div class="feature-media">
-              <img src="media/feature-cbt.png" alt="Student taking a CBT exam" loading="lazy" />
-            </div>
+            <div class="feature-media"><img src="media/feature-cbt.png" alt="Student taking a CBT exam" loading="lazy" /></div>
             <div class="ico">CBT</div>
-            <h3>CBT Exams</h3>
-            <p>Timed practice, instant scoring, and clear analytics.</p>
+            <h3 data-i18n="feat_cbt_h">CBT Exams</h3>
+            <p data-i18n="feat_cbt_p">Timed practice, instant scoring, and clear analytics.</p>
           </article>
           <article>
-            <div class="feature-media">
-              <img src="media/feature-ai.png" alt="Sia AI tutor helping a student" loading="lazy" />
-            </div>
+            <div class="feature-media"><img src="media/feature-ai.png" alt="Sia AI tutor helping a student" loading="lazy" /></div>
             <div class="ico">AI</div>
-            <h3>Sia AI Tutor</h3>
-            <p>24/7 homework help, explanations, and study support.</p>
+            <h3 data-i18n="feat_ai_h">Sia AI Tutor</h3>
+            <p data-i18n="feat_ai_p">24/7 homework help, explanations, and study support.</p>
           </article>
           <article>
-            <div class="feature-media">
-              <img src="media/feature-library.png" alt="Digital library smart search" loading="lazy" />
-            </div>
+            <div class="feature-media"><img src="media/feature-library.png" alt="Digital library smart search" loading="lazy" /></div>
             <div class="ico">Lib</div>
-            <h3>Digital Library</h3>
-            <p>Books, PDFs, video lessons, and smart search.</p>
+            <h3 data-i18n="feat_lib_h">Digital Library</h3>
+            <p data-i18n="feat_lib_p">Books, PDFs, video lessons, and smart search.</p>
           </article>
           <article>
-            <div class="feature-media">
-              <img src="media/feature-market.png" alt="Scholaxia marketplace books and gadgets" loading="lazy" />
-            </div>
+            <div class="feature-media"><img src="media/feature-market.png" alt="Scholaxia marketplace" loading="lazy" /></div>
             <div class="ico">Shop</div>
-            <h3>Marketplace</h3>
-            <p>Books &amp; gadgets in its own shop — browse free, checkout when ready.</p>
+            <h3 data-i18n="feat_shop_h">Marketplace</h3>
+            <p data-i18n="feat_shop_p">Books &amp; gadgets in its own shop — browse free, checkout when ready.</p>
           </article>
           <article>
-            <div class="feature-media">
-              <img src="media/feature-community.png" alt="Student community discussions" loading="lazy" />
-            </div>
-            <div class="ico">Chat</div>
-            <h3>Community</h3>
-            <p>Class groups, discussions, and school announcements.</p>
+            <div class="feature-media"><img src="media/feature-community.png" alt="Student community discussions" loading="lazy" /></div>
+            <div class="ico">🏆</div>
+            <h3 data-i18n="feat_cert_h">Certificates</h3>
+            <p data-i18n="feat_cert_p">Auto-generate PDF certificates after CBT completion with name &amp; score.</p>
           </article>
         </div>
       </section>
 
-      <section class="section showcase showcase-visual-only" id="demo">
-        <div class="showcase-frame showcase-frame-full">
-          <div class="browser">
-            <div class="browser-bar">
-              <span></span><span></span><span></span>
-              <p>app.scholaxia.com</p>
-            </div>
-            <div class="demo-media" id="demoMedia">
-              <video
-                src="media/hero.mp4"
-                autoplay
-                muted
-                loop
-                playsinline
-                preload="auto"
-                class="demo-video"
-                poster="media/hero-classroom.png"
-              ></video>
-              <div class="demo-slide-track" id="demoSlideTrack" aria-hidden="true">
-                <img src="media/feature-live.png" class="demo-slide is-active" alt="" />
-                <img src="media/feature-cbt.png" class="demo-slide" alt="" />
-                <img src="media/feature-ai.png" class="demo-slide" alt="" />
-                <img src="media/feature-library.png" class="demo-slide" alt="" />
-                <img src="media/feature-market.png" class="demo-slide" alt="" />
-                <img src="media/hero-classroom.png" class="demo-slide" alt="" />
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
+      <!-- ══ INSTRUCTORS ══ -->
       <section class="instructors" id="instructors">
         <div class="instructors-inner">
-          <div class="instructors-copy">
-            <div class="instructors-bg" aria-hidden="true">
-              <img src="media/banner-3.png" alt="" />
+          <div class="instructors-head">
+            <div>
+              <p class="kicker" data-i18n="kicker_teachers">Our Teachers</p>
+              <h2 data-i18n="teachers_h2">Learn from the best Scholaxia instructors</h2>
             </div>
-            <h2>Learn from the best Scholaxia instructors</h2>
-            <p>
-              Seasoned experts who bring real industry experience, practical
-              insights, and proven success directly to your screen.
-            </p>
+            <p data-i18n="teachers_p">Seasoned experts who bring real industry experience, practical insights, and proven success directly to your screen.</p>
           </div>
-
-          <div class="instructor-slider" aria-label="Instructors">
-            <div class="instructor-track" id="instructorTrack">
-              <article class="instructor-card">
-                <div class="instructor-photo">
-                  <img src="media/banner-2.png" alt="Samuel Linus" />
-                </div>
-                <h3>Samuel Linus</h3>
-                <a class="btn btn-profile" href="#contact">View Profile</a>
-              </article>
-              <article class="instructor-card">
-                <div class="instructor-photo placeholder">
-                  <span>SU</span>
-                </div>
-                <h3>Saviour Usoro</h3>
-                <a class="btn btn-profile" href="#contact">View Profile</a>
-              </article>
-              <article class="instructor-card">
-                <div class="instructor-photo placeholder">
-                  <span>EA</span>
-                </div>
-                <h3>Emmanuel Ameh</h3>
-                <a class="btn btn-profile" href="#contact">View Profile</a>
-              </article>
-              <article class="instructor-card" aria-hidden="true">
-                <div class="instructor-photo">
-                  <img src="media/banner-1.png" alt="" />
-                </div>
-                <h3>Ada Okoro</h3>
-                <a class="btn btn-profile" href="#contact">View Profile</a>
-              </article>
-              <article class="instructor-card" aria-hidden="true">
-                <div class="instructor-photo placeholder">
-                  <span>TO</span>
-                </div>
-                <h3>Tunde Okafor</h3>
-                <a class="btn btn-profile" href="#contact">View Profile</a>
-              </article>
-            </div>
+          <div class="teacher-grid" id="teacherGrid" aria-label="Instructors" aria-live="polite">
+            <div class="teacher-skeleton" aria-hidden="true"><div class="skel-avatar"></div><div class="skel-line"></div><div class="skel-line short"></div><div class="skel-btn"></div></div>
+            <div class="teacher-skeleton" aria-hidden="true"><div class="skel-avatar"></div><div class="skel-line"></div><div class="skel-line short"></div><div class="skel-btn"></div></div>
+            <div class="teacher-skeleton" aria-hidden="true"><div class="skel-avatar"></div><div class="skel-line"></div><div class="skel-line short"></div><div class="skel-btn"></div></div>
+            <div class="teacher-skeleton" aria-hidden="true"><div class="skel-avatar"></div><div class="skel-line"></div><div class="skel-line short"></div><div class="skel-btn"></div></div>
+            <div class="teacher-skeleton" aria-hidden="true"><div class="skel-avatar"></div><div class="skel-line"></div><div class="skel-line short"></div><div class="skel-btn"></div></div>
+            <div class="teacher-skeleton" aria-hidden="true"><div class="skel-avatar"></div><div class="skel-line"></div><div class="skel-line short"></div><div class="skel-btn"></div></div>
+            <div class="teacher-skeleton" aria-hidden="true"><div class="skel-avatar"></div><div class="skel-line"></div><div class="skel-line short"></div><div class="skel-btn"></div></div>
+            <div class="teacher-skeleton" aria-hidden="true"><div class="skel-avatar"></div><div class="skel-line"></div><div class="skel-line short"></div><div class="skel-btn"></div></div>
           </div>
         </div>
       </section>
 
+      <!-- ══ STORIES ══ -->
       <section class="section stories" id="stories">
         <div class="section-head">
-          <p class="kicker">Stories</p>
-          <h2>Trusted by students and teachers</h2>
+          <p class="kicker" data-i18n="kicker_stories">Stories</p>
+          <h2 data-i18n="stories_h2">Trusted by students and teachers</h2>
         </div>
         <div class="quote-slider" aria-label="Testimonials">
           <div class="quote-track" id="quoteTrack">
+
             <article class="quote-card">
-              <div class="quote-mark" aria-hidden="true">“</div>
-              <p>Scholaxia made exam practice clear and consistent. It feels serious and easy to use.</p>
+              <div class="quote-mark" aria-hidden="true">"</div>
+              <p data-i18n="q1_text">Scholaxia made exam practice clear and consistent. It feels serious and easy to use.</p>
               <footer>
                 <span class="quote-av">A</span>
                 <div>
-                  <strong>Amaka E.</strong>
-                  <span>SS3 Student</span>
+                  <strong data-i18n="q1_name">Amaka E.</strong>
+                  <span data-i18n="q1_role">SS3 Student</span>
+                  <div class="quote-location"><span class="flag">🇳🇬</span><span data-i18n="q1_loc">Lagos, Nigeria</span></div>
                 </div>
               </footer>
             </article>
+
             <article class="quote-card">
-              <div class="quote-mark" aria-hidden="true">“</div>
-              <p>Live classes and CBT analytics help me teach with better focus every week.</p>
+              <div class="quote-mark" aria-hidden="true">"</div>
+              <p data-i18n="q2_text">Live classes and CBT analytics help me teach with better focus every week.</p>
               <footer>
                 <span class="quote-av">O</span>
                 <div>
-                  <strong>Mr. Okonkwo</strong>
-                  <span>Physics Teacher</span>
+                  <strong data-i18n="q2_name">Mr. Okonkwo</strong>
+                  <span data-i18n="q2_role">Physics Teacher</span>
+                  <div class="quote-location"><span class="flag">🇳🇬</span><span data-i18n="q2_loc">Abuja, Nigeria</span></div>
                 </div>
               </footer>
             </article>
+
             <article class="quote-card">
-              <div class="quote-mark" aria-hidden="true">“</div>
-              <p>Clean, mature, and complete. Students actually stay on the platform.</p>
+              <div class="quote-mark" aria-hidden="true">"</div>
+              <p data-i18n="q3_text">Clean, mature, and complete. Students actually stay on the platform.</p>
               <footer>
                 <span class="quote-av">F</span>
                 <div>
-                  <strong>Fatima B.</strong>
-                  <span>School Admin</span>
+                  <strong data-i18n="q3_name">Fatima B.</strong>
+                  <span data-i18n="q3_role">School Admin</span>
+                  <div class="quote-location"><span class="flag">🇬🇭</span><span data-i18n="q3_loc">Accra, Ghana</span></div>
                 </div>
               </footer>
             </article>
+
             <article class="quote-card">
-              <div class="quote-mark" aria-hidden="true">“</div>
-              <p>Sia explains hard topics fast. I study more and stress less before exams.</p>
+              <div class="quote-mark" aria-hidden="true">"</div>
+              <p data-i18n="q4_text">Sia explains hard topics fast. I study more and stress less before exams.</p>
               <footer>
-                <span class="quote-av">C</span>
+                <span class="quote-av">A</span>
                 <div>
-                  <strong>Chinedu K.</strong>
-                  <span>JAMB Candidate</span>
+                  <strong data-i18n="q4_name">Aisha M.</strong>
+                  <span data-i18n="q4_role">KCSE Candidate</span>
+                  <div class="quote-location"><span class="flag">🇰🇪</span><span data-i18n="q4_loc">Nairobi, Kenya</span></div>
                 </div>
               </footer>
             </article>
+
           </div>
         </div>
       </section>
 
+      <!-- ══ PARTNERS ══ -->
       <section class="partners" id="partners">
-        <h2>Our Trusted Partners</h2>
+        <h2 data-i18n="partners_h2">Our Trusted Partners</h2>
         <div class="partners-slider" aria-label="Trusted partners">
           <div class="partners-track" id="partnersTrack">
-            <article class="partner-card">
-              <div class="partner-logo eriam">EG</div>
-              <p>Eriam Girl’s Junior School</p>
-            </article>
-            <article class="partner-card">
-              <div class="partner-logo jamb">JB</div>
-              <p>Joint Admissions and Matriculation Board</p>
-            </article>
-            <article class="partner-card">
-              <div class="partner-logo chris">CS</div>
-              <p>Chrisland Schools</p>
-            </article>
-            <article class="partner-card">
-              <div class="partner-logo eriam">EG</div>
-              <p>Eriam Girl’s Junior School</p>
-            </article>
-            <article class="partner-card">
-              <div class="partner-logo jamb">JB</div>
-              <p>Joint Admissions and Matriculation Board</p>
-            </article>
-            <article class="partner-card">
-              <div class="partner-logo chris">CS</div>
-              <p>Chrisland Schools</p>
-            </article>
+            <article class="partner-card"><div class="partner-logo eriam">EG</div><p>Eriam Girl's Junior School</p></article>
+            <article class="partner-card"><div class="partner-logo jamb">JB</div><p>Joint Admissions and Matriculation Board</p></article>
+            <article class="partner-card"><div class="partner-logo chris">CS</div><p>Chrisland Schools</p></article>
+            <article class="partner-card"><div class="partner-logo eriam">EG</div><p>Eriam Girl's Junior School</p></article>
+            <article class="partner-card"><div class="partner-logo jamb">JB</div><p>Joint Admissions and Matriculation Board</p></article>
+            <article class="partner-card"><div class="partner-logo chris">CS</div><p>Chrisland Schools</p></article>
           </div>
         </div>
       </section>
 
+      <!-- ══ AFFILIATE ══ -->
       <section class="affiliate-section" id="affiliate">
-        <div class="affiliate-bg" aria-hidden="true">
-          <img src="media/banner-2.png" alt="" />
-        </div>
+        <div class="affiliate-bg" aria-hidden="true"><img src="media/banner-2.png" alt="" /></div>
         <div class="affiliate-tint" aria-hidden="true"></div>
         <div class="affiliate-inner">
           <div class="affiliate-copy">
-            <p class="affiliate-kicker">Earn with Scholaxia</p>
-            <h2>Grow with us as an affiliate partner</h2>
-            <p>
-              Share Scholaxia with students and schools. Earn when they join live classes,
-              CBT practice, and skills programs.
-            </p>
+            <p class="affiliate-kicker" data-i18n="aff_kicker">Earn with Scholaxia</p>
+            <h2 data-i18n="aff_h2">Grow with us as an affiliate partner</h2>
+            <p data-i18n="aff_p">Share Scholaxia with students and schools. Earn when they join live classes, CBT practice, and skills programs.</p>
             <div class="affiliate-actions">
-              <a class="btn btn-gold" href="portal.html">Join to get started</a>
-              <a class="btn btn-glass" href="mailto:scholaxia23@gmail.com?subject=Affiliate%20enquiry">Email affiliate team</a>
+              <a class="btn btn-gold" href="portal.html" data-i18n="aff_btn1">Join to get started</a>
+              <a class="btn btn-glass" href="mailto:scholaxia23@gmail.com?subject=Affiliate%20enquiry" data-i18n="aff_btn2">Email affiliate team</a>
             </div>
           </div>
           <ul class="affiliate-perks" aria-label="Affiliate benefits">
-            <li><strong>Refer</strong><span>Students &amp; schools</span></li>
-            <li><strong>Earn</strong><span>On every signup</span></li>
-            <li><strong>Support</strong><span>Partner team help</span></li>
+            <li><strong data-i18n="perk1_h">Refer</strong><span data-i18n="perk1_p">Students &amp; schools</span></li>
+            <li><strong data-i18n="perk2_h">Earn</strong><span data-i18n="perk2_p">On every signup</span></li>
+            <li><strong data-i18n="perk3_h">Support</strong><span data-i18n="perk3_p">Partner team help</span></li>
           </ul>
         </div>
       </section>
 
     </main>
 
+    <!-- ══ ENDING CTA ══ -->
     <section class="ending-cta" id="get-app" aria-label="Start learning">
       <div class="ending-cta-inner">
         <div class="ending-cta-copy">
-          <p class="ending-kicker">Start learning today</p>
-          <h2>Ready to Pass WAEC, NECO &amp; JAMB With Confidence?</h2>
-          <p>
-            Join thousands of students using Scholaxia to prepare smarter with
-            CBT practice, live classes and expert tutors.
-          </p>
+          <p class="ending-kicker" data-i18n="cta_kicker">Start learning today</p>
+          <h2 data-i18n="cta_h2">Ready to Pass Your Exams With Confidence?</h2>
+          <p data-i18n="cta_p">Join 10,000+ students across 20+ countries using Scholaxia for CBT practice, live classes and expert tutors.</p>
         </div>
         <div class="ending-cta-actions">
-          <a class="btn btn-ending-solid" href="portal.html">Explore Courses</a>
-          <a class="btn btn-ending-ghost" href="downloads/Scholaxia-Student-Setup.exe" download>Download Desktop</a>
+          <a class="btn btn-ending-solid" href="portal.html" data-i18n="cta_btn1">Explore Courses</a>
+          <a class="btn btn-ending-ghost" href="downloads/Scholaxia-Student-Setup.exe" download data-i18n="cta_btn2">Download Desktop</a>
         </div>
       </div>
     </section>
 
+    <!-- ══ DOWNLOAD ══ -->
     <section class="download-section" id="download">
       <div class="download-inner">
         <div>
-          <p class="kicker">Windows app</p>
-          <h2>Download Scholaxia Desktop</h2>
-          <p>
-            Install the Scholaxia Student app on your PC for live classes, CBT practice,
-            and study tools — same account as the website.
-          </p>
+          <p class="kicker" data-i18n="dl_kicker">Windows app</p>
+          <h2 data-i18n="dl_h2">Download Scholaxia Desktop</h2>
+          <p data-i18n="dl_p">Install the Scholaxia Student app on your PC for live classes, CBT practice, and study tools — same account as the website.</p>
         </div>
         <div class="download-actions">
-          <a class="btn btn-red btn-cta" href="downloads/Scholaxia-Student-Setup.exe" download>
-            Download for Windows
-          </a>
+          <a class="btn btn-red btn-cta" href="downloads/Scholaxia-Student-Setup.exe" download data-i18n="dl_btn">Download for Windows</a>
           <p class="download-note">Windows 10/11 · Setup installer · ~60 MB</p>
-          <p class="download-note">
-            Chrome or Windows may warn “file not commonly downloaded” or SmartScreen.
-            That happens because the installer is new and not yet code-signed — not because it is malware.
-            Choose <strong>Keep</strong> / <strong>More info → Run anyway</strong> if you downloaded it from this official Scholaxia page (HTTPS).
-            We cannot turn Google’s warning off; a purchased Authenticode certificate is required for that.
-          </p>
+          <p class="download-note">SmartScreen may warn on first run — choose <strong>More info → Run anyway</strong>. The file is safe and served over HTTPS from the official Scholaxia page.</p>
         </div>
       </div>
     </section>
 
+    <!-- ══ FOOTER ══ -->
     <footer class="site-footer" id="contact">
       <div class="site-footer-inner">
+
         <div class="footer-col footer-about">
           <a class="footer-logo" href="#top" aria-label="Scholaxia home">
             <img src="media/logo-main.png" alt="Scholaxia" />
           </a>
-          <p>
-            Scholaxia is a modern African learning platform helping students
-            prepare for WAEC, NECO and JAMB with CBT, live classes, AI tutoring
-            and community support.
+          <p data-i18n="footer_about">
+            Scholaxia is a global learning platform helping students prepare for
+            WAEC, NECO, JAMB, IGCSE, SAT, KCSE &amp; BECE with CBT, live classes,
+            AI tutoring and community support.
+          </p>
+          <p style="color:rgba(255,255,255,.5);font-size:.82rem;margin-top:.6rem;">
+            🏢 HQ: Lagos, Nigeria &nbsp;|&nbsp; 🌍 Serving students worldwide
           </p>
           <div class="footer-phones">
             <a href="tel:+2349021661674">0902 166 1674</a>
@@ -437,52 +442,61 @@
             <a href="https://wa.me/2349021661674" target="_blank" rel="noopener">WhatsApp support</a>
             <a href="mailto:scholaxia23@gmail.com">scholaxia23@gmail.com</a>
           </div>
+          <!-- Legal compliance badges -->
+          <div class="footer-legal-badges">
+            <span class="legal-badge"><span class="badge-icon">🔒</span> GDPR</span>
+            <span class="legal-badge"><span class="badge-icon">🛡️</span> COPPA</span>
+            <span class="legal-badge"><span class="badge-icon">✅</span> SSL Secured</span>
+          </div>
         </div>
 
         <div class="footer-col">
-          <h4>Quick Links</h4>
-          <a href="#top">Home</a>
-          <a href="portal.html">CBT Practice</a>
-          <a href="past-questions.html">Past questions</a>
+          <h4 data-i18n="footer_links">Quick Links</h4>
+          <a href="#top" data-i18n="nav_home">Home</a>
+          <a href="portal.html" data-i18n="nav_cbt">CBT Practice</a>
+          <a href="past-questions.html" data-i18n="nav_pq">Past questions</a>
           <a class="footer-link-hot" href="marketplace.html">
             <span class="hot-ico" aria-hidden="true">▣</span>
-            Marketplace
+            <span data-i18n="nav_market">Marketplace</span>
           </a>
-          <a href="#download">Download Desktop</a>
-          <a href="#affiliate">Affiliate</a>
-          <a href="#about">About</a>
-          <a href="#contact">Contact</a>
+          <a href="#download" data-i18n="footer_dl">Download Desktop</a>
+          <a href="#affiliate" data-i18n="nav_affiliate">Affiliate</a>
+          <a href="#about" data-i18n="nav_about">About</a>
+          <a href="#contact" data-i18n="nav_contact">Contact</a>
         </div>
 
         <div class="footer-col">
-          <h4>Popular Courses</h4>
-          <a class="course-chip" href="#product">CBT Practice</a>
-          <a class="course-chip" href="#product">Live Classes</a>
-          <a class="course-chip" href="#product">Sia AI Tutor</a>
-          <a class="course-chip" href="#product">Digital Library</a>
-          <a class="course-chip" href="#product">Competitions</a>
+          <h4 data-i18n="footer_courses">Popular Courses</h4>
+          <a class="course-chip" href="#product" data-i18n="nav_cbt">CBT Practice</a>
+          <a class="course-chip" href="#product" data-i18n="feat_live_h">Live Classes</a>
+          <a class="course-chip" href="#product" data-i18n="feat_ai_h">Sia AI Tutor</a>
+          <a class="course-chip" href="#product" data-i18n="feat_lib_h">Digital Library</a>
+          <a class="course-chip" href="#product" data-i18n="feat_cert_h">Certificates</a>
         </div>
 
         <div class="footer-col footer-news">
-          <h4>Stay updated</h4>
-          <p>Get exam tips, free materials and learning updates weekly.</p>
+          <h4 data-i18n="footer_stay">Stay updated</h4>
+          <p data-i18n="footer_stay_p">Get exam tips, free materials and learning updates weekly.</p>
           <form class="news-form" action="#contact" method="get">
-            <label for="newsEmail">Email</label>
+            <label for="newsEmail" data-i18n="footer_email_label">Email</label>
             <input id="newsEmail" name="email" type="email" placeholder="you@email.com" required />
-            <button class="btn btn-subscribe" type="submit">Subscribe</button>
+            <button class="btn btn-subscribe" type="submit" data-i18n="footer_subscribe">Subscribe</button>
           </form>
         </div>
+
       </div>
+
       <div class="site-footer-bottom">
-        <p>© 2026 Scholaxia. All rights reserved.</p>
+        <p>© 2026 Scholaxia. All rights reserved. · HQ: Lagos, Nigeria · Serving students worldwide</p>
         <div class="footer-legal">
-          <a href="#contact">Privacy</a>
-          <a href="#contact">Terms</a>
-          <a href="#contact">Support</a>
+          <a href="privacy.html" data-i18n="footer_privacy">Privacy Policy</a>
+          <a href="terms.html" data-i18n="footer_terms">Terms of Service</a>
+          <a href="#contact" data-i18n="footer_support">Support</a>
         </div>
       </div>
     </footer>
 
-    <script src="js/site.js?v=20260828m"></script>
+    <script src="js/i18n.js?v=31"></script>
+    <script src="js/site.js?v=32"></script>
   </body>
 </html>
