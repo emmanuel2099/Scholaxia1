@@ -15,7 +15,7 @@
       href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="css/past-questions.css?v=20260902purple" />
+    <link rel="stylesheet" href="css/past-questions.css?v=20260903lang" />
   </head>
   <body class="pq-page">
     <header class="pq-nav">
@@ -30,6 +30,19 @@
       <nav class="pq-nav-links" id="pqNavLinks" aria-label="Site">
         <a href="index.html">Home</a>
         <a href="marketplace.html">Marketplace</a>
+        <div class="lang-wrap" id="langWrap">
+          <button class="lang-btn" id="langBtn" aria-haspopup="listbox" aria-expanded="false" aria-label="Select language">
+            <span id="langFlag">🇬🇧</span>
+            <span id="langLabel">EN</span>
+            <span class="lang-arrow" aria-hidden="true">▾</span>
+          </button>
+          <div class="lang-dropdown" id="langDropdown" role="listbox">
+            <div class="lang-option active" data-lang="en" role="option" tabindex="0">English</div>
+            <div class="lang-option" data-lang="fr" role="option" tabindex="0">Français</div>
+            <div class="lang-option" data-lang="pt" role="option" tabindex="0">Português</div>
+            <div class="lang-option" data-lang="ar" role="option" tabindex="0">العربية</div>
+          </div>
+        </div>
         <a class="pq-nav-cta" href="portal.html">Sign in</a>
       </nav>
     </header>
@@ -213,7 +226,7 @@
           ? location.origin
           : "https://scholaxia1.onrender.com");
     </script>
-    <script src="js/i18n.js?v=30"></script>
+    <script src="js/i18n.js?v=32"></script>
     <script src="js/past-questions-shop.js?v=20260902purple"></script>
   </body>
 </html>

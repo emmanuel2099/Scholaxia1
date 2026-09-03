@@ -9,7 +9,7 @@
     <link rel="icon" type="image/png" href="media/logo-main.png" />
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="css/app.css?v=15" />
-    <link rel="stylesheet" href="css/student-pretty.css?v=20260827u" />
+    <link rel="stylesheet" href="css/student-pretty.css?v=20260903dash" />
     <script>
       // Drop stale caches so CBT updates are not stuck on old JS
       try {
@@ -50,7 +50,6 @@
           <button class="side-link" data-page="sia" type="button"><span class="ico">✨</span>Tutor AI</button>
           <button class="side-link" data-page="community" type="button"><span class="ico">💬</span>Community</button>
           <button class="side-link" data-page="groups" type="button"><span class="ico">👥</span>Groups</button>
-          <button class="side-link" data-page="saved" type="button"><span class="ico">▶</span>Saved</button>
           <button class="side-link" data-page="about" type="button"><span class="ico">ℹ</span>About</button>
           <button class="side-link" data-page="contact" type="button"><span class="ico">✉</span>Contact</button>
           <button class="side-link" data-page="profile" type="button"><span class="ico">👤</span>Profile</button>
@@ -521,20 +520,16 @@
                 </div>
               </form>
 
+              <label class="groups-search">
+                <span class="visually-hidden">Search groups</span>
+                <input type="search" id="groupSearchInput" placeholder="Search groups by name…" autocomplete="off" />
+              </label>
+
               <div class="section-title"><h2>My Groups</h2></div>
               <div class="groups-grid" id="myGroupsList"><div class="loading-state">Loading your groups…</div></div>
 
               <div class="section-title"><h2>Discover Groups</h2></div>
               <div class="groups-grid" id="communityGroupsList"><div class="loading-state">Loading community groups…</div></div>
-            </div>
-          </section>
-
-          <!-- ================= SAVED ================= -->
-          <section class="page" id="page-saved">
-            <div class="panel">
-              <h2>Saved</h2>
-              <p>Saved live class recordings and bookmarks.</p>
-              <div class="card-grid one-col" id="savedList"></div>
             </div>
           </section>
 
@@ -813,6 +808,6 @@
     <script src="js/api.js?v=20260827u"></script>
     <script src="js/paystack.js?v=9"></script>
     <script src="js/games.js?v=20260827a"></script>
-    <script src="js/student.js?v=20260828i"></script>
+    <script src="js/student.js?v=20260903dash"></script>
   </body>
 </html>

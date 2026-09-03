@@ -248,6 +248,65 @@
     return body;
   }
 
+  var pendingHostClass = null;
+
+  function copyText(text) {
+    text = String(text || "");
+    if (!text) return Promise.reject(new Error("No code"));
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text);
+    }
+    return new Promise(function (resolve, reject) {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand("copy");
+        resolve();
+      } catch (e) {
+        reject(e);
+      }
+      document.body.removeChild(ta);
+    });
+  }
+
+  function showHostAccessCode(created, body, goLiveNow) {
+    var box = $("hostCodeShare");
+    var value = $("hostCodeValue");
+    var title = $("hostCodeTitle");
+    var hint = $("hostCodeHint");
+    var openWrap = $("hostCodeOpenWrap");
+    var code = created && created.join_code;
+    if (!code || !box || !value) {
+      if (goLiveNow && created && created.id) {
+        if (confirm("Class is live!\n\nOpen classroom now?")) {
+          enterClassroom(created.id, body.title, body.subject, created.end_time, true);
+        }
+      } else {
+        alert("Class scheduled successfully.");
+      }
+      return;
+    }
+    pendingHostClass = {
+      id: created.id,
+      title: body.title,
+      subject: body.subject,
+      end: created.end_time,
+    };
+    value.textContent = code;
+    if (title) title.textContent = goLiveNow ? "Class is live — share this code" : "Class scheduled — share this code";
+    if (hint) hint.textContent = "Copy or share this access code so students can join.";
+    if (openWrap) openWrap.hidden = !goLiveNow;
+    box.hidden = false;
+    try {
+      box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } catch (e) {}
+  }
+
   async function hostClass(goLiveNow) {
     if (hostBusy) return;
     hostBusy = true;
@@ -271,15 +330,7 @@
       var created = await api.api("/api/v1/live-classes/", { method: "POST", body: body });
       if ($("hostTitle")) $("hostTitle").value = "";
       await loadLive();
-      if (goLiveNow && created && created.id) {
-        var code = created.join_code ? "\n\nAccess code for students: " + created.join_code : "";
-        if (confirm("Class is live!" + code + "\n\nOpen classroom now?")) {
-          enterClassroom(created.id, body.title, body.subject, created.end_time, true);
-        }
-      } else {
-        var schedCode = created && created.join_code ? "\nAccess code: " + created.join_code : "";
-        alert("Class scheduled successfully." + schedCode + "\nInvited students will see the code in their Live Class tab.");
-      }
+      showHostAccessCode(created, body, goLiveNow);
     } catch (e) {
       if (err) {
         err.textContent = e.message || "Could not host class.";
@@ -528,6 +579,16 @@ async function endClass(id) {
             "</p>" +
             '<div class="actions">' +
             actions +
+            (c.join_code
+              ? '<button type="button" class="btn-sm" data-copy-code="' +
+                esc(c.join_code) +
+                '">Copy code</button>' +
+                '<button type="button" class="btn-sm" data-share-code="' +
+                esc(c.join_code) +
+                '" data-share-title="' +
+                esc(c.title || "Live class") +
+                '">Share code</button>'
+              : "") +
             "</div></article>"
           );
         })
@@ -1586,6 +1647,34 @@ async function endClass(id) {
       );
       return;
     }
+    var copyCode = t.closest("[data-copy-code]");
+    if (copyCode) {
+      var codeVal = copyCode.getAttribute("data-copy-code");
+      copyText(codeVal).then(function () {
+        copyCode.textContent = "Copied";
+        setTimeout(function () { copyCode.textContent = "Copy code"; }, 1600);
+      }).catch(function () {
+        alert("Access code: " + codeVal);
+      });
+      return;
+    }
+    var shareCode = t.closest("[data-share-code]");
+    if (shareCode) {
+      var shareVal = shareCode.getAttribute("data-share-code");
+      var shareTitle = shareCode.getAttribute("data-share-title") || "Scholaxia live class";
+      var shareText = shareTitle + " access code: " + shareVal;
+      if (navigator.share) {
+        navigator.share({ title: shareTitle, text: shareText }).catch(function () {});
+      } else {
+        copyText(shareVal).then(function () {
+          shareCode.textContent = "Copied";
+          setTimeout(function () { shareCode.textContent = "Share code"; }, 1600);
+        }).catch(function () {
+          alert(shareText);
+        });
+      }
+      return;
+    }
     var del = t.closest("[data-del-mat]");
     if (del) {
       if (!confirm("Remove this material?")) return;
@@ -1686,6 +1775,40 @@ async function endClass(id) {
 
   if ($("hostScheduleBtn")) $("hostScheduleBtn").addEventListener("click", function () { hostClass(false); });
   if ($("hostLiveBtn")) $("hostLiveBtn").addEventListener("click", function () { hostClass(true); });
+  if ($("hostCodeCopyBtn")) {
+    $("hostCodeCopyBtn").addEventListener("click", function () {
+      var code = (($("hostCodeValue") && $("hostCodeValue").textContent) || "").trim();
+      var btn = $("hostCodeCopyBtn");
+      copyText(code).then(function () {
+        if (btn) btn.textContent = "Copied";
+        setTimeout(function () { if (btn) btn.textContent = "Copy code"; }, 1600);
+      }).catch(function () {
+        alert("Access code: " + code);
+      });
+    });
+  }
+  if ($("hostCodeShareBtn")) {
+    $("hostCodeShareBtn").addEventListener("click", function () {
+      var code = (($("hostCodeValue") && $("hostCodeValue").textContent) || "").trim();
+      var text = "Join my Scholaxia private class with access code: " + code;
+      if (navigator.share) {
+        navigator.share({ title: "Scholaxia class code", text: text }).catch(function () {});
+      } else {
+        copyText(code).then(function () {
+          $("hostCodeShareBtn").textContent = "Copied";
+          setTimeout(function () { $("hostCodeShareBtn").textContent = "Share"; }, 1600);
+        }).catch(function () {
+          alert(text);
+        });
+      }
+    });
+  }
+  if ($("hostCodeOpenBtn")) {
+    $("hostCodeOpenBtn").addEventListener("click", function () {
+      if (!pendingHostClass || !pendingHostClass.id) return;
+      enterClassroom(pendingHostClass.id, pendingHostClass.title, pendingHostClass.subject, pendingHostClass.end, true);
+    });
+  }
   if ($("liveRefreshBtn")) $("liveRefreshBtn").addEventListener("click", loadLive);
   if ($("liveFilter")) $("liveFilter").addEventListener("change", loadLive);
   if ($("sgCreateBtn")) $("sgCreateBtn").addEventListener("click", createSchoolGroup);

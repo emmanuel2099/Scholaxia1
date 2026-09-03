@@ -312,6 +312,36 @@ code.join-code {
   background: #f5f3ff; color: var(--purple-dark); padding: 0.15rem 0.45rem;
   border-radius: 6px; font-weight: 800; font-size: 0.82rem;
 }
+.host-code-share {
+  margin-top: 0.85rem;
+  padding: 0.95rem 1rem;
+  border: 1.5px solid #ddd6fe;
+  border-radius: 16px;
+  background: #f5f3ff;
+  display: grid;
+  gap: 0.55rem;
+}
+.host-code-share[hidden] { display: none !important; }
+.host-code-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.host-code-row code {
+  flex: 1 1 140px;
+  min-height: 2.5rem;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  border: 1.5px dashed #c4b5fd;
+  border-radius: 12px;
+  color: var(--purple-dark);
+  font-weight: 800;
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+  user-select: all;
+}
 
 .stats-pills { display: flex; flex-wrap: wrap; gap: 0.45rem; margin-bottom: 0.85rem; }
 .stat-pill {

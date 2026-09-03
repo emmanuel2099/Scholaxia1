@@ -300,7 +300,6 @@
     sia: "Tutor AI",
     community: "Community",
     groups: "Groups",
-    saved: "Saved",
     about: "About",
     contact: "Contact",
     profile: "Profile",
@@ -326,7 +325,6 @@
     assignments: loadAssignments,
     community: loadCommunity,
     groups: loadGroups,
-    saved: loadSaved,
     profile: loadProfile,
   };
 
@@ -336,6 +334,7 @@
   function showPage(id, opts) {
     opts = opts || {};
     if (id === "access-code") id = "live";
+    if (id === "saved") id = "home";
     if (!PAGE_TITLES.hasOwnProperty(id)) id = "home";
 
     if (!opts.replace && currentPageId && currentPageId !== id) {
@@ -1899,43 +1898,107 @@
     return key;
   }
 
-  function loadReviewBookTips(subjects) {
+  function normalizeSubjectKey(value) {
+    return String(value || "")
+      .toLowerCase()
+      .replace(/[_-]+/g, " ")
+      .replace(/[^a-z0-9 ]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function subjectFromExamTitle(title) {
+    var parts = String(title || "").split("·");
+    if (parts.length < 2) return "";
+    return parts.slice(1).join("·").replace(/\s*CBT\s*$/i, "").trim();
+  }
+
+  function itemMatchesExamSubject(item, wanted) {
+    var key = normalizeSubjectKey(wanted);
+    if (!key) return false;
+    var hay = normalizeSubjectKey(
+      [item.subject, item.title, item.category, item.type].filter(Boolean).join(" ")
+    );
+    if (!hay) return false;
+    if (hay.indexOf(key) >= 0) return true;
+    var compact = key.replace(/\s+/g, "");
+    return compact.length > 3 && hay.replace(/\s+/g, "").indexOf(compact) >= 0;
+  }
+
+  function loadReviewBookTips(subjects, examSubject) {
     var panel = $("reviewBooksPanel");
     var list = $("reviewBooksList");
-    if (!panel || !list || !subjects || !subjects.length) return;
+    if (!panel || !list) return;
+    var wanted = String(examSubject || "").trim();
+    if (!wanted && subjects && subjects.length === 1) wanted = subjects[0];
+    if (!wanted) {
+      panel.hidden = true;
+      list.innerHTML = "";
+      return;
+    }
     panel.hidden = false;
-    list.innerHTML = '<p class="muted">Loading book tips…</p>';
-    var seen = {};
+    list.innerHTML = '<p class="muted">Loading notes for ' + esc(wanted) + "…</p>";
     var books = [];
-    Promise.all(
-      subjects
-        .filter(function (s) {
-          return s && !seen[s] && (seen[s] = true);
-        })
-        .slice(0, 4)
-        .map(function (sub) {
-          return api
-            .api("/api/v1/sia/recommendations?subject=" + encodeURIComponent(sub), {
-              timeout: 35000,
-              retries: 0,
-            })
-            .then(function (data) {
-              (data && data.recommended_books || []).forEach(function (b) {
-                if (b && b.title) books.push({ title: b.title, author: b.author, subject: sub });
-              });
-            })
-            .catch(function () {});
-        })
-    ).then(function () {
+
+    function addBook(b, fallbackSubject) {
+      if (!b || !b.title) return;
+      var item = {
+        title: b.title,
+        author: b.author,
+        subject: b.subject || fallbackSubject || wanted,
+      };
+      if (!itemMatchesExamSubject(item, wanted)) return;
+      books.push(item);
+    }
+
+    var rec = api
+      .api("/api/v1/sia/recommendations?subject=" + encodeURIComponent(wanted), {
+        timeout: 35000,
+        retries: 0,
+      })
+      .then(function (data) {
+        (data && data.recommended_books || []).forEach(function (b) {
+          addBook(b, wanted);
+        });
+      })
+      .catch(function () {});
+
+    var lib = (libraryCache && libraryCache.length
+      ? Promise.resolve(libraryCache)
+      : api
+          .api("/api/v1/library/student", { timeout: 35000, retries: 0, preferXhr: true })
+          .then(function (data) {
+            libraryCache = firstArray(data, ["items", "results", "library", "books"]);
+            return libraryCache;
+          })
+          .catch(function () {
+            return [];
+          })
+    ).then(function (items) {
+      (items || []).forEach(function (it) {
+        addBook(
+          {
+            title: it.title || it.name,
+            author: it.author || it.class_level || it.level,
+            subject: it.subject || wanted,
+          },
+          wanted
+        );
+      });
+    });
+
+    Promise.all([rec, lib]).then(function () {
       if (!books.length) {
         list.innerHTML =
-          '<p class="muted">No library books tagged for these subjects yet. Check Library → Books or Study Materials.</p>';
+          '<p class="muted">No ' +
+          esc(wanted) +
+          " e-notes in the library yet. Check Library → Lesson Notes.</p>";
         return;
       }
       var uniq = {};
       list.innerHTML = books
         .filter(function (b) {
-          var k = b.title + "|" + b.subject;
+          var k = normalizeSubjectKey(b.title);
           if (uniq[k]) return false;
           uniq[k] = true;
           return true;
@@ -1944,7 +2007,7 @@
         .map(function (b) {
           return (
             '<span class="review-book-chip"><strong>' +
-            esc(b.subject) +
+            esc(wanted) +
             "</strong> · " +
             esc(b.title) +
             (b.author ? " — " + esc(b.author) : "") +
@@ -2069,15 +2132,19 @@
     } else {
       wrap.innerHTML = items.map(renderReviewQuestionCard).join("");
     }
-    var subjects = [];
-    var seen = {};
-    items.forEach(function (q) {
-      if (q.subject && !seen[q.subject]) {
-        seen[q.subject] = true;
-        subjects.push(q.subject);
-      }
-    });
-    loadReviewBookTips(subjects);
+    var examSubject = meta.subject || subjectFromExamTitle(meta.title);
+    if (!examSubject) {
+      var seen = {};
+      var fromQuestions = [];
+      items.forEach(function (q) {
+        if (q.subject && !seen[q.subject]) {
+          seen[q.subject] = true;
+          fromQuestions.push(q.subject);
+        }
+      });
+      if (fromQuestions.length === 1) examSubject = fromQuestions[0];
+    }
+    loadReviewBookTips(examSubject ? [examSubject] : [], examSubject);
     screen.classList.add("is-on");
     document.body.style.overflow = "hidden";
   }
@@ -2127,12 +2194,6 @@
       : lastExamReview
       ? lastExamReview.slice()
       : null;
-    lastReviewMeta = {
-      title: st ? st.title : "",
-      percent: pct,
-      wrong_count: res.wrong_count != null ? res.wrong_count : lastExamReview ? lastExamReview.length : 0,
-      attempt_id: res.attempt_id || (st && st.practiceAttemptId),
-    };
     var score = res.score != null ? res.score : res.correct_count;
     var total =
       res.total != null
@@ -2148,6 +2209,18 @@
         : score != null && total
         ? Math.round((score / total) * 100)
         : null;
+    lastReviewMeta = {
+      title: st ? st.title : "",
+      subject: st
+        ? st.subject ||
+          (st.sections && st.sections[st.sectionIndex] && st.sections[st.sectionIndex].subject) ||
+          subjectFromExamTitle(st.title)
+        : "",
+      examType: st ? st.examType : "",
+      percent: pct,
+      wrong_count: res.wrong_count != null ? res.wrong_count : lastExamReview ? lastExamReview.length : 0,
+      attempt_id: res.attempt_id || (st && st.practiceAttemptId),
+    };
 
     $("resultRing").textContent = pct != null ? pct + "%" : "—";
     $("resultTitle").textContent = res.unscored ? "Exam submitted" : "Exam completed";
@@ -3675,27 +3748,11 @@
         "</div>" +
         '<div class="btn-row">' +
         '<button type="button" class="btn btn-primary" id="openClassroomBtn">Open classroom</button>' +
-        '<button type="button" class="btn btn-secondary" id="saveLiveBtn">Save for later</button>' +
         "</div>";
       var openBtn = document.getElementById("openClassroomBtn");
       if (openBtn) {
         openBtn.addEventListener("click", function () {
           enterLiveClassroom(res || {});
-        });
-      }
-      var saveBtn = document.getElementById("saveLiveBtn");
-      if (saveBtn) {
-        saveBtn.addEventListener("click", function () {
-          var saved = readLocalJson("sia_saved_lives_web", []);
-          if (!Array.isArray(saved)) saved = [];
-          saved.unshift({
-            id: res.id || res.class_id || res.session_id || Date.now(),
-            title: title,
-            savedAt: new Date().toISOString(),
-          });
-          writeLocalJson("sia_saved_lives_web", saved);
-          saveBtn.textContent = "Saved ✓";
-          saveBtn.disabled = true;
         });
       }
     }
@@ -4735,6 +4792,32 @@
     }
   }
 
+  var groupsCache = { mine: [], community: [] };
+
+  function groupMatchesQuery(g, q) {
+    if (!q) return true;
+    var hay = ((g && (g.name || g.title)) || "") + " " + ((g && g.description) || "");
+    return hay.toLowerCase().indexOf(q) >= 0;
+  }
+
+  function renderGroupLists() {
+    var q = (($("groupSearchInput") && $("groupSearchInput").value) || "").toLowerCase().trim();
+    var mineWrap = $("myGroupsList");
+    var commWrap = $("communityGroupsList");
+    var mine = (groupsCache.mine || []).filter(function (g) { return groupMatchesQuery(g, q); });
+    var comm = (groupsCache.community || []).filter(function (g) { return groupMatchesQuery(g, q); });
+    if (mineWrap) {
+      mineWrap.innerHTML = mine.length
+        ? mine.map(function (g) { return renderGroupCard(g, true); }).join("")
+        : emptyHtml("👥", q ? "No groups match “" + q + "”." : "No groups yet. Create one to start studying together.");
+    }
+    if (commWrap) {
+      commWrap.innerHTML = comm.length
+        ? comm.map(function (g) { return renderGroupCard(g, false); }).join("")
+        : emptyHtml("🌐", q ? "No groups match “" + q + "”." : "No community groups listed yet.");
+    }
+  }
+
   function loadGroups() {
     var mineWrap = $("myGroupsList");
     var commWrap = $("communityGroupsList");
@@ -4747,10 +4830,8 @@
       .then(function (data) {
         var items = firstArray(data, ["items", "results", "groups"]);
         if (Array.isArray(data)) items = data;
-        if (!mineWrap) return;
-        mineWrap.innerHTML = items.length
-          ? items.map(function (g) { return renderGroupCard(g, true); }).join("")
-          : emptyHtml("👥", "No groups yet. Create one to start studying together.");
+        groupsCache.mine = items || [];
+        renderGroupLists();
       })
       .catch(function (err) {
         if (mineWrap) mineWrap.innerHTML = errorHtml(errMsg(err), "groups");
@@ -4765,11 +4846,8 @@
       .then(function (data) {
         var items = firstArray(data, ["items", "results", "groups"]);
         if (Array.isArray(data)) items = data;
-        items = (items || []).filter(function (g) { return !g.is_member; });
-        if (!commWrap) return;
-        commWrap.innerHTML = items.length
-          ? items.map(function (g) { return renderGroupCard(g, false); }).join("")
-          : emptyHtml("🌐", "No community groups listed yet.");
+        groupsCache.community = (items || []).filter(function (g) { return !g.is_member; });
+        renderGroupLists();
       })
       .catch(function (err) {
         if (commWrap) commWrap.innerHTML = errorHtml(errMsg(err), "groups");
@@ -4813,6 +4891,10 @@
         alert("Could not join group: " + errMsg(err));
       });
   });
+
+  if ($("groupSearchInput")) {
+    $("groupSearchInput").addEventListener("input", renderGroupLists);
+  }
 
   if ($("showCreateGroupBtn")) {
     $("showCreateGroupBtn").addEventListener("click", function () {

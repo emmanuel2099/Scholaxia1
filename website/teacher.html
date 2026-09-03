@@ -6,7 +6,7 @@
     <title>Scholaxia — Teacher</title>
     <link rel="icon" type="image/png" href="media/logo-main.png" />
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="css/teacher.css?v=20260827w" />
+    <link rel="stylesheet" href="css/teacher.css?v=20260903code" />
   </head>
   <body class="teacher-body">
     <div class="sidebar-backdrop" id="sidebarBackdrop" hidden></div>
@@ -79,8 +79,20 @@
               </div>
               <div id="hostPrivateWrap" class="extra-panel" hidden>
                 <strong style="font-size:0.9rem">Private class — join with code</strong>
-                <p class="hint">After you create the class, Scholaxia generates a unique access code (e.g. SX-…). Share that code with your students. They join with the code — no email-by-email invitations.</p>
+                <p class="hint">After you create the class, Scholaxia generates a unique access code (e.g. SX-…). Copy or share that code with your students. They join with the code — no email-by-email invitations.</p>
                 <p class="hint">Private classes are free to join with the code. Students do not need to be invited individually.</p>
+              </div>
+              <div id="hostCodeShare" class="host-code-share" hidden>
+                <strong id="hostCodeTitle">Share this access code</strong>
+                <p class="hint" id="hostCodeHint">Students need this code to join the private class.</p>
+                <div class="host-code-row">
+                  <code id="hostCodeValue"></code>
+                  <button type="button" class="btn btn-primary" id="hostCodeCopyBtn">Copy code</button>
+                  <button type="button" class="btn btn-ghost" id="hostCodeShareBtn">Share</button>
+                </div>
+                <div class="btn-row" id="hostCodeOpenWrap" hidden>
+                  <button type="button" class="btn btn-primary" id="hostCodeOpenBtn">Open classroom</button>
+                </div>
               </div>
               <div id="hostSchoolWrap" class="extra-panel" hidden>
                 <strong style="font-size:0.9rem">School class — school students + code</strong>
@@ -425,6 +437,6 @@
 
     <script src="js/i18n.js?v=31"></script>
     <script src="js/api.js?v=20260827w"></script>
-    <script src="js/teacher-app.js?v=20260828b"></script>
+    <script src="js/teacher-app.js?v=20260903code"></script>
   </body>
 </html>

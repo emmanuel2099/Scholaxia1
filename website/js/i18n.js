@@ -305,7 +305,43 @@
       'Sign up':'Inscription','Email':'E-mail','Password':'Mot de passe','New here?':'Nouveau ?',
       'Create an account':'Créer un compte','Full name':'Nom complet','Age group':'Tranche d’âge',
       'Create account':'Créer le compte','Already have an account?':'Vous avez déjà un compte ?',
-      'Forgot password?':'Mot de passe oublié ?','Phone number':'Téléphone','Location':'Lieu'
+      'Forgot password?':'Mot de passe oublié ?','Phone number':'Téléphone','Location':'Lieu',
+      'Marketplace':'Marché','Sign in':'Connexion','Past Questions Marketplace':'Marché des annales',
+      'Prepare smarter. Practice better. Pass with confidence.':'Préparez-vous mieux. Entraînez-vous davantage. Réussissez avec confiance.',
+      'Get authentic JAMB, WAEC, NECO and Common Entrance past questions in one place.':'Obtenez de vraies annales JAMB, WAEC, NECO et Common Entrance au même endroit.',
+      'Search past questions':'Rechercher des annales','Search':'Rechercher',
+      'Search Mathematics, English, Biology, 2025…':'Rechercher Maths, Anglais, Biologie, 2025…',
+      'Instant PDF access':'Accès PDF immédiat','Secure Paystack payment':'Paiement Paystack sécurisé',
+      'No account required':'Aucun compte requis','Find the right past questions':'Trouvez les bonnes annales',
+      'Loading catalog…':'Chargement du catalogue…','Exam':'Examen','All exams':'Tous les examens',
+      'All subjects':'Toutes les matières','All years':'Toutes les années','Sort by':'Trier par',
+      'Latest':'Plus récent','Price: low to high':'Prix : croissant','Price: high to low':'Prix : décroissant',
+      'Title A–Z':'Titre A–Z','Loading past questions…':'Chargement des annales…',
+      'Why buy from Scholaxia?':'Pourquoi acheter chez Scholaxia ?','Authentic Materials':'Matériel authentique',
+      'Get organized past questions in PDF format, ready for revision.':'Annales organisées en PDF, prêtes pour réviser.',
+      'Instant Access':'Accès immédiat','Download immediately after a successful Paystack payment.':'Téléchargez juste après un paiement Paystack réussi.',
+      'Secure Payment':'Paiement sécurisé','Payments are securely processed through Paystack — no account needed.':'Paiements sécurisés via Paystack — aucun compte requis.',
+      'Multiple Exams':'Plusieurs examens','JAMB, WAEC, NECO and Common Entrance in one marketplace.':'JAMB, WAEC, NECO et Common Entrance au même endroit.',
+      'Study better. Score higher. Past questions are the best way to prepare for your exams.':'Étudiez mieux. Obtenez de meilleurs scores. Les annales sont le meilleur moyen de se préparer.',
+      'Browse Papers':'Parcourir les sujets','Explore':'Explorer','Need help?':'Besoin d’aide ?',
+      'Helping Nigerian students prepare smarter with past questions, CBT practice and live classes.':'Nous aidons les élèves à mieux se préparer avec les annales, le CBT et les cours en direct.',
+      'Paystack-secured checkout. No student account required to buy.':'Paiement sécurisé Paystack. Aucun compte élève requis.',
+      '© 2026 Scholaxia. All rights reserved.':'© 2026 Scholaxia. Tous droits réservés.','Built for students':'Conçu pour les élèves',
+      'All':'Tous','Common Entrance':'Common Entrance','Buy Now →':'Acheter →',
+      'Could not load the catalog.':'Impossible de charger le catalogue.','1 paper available':'1 sujet disponible',
+      'Unable to load past questions':'Impossible de charger les annales','Please try again in a moment.':'Réessayez dans un instant.',
+      'Try Again':'Réessayer','No past questions available yet':'Aucune annale disponible pour le moment',
+      'New JAMB, WAEC, NECO and Common Entrance papers will appear here.':'De nouveaux sujets JAMB, WAEC, NECO et Common Entrance apparaîtront ici.',
+      'Email for receipt & download link':'E-mail pour le reçu et le lien de téléchargement',
+      'Full name (optional)':'Nom complet (facultatif)','Your name':'Votre nom',
+      'Redirecting to Paystack…':'Redirection vers Paystack…','Enter your email.':'Saisissez votre e-mail.',
+      'Payment could not start. Please try again.':'Le paiement n’a pas pu démarrer. Réessayez.',
+      'Verifying payment…':'Vérification du paiement…','Download PDF':'Télécharger le PDF',
+      'Payment successful.':'Paiement réussi.','Your PDF is unlocked.':'Votre PDF est débloqué.',
+      'Save this link — it works with the email you paid with.':'Enregistrez ce lien — il fonctionne avec l’e-mail utilisé pour le paiement.',
+      'Payment recorded, but download token was not ready. Refresh in a moment.':'Paiement enregistré, mais le lien n’est pas encore prêt. Actualisez dans un instant.',
+      'Unable to verify payment.':'Impossible de vérifier le paiement.',
+      'If you were charged, use the same email to recover access or contact support.':'Si vous avez été débité, utilisez le même e-mail pour récupérer l’accès ou contactez le support.'
     },
     pt: {
       'Home':'Início','Video Tutorials':'Tutoriais em vídeo','Past Questions':'Provas anteriores',
@@ -337,8 +373,44 @@
       'Student':'Aluno','Teacher':'Professor','Kid':'Criança','Log in':'Entrar','Sign up':'Cadastrar',
       'Email':'E-mail','Password':'Senha','New here?':'Novo aqui?','Create an account':'Criar conta',
       'Full name':'Nome completo','Age group':'Faixa etária','Create account':'Criar conta',
-      'Already have an account?':'Já tem uma conta?','Forgot password?':'Esqueceu a senha?',
-      'Phone number':'Telefone','Location':'Localização'
+      'Already have an account?':'Já tem uma conta?',      'Forgot password?':'Esqueceu a senha?',
+      'Phone number':'Telefone','Location':'Localização',
+      'Marketplace':'Mercado','Sign in':'Entrar','Past Questions Marketplace':'Mercado de provas anteriores',
+      'Prepare smarter. Practice better. Pass with confidence.':'Prepare-se melhor. Pratique mais. Passe com confiança.',
+      'Get authentic JAMB, WAEC, NECO and Common Entrance past questions in one place.':'Obtenha provas autênticas de JAMB, WAEC, NECO e Common Entrance num só lugar.',
+      'Search past questions':'Pesquisar provas anteriores','Search':'Pesquisar',
+      'Search Mathematics, English, Biology, 2025…':'Pesquisar Matemática, Inglês, Biologia, 2025…',
+      'Instant PDF access':'Acesso imediato ao PDF','Secure Paystack payment':'Pagamento seguro Paystack',
+      'No account required':'Não precisa de conta','Find the right past questions':'Encontre as provas certas',
+      'Loading catalog…':'Carregando catálogo…','Exam':'Exame','All exams':'Todos os exames',
+      'All subjects':'Todas as disciplinas','All years':'Todos os anos','Sort by':'Ordenar por',
+      'Latest':'Mais recentes','Price: low to high':'Preço: menor para maior','Price: high to low':'Preço: maior para menor',
+      'Title A–Z':'Título A–Z','Loading past questions…':'Carregando provas anteriores…',
+      'Why buy from Scholaxia?':'Por que comprar na Scholaxia?','Authentic Materials':'Materiais autênticos',
+      'Get organized past questions in PDF format, ready for revision.':'Provas organizadas em PDF, prontas para revisão.',
+      'Instant Access':'Acesso imediato','Download immediately after a successful Paystack payment.':'Baixe imediatamente após o pagamento Paystack.',
+      'Secure Payment':'Pagamento seguro','Payments are securely processed through Paystack — no account needed.':'Pagamentos seguros via Paystack — sem conta.',
+      'Multiple Exams':'Vários exames','JAMB, WAEC, NECO and Common Entrance in one marketplace.':'JAMB, WAEC, NECO e Common Entrance num só mercado.',
+      'Study better. Score higher. Past questions are the best way to prepare for your exams.':'Estude melhor. Tire notas mais altas. As provas anteriores são a melhor forma de se preparar.',
+      'Browse Papers':'Ver provas','Explore':'Explorar','Need help?':'Precisa de ajuda?',
+      'Helping Nigerian students prepare smarter with past questions, CBT practice and live classes.':'Ajudamos alunos a se prepararem melhor com provas anteriores, CBT e aulas ao vivo.',
+      'Paystack-secured checkout. No student account required to buy.':'Checkout seguro Paystack. Não precisa de conta de aluno.',
+      '© 2026 Scholaxia. All rights reserved.':'© 2026 Scholaxia. Todos os direitos reservados.','Built for students':'Feito para alunos',
+      'All':'Todos','Common Entrance':'Common Entrance','Buy Now →':'Comprar agora →',
+      'Could not load the catalog.':'Não foi possível carregar o catálogo.','1 paper available':'1 prova disponível',
+      'Unable to load past questions':'Não foi possível carregar as provas','Please try again in a moment.':'Tente novamente em instantes.',
+      'Try Again':'Tentar novamente','No past questions available yet':'Ainda não há provas disponíveis',
+      'New JAMB, WAEC, NECO and Common Entrance papers will appear here.':'Novas provas de JAMB, WAEC, NECO e Common Entrance aparecerão aqui.',
+      'Email for receipt & download link':'E-mail para o recibo e o link de download',
+      'Full name (optional)':'Nome completo (opcional)','Your name':'Seu nome',
+      'Redirecting to Paystack…':'Redirecionando para o Paystack…','Enter your email.':'Digite seu e-mail.',
+      'Payment could not start. Please try again.':'O pagamento não pôde iniciar. Tente novamente.',
+      'Verifying payment…':'Verificando pagamento…','Download PDF':'Baixar PDF',
+      'Payment successful.':'Pagamento concluído.','Your PDF is unlocked.':'Seu PDF está liberado.',
+      'Save this link — it works with the email you paid with.':'Guarde este link — funciona com o e-mail usado no pagamento.',
+      'Payment recorded, but download token was not ready. Refresh in a moment.':'Pagamento registado, mas o link ainda não está pronto. Atualize em instantes.',
+      'Unable to verify payment.':'Não foi possível verificar o pagamento.',
+      'If you were charged, use the same email to recover access or contact support.':'Se foi cobrado, use o mesmo e-mail para recuperar o acesso ou contacte o suporte.'
     },
     ar: {
       'Home':'الرئيسية','Video Tutorials':'دروس الفيديو','Past Questions':'أسئلة سابقة',
@@ -370,8 +442,44 @@
       'Kid':'طفل','Log in':'تسجيل الدخول','Sign up':'إنشاء حساب','Email':'البريد الإلكتروني',
       'Password':'كلمة المرور','New here?':'جديد هنا؟','Create an account':'إنشاء حساب',
       'Full name':'الاسم الكامل','Age group':'الفئة العمرية','Create account':'إنشاء الحساب',
-      'Already have an account?':'لديك حساب بالفعل؟','Forgot password?':'نسيت كلمة المرور؟',
-      'Phone number':'رقم الهاتف','Location':'الموقع'
+      'Already have an account?':'لديك حساب بالفعل؟',      'Forgot password?':'نسيت كلمة المرور؟',
+      'Phone number':'رقم الهاتف','Location':'الموقع',
+      'Marketplace':'السوق','Sign in':'تسجيل الدخول','Past Questions Marketplace':'سوق الأسئلة السابقة',
+      'Prepare smarter. Practice better. Pass with confidence.':'استعد بذكاء. تدرب بشكل أفضل. انجح بثقة.',
+      'Get authentic JAMB, WAEC, NECO and Common Entrance past questions in one place.':'احصل على أسئلة JAMB وWAEC وNECO وCommon Entrance الأصلية في مكان واحد.',
+      'Search past questions':'ابحث في الأسئلة السابقة','Search':'بحث',
+      'Search Mathematics, English, Biology, 2025…':'ابحث عن الرياضيات، الإنجليزية، الأحياء، 2025…',
+      'Instant PDF access':'وصول فوري لملف PDF','Secure Paystack payment':'دفع آمن عبر Paystack',
+      'No account required':'لا حاجة لحساب','Find the right past questions':'اعثر على الأسئلة المناسبة',
+      'Loading catalog…':'جارٍ تحميل الكتالوج…','Exam':'الامتحان','All exams':'كل الامتحانات',
+      'All subjects':'كل المواد','All years':'كل السنوات','Sort by':'ترتيب حسب',
+      'Latest':'الأحدث','Price: low to high':'السعر: من الأقل للأعلى','Price: high to low':'السعر: من الأعلى للأقل',
+      'Title A–Z':'العنوان أ–ي','Loading past questions…':'جارٍ تحميل الأسئلة السابقة…',
+      'Why buy from Scholaxia?':'لماذا تشتري من Scholaxia؟','Authentic Materials':'مواد أصلية',
+      'Get organized past questions in PDF format, ready for revision.':'أسئلة سابقة منظمة بصيغة PDF وجاهزة للمراجعة.',
+      'Instant Access':'وصول فوري','Download immediately after a successful Paystack payment.':'حمّل مباشرة بعد نجاح الدفع عبر Paystack.',
+      'Secure Payment':'دفع آمن','Payments are securely processed through Paystack — no account needed.':'تتم المدفوعات بأمان عبر Paystack — دون حاجة لحساب.',
+      'Multiple Exams':'امتحانات متعددة','JAMB, WAEC, NECO and Common Entrance in one marketplace.':'JAMB وWAEC وNECO وCommon Entrance في سوق واحد.',
+      'Study better. Score higher. Past questions are the best way to prepare for your exams.':'ادرس بشكل أفضل. احصل على درجات أعلى. الأسئلة السابقة أفضل طريقة للاستعداد.',
+      'Browse Papers':'تصفح الأوراق','Explore':'استكشف','Need help?':'تحتاج مساعدة؟',
+      'Helping Nigerian students prepare smarter with past questions, CBT practice and live classes.':'نساعد الطلاب على الاستعداد بذكاء عبر الأسئلة السابقة وتدريب CBT والدروس المباشرة.',
+      'Paystack-secured checkout. No student account required to buy.':'دفع آمن عبر Paystack. لا حاجة لحساب طالب للشراء.',
+      '© 2026 Scholaxia. All rights reserved.':'© 2026 Scholaxia. جميع الحقوق محفوظة.','Built for students':'مصمم للطلاب',
+      'All':'الكل','Common Entrance':'Common Entrance','Buy Now →':'اشترِ الآن ←',
+      'Could not load the catalog.':'تعذر تحميل الكتالوج.','1 paper available':'ورقة واحدة متاحة',
+      'Unable to load past questions':'تعذر تحميل الأسئلة السابقة','Please try again in a moment.':'حاول مرة أخرى بعد قليل.',
+      'Try Again':'حاول مرة أخرى','No past questions available yet':'لا توجد أسئلة سابقة بعد',
+      'New JAMB, WAEC, NECO and Common Entrance papers will appear here.':'ستظهر هنا أوراق JAMB وWAEC وNECO وCommon Entrance الجديدة.',
+      'Email for receipt & download link':'البريد الإلكتروني للإيصال ورابط التحميل',
+      'Full name (optional)':'الاسم الكامل (اختياري)','Your name':'اسمك',
+      'Redirecting to Paystack…':'جارٍ التحويل إلى Paystack…','Enter your email.':'أدخل بريدك الإلكتروني.',
+      'Payment could not start. Please try again.':'تعذر بدء الدفع. حاول مرة أخرى.',
+      'Verifying payment…':'جارٍ التحقق من الدفع…','Download PDF':'تحميل PDF',
+      'Payment successful.':'تم الدفع بنجاح.','Your PDF is unlocked.':'تم فتح ملف PDF.',
+      'Save this link — it works with the email you paid with.':'احفظ هذا الرابط — يعمل مع البريد الذي دفعت به.',
+      'Payment recorded, but download token was not ready. Refresh in a moment.':'تم تسجيل الدفع، لكن رابط التحميل غير جاهز بعد. حدّث الصفحة بعد قليل.',
+      'Unable to verify payment.':'تعذر التحقق من الدفع.',
+      'If you were charged, use the same email to recover access or contact support.':'إذا تم الخصم، استخدم نفس البريد لاستعادة الوصول أو تواصل مع الدعم.'
     }
   };
 
@@ -398,7 +506,24 @@
       if (node.parentElement.closest('[data-i18n]')) continue;
       const english = node.__sxEnglish;
       if (!english) continue;
-      const replacement = lang === 'en' ? english : dict[english];
+      let replacement = lang === 'en' ? english : dict[english];
+      if (!replacement && lang !== 'en') {
+        const papers = english.match(/^(\d+) papers available$/);
+        if (papers) {
+          replacement = {
+            fr: papers[1] + ' documents disponibles',
+            pt: papers[1] + ' provas disponíveis',
+            ar: papers[1] + ' ورقة متاحة',
+          }[lang];
+        } else if (/^\d{4} Past Questions$/.test(english)) {
+          const year = english.slice(0, 4);
+          replacement = {
+            fr: year + ' Annales',
+            pt: year + ' Provas anteriores',
+            ar: year + ' أسئلة سابقة',
+          }[lang];
+        }
+      }
       if (!replacement) continue;
       const leading = (node.nodeValue.match(/^\s*/) || [''])[0];
       const trailing = (node.nodeValue.match(/\s*$/) || [''])[0];
@@ -470,13 +595,25 @@
     translateApplicationText(lang, document.body);
 
     /* update <title> */
-    const titles = {
-      en: 'Scholaxia — Smart. Simple. Learning.',
-      fr: 'Scholaxia — Intelligent. Simple. Apprendre.',
-      pt: 'Scholaxia — Inteligente. Simples. Aprender.',
-      ar: 'Scholaxia — ذكي. بسيط. تعلّم.',
-    };
-    document.title = titles[lang] || titles.en;
+    const isHome = !!document.getElementById('heroSlider');
+    const isPastQuestions = document.body && document.body.classList.contains('pq-page');
+    if (isHome) {
+      const titles = {
+        en: 'Scholaxia — Smart. Simple. Learning.',
+        fr: 'Scholaxia — Intelligent. Simple. Apprendre.',
+        pt: 'Scholaxia — Inteligente. Simples. Aprender.',
+        ar: 'Scholaxia — ذكي. بسيط. تعلّم.',
+      };
+      document.title = titles[lang] || titles.en;
+    } else if (isPastQuestions) {
+      const titles = {
+        en: 'Past Questions Marketplace — Scholaxia',
+        fr: 'Marché des annales — Scholaxia',
+        pt: 'Mercado de provas anteriores — Scholaxia',
+        ar: 'سوق الأسئلة السابقة — Scholaxia',
+      };
+      document.title = titles[lang] || titles.en;
+    }
   }
 
   /* ─────────────────────────────────────────────────────────────
