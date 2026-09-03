@@ -3,12 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; script-src-attr 'unsafe-inline'; connect-src 'self' https://scholaxia1.onrender.com http://127.0.0.1:* http://localhost:*; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob: https:" />
   <title>Scholaxia Academy — Admin</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/admin.css?v=20260903sep1" />
+  <link rel="stylesheet" href="css/admin.css?v=20260903sep2" />
   <link rel="stylesheet" href="css/responsive.css?v=20260805e" />
 </head>
 <body>
@@ -71,10 +74,15 @@
       <button class="nav-btn" data-page="requests" onclick="showAdminPage('requests')">Session Requests</button>
       <button class="nav-btn" data-page="live-subs" onclick="showAdminPage('live-subs')">Live Subscriptions</button>
       <button class="nav-btn" data-page="skills-enroll" onclick="showAdminPage('skills-enroll')">Skills Enrollments</button>
+      <div class="nav-section">CBT Exams (separate)</div>
       <button class="nav-btn" data-page="cbt-settings" onclick="showAdminPage('cbt-settings')">CBT Settings</button>
-      <button class="nav-btn" data-page="cbt" onclick="showAdminPage('cbt')">CBT Question Bank</button>
+      <button class="nav-btn" data-page="cbt" data-cbt-bank="JAMB" onclick="openAdminCbtBank('JAMB')">JAMB Question Bank</button>
+      <button class="nav-btn" data-page="cbt" data-cbt-bank="WAEC" onclick="openAdminCbtBank('WAEC')">WAEC Question Bank</button>
+      <button class="nav-btn" data-page="cbt" data-cbt-bank="NECO" onclick="openAdminCbtBank('NECO')">NECO Question Bank</button>
+      <button class="nav-btn" data-page="cbt" data-cbt-bank="COMMON_ENTRANCE" onclick="openAdminCbtBank('COMMON_ENTRANCE')">Common Entrance Bank</button>
       <button class="nav-btn" data-page="coupons" onclick="showAdminPage('coupons')">CBT Coupons</button>
-      <button class="nav-btn" data-page="past-questions" onclick="showAdminPage('past-questions')">Past Questions</button>
+      <button class="nav-btn" data-page="past-questions" onclick="showAdminPage('past-questions')">Past Questions Shop</button>
+      <div class="nav-section">More learning</div>
       <button class="nav-btn" data-page="school-office" onclick="showAdminPage('school-office')">School office</button>
       <button class="nav-btn" data-page="videos" onclick="showAdminPage('videos')">Video Tutorials</button>
       <button class="nav-btn" data-page="library" onclick="showAdminPage('library')">Library</button>
@@ -378,12 +386,16 @@
 
     <section id="page-cbt" class="admin-page">
       <div class="page-head">
-        <h2>CBT Question Bank</h2>
+        <h2 id="cbt-bank-page-title">CBT Question Bank</h2>
         <div class="form-row">
           <button class="btn-sm" onclick="loadCbt()">Refresh list</button>
         </div>
       </div>
-      <p class="page-desc">Separate banks for each exam. Upload and manage questions by exam type and subject. How many each student sees is controlled in <strong>CBT Settings</strong>.</p>
+      <div id="cbt-bank-active-banner" class="panel" style="margin-bottom:14px;padding:12px 14px;border:2px solid var(--ad-gold,#c9a227);background:rgba(201,162,39,0.12)">
+        <strong id="cbt-bank-active-label">Active bank: JAMB</strong>
+        <p class="cbt-hint small" style="margin:6px 0 0">Uploads and lists on this page stay inside this exam only. WAEC / NECO / Common Entrance are separate banks.</p>
+      </div>
+      <p class="page-desc">Pick an exam bank below (or from the sidebar). Each exam has its own questions and settings.</p>
 
       <div class="cbt-bank-tabs" id="cbt-bank-tabs" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
         <button type="button" class="btn-sm cbt-bank-tab is-active" data-bank="JAMB" onclick="setCbtBank('JAMB')">JAMB Bank</button>
@@ -703,6 +715,9 @@
               <option>JUNIOR_WAEC</option>
               <option>COMMON_ENTRANCE</option>
             </select>
+          </label>
+          <label><span>Year *</span>
+            <input id="pq-year" type="number" min="1990" max="2100" placeholder="e.g. 2025" />
           </label>
           <label style="grid-column:1/-1"><span>Short description *</span>
             <textarea id="pq-description" rows="3" placeholder="Short note students see on the Past Questions shop" style="width:100%"></textarea>
@@ -1300,9 +1315,9 @@
   </main>
 </div>
 
-<script src="js/admin-api.js?v=20260903pq1"></script>
+<script src="js/admin-api.js?v=20260903sep2"></script>
 <script src="js/admin-auth.js?v=20260902adminfix"></script>
-<script src="js/admin.js?v=20260903pq1"></script>
+<script src="js/admin.js?v=20260903sep2"></script>
 <script src="js/responsive.js?v=20260805e"></script>
 </body>
 </html>

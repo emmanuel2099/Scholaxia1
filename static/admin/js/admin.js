@@ -185,8 +185,19 @@ function showAdminPage(page) {
   currentAdminPage = page;
   document.querySelectorAll(".admin-page").forEach(function (p) { p.classList.remove("active"); });
   document.querySelectorAll(".nav-btn").forEach(function (n) { n.classList.remove("active"); });
-  document.getElementById("page-" + page).classList.add("active");
-  document.querySelector('[data-page="' + page + '"]').classList.add("active");
+  var pageEl = document.getElementById("page-" + page);
+  if (pageEl) pageEl.classList.add("active");
+  if (page === "cbt") {
+    var bankNav = document.querySelector('.nav-btn[data-page="cbt"][data-cbt-bank="' + (cbtActiveBank || "JAMB") + '"]');
+    if (bankNav) bankNav.classList.add("active");
+    else {
+      var firstCbt = document.querySelector('.nav-btn[data-page="cbt"]');
+      if (firstCbt) firstCbt.classList.add("active");
+    }
+  } else {
+    var nav = document.querySelector('.nav-btn[data-page="' + page + '"]');
+    if (nav) nav.classList.add("active");
+  }
   if (page === "dashboard") loadDashboard();
   else if (page === "students") loadStudents();
   else if (page === "teachers") loadTeachers();
@@ -211,6 +222,11 @@ function showAdminPage(page) {
   else if (page === "student-groups") loadStudentGroupsAdmin();
   else if (page === "community") loadCommunityPosts();
   else if (page === "marketplace") loadMarketplace();
+}
+
+function openAdminCbtBank(bank) {
+  cbtActiveBank = bank || "JAMB";
+  showAdminPage("cbt");
 }
 
 /* ── Dashboard ── */
@@ -952,10 +968,18 @@ function setCbtBank(bank) {
   document.querySelectorAll("#cbt-bank-tabs .cbt-bank-tab").forEach(function (btn) {
     btn.classList.toggle("is-active", btn.getAttribute("data-bank") === cbtActiveBank);
   });
+  document.querySelectorAll('.nav-btn[data-page="cbt"]').forEach(function (n) {
+    n.classList.toggle("active", n.getAttribute("data-cbt-bank") === cbtActiveBank);
+  });
   var typeSel = document.getElementById("cbt-import-type");
   var createType = document.getElementById("cbt-type");
   if (typeSel) typeSel.value = cbtActiveBank;
   if (createType) createType.value = cbtActiveBank;
+  var label = String(cbtActiveBank).replace(/_/g, " ");
+  var titleEl = document.getElementById("cbt-bank-page-title");
+  if (titleEl) titleEl.textContent = label + " Question Bank";
+  var activeLabel = document.getElementById("cbt-bank-active-label");
+  if (activeLabel) activeLabel.textContent = "Active bank: " + label;
   syncCbtSubjectOptionsForBank();
   syncCbtImportDurationHint();
   loadCbtBankSummary();
@@ -1629,7 +1653,7 @@ async function loadPastQuestionsAdmin() {
       return;
     }
     el.innerHTML =
-      '<table class="data-table"><thead><tr><th>Cover</th><th>Title</th><th>Subject</th><th>Board</th><th>Price</th><th>Description</th><th></th></tr></thead><tbody>' +
+      '<table class="data-table"><thead><tr><th>Cover</th><th>Title</th><th>Subject</th><th>Board</th><th>Year</th><th>Price</th><th>Description</th><th></th></tr></thead><tbody>' +
       rows
         .map(function (b) {
           var cover = b.cover_image_url
@@ -1648,6 +1672,8 @@ async function loadPastQuestionsAdmin() {
             escHtml(b.subject || "—") +
             "</td><td>" +
             escHtml(b.exam_type || "—") +
+            "</td><td>" +
+            escHtml(b.year != null ? String(b.year) : "—") +
             "</td><td>₦" +
             Number(b.price || 0).toLocaleString() +
             "</td><td>" +
@@ -1685,6 +1711,7 @@ async function uploadPastQuestionProduct() {
   var subject = ((document.getElementById("pq-subject") || {}).value || "").trim();
   var board = ((document.getElementById("pq-exam-board") || {}).value || "").trim();
   var desc = ((document.getElementById("pq-description") || {}).value || "").trim();
+  var year = Number(((document.getElementById("pq-year") || {}).value || "").trim());
   var price = Number(((document.getElementById("pq-price") || {}).value || "0").replace(/,/g, ""));
 
   var coverFile = coverInput && coverInput.files && coverInput.files[0];
@@ -1704,6 +1731,10 @@ async function uploadPastQuestionProduct() {
   }
   if (!board) {
     if (err) err.textContent = "Select an exam board.";
+    return;
+  }
+  if (!year || year < 1990 || year > 2100) {
+    if (err) err.textContent = "Enter a valid year (e.g. 2025).";
     return;
   }
   if (!desc) {
@@ -1733,7 +1764,7 @@ async function uploadPastQuestionProduct() {
     var pdfUp = await uploadLibraryPdf(pdfFile);
     if (!pdfUp || !pdfUp.file_key) throw new Error("PDF upload did not return a file key.");
 
-    var title = board + " " + subject + " Past Questions";
+    var title = board + " " + subject + " " + year + " Past Questions";
     var created = await adminApi("/api/v1/admin/library/books", {
       method: "POST",
       body: JSON.stringify({
@@ -1744,6 +1775,7 @@ async function uploadPastQuestionProduct() {
         cover_image_url: coverUrl,
         description: desc,
         category: "Past Questions",
+        year: year,
         library_target: "student",
         is_free: false,
         price: price,
@@ -1757,6 +1789,8 @@ async function uploadPastQuestionProduct() {
     if (pdfInput) pdfInput.value = "";
     var descEl = document.getElementById("pq-description");
     if (descEl) descEl.value = "";
+    var yearEl = document.getElementById("pq-year");
+    if (yearEl) yearEl.value = "";
     var priceEl = document.getElementById("pq-price");
     if (priceEl) priceEl.value = "";
     loadPastQuestionsAdmin();
