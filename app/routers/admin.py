@@ -581,6 +581,8 @@ async def list_all_books(
              "scheme_topic": getattr(b, "scheme_topic", None),
              "year": getattr(b, "year", None),
              "library_target": b.library_target, "exam_type": b.exam_type,
+             "description": getattr(b, "description", None),
+             "cover_image_url": getattr(b, "cover_image_url", None),
              "is_free": getattr(b, "is_free", True),
              "price": float(getattr(b, "price", 0) or 0),
              "is_downloadable": bool(getattr(b, "is_downloadable", False)),

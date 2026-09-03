@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/admin.css?v=20260902adminfix" />
+  <link rel="stylesheet" href="css/admin.css?v=20260903sep1" />
   <link rel="stylesheet" href="css/responsive.css?v=20260805e" />
 </head>
 <body>
@@ -278,9 +278,14 @@
           <button class="btn-primary" style="width:auto;padding:10px 18px" onclick="saveCbtSettings()">Save settings</button>
         </div>
       </div>
-      <p class="page-desc">Global control for how many questions students get, exam duration, and randomization. Question uploads go to the <strong>Question Bank</strong> — these settings decide how many are drawn per attempt.</p>
+      <p class="page-desc">
+        Each exam has its <strong>own settings</strong> and its <strong>own question bank</strong>.
+        Changing NECO does not change WAEC, JAMB, or Common Entrance.
+        Uploads go under <strong>CBT Question Bank</strong> using the matching exam tab.
+      </p>
+
       <div class="panel" style="margin-bottom:16px">
-        <h3>General</h3>
+        <h3>General (all exams)</h3>
         <div class="form-grid">
           <label><span>CBT enabled</span>
             <select id="cbt-set-enabled"><option value="true">Yes</option><option value="false">No</option></select>
@@ -299,32 +304,55 @@
           </label>
         </div>
       </div>
-      <div class="panel" style="margin-bottom:16px">
-        <h3>JAMB (combined package)</h3>
+
+      <div class="cbt-bank-tabs" id="cbt-settings-tabs" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
+        <button type="button" class="btn-sm cbt-settings-tab is-active" data-settings-bank="JAMB" onclick="setCbtSettingsBank('JAMB')">JAMB Settings</button>
+        <button type="button" class="btn-sm cbt-settings-tab" data-settings-bank="WAEC" onclick="setCbtSettingsBank('WAEC')">WAEC Settings</button>
+        <button type="button" class="btn-sm cbt-settings-tab" data-settings-bank="NECO" onclick="setCbtSettingsBank('NECO')">NECO Settings</button>
+        <button type="button" class="btn-sm cbt-settings-tab" data-settings-bank="COMMON_ENTRANCE" onclick="setCbtSettingsBank('COMMON_ENTRANCE')">Common Entrance Settings</button>
+      </div>
+
+      <div class="panel cbt-settings-panel" id="cbt-settings-panel-JAMB" data-settings-panel="JAMB" style="margin-bottom:16px">
+        <h3>JAMB Settings</h3>
+        <p class="cbt-hint small">Combined multi-subject package. Independent from WAEC / NECO / Common Entrance.</p>
         <div class="form-grid">
           <label><span>Questions per subject</span><input id="cbt-set-jamb-q" type="number" min="1" max="200" /></label>
           <label><span>English questions</span><input id="cbt-set-jamb-eng" type="number" min="1" max="200" /></label>
           <label><span>Duration (minutes)</span><input id="cbt-set-jamb-dur" type="number" min="5" max="480" /></label>
           <label><span>Subjects required</span><input id="cbt-set-jamb-subj" type="number" min="1" max="6" /></label>
         </div>
+        <p class="cbt-hint small" style="margin-top:10px">
+          Manage JAMB questions in <button type="button" class="btn-sm" onclick="showAdminPage('cbt'); setCbtBank('JAMB')">JAMB Question Bank</button>
+        </p>
       </div>
-      <div class="panel" style="margin-bottom:16px">
-        <h3>WAEC</h3>
+
+      <div class="panel cbt-settings-panel" id="cbt-settings-panel-WAEC" data-settings-panel="WAEC" style="margin-bottom:16px;display:none">
+        <h3>WAEC Settings</h3>
+        <p class="cbt-hint small">Own WAEC question bank and timing. Changing WAEC does <strong>not</strong> change NECO.</p>
         <div class="form-grid">
           <label><span>Questions per subject</span><input id="cbt-set-waec-q" type="number" min="1" max="200" /></label>
           <label><span>Duration (minutes)</span><input id="cbt-set-waec-dur" type="number" min="5" max="480" /></label>
         </div>
+        <p class="cbt-hint small" style="margin-top:10px">
+          Manage WAEC questions in <button type="button" class="btn-sm" onclick="showAdminPage('cbt'); setCbtBank('WAEC')">WAEC Question Bank</button>
+        </p>
       </div>
-      <div class="panel" style="margin-bottom:16px">
-        <h3>NECO</h3>
+
+      <div class="panel cbt-settings-panel" id="cbt-settings-panel-NECO" data-settings-panel="NECO" style="margin-bottom:16px;display:none">
+        <h3>NECO Settings</h3>
+        <p class="cbt-hint small">Own NECO question bank and timing. Changing NECO does <strong>not</strong> change WAEC or JAMB.</p>
         <div class="form-grid">
           <label><span>Questions per subject</span><input id="cbt-set-neco-q" type="number" min="1" max="200" /></label>
           <label><span>Duration (minutes)</span><input id="cbt-set-neco-dur" type="number" min="5" max="480" /></label>
         </div>
+        <p class="cbt-hint small" style="margin-top:10px">
+          Manage NECO questions in <button type="button" class="btn-sm" onclick="showAdminPage('cbt'); setCbtBank('NECO')">NECO Question Bank</button>
+        </p>
       </div>
-      <div class="panel" style="margin-bottom:16px">
-        <h3>Common Entrance</h3>
-        <p class="cbt-hint small">Independent from JAMB — one combined exam session (all configured subjects together). Changing these does not affect JAMB.</p>
+
+      <div class="panel cbt-settings-panel" id="cbt-settings-panel-COMMON_ENTRANCE" data-settings-panel="COMMON_ENTRANCE" style="margin-bottom:16px;display:none">
+        <h3>Common Entrance Settings</h3>
+        <p class="cbt-hint small">Independent combined exam. Changing these does <strong>not</strong> change JAMB / WAEC / NECO.</p>
         <div class="form-grid">
           <label><span>Questions per subject</span><input id="cbt-set-ce-q" type="number" min="1" max="200" /></label>
           <label><span>Duration (minutes)</span><input id="cbt-set-ce-dur" type="number" min="5" max="480" /></label>
@@ -334,10 +362,15 @@
           <textarea id="cbt-set-ce-subjects" rows="4" placeholder="Mathematics&#10;English Language&#10;Basic Science&#10;Verbal Reasoning" style="width:100%"></textarea>
         </label>
         <p class="cbt-hint small" style="margin-top:6px">Students start one Common Entrance CBT containing every subject listed here, with one timer and one submission.</p>
+        <p class="cbt-hint small" style="margin-top:10px">
+          Manage Common Entrance questions in
+          <button type="button" class="btn-sm" onclick="showAdminPage('cbt'); setCbtBank('COMMON_ENTRANCE')">Common Entrance Question Bank</button>
+        </p>
       </div>
+
       <div class="panel">
-        <h3>Question bank totals</h3>
-        <p class="cbt-hint small">Published practice questions available to draw from (by exam type + subject).</p>
+        <h3 id="cbt-settings-bank-title">Question bank totals — JAMB</h3>
+        <p class="cbt-hint small">Counts for the selected exam only. Other exams stay separate.</p>
         <div id="cbt-bank-table" class="data-table-wrap"><div class="loading">Load settings to see bank…</div></div>
         <p id="cbt-settings-msg" class="cbt-hint small"></p>
       </div>
@@ -353,11 +386,16 @@
       <p class="page-desc">Separate banks for each exam. Upload and manage questions by exam type and subject. How many each student sees is controlled in <strong>CBT Settings</strong>.</p>
 
       <div class="cbt-bank-tabs" id="cbt-bank-tabs" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
-        <button type="button" class="btn-sm cbt-bank-tab is-active" data-bank="JAMB" onclick="setCbtBank('JAMB')">JAMB</button>
-        <button type="button" class="btn-sm cbt-bank-tab" data-bank="WAEC" onclick="setCbtBank('WAEC')">WAEC</button>
-        <button type="button" class="btn-sm cbt-bank-tab" data-bank="NECO" onclick="setCbtBank('NECO')">NECO</button>
-        <button type="button" class="btn-sm cbt-bank-tab" data-bank="COMMON_ENTRANCE" onclick="setCbtBank('COMMON_ENTRANCE')">Common Entrance</button>
+        <button type="button" class="btn-sm cbt-bank-tab is-active" data-bank="JAMB" onclick="setCbtBank('JAMB')">JAMB Bank</button>
+        <button type="button" class="btn-sm cbt-bank-tab" data-bank="WAEC" onclick="setCbtBank('WAEC')">WAEC Bank</button>
+        <button type="button" class="btn-sm cbt-bank-tab" data-bank="NECO" onclick="setCbtBank('NECO')">NECO Bank</button>
+        <button type="button" class="btn-sm cbt-bank-tab" data-bank="COMMON_ENTRANCE" onclick="setCbtBank('COMMON_ENTRANCE')">Common Entrance Bank</button>
       </div>
+      <p class="cbt-hint small" style="margin:-6px 0 14px">
+        Active bank uploads and lists stay inside that exam only.
+        Open matching settings:
+        <button type="button" class="btn-sm" onclick="openCbtSettingsForActiveBank()">Open this exam's settings</button>
+      </p>
       <div id="cbt-bank-summary" class="panel" style="margin-bottom:16px;padding:12px 14px">
         <div class="loading">Loading bank counts…</div>
       </div>
@@ -607,45 +645,35 @@
           <button class="btn-sm" onclick="loadPastQuestionsAdmin()">Refresh list</button>
         </div>
       </div>
+      <p class="page-desc">
+        Upload PDF past papers for the <strong>Past Questions marketplace</strong> (cover + PDF for sale).
+        This is separate from the <strong>CBT Question Bank</strong>.
+      </p>
 
       <div class="panel" style="margin-bottom:16px">
-        <h3>Upload past question papers</h3>
-        <div class="cbt-hint" style="margin-bottom:14px">
-          Papers uploaded here appear under the student <strong>Past Questions</strong> tab — separate from CBT Practice.
-        </div>
-        <ol class="cbt-hint small" style="margin:0 0 16px 18px;line-height:1.55">
-          <li>Pick a <strong>.json</strong>, <strong>.csv</strong>, <strong>.pdf</strong>, or <strong>.docx</strong> past paper.</li>
-          <li>Select the <strong>subject</strong> and <strong>exam board</strong>.</li>
-          <li>Click <strong>Upload &amp; create paper(s)</strong>. For PDF/Word, review the questions, then confirm.</li>
-          <li>Optional: download the JSON template to see the exact question format.</li>
-        </ol>
+        <h3>Upload past question PDF</h3>
         <div class="form-grid">
-          <label><span>Question file *</span>
-            <input id="pq-import-file" type="file" accept=".json,.csv,.pdf,.docx,application/json,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+          <label><span>Cover page photo (image) *</span>
+            <input id="pq-cover-file" type="file" accept="image/jpeg,image/png,image/webp,image/gif,.jpg,.jpeg,.png,.webp,.gif" />
           </label>
-          <label><span>Title (optional)</span><input id="pq-import-title" placeholder="e.g. WAEC Physics 2022" /></label>
+          <label><span>PDF file *</span>
+            <input id="pq-pdf-file" type="file" accept=".pdf,application/pdf,application/x-pdf" />
+          </label>
           <label><span>Subject *</span>
-            <select id="pq-import-subject">
+            <select id="pq-subject">
               <option value="">Select subject</option>
               <option>Agricultural Science</option>
               <option>Arabic</option>
               <option>Basic Technology</option>
-              <option>Beauty and Cosmetology</option>
               <option>Biology</option>
               <option>Business Studies</option>
-              <option>Catering and Craft Practice</option>
               <option>Chemistry</option>
               <option>Christian Religious Studies</option>
               <option>Citizenship and Heritage Studies (Civic)</option>
               <option>Commerce</option>
-              <option>Computer Hardware and GSM Repairs</option>
               <option>Computer Studies/ICT</option>
-              <option>Cultural and Creative Art</option>
-              <option>Digital Technologies</option>
               <option>Economics</option>
               <option>English Language</option>
-              <option>Fashion Design</option>
-              <option>Fashion Design And Garment Making</option>
               <option>Financial Accounting</option>
               <option>Food and Nutrition</option>
               <option>French</option>
@@ -654,37 +682,21 @@
               <option>Government</option>
               <option>Hausa</option>
               <option>Home Economics</option>
-              <option>Horticulture And Crop Production</option>
-              <option>Ibibio</option>
               <option>Igbo</option>
-              <option>Insurance</option>
-              <option>Intermediate Science</option>
               <option>Islamic Religious Studies</option>
               <option>Literature in English</option>
-              <option>Livestock Farming</option>
-              <option>Marketing</option>
               <option>Mathematics</option>
-              <option>Music</option>
-              <option>Nigerian History</option>
-              <option>Physical and Health Education</option>
-              <option>Animal Husbandry</option>
-              <option>Book Keeping</option>
-              <option>Data Processing</option>
-              <option>Fine Arts</option>
-              <option>Home Management</option>
-              <option>Office Practice</option>
-              <option>Physical Education</option>
               <option>Physics</option>
               <option>Social Studies</option>
-              <option>Solar Photovoltaic Installation</option>
-              <option>Store Management</option>
               <option>Technical Drawing</option>
               <option>Visual Arts</option>
               <option>Yoruba</option>
+              <option>General Knowledge</option>
             </select>
           </label>
-          <label><span>Exam board</span>
-            <select id="pq-import-type">
+          <label><span>Exam board *</span>
+            <select id="pq-exam-board">
+              <option value="">Select board</option>
               <option>JAMB</option>
               <option>WAEC</option>
               <option>NECO</option>
@@ -692,34 +704,18 @@
               <option>COMMON_ENTRANCE</option>
             </select>
           </label>
-          <label><span>Duration (minutes)</span><input id="pq-import-duration" type="number" value="60" min="5" max="300" /></label>
-        </div>
-        <div class="form-row" style="margin:8px 0">
-          <label class="chk-label"><input type="checkbox" id="pq-import-publish" checked /> Publish immediately</label>
-          <label class="chk-label"><input type="checkbox" id="pq-import-skip-dup" checked /> Skip if title already exists</label>
+          <label style="grid-column:1/-1"><span>Short description *</span>
+            <textarea id="pq-description" rows="3" placeholder="Short note students see on the Past Questions shop" style="width:100%"></textarea>
+          </label>
+          <label><span>Price (₦) *</span>
+            <input id="pq-price" type="number" min="100" step="50" placeholder="e.g. 1500" />
+          </label>
         </div>
         <div class="cbt-actions">
-          <button type="button" class="btn-primary" id="btn-import-pq" onclick="importPastQuestionsFile()">Upload &amp; create paper(s)</button>
-          <button type="button" class="btn-sm" onclick="downloadCbtTemplate()">Download JSON template</button>
+          <button type="button" class="btn-primary" id="btn-upload-pq" onclick="uploadPastQuestionProduct()">Upload Past Question</button>
         </div>
         <p id="pq-import-error" class="error-msg"></p>
         <p id="pq-import-success" class="cbt-hint small" style="color:#2d8a5e"></p>
-      </div>
-
-      <div class="panel" id="pq-preview-panel" style="display:none;margin-bottom:16px">
-        <h3>Review extracted questions</h3>
-        <p class="cbt-hint small">
-          Check every question, fix any mistakes, and set the correct option where it is missing.
-          Untick a question to leave it out.
-        </p>
-        <p id="pq-preview-summary" class="cbt-hint small" style="font-weight:600"></p>
-        <div id="pq-preview-warnings"></div>
-        <div id="pq-preview-list"></div>
-        <div class="cbt-actions">
-          <button type="button" class="btn-primary" id="btn-confirm-pq-preview" onclick="confirmPastPreviewUi()">Confirm &amp; save paper</button>
-          <button type="button" class="btn-sm" onclick="cancelPastPreview()">Cancel</button>
-        </div>
-        <p id="pq-preview-error" class="error-msg"></p>
       </div>
 
       <div id="pq-table" class="data-table-wrap" style="margin-top:20px"><div class="loading">Loading…</div></div>
@@ -1304,9 +1300,9 @@
   </main>
 </div>
 
-<script src="js/admin-api.js?v=20260903ce1"></script>
+<script src="js/admin-api.js?v=20260903pq1"></script>
 <script src="js/admin-auth.js?v=20260902adminfix"></script>
-<script src="js/admin.js?v=20260903ce1"></script>
+<script src="js/admin.js?v=20260903pq1"></script>
 <script src="js/responsive.js?v=20260805e"></script>
 </body>
 </html>

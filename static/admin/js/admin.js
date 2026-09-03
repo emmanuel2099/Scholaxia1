@@ -198,7 +198,7 @@ function showAdminPage(page) {
   else if (page === "requests") loadRequests();
   else if (page === "live-subs") loadLiveSubscriptions();
   else if (page === "skills-enroll") loadSkillsEnrollments();
-  else if (page === "cbt-settings") { loadCbtSettings(); }
+  else if (page === "cbt-settings") { loadCbtSettings(); setCbtSettingsBank(cbtSettingsBank || "JAMB"); }
   else if (page === "cbt") { cbtMode = "practice"; initCbtBuilder(); setCbtBank(cbtActiveBank || "JAMB"); }
   else if (page === "coupons") loadCbtCoupons();
   else if (page === "past-questions") { cbtMode = "past"; loadPastQuestionsAdmin(); }
@@ -927,6 +927,8 @@ async function updateRequest(id, status) {
 /* ── CBT Exam Builder ── */
 var cbtMode = "practice";
 var cbtActiveBank = "JAMB";
+var cbtSettingsBank = "JAMB";
+var cbtSettingsBankRows = [];
 var cbtSearchTimer = null;
 var CBT_CE_SUBJECTS = [
   "Mathematics / Quantitative Reasoning",
@@ -958,6 +960,58 @@ function setCbtBank(bank) {
   syncCbtImportDurationHint();
   loadCbtBankSummary();
   loadCbt();
+}
+
+function openCbtSettingsForActiveBank() {
+  showAdminPage("cbt-settings");
+  setCbtSettingsBank(cbtActiveBank || "JAMB");
+}
+
+function setCbtSettingsBank(bank) {
+  cbtSettingsBank = bank || "JAMB";
+  document.querySelectorAll("#cbt-settings-tabs .cbt-settings-tab").forEach(function (btn) {
+    btn.classList.toggle("is-active", btn.getAttribute("data-settings-bank") === cbtSettingsBank);
+  });
+  document.querySelectorAll(".cbt-settings-panel").forEach(function (panel) {
+    var key = panel.getAttribute("data-settings-panel");
+    panel.style.display = key === cbtSettingsBank ? "" : "none";
+  });
+  var title = document.getElementById("cbt-settings-bank-title");
+  if (title) {
+    title.textContent = "Question bank totals — " + String(cbtSettingsBank).replace(/_/g, " ");
+  }
+  renderCbtSettingsBankTable();
+}
+
+function renderCbtSettingsBankTable() {
+  var bankEl = document.getElementById("cbt-bank-table");
+  if (!bankEl) return;
+  var rows = (cbtSettingsBankRows || []).filter(function (r) {
+    return r.exam_type === cbtSettingsBank;
+  });
+  if (!rows.length) {
+    bankEl.innerHTML =
+      '<div class="empty-state">No published ' +
+      escHtml(String(cbtSettingsBank).replace(/_/g, " ")) +
+      " practice questions in the bank yet. Upload under CBT Question Bank → " +
+      escHtml(String(cbtSettingsBank).replace(/_/g, " ")) +
+      " Bank.</div>";
+    return;
+  }
+  bankEl.innerHTML =
+    '<table class="data-table"><thead><tr><th>Subject</th><th>Questions in bank</th></tr></thead><tbody>' +
+    rows
+      .map(function (r) {
+        return (
+          "<tr><td>" +
+          escHtml(r.subject) +
+          "</td><td>" +
+          escHtml(r.total_questions) +
+          "</td></tr>"
+        );
+      })
+      .join("") +
+    "</tbody></table>";
 }
 
 function syncCbtImportDurationHint() {
@@ -1470,21 +1524,13 @@ async function loadCbtSettings() {
       ceSubEl.value = ceSubs.join("\n");
     }
     var bank = (data && data.question_bank) || [];
-    if (bankEl) {
-      if (!bank.length) {
-        bankEl.innerHTML = '<div class="empty-state">No published practice questions in the bank yet.</div>';
-      } else {
-        bankEl.innerHTML = '<table class="data-table"><thead><tr><th>Exam</th><th>Subject</th><th>Questions in bank</th></tr></thead><tbody>' +
-          bank.map(function (r) {
-            return "<tr><td>" + escHtml(r.exam_type) + "</td><td>" + escHtml(r.subject) + "</td><td>" +
-              escHtml(r.total_questions) + "</td></tr>";
-          }).join("") + "</tbody></table>";
-      }
-    }
+    cbtSettingsBankRows = bank.slice();
+    setCbtSettingsBank(cbtSettingsBank || "JAMB");
     if (msg) msg.textContent = "";
   } catch (e) {
     if (msg) msg.textContent = e.message;
-    if (bankEl) bankEl.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
+    var bankElErr = document.getElementById("cbt-bank-table");
+    if (bankElErr) bankElErr.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
   }
 }
 
@@ -1573,24 +1619,160 @@ async function loadPastQuestionsAdmin() {
   if (!el) return;
   el.innerHTML = '<div class="loading">Loading…</div>';
   try {
-    var rows = await adminApi("/api/v1/admin/cbt/exams");
+    var rows = await adminApi("/api/v1/admin/library/books?library_target=student");
     if (!rows) return;
-    rows = rows.filter(function (e) { return e.paper_kind === "past_questions"; });
-    if (!rows.length) { el.innerHTML = '<div class="empty-state">No past question papers yet. Upload one above.</div>'; return; }
-    el.innerHTML = '<table class="data-table"><thead><tr><th>Title</th><th>Subject</th><th>Board</th><th>Questions</th><th>Status</th><th></th></tr></thead><tbody>' +
-      rows.map(function (e) {
-        var pub = e.is_published ? '<span class="badge ok">Published</span>' : '<span class="badge muted">Draft</span>';
-        return '<tr><td>' + escHtml(e.title) + '</td><td>' + escHtml(e.subject) + '</td>' +
-          '<td><span class="badge ok">' + escHtml(e.exam_type) + '</span></td><td>' + e.total_questions + '</td><td>' + pub + '</td>' +
-          '<td class="actions">' +
-          '<button class="btn-sm" onclick="openCbtExamEdit(\'' + e.id + '\')">Edit questions &amp; images</button>' +
-          '<button class="btn-sm" onclick="toggleCbtPublish(\'' + e.id + '\')">Toggle publish</button>' +
-          '<button class="btn-sm danger" onclick="deleteCbt(\'' + e.id + '\')">Delete set</button>' +
-          '</td></tr>';
-      }).join("") + '</tbody></table>';
+    rows = (rows || []).filter(function (b) {
+      return /past/i.test(String(b.category || ""));
+    });
+    if (!rows.length) {
+      el.innerHTML = '<div class="empty-state">No Past Questions PDFs yet. Upload a cover + PDF above.</div>';
+      return;
+    }
+    el.innerHTML =
+      '<table class="data-table"><thead><tr><th>Cover</th><th>Title</th><th>Subject</th><th>Board</th><th>Price</th><th>Description</th><th></th></tr></thead><tbody>' +
+      rows
+        .map(function (b) {
+          var cover = b.cover_image_url
+            ? '<img src="' +
+              escHtml(b.cover_image_url) +
+              '" alt="" style="width:48px;height:64px;object-fit:cover;border-radius:6px" />'
+            : "—";
+          var desc = (b.description || "").slice(0, 80);
+          if ((b.description || "").length > 80) desc += "…";
+          return (
+            "<tr><td>" +
+            cover +
+            "</td><td>" +
+            escHtml(b.title || "—") +
+            "</td><td>" +
+            escHtml(b.subject || "—") +
+            "</td><td>" +
+            escHtml(b.exam_type || "—") +
+            "</td><td>₦" +
+            Number(b.price || 0).toLocaleString() +
+            "</td><td>" +
+            escHtml(desc || "—") +
+            '</td><td class="actions">' +
+            '<button class="btn-sm" onclick="editLibraryPrice(\'' +
+            b.id +
+            "', " +
+            Number(b.price || 0) +
+            ')">Price</button> ' +
+            '<button class="btn-sm" onclick="replaceLibraryPdf(\'' +
+            b.id +
+            "')\">Replace PDF</button> " +
+            '<button class="btn-sm danger" onclick="deleteLibraryBook(\'' +
+            b.id +
+            "')\">Remove</button></td></tr>"
+          );
+        })
+        .join("") +
+      "</tbody></table>";
   } catch (e) {
-    el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + '</div>';
+    el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
   }
+}
+
+async function uploadPastQuestionProduct() {
+  var err = document.getElementById("pq-import-error");
+  var ok = document.getElementById("pq-import-success");
+  var btn = document.getElementById("btn-upload-pq");
+  if (err) err.textContent = "";
+  if (ok) ok.textContent = "";
+
+  var coverInput = document.getElementById("pq-cover-file");
+  var pdfInput = document.getElementById("pq-pdf-file");
+  var subject = ((document.getElementById("pq-subject") || {}).value || "").trim();
+  var board = ((document.getElementById("pq-exam-board") || {}).value || "").trim();
+  var desc = ((document.getElementById("pq-description") || {}).value || "").trim();
+  var price = Number(((document.getElementById("pq-price") || {}).value || "0").replace(/,/g, ""));
+
+  var coverFile = coverInput && coverInput.files && coverInput.files[0];
+  var pdfFile = pdfInput && pdfInput.files && pdfInput.files[0];
+
+  if (!coverFile) {
+    if (err) err.textContent = "Choose a cover page photo (image).";
+    return;
+  }
+  if (!pdfFile) {
+    if (err) err.textContent = "Choose the Past Questions PDF file.";
+    return;
+  }
+  if (!subject) {
+    if (err) err.textContent = "Select a subject.";
+    return;
+  }
+  if (!board) {
+    if (err) err.textContent = "Select an exam board.";
+    return;
+  }
+  if (!desc) {
+    if (err) err.textContent = "Enter a short description.";
+    return;
+  }
+  if (!(price > 0)) {
+    if (err) err.textContent = "Enter a price greater than zero (Past Questions are sold via Paystack).";
+    return;
+  }
+  var pdfName = (pdfFile.name || "").toLowerCase();
+  if (!pdfName.endsWith(".pdf") && (pdfFile.type || "").toLowerCase().indexOf("pdf") < 0) {
+    if (err) err.textContent = "PDF file must be a .pdf document.";
+    return;
+  }
+
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Uploading…";
+  }
+  try {
+    var coverUp = await uploadMarketplaceImage(coverFile);
+    if (!coverUp) return;
+    var coverUrl = (coverUp.image_url || coverUp.secure_url || "").trim();
+    if (!coverUrl) throw new Error("Cover upload did not return an image URL.");
+
+    var pdfUp = await uploadLibraryPdf(pdfFile);
+    if (!pdfUp || !pdfUp.file_key) throw new Error("PDF upload did not return a file key.");
+
+    var title = board + " " + subject + " Past Questions";
+    var created = await adminApi("/api/v1/admin/library/books", {
+      method: "POST",
+      body: JSON.stringify({
+        title: title,
+        subject: subject,
+        exam_type: board,
+        file_key: pdfUp.file_key,
+        cover_image_url: coverUrl,
+        description: desc,
+        category: "Past Questions",
+        library_target: "student",
+        is_free: false,
+        price: price,
+        is_downloadable: true,
+      }),
+    });
+    if (!created || !created.id) throw new Error("Server did not confirm the upload.");
+
+    if (ok) ok.textContent = "Uploaded \"" + title + "\" to the Past Questions shop.";
+    if (coverInput) coverInput.value = "";
+    if (pdfInput) pdfInput.value = "";
+    var descEl = document.getElementById("pq-description");
+    if (descEl) descEl.value = "";
+    var priceEl = document.getElementById("pq-price");
+    if (priceEl) priceEl.value = "";
+    loadPastQuestionsAdmin();
+  } catch (e) {
+    if (err) err.textContent = e.message || "Upload failed.";
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Upload Past Question";
+    }
+  }
+}
+
+async function importPastQuestionsFile() {
+  // Legacy CBT paper import removed from Past Questions tab.
+  return uploadPastQuestionProduct();
 }
 
 async function createCbt() {
@@ -3194,6 +3376,9 @@ async function editLibraryPrice(id, currentPrice) {
       body: JSON.stringify({ price: price, is_free: false }),
     });
     loadLibraryAdmin();
+    if (typeof currentAdminPage !== "undefined" && currentAdminPage === "past-questions") {
+      loadPastQuestionsAdmin();
+    }
   } catch (e) {
     alert(e.message || "Could not update price.");
   }
@@ -3493,6 +3678,9 @@ async function replaceLibraryPdf(id) {
       await uploadAdminFile("/api/v1/admin/library/books/" + encodeURIComponent(id) + "/replace-file", file);
       alert("PDF replaced. Students can tap Read again.");
       loadLibraryAdmin();
+      if (typeof currentAdminPage !== "undefined" && currentAdminPage === "past-questions") {
+        loadPastQuestionsAdmin();
+      }
     } catch (e) {
       alert(e.message || "Could not replace PDF.");
     }
@@ -3536,6 +3724,9 @@ async function deleteLibraryBook(id) {
   try {
     await adminApi("/api/v1/admin/library/books/" + id, { method: "DELETE" });
     loadLibraryAdmin();
+    if (typeof currentAdminPage !== "undefined" && currentAdminPage === "past-questions") {
+      loadPastQuestionsAdmin();
+    }
   } catch (e) {
     alert(e.message);
   }
