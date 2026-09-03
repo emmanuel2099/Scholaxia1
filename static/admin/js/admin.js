@@ -965,9 +965,6 @@ var CBT_CE_SUBJECTS = [
 
 function setCbtBank(bank) {
   cbtActiveBank = bank || "JAMB";
-  document.querySelectorAll("#cbt-bank-tabs .cbt-bank-tab").forEach(function (btn) {
-    btn.classList.toggle("is-active", btn.getAttribute("data-bank") === cbtActiveBank);
-  });
   document.querySelectorAll('.nav-btn[data-page="cbt"]').forEach(function (n) {
     n.classList.toggle("active", n.getAttribute("data-cbt-bank") === cbtActiveBank);
   });
@@ -980,10 +977,63 @@ function setCbtBank(bank) {
   if (titleEl) titleEl.textContent = label + " Question Bank";
   var activeLabel = document.getElementById("cbt-bank-active-label");
   if (activeLabel) activeLabel.textContent = "Active bank: " + label;
+  var addHeading = document.getElementById("cbt-add-questions-heading");
+  if (addHeading) addHeading.textContent = "+ Add questions to " + label;
   syncCbtSubjectOptionsForBank();
   syncCbtImportDurationHint();
   loadCbtBankSummary();
   loadCbt();
+}
+
+function focusAddQuestionsPanel(subject) {
+  var typeSel = document.getElementById("cbt-import-type");
+  if (typeSel) typeSel.value = cbtActiveBank || "JAMB";
+  if (subject) {
+    var subj = document.getElementById("cbt-import-subject");
+    if (subj) {
+      var found = false;
+      for (var i = 0; i < subj.options.length; i++) {
+        if (subj.options[i].value === subject || subj.options[i].text === subject) {
+          subj.selectedIndex = i;
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        var opt = document.createElement("option");
+        opt.value = subject;
+        opt.textContent = subject;
+        subj.appendChild(opt);
+        subj.value = subject;
+      }
+    }
+  }
+  var panel = document.getElementById("cbt-add-questions-panel");
+  if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+  var file = document.getElementById("cbt-import-file");
+  if (file) setTimeout(function () { file.focus(); }, 250);
+}
+
+/** Prefill Add Questions from a listed exam set (PDF joins onto that subject bank). */
+function openAddQuestionsForExam(subject, examType) {
+  if (examType) setCbtBank(examType);
+  else if (cbtActiveBank) setCbtBank(cbtActiveBank);
+  focusAddQuestionsPanel(subject || "");
+  var err = document.getElementById("cbt-import-error");
+  if (err) err.textContent = "";
+  var ok = document.getElementById("cbt-import-success");
+  if (ok) {
+    ok.textContent = subject
+      ? "Choose a PDF/CSV for " + subject + ". New questions will be joined to the existing ones."
+      : "Choose subject + PDF/CSV. New questions join this exam bank.";
+  }
+}
+
+function addQuestionsFromEditSubject() {
+  var subject = cbtEditSubject || "";
+  var examType = cbtEditExamType || cbtActiveBank || "JAMB";
+  cancelCbtExamEdit();
+  openAddQuestionsForExam(subject, examType);
 }
 
 function openCbtSettingsForActiveBank() {
@@ -1281,6 +1331,8 @@ function clearQuestionImage(idx) {
 }
 
 var cbtEditExamId = null;
+var cbtEditSubject = "";
+var cbtEditExamType = "";
 var cbtEditQuestions = [];
 
 function syncEditQuestionFromDom(idx) {
@@ -1413,11 +1465,13 @@ async function openCbtExamEdit(id) {
   try {
     var data = await adminApi("/api/v1/admin/cbt/exams/" + encodeURIComponent(id));
     cbtEditExamId = id;
+    cbtEditSubject = data.subject || "";
+    cbtEditExamType = data.exam_type || cbtActiveBank || "JAMB";
     document.getElementById("cbt-edit-title").value = data.title || "";
     document.getElementById("cbt-edit-duration").value = data.duration_minutes || 30;
     document.getElementById("cbt-edit-publish").checked = !!data.is_published;
     document.getElementById("cbt-edit-heading").textContent =
-      "Preview / edit — " + (data.subject || "") + " (" + (data.exam_type || "") + ")";
+      "Edit — " + (data.subject || "") + " (" + (data.exam_type || "") + ")";
     cbtEditQuestions = (data.questions || []).map(function (q) {
       return {
         id: q.id || null,
@@ -1447,6 +1501,8 @@ async function openCbtExamEdit(id) {
 
 function cancelCbtExamEdit() {
   cbtEditExamId = null;
+  cbtEditSubject = "";
+  cbtEditExamType = "";
   cbtEditQuestions = [];
   var panel = document.getElementById("cbt-edit-panel");
   if (panel) panel.style.display = "none";
@@ -1618,18 +1674,21 @@ async function loadCbt() {
     loadCbtBankSummary();
     if (!rows.length) {
       el.innerHTML = '<div class="empty-state">No ' + escHtml((cbtActiveBank || "").replace(/_/g, " ")) +
-        " practice exams yet. Upload questions for this bank above.</div>";
+        ' practice sets yet. Use <strong>Add questions</strong> above to upload a PDF for this exam.</div>';
       return;
     }
     el.innerHTML = '<table class="data-table"><thead><tr><th>Title</th><th>Subject</th><th>Type</th><th>Questions</th><th>Status</th><th></th></tr></thead><tbody>' +
       rows.map(function (e) {
         var typeBadge = '<span class="badge ok">' + escHtml(e.exam_type) + "</span>";
         var pub = e.is_published ? '<span class="badge ok">Published</span>' : '<span class="badge muted">Draft</span>';
+        var subjJs = String(e.subject || "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+        var typeJs = String(e.exam_type || cbtActiveBank || "JAMB").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
         return "<tr><td>" + escHtml(e.title) + "</td><td>" + escHtml(e.subject) + "</td>" +
           "<td>" + typeBadge + "</td><td>" + e.total_questions + "</td><td>" + pub + "</td>" +
           '<td class="actions">' +
-          '<button class="btn-sm" onclick="openCbtExamEdit(\'' + e.id + '\')">Edit questions</button>' +
-          '<button class="btn-sm" onclick="toggleCbtPublish(\'' + e.id + '\')">Toggle publish</button>' +
+          '<button class="btn-sm" onclick="openCbtExamEdit(\'' + e.id + '\')">Edit</button> ' +
+          '<button class="btn-primary btn-sm" onclick="openAddQuestionsForExam(\'' + subjJs + '\',\'' + typeJs + '\')">Add questions</button> ' +
+          '<button class="btn-sm" onclick="toggleCbtPublish(\'' + e.id + '\')">Toggle publish</button> ' +
           '<button class="btn-sm danger" onclick="deleteCbt(\'' + e.id + '\')">Delete set</button>' +
           "</td></tr>";
       }).join("") + "</tbody></table>";
@@ -1929,17 +1988,18 @@ async function seedCbt() {
 
 async function importCbtFile() {
   cbtMode = "practice";
-  var appendEl = document.getElementById("cbt-import-append");
-  var append = !appendEl || appendEl.checked;
+  var typeSel = document.getElementById("cbt-import-type");
+  if (typeSel) typeSel.value = cbtActiveBank || "JAMB";
+  // Always append: PDF/CSV questions join the existing bank (never wipe).
   return importPaperFile({
     prefix: "cbt",
     paperKind: "cbt_practice",
-    btnLabel: "Preview & add questions",
+    btnLabel: "Extract & add to bank",
     afterSave: function () {
       loadCbt();
       loadCbtBankSummary();
     },
-    appendToBank: append,
+    appendToBank: true,
   });
 }
 

@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/admin.css?v=20260903sep2" />
+  <link rel="stylesheet" href="css/admin.css?v=20260903addq1" />
   <link rel="stylesheet" href="css/responsive.css?v=20260805e" />
 </head>
 <body>
@@ -388,25 +388,20 @@
       <div class="page-head">
         <h2 id="cbt-bank-page-title">CBT Question Bank</h2>
         <div class="form-row">
+          <button type="button" class="btn-primary" onclick="focusAddQuestionsPanel()">+ Add questions</button>
           <button class="btn-sm" onclick="loadCbt()">Refresh list</button>
+          <button type="button" class="btn-sm" onclick="openCbtSettingsForActiveBank()">This exam's settings</button>
         </div>
       </div>
       <div id="cbt-bank-active-banner" class="panel" style="margin-bottom:14px;padding:12px 14px;border:2px solid var(--ad-gold,#c9a227);background:rgba(201,162,39,0.12)">
         <strong id="cbt-bank-active-label">Active bank: JAMB</strong>
-        <p class="cbt-hint small" style="margin:6px 0 0">Uploads and lists on this page stay inside this exam only. WAEC / NECO / Common Entrance are separate banks.</p>
+        <p class="cbt-hint small" style="margin:6px 0 0">
+          Opened from the sidebar (JAMB / WAEC / NECO / Common Entrance). Questions you add here stay in this exam only.
+        </p>
       </div>
-      <p class="page-desc">Pick an exam bank below (or from the sidebar). Each exam has its own questions and settings.</p>
-
-      <div class="cbt-bank-tabs" id="cbt-bank-tabs" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px">
-        <button type="button" class="btn-sm cbt-bank-tab is-active" data-bank="JAMB" onclick="setCbtBank('JAMB')">JAMB Bank</button>
-        <button type="button" class="btn-sm cbt-bank-tab" data-bank="WAEC" onclick="setCbtBank('WAEC')">WAEC Bank</button>
-        <button type="button" class="btn-sm cbt-bank-tab" data-bank="NECO" onclick="setCbtBank('NECO')">NECO Bank</button>
-        <button type="button" class="btn-sm cbt-bank-tab" data-bank="COMMON_ENTRANCE" onclick="setCbtBank('COMMON_ENTRANCE')">Common Entrance Bank</button>
-      </div>
-      <p class="cbt-hint small" style="margin:-6px 0 14px">
-        Active bank uploads and lists stay inside that exam only.
-        Open matching settings:
-        <button type="button" class="btn-sm" onclick="openCbtSettingsForActiveBank()">Open this exam's settings</button>
+      <p class="page-desc">
+        <strong>Edit</strong> = change existing questions.
+        <strong>Add questions</strong> = upload a PDF (or CSV); extracted questions are joined onto this bank. Nothing is deleted.
       </p>
       <div id="cbt-bank-summary" class="panel" style="margin-bottom:16px;padding:12px 14px">
         <div class="loading">Loading bank counts…</div>
@@ -422,29 +417,13 @@
         </label>
       </div>
 
-      <div class="panel" style="margin-bottom:16px">
-        <h3>+ Add Questions (bulk upload)</h3>
-        <div class="cbt-hint" style="margin-bottom:14px">
-          Upload <strong>CSV</strong> or <strong>PDF</strong> to <strong>append</strong> questions into the selected exam bank.
-          Existing questions are never deleted or replaced. One-by-one entry remains below under <strong>Create CBT manually</strong>.
-          Past Questions marketplace PDFs are separate — use the <strong>Past Questions</strong> tab for those.
+      <div class="panel" id="cbt-add-questions-panel" style="margin-bottom:16px">
+        <h3 id="cbt-add-questions-heading">+ Add questions</h3>
+        <div class="cbt-hint" style="margin-bottom:12px">
+          Upload a <strong>PDF</strong> (or CSV). We extract the questions and <strong>join them</strong> to the existing set for this exam bank.
+          Use <strong>Edit</strong> on a row to change questions already in the bank.
         </div>
-        <div class="form-row" style="gap:8px;flex-wrap:wrap;margin-bottom:12px">
-          <button type="button" class="btn-primary" onclick="startBulkAdd('csv')">Upload CSV</button>
-          <button type="button" class="btn-primary" onclick="startBulkAdd('pdf')">Upload PDF</button>
-          <button type="button" class="btn-sm" onclick="document.getElementById('cbt-builder-anchor')?.scrollIntoView({behavior:'smooth'})">Add Manually</button>
-          <button type="button" class="btn-sm" onclick="downloadCbtTemplate()">Download JSON template</button>
-        </div>
-        <ol class="cbt-hint small" style="margin:0 0 16px 18px;line-height:1.55">
-          <li>Select the <strong>subject</strong> (required) for the active exam tab above.</li>
-          <li>Choose a <strong>.csv</strong> or <strong>.pdf</strong> (JSON/DOCX also work).</li>
-          <li>Preview → review / edit / remove bad rows → <strong>Import</strong> (appends only).</li>
-        </ol>
         <div class="form-grid">
-          <label><span>Question file *</span>
-            <input id="cbt-import-file" type="file" accept=".json,.csv,.pdf,.docx,application/json,text/csv,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
-          </label>
-          <label><span>Title (optional)</span><input id="cbt-import-title" placeholder="Shown only if creating a brand-new bank set" /></label>
           <label><span>Subject *</span>
             <select id="cbt-import-subject">
               <option value="">Select subject</option>
@@ -504,8 +483,12 @@
               <option>Yoruba</option>
             </select>
           </label>
-          <label><span>Exam board</span>
-            <select id="cbt-import-type" onchange="syncCbtImportDurationHint()">
+          <label><span>PDF or CSV file *</span>
+            <input id="cbt-import-file" type="file" accept=".pdf,.csv,application/pdf,text/csv" />
+          </label>
+          <label style="display:none"><span>Title</span><input id="cbt-import-title" /></label>
+          <label style="display:none"><span>Exam board</span>
+            <select id="cbt-import-type">
               <option>JAMB</option>
               <option>WAEC</option>
               <option>NECO</option>
@@ -513,16 +496,17 @@
             </select>
           </label>
         </div>
-        <p id="cbt-import-duration-hint" class="cbt-hint small" style="margin:8px 0 0">
-          Exam duration comes from <strong>CBT Settings</strong> for the selected board — not from this upload form.
+        <label class="chk-label" style="position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden">
+          <input type="checkbox" id="cbt-import-append" checked /> Append
+        </label>
+        <input type="checkbox" id="cbt-import-publish" checked style="display:none" aria-hidden="true" />
+        <input type="checkbox" id="cbt-import-skip-dup" checked style="display:none" aria-hidden="true" />
+        <p id="cbt-import-duration-hint" class="cbt-hint small" style="margin:10px 0 0">
+          Duration comes from <strong>CBT Settings</strong> for this exam — not from the upload.
         </p>
-        <div class="form-row" style="margin:8px 0;flex-wrap:wrap;gap:12px">
-          <label class="chk-label"><input type="checkbox" id="cbt-import-append" checked /> Append to existing bank (recommended)</label>
-          <label class="chk-label"><input type="checkbox" id="cbt-import-publish" checked /> Publish bank set</label>
-          <label class="chk-label"><input type="checkbox" id="cbt-import-skip-dup" checked /> Skip duplicate titles (legacy create-exam mode only)</label>
-        </div>
-        <div class="cbt-actions">
-          <button type="button" class="btn-primary" id="btn-import-cbt" onclick="importCbtFile()">Preview &amp; add questions</button>
+        <div class="cbt-actions" style="margin-top:12px">
+          <button type="button" class="btn-primary" id="btn-import-cbt" onclick="importCbtFile()">Extract &amp; add to bank</button>
+          <button type="button" class="btn-sm" onclick="document.getElementById('cbt-builder-anchor')?.scrollIntoView({behavior:'smooth'})">Type one question manually</button>
         </div>
         <p id="cbt-import-error" class="error-msg"></p>
         <p id="cbt-import-success" class="cbt-hint small" style="color:#2d8a5e"></p>
@@ -554,9 +538,9 @@
       </div>
 
       <div class="panel cbt-builder" id="cbt-builder-anchor" style="margin-bottom:16px">
-        <h3>Create CBT manually</h3>
+        <h3>Create a new set manually (optional)</h3>
         <p class="cbt-hint small" style="margin-bottom:14px">
-          Type questions one by one. Add a diagram (graph, figure, or passage image) on any question.
+          Prefer PDF upload above for many questions. Use this only to type a few questions by hand.
         </p>
         <div class="form-grid">
           <label><span>Exam title *</span><input id="cbt-title" placeholder="e.g. JAMB Mathematics Practice" /></label>
@@ -1292,18 +1276,19 @@
     </section>
 
     <div class="panel" id="cbt-edit-panel" style="display:none;margin:16px 0 24px">
-      <h3 id="cbt-edit-heading">Preview / edit exam</h3>
-      <p class="cbt-hint small">Change text, upload diagrams, or remove any question you do not want. Save when done.</p>
+      <h3 id="cbt-edit-heading">Edit questions</h3>
+      <p class="cbt-hint small">Change text, upload diagrams, or remove a question. To upload many new questions from PDF into this subject, use <strong>Add questions</strong> (keeps existing ones).</p>
       <div class="form-grid">
         <label><span>Exam title *</span><input id="cbt-edit-title" /></label>
         <label><span>Duration (minutes)</span><input id="cbt-edit-duration" type="number" min="5" max="300" value="30" /></label>
       </div>
-      <div class="form-row" style="margin:10px 0">
+      <div class="form-row" style="margin:10px 0;gap:8px;flex-wrap:wrap">
         <label class="chk-label"><input type="checkbox" id="cbt-edit-publish" /> Published for students</label>
+        <button type="button" class="btn-primary" id="cbt-edit-add-pdf-btn" onclick="addQuestionsFromEditSubject()">+ Add questions from PDF</button>
       </div>
       <div class="questions-header">
         <h3>Questions</h3>
-        <button type="button" class="btn-sm" onclick="addCbtEditQuestion()">+ Add question</button>
+        <button type="button" class="btn-sm" onclick="addCbtEditQuestion()">+ Add one question</button>
       </div>
       <div id="cbt-edit-questions-list"></div>
       <div class="cbt-actions" style="margin-top:14px">
@@ -1315,9 +1300,9 @@
   </main>
 </div>
 
-<script src="js/admin-api.js?v=20260903sep2"></script>
+<script src="js/admin-api.js?v=20260903addq1"></script>
 <script src="js/admin-auth.js?v=20260902adminfix"></script>
-<script src="js/admin.js?v=20260903sep2"></script>
+<script src="js/admin.js?v=20260903addq1"></script>
 <script src="js/responsive.js?v=20260805e"></script>
 </body>
 </html>
