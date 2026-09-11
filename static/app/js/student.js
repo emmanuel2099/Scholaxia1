@@ -853,6 +853,7 @@
 
   var pastQuestionsCache = null;
   var pqActiveCat = "all";
+  var pqSearchTerm = "";
 
   function renderPastQuestionCard(it) {
     var title = it.title || it.name || "Past paper";
@@ -934,13 +935,36 @@
           " " +
           (it.category || "")
         ).toLowerCase();
-        return hay.indexOf(pqActiveCat) > -1 || (pqActiveCat === "post" && hay.indexOf("utme") > -1);
+        var categoryMatch = hay.indexOf(pqActiveCat) > -1;
+        if (pqActiveCat === "post") {
+          categoryMatch = hay.indexOf("utme") > -1 || hay.indexOf("post-utme") > -1;
+        }
+        if (pqActiveCat === "common") {
+          categoryMatch = hay.indexOf("common entrance") > -1 || hay.indexOf("common_entrance") > -1;
+        }
+        return categoryMatch;
+      });
+    }
+    if (pqSearchTerm) {
+      items = items.filter(function (it) {
+        var hay = (
+          (it.exam_type || "") +
+          " " +
+          (it.title || "") +
+          " " +
+          (it.subject || "") +
+          " " +
+          (it.category || "") +
+          " " +
+          (it.description || "")
+        ).toLowerCase();
+        return hay.indexOf(pqSearchTerm.toLowerCase()) > -1;
       });
     }
     if (!items.length) {
       wrap.innerHTML = emptyHtml(
         "📄",
-        "No past-question PDFs yet. Admin uploads them under Library → Past Questions. Buy a pack here, then download the PDF — not timed CBT."
+        "No past-question PDFs match your search. Try another subject, title, or exam category."
       );
       return;
     }
@@ -956,6 +980,14 @@
         t.classList.toggle("is-active", t === btn);
       });
       pqActiveCat = btn.dataset.cat;
+      renderPastQuestions();
+    });
+  }
+
+  var pqStudentSearch = $("pqStudentSearch");
+  if (pqStudentSearch) {
+    pqStudentSearch.addEventListener("input", function () {
+      pqSearchTerm = (pqStudentSearch.value || "").trim();
       renderPastQuestions();
     });
   }

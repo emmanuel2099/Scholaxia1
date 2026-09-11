@@ -162,11 +162,25 @@
             <div class="panel">
               <h2>Past Questions</h2>
               <p>Buy and download past-question <strong>PDFs</strong> here. Admin uploads them under <strong>Library → Past Questions</strong>. These are not timed CBT — use <strong>CBT Practice</strong> for interactive exams.</p>
+              <div class="field" style="margin-bottom:0.85rem;">
+                <input
+                  id="pqStudentSearch"
+                  type="search"
+                  placeholder="Search by exam, subject, or paper title…"
+                  autocomplete="off"
+                  aria-label="Search past questions"
+                />
+              </div>
               <div class="tabs" id="pqFilterTabs">
                 <button type="button" class="tab is-active" data-cat="all">All</button>
                 <button type="button" class="tab" data-cat="jamb">JAMB</button>
                 <button type="button" class="tab" data-cat="waec">WAEC</button>
                 <button type="button" class="tab" data-cat="neco">NECO</button>
+                <button type="button" class="tab" data-cat="igcse">IGCSE</button>
+                <button type="button" class="tab" data-cat="sat">SAT</button>
+                <button type="button" class="tab" data-cat="kcse">KCSE</button>
+                <button type="button" class="tab" data-cat="bece">BECE</button>
+                <button type="button" class="tab" data-cat="common">Common Entrance</button>
                 <button type="button" class="tab" data-cat="post">Post-UTME</button>
               </div>
               <div class="card-grid" id="pastQuestionsList"><div class="loading-state">Loading past questions…</div></div>

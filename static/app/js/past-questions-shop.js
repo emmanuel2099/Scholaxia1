@@ -197,7 +197,7 @@
   function renderCats() {
     var tabs = qs("pqExamTabs");
     if (!tabs) return;
-    var exams = ["ALL", "JAMB", "WAEC", "NECO", "COMMON_ENTRANCE"];
+    var exams = ["ALL", "JAMB", "WAEC", "NECO", "IGCSE", "SAT", "KCSE", "BECE", "COMMON_ENTRANCE"];
     tabs.innerHTML = exams
       .map(function (ex) {
         return (
