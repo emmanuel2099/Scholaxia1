@@ -39,6 +39,7 @@ class _CbtScreenState extends State<CbtScreen> {
   bool _loadingExams = true;
   String? _busyExamId;
   String? _selectedSubject;
+  bool _hasActiveCoupon = false;
 
   static const _jambBundleId = '__jamb_bundle__';
   static final _yearRe = RegExp(r'(20\d{2}|19\d{2})');
@@ -74,6 +75,15 @@ class _CbtScreenState extends State<CbtScreen> {
         access = await _api.cbtPackageAccess();
       } catch (_) {
         // Stay locked when access cannot be verified; pull-to-refresh retries.
+      }
+      
+      // Check for active coupon
+      bool hasCoupon = false;
+      try {
+        final couponStatus = await _api.cbtCouponAccess();
+        hasCoupon = couponStatus['has_active_coupon'] == true;
+      } catch (_) {
+        // If coupon check fails, assume no coupon
       }
       final practice = (data['practice_exams'] as List?) ?? [];
       final jamb = (data['jamb_exams'] as List?) ?? [];
@@ -118,6 +128,7 @@ class _CbtScreenState extends State<CbtScreen> {
               .toSet();
           _subjectChangeRequiresPayment =
               access['subject_change_requires_payment'] == true;
+          _hasActiveCoupon = hasCoupon;
           _loadingExams = false;
           _selectedSubject = null;
           _ensureDefaultSubject();
@@ -198,6 +209,9 @@ class _CbtScreenState extends State<CbtScreen> {
   bool get _isJambTab => _activeTab == 'JAMB';
 
   bool get _hasActiveTabAccess {
+    // If has active coupon, grant access to all boards
+    if (_hasActiveCoupon) return true;
+    
     if (_activeTab == 'JAMB') return _paidBoards.contains('JAMB');
     if (_activeTab == 'JUNIOR_WAEC') {
       return _paidBoards.contains('JUNIOR_WAEC');
@@ -268,9 +282,98 @@ class _CbtScreenState extends State<CbtScreen> {
               label: const Text('Pay with Paystack'),
             ),
           ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: _showCouponDialog,
+            icon: const Icon(Icons.card_giftcard_rounded),
+            label: const Text('I have a coupon code'),
+          ),
         ],
       ),
     );
+  }
+
+  Future<void> _showCouponDialog() async {
+    final controller = TextEditingController();
+    final couponCode = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: context.cardColor,
+        title: Text(
+          'Enter Coupon Code',
+          style: TextStyle(
+            color: context.textColor,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          textCapitalization: TextCapitalization.characters,
+          style: TextStyle(color: context.textColor),
+          decoration: InputDecoration(
+            hintText: 'SX-XXXX',
+            hintStyle: TextStyle(color: context.greyColor),
+            border: const OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              'Cancel',
+              style: TextStyle(color: context.greyColor),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: context.accentColor,
+              foregroundColor: context.isDark
+                  ? AppColors.background
+                  : Colors.white,
+            ),
+            child: const Text('Redeem'),
+          ),
+        ],
+      ),
+    );
+
+    if (couponCode == null || couponCode.isEmpty) return;
+
+    try {
+      setState(() => _loadingExams = true);
+      final result = await _api.redeemCbtCoupon(couponCode);
+      if (!mounted) return;
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result['message'] ?? 'Coupon redeemed successfully!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      
+      // Reload exams to get updated access
+      await _loadExams();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.message),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not redeem coupon: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _loadingExams = false);
+    }
   }
 
   /// One exam per profile subject that admin has uploaded (1–4).

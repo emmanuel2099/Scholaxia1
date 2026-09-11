@@ -334,3 +334,46 @@ async def redeem_coupon(
         "message": "CBT access unlocked with coupon.",
         "boards": list(get_cbt_package(package_id).boards) if get_cbt_package(package_id) else [],
     }
+
+
+@router.get("/cbt/coupons/access")
+async def coupon_access(
+    current_user: dict = Depends(require_student_or_kind),
+    db: AsyncSession = Depends(get_db),
+):
+    """Check if student has an active coupon (grants full CBT access)."""
+    await _ensure_coupon_tables()
+    
+    student_id = _as_uuid(current_user["sub"])
+    
+    # Check if student has any coupon redemption
+    from app.models.cbt_coupon import CbtCouponRedemption
+    from app.models.cbt_coupon import CbtCoupon
+    
+    # Get recent coupon redemptions for this student
+    redemptions = (
+        await db.execute(
+            select(CbtCouponRedemption, CbtCoupon)
+            .join(CbtCoupon, CbtCoupon.id == CbtCouponRedemption.coupon_id)
+            .where(CbtCouponRedemption.student_id == student_id)
+            .order_by(CbtCouponRedemption.created_at.desc())
+            .limit(10)
+        )
+    ).all()
+    
+    # Check if any active coupon grants access
+    has_active_coupon = False
+    package_boards = []
+    
+    for redemption, coupon in redemptions:
+        if coupon.is_active and (coupon.expires_at is None or coupon.expires_at > naive_utc_now()):
+            package = get_cbt_package(coupon.package_id)
+            if package:
+                has_active_coupon = True
+                package_boards = list(package.boards)
+                break
+    
+    return {
+        "has_active_coupon": has_active_coupon,
+        "boards": package_boards,
+    }

@@ -1,4 +1,4 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -863,6 +863,27 @@ class ApiService {
     return saved.isNotEmpty ? saved : url;
   }
 
+  /// Updates the student's full name and returns the saved value.
+  /// Endpoint: PATCH /api/v1/students/me  { "full_name": "..." }
+  Future<String> updateStudentName(String fullName) async {
+    final trimmed = fullName.trim();
+    if (trimmed.isEmpty) {
+      throw const ApiException.message('Name cannot be empty.');
+    }
+    final res = await _onlinePatch(
+      _uri(_studentMe),
+      headers: await _authHeaders(),
+      body: jsonEncode({'full_name': trimmed}),
+    );
+    final data = _parseMap(res);
+    // Server may echo `full_name` directly, or nest it under `profile`.
+    final saved = (data['full_name'] ??
+            (data['profile'] is Map ? data['profile']['full_name'] : null) ??
+            trimmed)
+        .toString();
+    return saved.isEmpty ? trimmed : saved;
+  }
+
   Future<StudentProfile> getStudentProfileById(String userId) async {
     final res = await _cachedGet(
       _uri(ApiEndpoints.studentProfile(userId)),
@@ -1235,6 +1256,14 @@ class ApiService {
       _uri('/api/v1/cbt/coupons/redeem'),
       headers: await _authHeaders(),
       body: jsonEncode({'code': code}),
+    );
+    return _parseMap(res);
+  }
+
+  Future<Map<String, dynamic>> cbtCouponAccess() async {
+    final res = await _cachedGet(
+      _uri('/api/v1/cbt/coupons/access'),
+      headers: await _authHeaders(),
     );
     return _parseMap(res);
   }
@@ -2896,6 +2925,44 @@ class ApiService {
     );
     return _parseMap(res);
   }
+
+  // ── Past Questions Shop ─────────────────────────────────────────────────────
+
+  /// Public catalog — no login required. Returns {items: [...], total: N}.
+  Future<Map<String, dynamic>> getPastQuestionsCatalog({
+    String? examType,
+    String? subject,
+  }) async {
+    final params = <String, String>{};
+    if (examType != null && examType.isNotEmpty && examType != 'ALL') {
+      params['exam_type'] = examType;
+    }
+    if (subject != null && subject.isNotEmpty) {
+      params['subject'] = subject;
+    }
+    final uri = Uri.parse('${ApiEndpoints.baseUrl}/api/v1/past-questions/catalog')
+        .replace(queryParameters: params.isEmpty ? null : params);
+    final res = await _cachedGet(uri, trackConnectivity: false);
+    return _parseMap(res);
+  }
+
+  /// Start a guest Paystack payment for a past questions PDF (no account needed).
+  Future<Map<String, dynamic>> initPastQuestionGuestPayment({
+    required String bookId,
+    required String email,
+    String? fullName,
+  }) async {
+    final body = <String, dynamic>{
+      'book_id': bookId,
+      'email': email,
+    };
+    if (fullName != null && fullName.isNotEmpty) body['full_name'] = fullName;
+    final res = await _onlinePost(
+      Uri.parse('${ApiEndpoints.baseUrl}/api/v1/payments/paystack/guest/past-question/initialize'),
+      body: jsonEncode(body),
+    );
+    return _parseMap(res);
+  }
 }
 
 // ── Models ────────────────────────────────────────────────────────────────────
@@ -2978,10 +3045,35 @@ class StudentProfile {
     );
   }
 
-  StudentProfile copyWith({String? profilePicture}) {
+  /// Friendly display name for UI — never returns empty or "Student".
+  /// Use on the profile header, cards, comments, etc.
+  String get displayName {
+    final raw = fullName.trim();
+    if (raw.isEmpty) return 'Your Name';
+    if (raw.toLowerCase() == 'student') return 'Your Name';
+    return raw;
+  }
+
+  /// First-name style greeting (e.g. "Ada"), falling back to "there".
+  /// Use for "Hello, {greetingName}".
+  String get greetingName {
+    final raw = fullName.trim();
+    if (raw.isEmpty) return 'there';
+    if (raw.toLowerCase() == 'student') return 'there';
+    return raw.split(RegExp(r'\s+')).firstWhere(
+          (w) => w.isNotEmpty,
+          orElse: () => raw,
+        );
+  }
+
+  StudentProfile copyWith({
+    String? fullName,
+    String? email,
+    String? profilePicture,
+  }) {
     return StudentProfile(
-      fullName: fullName,
-      email: email,
+      fullName: fullName ?? this.fullName,
+      email: email ?? this.email,
       examType: examType,
       educationLevel: educationLevel,
       subjects: subjects,
@@ -3188,41 +3280,3 @@ class CbtResult {
         : const [],
   );
 }
-
-  // ── Past Questions Shop ─────────────────────────────────────────────────────
-
-  /// Public catalog — no login required. Returns {items: [...], total: N}.
-  Future<Map<String, dynamic>> getPastQuestionsCatalog({
-    String? examType,
-    String? subject,
-  }) async {
-    final params = <String, String>{};
-    if (examType != null && examType.isNotEmpty && examType != 'ALL') {
-      params['exam_type'] = examType;
-    }
-    if (subject != null && subject.isNotEmpty) {
-      params['subject'] = subject;
-    }
-    final uri = Uri.parse('${ApiEndpoints.baseUrl}/api/v1/past-questions/catalog')
-        .replace(queryParameters: params.isEmpty ? null : params);
-    final res = await _cachedGet(uri, trackConnectivity: false);
-    return _parseMap(res);
-  }
-
-  /// Start a guest Paystack payment for a past questions PDF (no account needed).
-  Future<Map<String, dynamic>> initPastQuestionGuestPayment({
-    required String bookId,
-    required String email,
-    String? fullName,
-  }) async {
-    final body = <String, dynamic>{
-      'book_id': bookId,
-      'email': email,
-    };
-    if (fullName != null && fullName.isNotEmpty) body['full_name'] = fullName;
-    final res = await _onlinePost(
-      Uri.parse('${ApiEndpoints.baseUrl}/api/v1/payments/paystack/guest/past-question/initialize'),
-      body: jsonEncode(body),
-    );
-    return _parseMap(res);
-  }
