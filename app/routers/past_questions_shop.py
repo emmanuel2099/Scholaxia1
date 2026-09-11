@@ -81,15 +81,6 @@ async def past_questions_catalog(
 ):
     """Public catalog — no login required. Never returns PDF URLs."""
     try:
-        try:
-            await db.execute(text("ALTER TABLE books ADD COLUMN IF NOT EXISTS year INTEGER NULL"))
-        except Exception:
-            logger.exception("past_questions catalog: year column ensure failed")
-            try:
-                await db.rollback()
-            except Exception:
-                pass
-
         rows = (
             await db.execute(
                 text(
@@ -99,13 +90,11 @@ async def past_questions_catalog(
                       title,
                       subject,
                       exam_type,
-                      year,
                       description,
                       cover_image_url,
                       COALESCE(price, 0) AS price,
                       COALESCE(is_free, false) AS is_free,
-                      COALESCE(category, 'Past Questions') AS category,
-                      COALESCE(library_target::text, 'student') AS library_target
+                      COALESCE(category, 'Past Questions') AS category
                     FROM books
                     WHERE COALESCE(is_active, true) = true
                       AND (
@@ -121,14 +110,7 @@ async def past_questions_catalog(
 
         products = []
         for row in rows:
-            target = str(row.get("library_target") or "student").replace("LibraryTarget.", "").lower()
-            if target != "student":
-                continue
-            year_val = row.get("year")
-            try:
-                year_val = int(year_val) if year_val is not None else None
-            except (TypeError, ValueError):
-                year_val = None
+            year_val = None
             card = {
                 "id": str(row["id"]),
                 "title": row.get("title") or "",
@@ -156,7 +138,7 @@ async def past_questions_catalog(
         return {
             "products": products,
             "filters": {
-                "exam_types": ["ALL", "JAMB", "WAEC", "NECO", "COMMON_ENTRANCE"],
+                "exam_types": ["ALL", "JAMB", "WAEC", "NECO", "IGCSE", "SAT", "KCSE", "BECE", "COMMON_ENTRANCE"],
             },
         }
     except Exception:
