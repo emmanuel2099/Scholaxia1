@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update as sql_update
 from sqlalchemy.exc import DBAPIError, OperationalError
 from pydantic import BaseModel, Field
 from typing import List, Optional
@@ -316,7 +316,7 @@ async def _setup_exam_impl(
         profile.ssce_exam_type = "COMMON_ENTRANCE"
         profile.cbt_subjects_locked = True
         profile.education_level = payload.education_level
-        await db.commit()
+        await db.flush()
         return {
             "message": "Exam setup complete",
             "exam_type": "COMMON_ENTRANCE",
@@ -344,7 +344,7 @@ async def _setup_exam_impl(
         profile.ssce_exam_type = "JUNIOR_WAEC"
         profile.cbt_subjects_locked = True
         profile.education_level = payload.education_level
-        await db.commit()
+        await db.flush()
         return {
             "message": "Exam setup complete",
             "exam_type": exam_type.value,
@@ -372,7 +372,7 @@ async def _setup_exam_impl(
                     grade_level="Primary 6",
                 )
             )
-        await db.commit()
+        await db.flush()
         access, refresh = await issue_auth_tokens(db, user)
         return {
             "message": "Primary 6 uses the Kids app — Common Entrance CBT is there.",
@@ -435,7 +435,7 @@ async def _setup_exam_impl(
         profile.ssce_exam_type = ssce_board if enable_ssce else None
         profile.cbt_subjects_locked = True
         profile.education_level = payload.education_level
-        await db.commit()
+        await db.flush()
         return {
             "message": "Exam setup complete",
             "exam_type": exam_type.value,
@@ -483,7 +483,7 @@ async def _setup_exam_impl(
         profile.ssce_subjects = subjects
         profile.ssce_exam_type = "JUNIOR_WAEC"
     profile.cbt_subjects_locked = True
-    await db.commit()
+    await db.flush()
 
     return {
         "message": "Exam setup complete",
@@ -519,7 +519,7 @@ async def get_my_profile(
         if not profile:
             profile = StudentProfile(user_id=user.id, selected_subjects=[])
             db.add(profile)
-            await db.commit()
+            await db.flush()
 
         boards = _profile_boards(profile)
         exam_type = None
@@ -578,19 +578,20 @@ async def update_my_name(
 ):
     """Update the student's full name."""
     uid = _student_user_id(current_user)
-    result = await db.execute(select(User).where(User.id == uid))
-    user = result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-
     trimmed_name = payload.full_name.strip()
     if len(trimmed_name) < 2:
         raise HTTPException(status_code=400, detail="Name must be at least 2 characters")
 
-    user.full_name = trimmed_name
-    await db.commit()
+    # Use direct SQL update for better reliability
+    stmt = sql_update(User).where(User.id == uid).values(full_name=trimmed_name)
+    result = await db.execute(stmt)
+    await db.flush()
+
+    # Verify the update
+    verify_result = await db.execute(select(User.full_name).where(User.id == uid))
+    final_name = verify_result.scalar_one_or_none()
 
     return {
         "message": "Name updated successfully",
-        "full_name": user.full_name,
+        "full_name": final_name or trimmed_name,
     }
