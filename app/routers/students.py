@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.exc import DBAPIError, OperationalError
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional
 from uuid import UUID
 import asyncio
@@ -564,3 +564,33 @@ async def get_my_profile(
             ssce_subjects=[],
             ssce_exam_type=None,
         )
+
+
+class UpdateNameRequest(BaseModel):
+    full_name: str = Field(..., min_length=2, max_length=255)
+
+
+@router.patch("/me")
+async def update_my_name(
+    payload: UpdateNameRequest,
+    current_user: dict = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update the student's full name."""
+    uid = _student_user_id(current_user)
+    result = await db.execute(select(User).where(User.id == uid))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    trimmed_name = payload.full_name.strip()
+    if len(trimmed_name) < 2:
+        raise HTTPException(status_code=400, detail="Name must be at least 2 characters")
+
+    user.full_name = trimmed_name
+    await db.flush()
+
+    return {
+        "message": "Name updated successfully",
+        "full_name": user.full_name,
+    }
