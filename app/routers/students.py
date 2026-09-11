@@ -316,7 +316,7 @@ async def _setup_exam_impl(
         profile.ssce_exam_type = "COMMON_ENTRANCE"
         profile.cbt_subjects_locked = True
         profile.education_level = payload.education_level
-        await db.flush()
+        await db.commit()
         return {
             "message": "Exam setup complete",
             "exam_type": "COMMON_ENTRANCE",
@@ -344,7 +344,7 @@ async def _setup_exam_impl(
         profile.ssce_exam_type = "JUNIOR_WAEC"
         profile.cbt_subjects_locked = True
         profile.education_level = payload.education_level
-        await db.flush()
+        await db.commit()
         return {
             "message": "Exam setup complete",
             "exam_type": exam_type.value,
@@ -372,7 +372,7 @@ async def _setup_exam_impl(
                     grade_level="Primary 6",
                 )
             )
-        await db.flush()
+        await db.commit()
         access, refresh = await issue_auth_tokens(db, user)
         return {
             "message": "Primary 6 uses the Kids app — Common Entrance CBT is there.",
@@ -435,7 +435,7 @@ async def _setup_exam_impl(
         profile.ssce_exam_type = ssce_board if enable_ssce else None
         profile.cbt_subjects_locked = True
         profile.education_level = payload.education_level
-        await db.flush()
+        await db.commit()
         return {
             "message": "Exam setup complete",
             "exam_type": exam_type.value,
@@ -483,7 +483,7 @@ async def _setup_exam_impl(
         profile.ssce_subjects = subjects
         profile.ssce_exam_type = "JUNIOR_WAEC"
     profile.cbt_subjects_locked = True
-    await db.flush()
+    await db.commit()
 
     return {
         "message": "Exam setup complete",
@@ -519,7 +519,7 @@ async def get_my_profile(
         if not profile:
             profile = StudentProfile(user_id=user.id, selected_subjects=[])
             db.add(profile)
-            await db.flush()
+            await db.commit()
 
         boards = _profile_boards(profile)
         exam_type = None
@@ -588,7 +588,7 @@ async def update_my_name(
         raise HTTPException(status_code=400, detail="Name must be at least 2 characters")
 
     user.full_name = trimmed_name
-    await db.flush()
+    await db.commit()
 
     return {
         "message": "Name updated successfully",
