@@ -4,75 +4,408 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Register your school — Scholaxia</title>
-  <link rel="stylesheet" href="css/app.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <style>
-    body { font-family: var(--font); background: var(--bg); color: var(--ink); margin: 0; }
-    .wrap { max-width: 880px; margin: 0 auto; padding: 32px 16px 64px; }
-    h1 { font-size: 28px; margin: 8px 0 4px; }
-    .muted { color: var(--muted); font-size: 14px; }
-    .plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 20px 0; }
-    .plan { background: #fff; border: 2px solid var(--line); border-radius: 14px; padding: 18px; cursor: pointer; transition: border-color .15s; }
-    .plan:hover { border-color: var(--purple-soft); }
-    .plan.selected { border-color: var(--purple); box-shadow: 0 0 0 3px var(--purple-soft); }
-    .plan h3 { margin: 0 0 2px; font-size: 18px; text-transform: capitalize; }
-    .price { font-size: 22px; font-weight: 700; color: var(--purple); margin: 6px 0; }
-    .price small { font-weight: 400; color: var(--muted); }
-    .plan ul { margin: 10px 0 0; padding-left: 18px; font-size: 13px; color: var(--muted); }
-    .plan ul li { margin: 3px 0; }
-    .badge { display: inline-block; background: var(--purple-soft); color: var(--purple-dark); font-size: 11px; padding: 2px 8px; border-radius: 99px; }
-    form { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 22px; display: grid; gap: 12px; }
-    label { font-size: 13px; font-weight: 600; display: grid; gap: 4px; }
-    input, select { font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; width: 100%; }
-    input:focus { outline: 2px solid var(--purple-soft); border-color: var(--purple); }
-    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .btn { background: var(--purple); color: #fff; padding: 13px 18px; border-radius: 10px; font-weight: 700; width: 100%; }
-    .btn:disabled { opacity: .6; }
-    .link-preview { background: var(--purple-soft); border-radius: 10px; padding: 14px; text-align: center; display: none; }
-    .link-preview strong { color: var(--purple-dark); font-size: 18px; word-break: break-all; }
-    .error { color: #b91c1c; font-size: 13px; display: none; }
+    :root {
+      --blue: #2563eb;
+      --blue-dark: #1d4ed8;
+      --blue-soft: #dbeafe;
+      --purple: #7c3aed;
+      --purple-deep: #6d28d9;
+      --green: #16a34a;
+      --green-soft: #dcfce7;
+      --ink: #0f172a;
+      --ink-2: #1e293b;
+      --muted: #64748b;
+      --line: #e2e8f0;
+      --bg: #f8fafc;
+      --card: #ffffff;
+      /* App brand (lib/theme/app_theme.dart) */
+      --brand: #7c3aed;
+      --brand-bright: #9333ea;
+      --brand-dark: #6d28d9;
+      --brand-soft: #ede9fe;
+      --shadow-sm: 0 1px 3px rgba(15, 23, 42, .06);
+      --shadow-md: 0 10px 30px rgba(15, 23, 42, .08);
+      --shadow-lg: 0 24px 60px rgba(37, 99, 235, .16);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: "Inter", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ================= Navbar ================= */
+    .nav {
+      position: sticky; top: 0; z-index: 50;
+      background: rgba(255,255,255,.92); backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--line);
+    }
+    .nav-inner {
+      max-width: 1240px; margin: 0 auto; padding: 14px 24px;
+      display: flex; align-items: center; gap: 28px;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .brand-mark {
+      width: 42px; height: 42px; border-radius: 12px;
+      background: linear-gradient(135deg, var(--brand) 0%, #a78bfa 100%);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 6px 14px rgba(124,58,237,.3);
+    }
+    .brand-text .name { font-size: 19px; font-weight: 800; color: var(--ink); letter-spacing: -.3px; line-height: 1.1; }
+    .brand-text .tag { font-size: 11px; color: var(--muted); font-weight: 500; }
+    .nav-links { display: flex; gap: 26px; margin: 0 auto; }
+    .nav-links a { color: var(--ink-2); text-decoration: none; font-size: 14.5px; font-weight: 500; transition: color .15s; }
+    .nav-links a:hover { color: var(--blue); }
+    .nav-actions { display: flex; gap: 12px; align-items: center; }
+    .btn-login {
+      padding: 10px 22px; border-radius: 10px; border: 1.5px solid var(--brand);
+      color: var(--brand); background: #fff; font: inherit; font-size: 14.5px; font-weight: 600;
+      cursor: pointer; text-decoration: none; transition: background .15s;
+    }
+    .btn-login:hover { background: var(--brand-soft); }
+    .btn-register-nav {
+      padding: 11px 22px; border-radius: 10px; border: none;
+      background: linear-gradient(92deg, var(--brand), var(--brand-bright));
+      color: #fff; font: inherit; font-size: 14.5px; font-weight: 600; cursor: pointer;
+      box-shadow: 0 6px 16px rgba(124,58,237,.35); text-decoration: none;
+      transition: transform .15s, box-shadow .15s;
+    }
+    .btn-register-nav:hover { transform: translateY(-1px); box-shadow: 0 10px 22px rgba(124,58,237,.4); }
+
+    @media (max-width: 960px) { .nav-links { display: none; } }
+
+    /* ================= Hero ================= */
+    .hero {
+      max-width: 1240px; margin: 0 auto; padding: 64px 24px 40px;
+      display: grid; grid-template-columns: 1.05fr .95fr; gap: 40px; align-items: center;
+    }
+    .hero-pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--brand-soft); color: var(--brand-dark);
+      font-size: 13px; font-weight: 700; padding: 8px 16px; border-radius: 999px;
+    }
+    .hero h1 {
+      font-size: clamp(34px, 4.6vw, 52px); font-weight: 800; line-height: 1.14;
+      letter-spacing: -1px; margin: 18px 0 16px; color: var(--ink);
+    }
+    .hero h1 .grad {
+      background: linear-gradient(92deg, var(--brand), var(--brand-bright));
+      -webkit-background-clip: text; background-clip: text; color: transparent;
+    }
+    .hero p { font-size: 17px; color: var(--muted); line-height: 1.65; max-width: 560px; }
+    .hero-art { position: relative; text-align: center; }
+    .hero-art img { width: 100%; max-width: 640px; height: auto; }
+
+    @media (max-width: 900px) {
+      .hero { grid-template-columns: 1fr; padding-top: 40px; text-align: center; }
+      .hero p { margin: 0 auto; }
+    }
+
+    /* ================= Plans ================= */
+    .plans-section { max-width: 1240px; margin: 0 auto; padding: 20px 24px 10px; }
+    .plans { display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px; align-items: stretch; }
+
+    @media (max-width: 980px) { .plans { grid-template-columns: 1fr; max-width: 460px; margin: 0 auto; } }
+
+    .plan {
+      position: relative; background: var(--card); border-radius: 18px; padding: 30px 26px 26px;
+      border: 1.5px solid var(--line); box-shadow: var(--shadow-sm);
+      display: flex; flex-direction: column; cursor: pointer;
+      transition: transform .18s, box-shadow .18s, border-color .18s;
+    }
+    .plan:hover { transform: translateY(-4px); box-shadow: var(--shadow-md); }
+
+    .plan-head { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
+    .plan-icon {
+      width: 52px; height: 52px; border-radius: 14px; flex: 0 0 auto;
+      display: flex; align-items: center; justify-content: center; font-size: 24px;
+    }
+    .plan.basic .plan-icon { background: var(--blue-soft); }
+    .plan.standard .plan-icon { background: #ede9fe; }
+    .plan.premium .plan-icon { background: var(--green-soft); }
+    .plan h3 { font-size: 21px; font-weight: 800; letter-spacing: -.3px; }
+    .plan .tagline { font-size: 13.5px; color: var(--muted); margin-top: 3px; }
+
+    .price { display: flex; align-items: baseline; gap: 8px; margin: 4px 0 18px; }
+    .price .amount { font-size: 34px; font-weight: 800; letter-spacing: -.8px; }
+    .plan.basic .amount { color: var(--blue); }
+    .plan.standard .amount { color: var(--purple); }
+    .plan.premium .amount { color: var(--green); }
+    .price .per { font-size: 14px; color: var(--muted); font-weight: 500; }
+
+    .plan ul { list-style: none; display: grid; gap: 12px; font-size: 14.5px; color: var(--ink-2); margin-bottom: 24px; }
+    .plan ul li { display: flex; align-items: flex-start; gap: 10px; line-height: 1.45; }
+    .check {
+      flex: 0 0 auto; width: 20px; height: 20px; margin-top: 1px; border-radius: 50%;
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 800; color: #fff;
+    }
+    .plan.basic .check { background: var(--blue); }
+    .plan.standard .check { background: var(--purple); }
+    .plan.premium .check { background: var(--green); }
+
+    .choose {
+      margin-top: auto; width: 100%; padding: 13px 18px; border-radius: 12px;
+      font: inherit; font-size: 15px; font-weight: 700; cursor: pointer;
+      background: #fff; transition: all .15s;
+    }
+    .plan.basic .choose { border: 1.5px solid var(--brand); color: var(--brand); }
+    .plan.basic .choose:hover { background: var(--brand-soft); }
+    .plan.premium .choose { border: 1.5px solid var(--brand); color: var(--brand); }
+    .plan.premium .choose:hover { background: var(--brand-soft); }
+    .plan.standard .choose {
+      border: none; color: #fff;
+      background: linear-gradient(92deg, var(--brand), var(--brand-bright));
+      box-shadow: 0 8px 20px rgba(124,58,237,.35);
+    }
+    .plan.standard .choose:hover { filter: brightness(1.07); }
+
+    .plan.selected { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(124,58,237,.16), var(--shadow-md); }
+    .plan.selected .choose::after { content: " ✓"; }
+
+    /* Most popular ribbon on Standard */
+    .plan.standard { border: 2px solid var(--purple); box-shadow: var(--shadow-md); }
+    .plan.standard::before {
+      content: ""; position: absolute; top: 0; left: 0; right: 0; height: 46px;
+      background: linear-gradient(92deg, #6366f1, #3b82f6);
+      border-radius: 16px 16px 0 0;
+    }
+    .plan.standard { padding-top: 66px; }
+    .popular-badge {
+      position: absolute; top: 12px; right: 18px; z-index: 2;
+      background: #fff; color: var(--ink);
+      font-size: 12.5px; font-weight: 700; padding: 6px 14px; border-radius: 999px;
+      box-shadow: var(--shadow-sm); display: inline-flex; align-items: center; gap: 6px;
+    }
+    .popular-badge .star { color: var(--purple); }
+
+    /* ================= Form ================= */
+    .form-section { max-width: 1240px; margin: 30px auto 0; padding: 0 24px 80px; }
+    .form-card {
+      background: var(--card); border: 1.5px solid var(--line); border-radius: 20px;
+      padding: 36px; box-shadow: var(--shadow-md);
+    }
+    .form-head { display: flex; align-items: center; gap: 16px; margin-bottom: 26px; }
+    .form-head .plan-icon { width: 56px; height: 56px; background: var(--brand-soft); }
+    .form-head h2 { font-size: 22px; font-weight: 800; letter-spacing: -.3px; }
+    .form-head p { color: var(--muted); font-size: 14px; margin-top: 3px; }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 24px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px 24px; }
+    @media (max-width: 760px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+
+    .field label { display: block; font-size: 13.5px; font-weight: 600; color: var(--ink-2); margin-bottom: 7px; }
+    .field label .req { color: #dc2626; }
+    .input-wrap { position: relative; }
+    .input-wrap .ico {
+      position: absolute; left: 13px; top: 50%; transform: translateY(-50%);
+      font-size: 15px; color: #94a3b8; pointer-events: none;
+    }
+    .input-wrap input, .input-wrap select {
+      width: 100%; font: inherit; font-size: 15px; padding: 12px 14px 12px 40px;
+      border: 1.5px solid var(--line); border-radius: 11px; background: #fff;
+      color: var(--ink); transition: border-color .15s, box-shadow .15s;
+      appearance: none;
+    }
+    .input-wrap input::placeholder { color: #94a3b8; }
+    .input-wrap input:focus, .input-wrap select:focus {
+      outline: none; border-color: var(--brand);
+      box-shadow: 0 0 0 3px rgba(124,58,237,.16);
+    }
+    .select-wrap::after {
+      content: "▾"; position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+      color: #94a3b8; pointer-events: none; font-size: 13px;
+    }
+
+    .email-note {
+      display: none; font-size: 13px; line-height: 1.5; margin-top: 8px;
+      color: #92400e; background: #fffbeb; border: 1px solid #fde68a;
+      border-radius: 10px; padding: 10px 14px;
+    }
+    .email-note.show { display: block; }
+
+    .error {
+      display: none; color: #b91c1c; font-size: 14px; font-weight: 600;
+      background: #fef2f2; border: 1px solid #fecaca; border-radius: 10px; padding: 12px 16px;
+      margin-top: 18px;
+    }
+    .form-foot { margin-top: 26px; display: grid; gap: 14px; justify-items: center; }
+    .btn-submit {
+      width: 100%; max-width: 420px; padding: 15px 22px; border: none; border-radius: 12px;
+      background: linear-gradient(92deg, var(--brand), var(--brand-bright));
+      color: #fff; font: inherit; font-size: 16px; font-weight: 700; cursor: pointer;
+      box-shadow: 0 10px 24px rgba(124,58,237,.35);
+      transition: transform .15s, box-shadow .15s, filter .15s;
+    }
+    .btn-submit:hover { transform: translateY(-2px); box-shadow: 0 14px 30px rgba(124,58,237,.45); }
+    .btn-submit:disabled { opacity: .6; cursor: wait; transform: none; }
+    .fine { font-size: 12.5px; color: var(--muted); }
+    .fine a { color: var(--brand); font-weight: 600; text-decoration: none; }
+
+    /* Success panel */
+    .success {
+      display: none; text-align: center; padding: 50px 30px;
+    }
+    .success .big { font-size: 54px; margin-bottom: 12px; }
+    .success h2 { font-size: 26px; font-weight: 800; margin-bottom: 8px; }
+    .success .muted { color: var(--muted); font-size: 15px; }
+    .link-pill {
+      display: inline-block; margin: 20px auto 8px; padding: 14px 26px;
+      background: var(--brand-soft); border: 1.5px solid #ddd6fe; border-radius: 999px;
+    }
+    .link-pill strong { color: var(--brand-dark); font-size: 18px; word-break: break-all; }
+    .success .note { margin-top: 12px; font-size: 14px; color: var(--muted); }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <a href="index.html" class="muted">← Back to scholaxia.com</a>
-    <h1>Register your school</h1>
-    <p class="muted">Get your own private link — <strong>yourschool.scholaxia.com</strong> — and pay only for the features you need.</p>
-
-    <div class="plans" id="plans"></div>
-
-    <form id="regForm">
-      <label>School name
-        <input name="school_name" required minlength="2" placeholder="Green Springs School" />
-      </label>
-      <div class="row">
-        <label>City <input name="city" placeholder="Lagos" /></label>
-        <label>State <input name="state" placeholder="Lagos" /></label>
+  <!-- ================= Navbar ================= -->
+  <nav class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="index.html">
+        <span class="brand-mark">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+            <path d="M12 3 2 8.5 12 14l10-5.5L12 3Z" fill="#fff"/>
+            <path d="M6 11v4.2c0 .5 2.7 2.3 6 2.3s6-1.8 6-2.3V11l-6 3.3L6 11Z" fill="#fff" opacity=".85"/>
+            <path d="M21.5 9v5" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>
+          </svg>
+        </span>
+        <span class="brand-text">
+          <span class="name">Scholaxia</span><br />
+          <span class="tag">Smart School Management</span>
+        </span>
+      </a>
+      <div class="nav-links">
+        <a href="index.html">Home</a>
+        <a href="index.html#product">Features</a>
+        <a href="#plans">Pricing</a>
+        <a href="index.html#about">About Us</a>
+        <a href="index.html#contact">Contact</a>
       </div>
-      <div class="row">
-        <label>Your full name
-          <input name="admin_full_name" required placeholder="Mrs. Adaeze Okafor" />
-        </label>
-        <label>Phone <input name="admin_phone" placeholder="0803 000 0000" /></label>
+      <div class="nav-actions">
+        <a class="btn-login" href="auth.html">Login</a>
+        <a class="btn-register-nav" href="#register">Register School</a>
       </div>
-      <div class="row">
-        <label>Email
-          <input name="admin_email" type="email" required placeholder="admin@greensprings.ng" />
-        </label>
-        <label>Create a password
-          <input name="admin_password" type="password" required minlength="8" placeholder="At least 8 characters" />
-        </label>
-      </div>
-      <input type="hidden" name="plan" id="planField" value="standard" />
-      <p class="error" id="err"></p>
-      <button class="btn" type="submit" id="submitBtn">Register school</button>
-    </form>
-
-    <div class="link-preview" id="preview">
-      ✅ Registered!<br />
-      Your private link: <strong id="privLink"></strong><br />
-      <span class="muted" id="privNote"></span>
     </div>
-  </div>
+  </nav>
+
+  <!-- ================= Hero ================= -->
+  <header class="hero">
+    <div>
+      <span class="hero-pill">🏫 Choose Your Plan</span>
+      <h1>Powering Smarter Schools<br />with <span class="grad">Flexible Plans</span></h1>
+      <p>Get the right tools for your school. Choose a plan that fits your needs and pay only for the features you need. Set up in minutes, upgrade anytime.</p>
+    </div>
+    <div class="hero-art">
+      <img src="media/hero-dashboard.png" alt="Scholaxia school dashboard — better management, brighter future" />
+    </div>
+  </header>
+
+  <!-- ================= Plans ================= -->
+  <section class="plans-section" id="plans">
+    <div class="plans" id="plansGrid">
+      <p class="fine">Loading plans…</p>
+    </div>
+  </section>
+
+  <!-- ================= Form ================= -->
+  <section class="form-section" id="register">
+    <div class="form-card">
+      <div class="form-head">
+        <span class="plan-icon">🏫</span>
+        <div>
+          <h2>Tell Us About Your School</h2>
+          <p>Fill in the details below to register your school and get your private link.</p>
+        </div>
+      </div>
+
+      <form id="regForm" novalidate>
+        <div class="grid-2">
+          <div class="field">
+            <label>School name <span class="req">*</span></label>
+            <div class="input-wrap">
+              <span class="ico">🏫</span>
+              <input name="school_name" required minlength="2" placeholder="e.g. Green Springs School" />
+            </div>
+          </div>
+          <div class="field">
+            <label>City <span class="req">*</span></label>
+            <div class="input-wrap">
+              <span class="ico">📍</span>
+              <input name="city" required placeholder="e.g. Lagos" />
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-3" style="margin-top:18px">
+          <div class="field">
+            <label>State <span class="req">*</span></label>
+            <div class="input-wrap select-wrap">
+              <span class="ico">🗺️</span>
+              <input name="state" required placeholder="e.g. Lagos" />
+            </div>
+          </div>
+          <div class="field">
+            <label>Your full name <span class="req">*</span></label>
+            <div class="input-wrap">
+              <span class="ico">👤</span>
+              <input name="admin_full_name" required minlength="2" placeholder="e.g. John Doe" />
+            </div>
+          </div>
+          <div class="field">
+            <label>Phone <span class="req">*</span></label>
+            <div class="input-wrap">
+              <span class="ico">📞</span>
+              <input name="admin_phone" required placeholder="e.g. 08012345678" />
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-2" style="margin-top:18px">
+          <div class="field">
+            <label>Email <span class="req">*</span></label>
+            <div class="input-wrap">
+              <span class="ico">✉️</span>
+              <input name="admin_email" type="email" required placeholder="e.g. admin@yourschool.com" id="emailInput" />
+            </div>
+            <div class="email-note" id="emailNote">
+              This email is already used on Scholaxia. Enter the <strong>same password you use on the platform</strong> and we'll link this school to your existing account — no new account needed.
+            </div>
+          </div>
+          <div class="field">
+            <label>Create a password <span class="req">*</span></label>
+            <div class="input-wrap">
+              <span class="ico">🔒</span>
+              <input name="admin_password" type="password" required minlength="8" placeholder="At least 8 characters" />
+            </div>
+          </div>
+        </div>
+
+        <input type="hidden" name="plan" id="planField" value="standard" />
+        <p class="error" id="err"></p>
+        <div class="form-foot">
+          <button class="btn-submit" type="submit" id="submitBtn">Register School</button>
+          <p class="fine">By registering you agree to our <a href="privacy.html">privacy policy</a>. Payment is only due when your term subscription starts.</p>
+        </div>
+      </form>
+
+      <div class="success" id="preview">
+        <div class="big">🎉</div>
+        <h2>Your school is live!</h2>
+        <p class="muted">Share your private link with teachers and parents:</p>
+        <div class="link-pill"><strong id="privLink"></strong></div>
+        <p class="note" id="privNote"></p>
+      </div>
+    </div>
+  </section>
 
   <script src="js/api.js"></script>
   <script>
@@ -88,7 +421,18 @@
       timetable: "Class timetable",
       fees: "School fees & online payment",
       communication: "SMS / WhatsApp / Email to parents",
-      staff_management: "Staff management"
+      staff_management: "Staff management",
+      announcements: "Announcements"
+    };
+    var PLAN_TAGLINES = {
+      basic: "Everything a small school needs",
+      standard: "Results + exams + attendance",
+      premium: "The full power package"
+    };
+    var PLAN_ICONS = { basic: "📘", standard: "📅", premium: "👑" };
+    var PLAN_EXTRA = {
+      standard: ["Everything in Basic"],
+      premium: ["Everything in Standard"]
     };
 
     async function loadPlans() {
@@ -97,38 +441,70 @@
         var data = await res.json();
         renderPlans(data.plans || []);
       } catch (e) {
-        document.getElementById("plans").innerHTML =
-          '<p class="muted">Could not load plans — check your connection and refresh.</p>';
+        document.getElementById("plansGrid").innerHTML =
+          '<p class="fine">Could not load plans — check your connection and refresh.</p>';
       }
     }
 
     function renderPlans(plans) {
-      var popular = "standard";
-      document.getElementById("plans").innerHTML = plans.map(function (p) {
-        return '<div class="plan' + (p.id === selectedPlan ? ' selected' : '') + '" data-plan="' + p.id + '">' +
-          '<h3>' + p.id + ' plan</h3>' +
-          (p.id === popular ? '<span class="badge">Most popular</span>' : '') +
-          '<div class="price">₦' + p.price_ngn.toLocaleString() + ' <small>per term</small></div>' +
-          '<ul>' + (p.features || []).map(function (f) { return '<li>' + (PLAN_FEATURE_LABELS[f] || f) + '</li>'; }).join('') + '</ul>' +
+      var order = { basic: 0, standard: 1, premium: 2 };
+      plans.sort(function (a, b) { return (a.id in order ? order[a.id] : 9) - (b.id in order ? order[b.id] : 9); });
+      document.getElementById("plansGrid").innerHTML = plans.map(function (p) {
+        var feats = (PLAN_EXTRA[p.id] || []).concat(p.features || []);
+        return '<div class="plan ' + p.id + (p.id === selectedPlan ? ' selected' : '') + '" data-plan="' + p.id + '">' +
+          (p.id === "standard" ? '<span class="popular-badge"><span class="star">★</span> Most Popular</span>' : '') +
+          '<div class="plan-head">' +
+            '<span class="plan-icon">' + (PLAN_ICONS[p.id] || "🏫") + '</span>' +
+            '<div><h3>' + p.id.charAt(0).toUpperCase() + p.id.slice(1) + ' Plan</h3>' +
+            '<div class="tagline">' + (PLAN_TAGLINES[p.id] || "") + '</div></div>' +
+          '</div>' +
+          '<div class="price"><span class="amount">₦' + Number(p.price_ngn).toLocaleString() + '</span><span class="per">per term</span></div>' +
+          '<ul>' + feats.map(function (f) { return '<li><span class="check">✓</span>' + (PLAN_FEATURE_LABELS[f] || f) + '</li>'; }).join('') + '</ul>' +
+          '<button class="choose" type="button">Choose ' + p.id.charAt(0).toUpperCase() + p.id.slice(1) + '</button>' +
           '</div>';
       }).join("");
       Array.prototype.forEach.call(document.querySelectorAll(".plan"), function (el) {
-        el.addEventListener("click", function () {
+        el.addEventListener("click", function (ev) {
           selectedPlan = el.getAttribute("data-plan");
           document.getElementById("planField").value = selectedPlan;
           Array.prototype.forEach.call(document.querySelectorAll(".plan"), function (x) { x.classList.remove("selected"); });
           el.classList.add("selected");
+          document.getElementById("register").scrollIntoView({ behavior: "smooth", block: "start" });
         });
       });
     }
 
+    // Show the "use your platform account" hint when the email exists on Scholaxia
+    var emailCheckTimer = null;
+    document.getElementById("emailInput").addEventListener("input", function () {
+      var note = document.getElementById("emailNote");
+      note.classList.remove("show");
+      var email = this.value.trim();
+      clearTimeout(emailCheckTimer);
+      if (!email || email.indexOf("@") < 1) return;
+      emailCheckTimer = setTimeout(async function () {
+        try {
+          var res = await fetch(API_BASE + "/api/v1/public/schools/check-email?email=" + encodeURIComponent(email));
+          if (!res.ok) return;
+          var data = await res.json();
+          if (data.exists) note.classList.add("show");
+        } catch (e) { /* ignore — backend will enforce */ }
+      }, 500);
+    });
+
     document.getElementById("regForm").addEventListener("submit", async function (ev) {
       ev.preventDefault();
+      var form = ev.target;
       var btn = document.getElementById("submitBtn");
       var err = document.getElementById("err");
       err.style.display = "none";
+      if (!form.checkValidity()) {
+        err.textContent = "Please fill in all required fields (password: at least 8 characters).";
+        err.style.display = "block";
+        return;
+      }
       btn.disabled = true;
-      var fd = new FormData(ev.target);
+      var fd = new FormData(form);
       var body = {};
       fd.forEach(function (v, k) { body[k] = v; });
       body.plan = selectedPlan;
@@ -141,10 +517,11 @@
         var data = await res.json();
         if (!res.ok) throw new Error(data.detail || "Registration failed");
         document.getElementById("privLink").textContent = data.private_link;
-        document.getElementById("privNote").textContent = " " + (data.message || "");
+        document.getElementById("privNote").textContent = data.message || "";
         document.getElementById("preview").style.display = "block";
-        document.getElementById("regForm").style.display = "none";
-        document.getElementById("plans").style.display = "none";
+        form.style.display = "none";
+        document.querySelector(".form-head").style.display = "none";
+        document.getElementById("register").scrollIntoView({ behavior: "smooth", block: "start" });
       } catch (e2) {
         err.textContent = e2.message || String(e2);
         err.style.display = "block";
