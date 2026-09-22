@@ -46,4 +46,11 @@ from app.models.sil import (
     SilDeviceReport,
 )
 from app.models.plan_overrides import PlanOverride
+from app.models.school_plans import SchoolSubscription, SchoolPlanAudit
+from app.models.school_results import (
+    SchoolResult,
+    ResultPublication,
+    SchoolScratchCard,
+    ScratchCardSale,
+)
 from app.models.ai_token import AiTokenWallet, AiTokenTransaction, AiTokenPlan

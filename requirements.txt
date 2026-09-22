@@ -45,6 +45,11 @@ aiofiles==23.2.1
 # PDF text extraction (admin CBT PDF import)
 pypdf==4.2.0
 
+# School report cards (PDF + QR)
+reportlab==4.2.5
+qrcode==7.4.2
+pypng==2.0.1
+
 # Testing
 pytest==8.2.0
 pytest-asyncio==0.23.6

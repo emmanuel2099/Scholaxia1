@@ -33,6 +33,7 @@ from app.routers import kid_games
 from app.routers import sil
 from app.routers import cbt_coupons, cbt_practice, videos, school_office, schools, external_exams
 from app.routers import cbt_subject_change
+from app.routers import school_core, school_results_router
 from app.routers import past_questions_shop
 from app.routers import ai_tokens
 from app.websockets.live_class_ws import live_class_endpoint
@@ -110,6 +111,9 @@ app.include_router(school_office.router, prefix="/api/v1")
 app.include_router(external_exams.staff_router, prefix="/api/v1")
 app.include_router(external_exams.public_router, prefix="/api/v1")
 app.include_router(schools.router, prefix="/api/v1")
+app.include_router(school_core.router, prefix="/api/v1")
+app.include_router(school_results_router.router, prefix="/api/v1")
+app.include_router(school_results_router.public_router, prefix="/api/v1")
 app.include_router(materials.router, prefix="/api/v1")
 app.include_router(wallet.router, prefix="/api/v1")
 app.include_router(recommendations.router, prefix="/api/v1")

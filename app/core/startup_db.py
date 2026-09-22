@@ -247,6 +247,28 @@ _SCHEMA_STATEMENTS = (
 )
 
 
+async def ensure_school_plans_schema() -> None:
+    """Tables + columns for the school commercial core (plans, results, cards).
+
+    New tables are covered by create_all; the slug column on the pre-existing
+    school_campuses table needs an explicit ALTER on deployed databases.
+    """
+    stmts = (
+        "ALTER TABLE school_campuses ADD COLUMN IF NOT EXISTS slug VARCHAR(80) NULL",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_school_campuses_slug ON school_campuses (slug)",
+        "CREATE INDEX IF NOT EXISTS ix_school_results_student ON school_results (student_id)",
+        "CREATE INDEX IF NOT EXISTS ix_school_results_school ON school_results (school_id)",
+        "ALTER TABLE school_subscriptions ADD COLUMN IF NOT EXISTS term_label VARCHAR(80) NULL",
+        "ALTER TABLE school_subscriptions ALTER COLUMN term_label SET DEFAULT ''",
+    )
+    for stmt in stmts:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text(stmt))
+        except Exception as exc:
+            logger.warning("school_plans schema skipped: %s (%s)", stmt, exc)
+
+
 async def ensure_school_campus_schema() -> None:
     """Add school_campuses columns that create_all skips on existing tables.
 
@@ -556,6 +578,10 @@ async def initialize_database() -> bool:
         await ensure_school_campus_schema()
     except Exception as exc:
         logger.warning("ensure_school_campus_schema: %s", exc)
+    try:
+        await ensure_school_plans_schema()
+    except Exception as exc:
+        logger.warning("ensure_school_plans_schema: %s", exc)
     try:
         await ensure_ai_token_schema()
     except Exception as exc:

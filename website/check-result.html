@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Check result — Scholaxia</title>
+  <link rel="stylesheet" href="css/app.css" />
+  <style>
+    body { font-family: var(--font); background: var(--bg); color: var(--ink); margin: 0; }
+    .wrap { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+    h1 { font-size: 24px; margin: 8px 0 4px; }
+    .muted { color: var(--muted); font-size: 14px; }
+    form { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 22px; display: grid; gap: 12px; margin-top: 16px; }
+    label { font-size: 13px; font-weight: 600; display: grid; gap: 4px; }
+    input, select { font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; width: 100%; }
+    .btn { background: var(--purple); color: #fff; padding: 13px 18px; border-radius: 10px; font-weight: 700; width: 100%; }
+    .btn:disabled { opacity: .6; }
+    .error { color: #b91c1c; font-size: 13px; display: none; }
+    .card { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 22px; margin-top: 16px; }
+    .school-name { font-size: 20px; font-weight: 800; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 14px; }
+    th, td { padding: 8px 6px; border-bottom: 1px solid var(--line); text-align: center; }
+    th { background: var(--purple-soft); color: var(--purple-dark); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+    td:first-child, th:first-child { text-align: left; }
+    .summary { display: flex; gap: 18px; margin-top: 14px; flex-wrap: wrap; }
+    .summary div { background: var(--purple-soft); border-radius: 10px; padding: 10px 16px; }
+    .summary b { display: block; font-size: 20px; color: var(--purple-dark); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1 id="heading">Check result</h1>
+    <p class="muted" id="sub">Enter your scratch-card PIN to view this term's result.</p>
+
+    <form id="checkForm">
+      <label>Scratch-card PIN
+        <input name="pin" required placeholder="SCH-XXXXXXXXXX" style="text-transform: uppercase;" />
+      </label>
+      <label>Term
+        <select name="term_label" id="termSelect" required></select>
+      </label>
+      <label>Admission number <span class="muted">(or leave empty and use Student ID)</span>
+        <input name="admission_number" placeholder="e.g. GSS/2024/0187" />
+      </label>
+      <p class="error" id="err"></p>
+      <button class="btn" type="submit" id="submitBtn">Check result</button>
+    </form>
+
+    <div class="card" id="resultCard" style="display:none;"></div>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script>
+    (function () {
+      var slug = "";
+      // Subdomain mode: greensprings.scholaxia.com/check-result
+      var host = location.hostname; // e.g. greensprings.scholaxia.com
+      var parts = host.split(".");
+      if (parts.length >= 3 && host.indexOf("scholaxia.com") > 0) {
+        slug = parts[0];
+      }
+      // Fallback: ?school=greensprings for local testing / custom domains
+      var qs = new URLSearchParams(location.search);
+      slug = qs.get("school") || slug;
+
+      var form = document.getElementById("checkForm");
+      var err = document.getElementById("err");
+      var card = document.getElementById("resultCard");
+
+      // Term options: last 3 school sessions, all three terms
+      var termSelect = document.getElementById("termSelect");
+      var now = new Date();
+      var y = now.getFullYear();
+      var month = now.getMonth() + 1; // 1-12
+      var startYear = month >= 9 ? y : y - 1; // Nigerian session runs Sep→Jul
+      var opts = [];
+      for (var i = 0; i < 3; i++) {
+        var s = (startYear - i) + "/" + (startYear - i + 1);
+        ["First Term", "Second Term", "Third Term"].forEach(function (t) {
+          opts.push(s + " " + t);
+        });
+      }
+      termSelect.innerHTML = opts.map(function (o) { return '<option>' + o + '</option>'; }).join("");
+
+      if (slug) {
+        document.getElementById("heading").textContent = "Check result — " + slug.replace(/-/g, " ");
+        fetch(API_BASE + "/api/v1/public/schools/by-slug/" + encodeURIComponent(slug))
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (s) {
+            if (s && s.name) {
+              document.getElementById("heading").textContent = s.name;
+              document.getElementById("sub").textContent =
+                "Official result checker for " + s.name + ". Enter your scratch-card PIN.";
+              document.title = "Check result — " + s.name;
+            }
+          }).catch(function () {});
+      } else {
+        document.getElementById("sub").textContent =
+          "Open your school's private link (e.g. yourschool.scholaxia.com/check-result), or add ?school=yourschool to this address.";
+      }
+
+      form.addEventListener("submit", async function (ev) {
+        ev.preventDefault();
+        var btn = document.getElementById("submitBtn");
+        err.style.display = "none";
+        card.style.display = "none";
+        btn.disabled = true;
+        var fd = new FormData(form);
+        var body = {
+          slug: slug,
+          pin: fd.get("pin"),
+          term_label: fd.get("term_label"),
+          admission_number: fd.get("admission_number") || null
+        };
+        if (!body.slug) {
+          err.textContent = "Missing school — open this page from your school's link, or add ?school=yourschool to the address.";
+          err.style.display = "block";
+          btn.disabled = false;
+          return;
+        }
+        try {
+          var res = await fetch(API_BASE + "/api/v1/public/check-result", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+          });
+          var data = await res.json();
+          if (!res.ok) throw new Error(data.detail || "Could not fetch result");
+          render(data);
+        } catch (e2) {
+          err.textContent = e2.message || String(e2);
+          err.style.display = "block";
+        } finally {
+          btn.disabled = false;
+        }
+      });
+
+      function render(d) {
+        var stu = d.student || {};
+        var rows = (d.subjects || []).map(function (s) {
+          return "<tr><td>" + esc(s.subject) + "</td><td>" + s.ca_score + "</td><td>" + s.exam_score +
+            "</td><td><b>" + s.total + "</b></td><td>" + (s.grade || "") + "</td><td>" + (s.position || "") + "</td></tr>";
+        }).join("");
+        card.innerHTML =
+          '<div class="school-name">' + esc(d.school.name) + '</div>' +
+          '<p class="muted">' + esc(stu.name || "") + (stu.class_name ? " • " + esc(stu.class_name) : "") +
+          " • " + esc(d.term_label) + '</p>' +
+          '<table><thead><tr><th>Subject</th><th>CA</th><th>Exam</th><th>Total</th><th>Grade</th><th>Pos</th></tr></thead>' +
+          '<tbody>' + rows + '</tbody></table>' +
+          '<div class="summary">' +
+          '<div>Subjects<b>' + (d.subjects || []).length + '</b></div>' +
+          '<div>Grand total<b>' + d.grand_total + '</b></div>' +
+          '<div>Average<b>' + d.average + '%</b></div>' +
+          '</div>';
+        card.style.display = "block";
+        card.scrollIntoView({ behavior: "smooth" });
+      }
+
+      function esc(s) {
+        return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+          return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+        });
+      }
+    })();
+  </script>
+</body>
+</html>

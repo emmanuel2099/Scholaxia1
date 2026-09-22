@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Register your school — Scholaxia</title>
+  <link rel="stylesheet" href="css/app.css" />
+  <style>
+    body { font-family: var(--font); background: var(--bg); color: var(--ink); margin: 0; }
+    .wrap { max-width: 880px; margin: 0 auto; padding: 32px 16px 64px; }
+    h1 { font-size: 28px; margin: 8px 0 4px; }
+    .muted { color: var(--muted); font-size: 14px; }
+    .plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 20px 0; }
+    .plan { background: #fff; border: 2px solid var(--line); border-radius: 14px; padding: 18px; cursor: pointer; transition: border-color .15s; }
+    .plan:hover { border-color: var(--purple-soft); }
+    .plan.selected { border-color: var(--purple); box-shadow: 0 0 0 3px var(--purple-soft); }
+    .plan h3 { margin: 0 0 2px; font-size: 18px; text-transform: capitalize; }
+    .price { font-size: 22px; font-weight: 700; color: var(--purple); margin: 6px 0; }
+    .price small { font-weight: 400; color: var(--muted); }
+    .plan ul { margin: 10px 0 0; padding-left: 18px; font-size: 13px; color: var(--muted); }
+    .plan ul li { margin: 3px 0; }
+    .badge { display: inline-block; background: var(--purple-soft); color: var(--purple-dark); font-size: 11px; padding: 2px 8px; border-radius: 99px; }
+    form { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 22px; display: grid; gap: 12px; }
+    label { font-size: 13px; font-weight: 600; display: grid; gap: 4px; }
+    input, select { font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; width: 100%; }
+    input:focus { outline: 2px solid var(--purple-soft); border-color: var(--purple); }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .btn { background: var(--purple); color: #fff; padding: 13px 18px; border-radius: 10px; font-weight: 700; width: 100%; }
+    .btn:disabled { opacity: .6; }
+    .link-preview { background: var(--purple-soft); border-radius: 10px; padding: 14px; text-align: center; display: none; }
+    .link-preview strong { color: var(--purple-dark); font-size: 18px; word-break: break-all; }
+    .error { color: #b91c1c; font-size: 13px; display: none; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <a href="index.html" class="muted">← Back to scholaxia.com</a>
+    <h1>Register your school</h1>
+    <p class="muted">Get your own private link — <strong>yourschool.scholaxia.com</strong> — and pay only for the features you need.</p>
+
+    <div class="plans" id="plans"></div>
+
+    <form id="regForm">
+      <label>School name
+        <input name="school_name" required minlength="2" placeholder="Green Springs School" />
+      </label>
+      <div class="row">
+        <label>City <input name="city" placeholder="Lagos" /></label>
+        <label>State <input name="state" placeholder="Lagos" /></label>
+      </div>
+      <div class="row">
+        <label>Your full name
+          <input name="admin_full_name" required placeholder="Mrs. Adaeze Okafor" />
+        </label>
+        <label>Phone <input name="admin_phone" placeholder="0803 000 0000" /></label>
+      </div>
+      <div class="row">
+        <label>Email
+          <input name="admin_email" type="email" required placeholder="admin@greensprings.ng" />
+        </label>
+        <label>Create a password
+          <input name="admin_password" type="password" required minlength="8" placeholder="At least 8 characters" />
+        </label>
+      </div>
+      <input type="hidden" name="plan" id="planField" value="standard" />
+      <p class="error" id="err"></p>
+      <button class="btn" type="submit" id="submitBtn">Register school</button>
+    </form>
+
+    <div class="link-preview" id="preview">
+      ✅ Registered!<br />
+      Your private link: <strong id="privLink"></strong><br />
+      <span class="muted" id="privNote"></span>
+    </div>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script>
+    var selectedPlan = "standard";
+    var PLAN_FEATURE_LABELS = {
+      students: "Manage students by class",
+      subjects: "Give subjects to students",
+      results: "Enter scores & generate result sheets",
+      scratch_cards: "Scratch cards for result checking",
+      cbt: "CBT exams",
+      attendance: "Daily attendance",
+      assignments: "Assignments / homework",
+      timetable: "Class timetable",
+      fees: "School fees & online payment",
+      communication: "SMS / WhatsApp / Email to parents",
+      staff_management: "Staff management"
+    };
+
+    async function loadPlans() {
+      try {
+        var res = await fetch(API_BASE + "/api/v1/public/school-plans");
+        var data = await res.json();
+        renderPlans(data.plans || []);
+      } catch (e) {
+        document.getElementById("plans").innerHTML =
+          '<p class="muted">Could not load plans — check your connection and refresh.</p>';
+      }
+    }
+
+    function renderPlans(plans) {
+      var popular = "standard";
+      document.getElementById("plans").innerHTML = plans.map(function (p) {
+        return '<div class="plan' + (p.id === selectedPlan ? ' selected' : '') + '" data-plan="' + p.id + '">' +
+          '<h3>' + p.id + ' plan</h3>' +
+          (p.id === popular ? '<span class="badge">Most popular</span>' : '') +
+          '<div class="price">₦' + p.price_ngn.toLocaleString() + ' <small>per term</small></div>' +
+          '<ul>' + (p.features || []).map(function (f) { return '<li>' + (PLAN_FEATURE_LABELS[f] || f) + '</li>'; }).join('') + '</ul>' +
+          '</div>';
+      }).join("");
+      Array.prototype.forEach.call(document.querySelectorAll(".plan"), function (el) {
+        el.addEventListener("click", function () {
+          selectedPlan = el.getAttribute("data-plan");
+          document.getElementById("planField").value = selectedPlan;
+          Array.prototype.forEach.call(document.querySelectorAll(".plan"), function (x) { x.classList.remove("selected"); });
+          el.classList.add("selected");
+        });
+      });
+    }
+
+    document.getElementById("regForm").addEventListener("submit", async function (ev) {
+      ev.preventDefault();
+      var btn = document.getElementById("submitBtn");
+      var err = document.getElementById("err");
+      err.style.display = "none";
+      btn.disabled = true;
+      var fd = new FormData(ev.target);
+      var body = {};
+      fd.forEach(function (v, k) { body[k] = v; });
+      body.plan = selectedPlan;
+      try {
+        var res = await fetch(API_BASE + "/api/v1/public/schools/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+        var data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Registration failed");
+        document.getElementById("privLink").textContent = data.private_link;
+        document.getElementById("privNote").textContent = " " + (data.message || "");
+        document.getElementById("preview").style.display = "block";
+        document.getElementById("regForm").style.display = "none";
+        document.getElementById("plans").style.display = "none";
+      } catch (e2) {
+        err.textContent = e2.message || String(e2);
+        err.style.display = "block";
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    loadPlans();
+  </script>
+</body>
+</html>

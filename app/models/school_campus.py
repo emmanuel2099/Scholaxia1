@@ -12,6 +12,8 @@ class SchoolCampus(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    # URL identifier for the school's private link: greensprings.scholaxia.com
+    slug: Mapped[str | None] = mapped_column(String(80), unique=True, index=True, nullable=True)
     code: Mapped[str] = mapped_column(String(40), unique=True, index=True, nullable=True)
     city: Mapped[str] = mapped_column(String(120), nullable=True)
     state: Mapped[str] = mapped_column(String(120), nullable=True)
