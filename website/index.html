@@ -16,7 +16,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="css/site.css?v=34" />
+    <link rel="stylesheet" href="css/site.css?v=35" />
   </head>
   <body>
 
@@ -150,9 +150,17 @@
               <span class="accent" data-i18n="hero_h1_b">Pass with confidence.</span>
             </h1>
 
-            <!-- Phone mockup — desktop only, animated float -->
+            <!-- Showcase reveal — desktop only, circular wipes through app screenshots -->
             <div class="hero-phone" aria-hidden="true">
-              <img src="media/hero-phone.png" alt="" draggable="false" />
+              <div class="hero-reveal is-active">
+                <img src="media/app-home.png" alt="" draggable="false" />
+              </div>
+              <div class="hero-reveal">
+                <img src="media/showcase-student.png" alt="" draggable="false" />
+              </div>
+              <div class="hero-reveal">
+                <img src="media/showcase-friends.png" alt="" draggable="false" />
+              </div>
             </div>
 
             <!-- Exam types row -->
@@ -542,5 +550,19 @@
 
     <script src="js/i18n.js?v=32"></script>
     <script src="js/site.js?v=32"></script>
+    <script>
+      // Hero showcase: circle-wipe through the 3 images, then loop
+      (function () {
+        var slides = document.querySelectorAll(".hero-reveal");
+        if (!slides.length) return;
+        var i = 0;
+        function next() {
+          slides[i].classList.remove("is-active");
+          i = (i + 1) % slides.length;
+          slides[i].classList.add("is-active");
+        }
+        setInterval(next, 6300);
+      })();
+    </script>
   </body>
 </html>

@@ -1008,21 +1008,43 @@ html[dir="rtl"] .nav     { flex-direction:row-reverse; }
 }
 .trust-globe { font-size:1rem; }
 
-/* ═══════════ HERO PHONE MOCKUP (PC only) ═══════════ */
+/* ═══════════ HERO SHOWCASE — circular reveal carousel (PC only) ═══════════ */
 .hero-phone {
-  position:absolute; right:1.5rem; bottom:2.25rem; z-index:4;
-  width:clamp(260px,24vw,360px); pointer-events:none;
-  filter:drop-shadow(0 30px 60px rgba(0,0,0,.45));
-  animation:heroPhoneFloat 7s ease-in-out infinite;
-  will-change:transform;
+  position:absolute; right:2.5rem; bottom:5.5rem; z-index:4;
+  width:clamp(250px,22vw,330px); aspect-ratio:1/1;
+  pointer-events:none;
 }
-.hero-phone img { width:100%; height:auto; display:block; user-select:none; }
+.hero-reveal {
+  position:absolute; inset:0;
+  border-radius:50%;
+  overflow:hidden;
+  clip-path:circle(0% at 50% 50%);
+  opacity:0;
+  box-shadow:0 24px 60px rgba(0,0,0,.5),0 6px 18px rgba(0,0,0,.35);
+}
+.hero-reveal img {
+  width:100%; height:100%; object-fit:cover; display:block; user-select:none;
+}
+.hero-reveal.is-active {
+  opacity:1;
+  animation:heroRevealIn 7s cubic-bezier(.22,1,.36,1) forwards;
+}
+@keyframes heroRevealIn {
+  0%   { clip-path:circle(0% at 50% 50%); opacity:1; }
+  18%  { clip-path:circle(75% at 50% 50%); opacity:1; }
+  82%  { clip-path:circle(75% at 50% 50%); opacity:1; }
+  92%  { clip-path:circle(75% at 50% 50%); opacity:0; }
+  100% { clip-path:circle(0% at 50% 50%); opacity:0; }
+}
+/* Gentle breathing float on the whole ring */
+.hero-phone { animation:heroPhoneFloat 7s ease-in-out infinite; will-change:transform; }
 @keyframes heroPhoneFloat {
   0%,100% { transform:translateY(0) rotate(0.001deg); }
-  50%     { transform:translateY(-14px) rotate(0.001deg); }
+  50%     { transform:translateY(-10px) rotate(0.001deg); }
 }
 @media (prefers-reduced-motion: reduce) {
   .hero-phone { animation:none; }
+  .hero-reveal.is-active { clip-path:circle(75% at 50% 50%); animation:none; opacity:1; }
 }
 /* Hide on touch / narrow screens */
 @media (max-width:1024px), (hover:none) {
