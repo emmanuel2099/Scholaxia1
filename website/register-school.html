@@ -376,9 +376,7 @@
               <span class="ico">✉️</span>
               <input name="admin_email" type="email" required placeholder="e.g. admin@yourschool.com" id="emailInput" />
             </div>
-            <div class="email-note" id="emailNote">
-              This email is already used on Scholaxia. Enter the <strong>same password you use on the platform</strong> and we'll link this school to your existing account — no new account needed.
-            </div>
+
           </div>
           <div class="field">
             <label>Create a password <span class="req">*</span></label>
@@ -473,24 +471,6 @@
         });
       });
     }
-
-    // Show the "use your platform account" hint when the email exists on Scholaxia
-    var emailCheckTimer = null;
-    document.getElementById("emailInput").addEventListener("input", function () {
-      var note = document.getElementById("emailNote");
-      note.classList.remove("show");
-      var email = this.value.trim();
-      clearTimeout(emailCheckTimer);
-      if (!email || email.indexOf("@") < 1) return;
-      emailCheckTimer = setTimeout(async function () {
-        try {
-          var res = await fetch(API_BASE + "/api/v1/public/schools/check-email?email=" + encodeURIComponent(email));
-          if (!res.ok) return;
-          var data = await res.json();
-          if (data.exists) note.classList.add("show");
-        } catch (e) { /* ignore — backend will enforce */ }
-      }, 500);
-    });
 
     document.getElementById("regForm").addEventListener("submit", async function (ev) {
       ev.preventDefault();

@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_admin, require_school_staff
-from app.core.security import hash_password, verify_password
+from app.core.security import hash_password
 from app.core.datetime_utils import naive_utc_now
 from app.models.school_campus import SchoolCampus
 from app.models.school_plans import (
@@ -115,10 +115,10 @@ async def list_plans() -> dict:
 
 @router.get("/public/schools/check-email")
 async def check_email(email: str, db: AsyncSession = Depends(get_db)) -> dict:
-    """Registration-page hint: does this email already exist on the platform?
+    """Registration-page helper: does this email already exist on the platform?
 
-    If it does, the school form asks for the platform password so the same
-    account becomes the school's admin (see register_school).
+    Registration itself never requires the old password (any email may register
+    a school); this endpoint remains available for UX hints.
     """
     email = (email or "").lower().strip()
     exists = False
@@ -158,27 +158,19 @@ async def register_school(payload: SchoolRegisterIn, db: AsyncSession = Depends(
         await db.execute(select(User).where(User.email == email))
     ).scalar_one_or_none()
     if existing_user is not None:
-        # Same email as an existing platform account — allowed when the caller
-        # proves ownership with the correct password. The account is then
-        # linked as this school's admin (no duplicate account is created).
+        # Any email may register a school. If the email matches an existing
+        # platform account, that account is promoted to this school's admin and
+        # the password entered here becomes the account password — no proof of
+        # the old password is required.
         if existing_user.role == UserRole.school_admin and existing_user.school_id is not None:
             raise HTTPException(status_code=409, detail="This account already manages a school on Scholaxia")
-        if not existing_user.hashed_password or not verify_password(
-            payload.admin_password, existing_user.hashed_password
-        ):
-            raise HTTPException(
-                status_code=403,
-                detail=(
-                    "This email is already used on Scholaxia. "
-                    "Enter the password you already use on the platform to register "
-                    "your school with this account."
-                ),
-            )
     phone = (payload.admin_phone or "").strip() or None
-    if phone and (
-        await db.execute(select(User.id).where(User.phone == phone))
-    ).scalar_one_or_none():
-        raise HTTPException(status_code=409, detail="An account with this phone number already exists")
+    if phone:
+        phone_query = select(User.id).where(User.phone == phone)
+        if existing_user is not None:
+            phone_query = phone_query.where(User.id != existing_user.id)
+        if (await db.execute(phone_query)).scalar_one_or_none():
+            raise HTTPException(status_code=409, detail="An account with this phone number already exists")
 
     campus = SchoolCampus(
         name=payload.school_name.strip(),
@@ -193,11 +185,13 @@ async def register_school(payload: SchoolRegisterIn, db: AsyncSession = Depends(
     await db.flush()
 
     if existing_user is not None:
-        # Reuse the verified existing account as the school's admin.
+        # The existing account becomes the school's admin; the password chosen
+        # in this form is now the account's password.
         admin = existing_user
         admin.role = UserRole.school_admin
         admin.school_id = campus.id
-        if not admin.phone and phone:
+        admin.hashed_password = hash_password(payload.admin_password)
+        if phone:
             admin.phone = phone
         linked_account = True
     else:
@@ -242,8 +236,9 @@ async def register_school(payload: SchoolRegisterIn, db: AsyncSession = Depends(
         "status": "pending_payment",
         "account_linked": linked_account,
         "message": (
-            "Registration received. Your existing Scholaxia account is now the "
-            "school's admin account. Your plan activates as soon as payment is confirmed."
+            "Registration received. This email is now your school's admin account — "
+            "sign in with the password you just created. Your plan activates as soon "
+            "as payment is confirmed."
             if linked_account
             else "Registration received. Your school's plan activates as soon as payment is confirmed."
         ),
