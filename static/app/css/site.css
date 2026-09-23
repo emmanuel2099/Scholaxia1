@@ -246,12 +246,12 @@ main,.topbar,.ending-cta,.site-footer,.mobile-nav,.trust-strip { position:relati
 
 /* Hero copy */
 .hero-inner {
-  position:relative; z-index:5; width:100%; max-width:var(--max); margin:0 auto;
+  position:relative; z-index:5; width:100%; max-width:none; margin:0 auto;
   padding:clamp(6rem,14vh,9rem) var(--pad) clamp(3.5rem,8vh,5.5rem);
   display:flex; align-items:flex-end;
 }
 /* Hero copy is ALWAYS visible â€” no hidden-until-reveal on the hero itself */
-.hero-copy { max-width:40rem; color:#fff; opacity:1 !important; transform:none !important; }
+.hero-copy { max-width:34rem; color:#fff; opacity:1 !important; transform:none !important; }
 
 .hero-badge {
   display:inline-flex; align-items:center; gap:.45rem; margin-bottom:1.1rem;
@@ -276,9 +276,9 @@ main,.topbar,.ending-cta,.site-footer,.mobile-nav,.trust-strip { position:relati
 }
 
 .hero-copy h1 {
-  font-size:clamp(2.4rem,5vw,3.8rem); font-weight:800;
-  letter-spacing:-.035em; line-height:1.1; color:#fff;
-  margin-bottom:1.05rem; text-shadow:0 8px 32px rgba(0,0,0,.35);
+  font-size:clamp(1.85rem,3.2vw,2.55rem); font-weight:800;
+  letter-spacing:-.03em; line-height:1.12; color:#fff;
+  margin-bottom:.8rem; text-shadow:0 8px 32px rgba(0,0,0,.35);
   animation:heroFadeUp .95s cubic-bezier(.22,1,.36,1) .3s both;
 }
 .hero-copy h1 .accent {
@@ -288,9 +288,9 @@ main,.topbar,.ending-cta,.site-footer,.mobile-nav,.trust-strip { position:relati
   filter:drop-shadow(0 2px 12px rgba(255,180,0,.45));
 }
 .hero-sub {
-  font-size:clamp(1.05rem,1.7vw,1.22rem); line-height:1.58;
-  color:rgba(255,255,255,.88); margin-bottom:1.85rem;
-  max-width:38ch; font-weight:500;
+  font-size:clamp(.95rem,1.25vw,1.05rem); line-height:1.55;
+  color:rgba(255,255,255,.88); margin-bottom:1.5rem;
+  max-width:40ch; font-weight:500;
   animation:heroFadeUp 1s cubic-bezier(.22,1,.36,1) .4s both;
 }
 .hero-actions {
