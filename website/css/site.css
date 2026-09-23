@@ -1008,7 +1008,9 @@ html[dir="rtl"] .nav     { flex-direction:row-reverse; }
 }
 .trust-globe { font-size:1rem; }
 
-/* ═══════════ HERO SHOWCASE — circular reveal carousel (PC only) ═══════════ */
+/* ═══════════ HERO SHOWCASE — circle-wipe carousel (PC only) ═══════════
+   The circle is ONLY the transition: each image wipes in from a growing
+   circle, shows in its natural shape, then shrinks away for the next. */
 .hero-phone {
   position:absolute; right:2.5rem; bottom:5.5rem; z-index:4;
   width:clamp(250px,22vw,330px); aspect-ratio:1/1;
@@ -1016,14 +1018,12 @@ html[dir="rtl"] .nav     { flex-direction:row-reverse; }
 }
 .hero-reveal {
   position:absolute; inset:0;
-  border-radius:50%;
-  overflow:hidden;
   clip-path:circle(0% at 50% 50%);
   opacity:0;
-  box-shadow:0 24px 60px rgba(0,0,0,.5),0 6px 18px rgba(0,0,0,.35);
 }
 .hero-reveal img {
-  width:100%; height:100%; object-fit:cover; display:block; user-select:none;
+  width:100%; height:100%; object-fit:contain; display:block; user-select:none;
+  filter:drop-shadow(0 22px 44px rgba(0,0,0,.5));
 }
 .hero-reveal.is-active {
   opacity:1;
@@ -1031,12 +1031,11 @@ html[dir="rtl"] .nav     { flex-direction:row-reverse; }
 }
 @keyframes heroRevealIn {
   0%   { clip-path:circle(0% at 50% 50%); opacity:1; }
-  18%  { clip-path:circle(75% at 50% 50%); opacity:1; }
-  82%  { clip-path:circle(75% at 50% 50%); opacity:1; }
-  92%  { clip-path:circle(75% at 50% 50%); opacity:0; }
-  100% { clip-path:circle(0% at 50% 50%); opacity:0; }
+  16%  { clip-path:circle(75% at 50% 50%); opacity:1; }
+  84%  { clip-path:circle(75% at 50% 50%); opacity:1; }
+  100% { clip-path:circle(0% at 50% 50%); opacity:1; }
 }
-/* Gentle breathing float on the whole ring */
+/* Gentle breathing float on the whole showcase */
 .hero-phone { animation:heroPhoneFloat 7s ease-in-out infinite; will-change:transform; }
 @keyframes heroPhoneFloat {
   0%,100% { transform:translateY(0) rotate(0.001deg); }
