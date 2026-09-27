@@ -77,6 +77,9 @@ class ExternalExamAttempt(Base):
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     marked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     sync_status: Mapped[str] = mapped_column(String(24), default="pending")
+    # Owner spec §25: student scores stay hidden until the school publishes.
+    # hidden → published (school admin action) — per exam attempt.
+    result_status: Mapped[str] = mapped_column(String(20), default="hidden")
     score: Mapped[float | None] = mapped_column(Float, nullable=True)
     percentage: Mapped[float | None] = mapped_column(Float, nullable=True)
     grade: Mapped[str | None] = mapped_column(String(8), nullable=True)
@@ -112,4 +115,35 @@ class ExternalExamResultAudit(Base):
     new_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     changed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class OfflineSyncAudit(Base):
+    """Owner spec — OFFLINE SECURITY: audit trail of offline synchronization.
+
+    One row per offline attempt submission received by the server (and for
+    duplicates rejected), so the school can prove when offline answers arrived,
+    from which student, on which exam.
+    """
+
+    __tablename__ = "offline_sync_audits"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    attempt_code: Mapped[str | None] = mapped_column(String(40), index=True, nullable=True)
+    exam_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("external_exams.id"), nullable=True, index=True
+    )
+    school_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("school_campuses.id"), nullable=True, index=True
+    )
+    student_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
+    )
+    event: Mapped[str] = mapped_column(String(32), default="received")
+    # "online" (normal submit) | "offline_sync" (queued answers flushed on reconnect)
+    channel: Mapped[str] = mapped_column(String(24), default="online")
+    offline_started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    offline_submitted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    synced_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    detail: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

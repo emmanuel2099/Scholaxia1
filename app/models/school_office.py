@@ -24,6 +24,14 @@ class SchoolExamCandidate(Base):
     is_restricted: Mapped[bool] = mapped_column(Boolean, default=False)
     retake_exam_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
     note: Mapped[str] = mapped_column(Text, nullable=True)
+    # Offline-security: the slip's access code is single-use — consumed by the
+    # first exam attempt that submits with it, so a shared/leaked slip cannot
+    # start or submit a second exam.
+    is_used: Mapped[bool] = mapped_column(Boolean, default=False)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    used_for_exam_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("external_exams.id"), nullable=True
+    )
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     school_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("school_campuses.id"), nullable=True, index=True

@@ -135,11 +135,15 @@ class SchoolRegisterIn(BaseModel):
     school_name: str = Field(min_length=2, max_length=255)
     city: str | None = None
     state: str | None = None
+    address: str | None = Field(default=None, max_length=500)
+    logo_url: str | None = Field(default=None, max_length=500)
     admin_full_name: str = Field(min_length=2, max_length=255)
     admin_email: EmailStr
     admin_phone: str | None = None
     admin_password: str = Field(min_length=8, max_length=128)
-    plan: str = "basic"
+    # Owner spec §2: no plan/payment gate — plan selection is optional
+    # ("choose later"); registration only creates the school account.
+    plan: str | None = None
 
 
 @router.post("/public/schools/register", status_code=201)
@@ -149,9 +153,9 @@ async def register_school(payload: SchoolRegisterIn, db: AsyncSession = Depends(
     Returns the school's private link slug so the site can show
     'your link: greensprings.scholaxia.com' immediately.
     """
-    plan = (payload.plan or "basic").lower().strip()
-    if plan not in ALL_PLANS:
-        raise HTTPException(status_code=422, detail=f"plan must be one of {list(ALL_PLANS)}")
+    plan = (payload.plan or "").lower().strip() or None
+    if plan is not None and plan not in ALL_PLANS:
+        raise HTTPException(status_code=422, detail=f"plan must be one of {list(ALL_PLANS)} or left empty")
 
     email = payload.admin_email.lower().strip()
     existing_user = (
@@ -177,7 +181,14 @@ async def register_school(payload: SchoolRegisterIn, db: AsyncSession = Depends(
         slug=await _unique_slug(db, payload.school_name),
         city=payload.city,
         state=payload.state,
+        address=payload.address,
+        logo_url=payload.logo_url,
+        contact_email=email,
+        contact_phone=phone,
         is_active=True,
+        # Owner spec §3: every registration starts as PENDING until the
+        # Super Admin reviews and approves it.
+        approval_status="pending",
         subscription_active=False,  # flipped on when super admin confirms payment
         subscription_plan=plan,
     )
@@ -210,18 +221,18 @@ async def register_school(payload: SchoolRegisterIn, db: AsyncSession = Depends(
 
     sub = SchoolSubscription(
         school_id=campus.id,
-        plan=plan,
-        price_ngn=plan_price_ngn(plan),
-        term_label="pending payment",
+        plan=plan or "basic",  # provisional; Super Admin sets the real plan on approval
+        price_ngn=plan_price_ngn(plan) if plan else 0,
+        term_label="pending review" if not plan else "pending payment",
         is_active=False,  # pending until super admin confirms payment
         changed_by="self-registration",
     )
     audit = SchoolPlanAudit(
         school_id=campus.id,
         old_plan=None,
-        new_plan=plan,
+        new_plan=plan or "basic",
         amount_ngn=0,  # only counted when confirmed
-        term_label="pending payment",
+        term_label="pending review" if not plan else "pending payment",
         changed_by="self-registration",
     )
     db.add_all([sub, audit])
@@ -232,15 +243,17 @@ async def register_school(payload: SchoolRegisterIn, db: AsyncSession = Depends(
         "slug": campus.slug,
         "private_link": f"https://{campus.slug}.{BASE_DOMAIN_DEFAULT}",
         "plan": plan,
-        "price_ngn": plan_price_ngn(plan),
-        "status": "pending_payment",
+        "price_ngn": plan_price_ngn(plan) if plan else 0,
+        "status": "pending_review",
+        "approval_status": "pending",
         "account_linked": linked_account,
         "message": (
-            "Registration received. This email is now your school's admin account — "
-            "sign in with the password you just created. Your plan activates as soon "
-            "as payment is confirmed."
+            "Registration received! Your school is now pending review by the Scholaxia "
+            "team. This email is your school's admin account — sign in with the password "
+            "you just created. You'll be notified once your school is approved."
             if linked_account
-            else "Registration received. Your school's plan activates as soon as payment is confirmed."
+            else "Registration received! Your school is now pending review by the Scholaxia "
+            "team. You'll be notified once your school is approved."
         ),
     }
 
@@ -335,6 +348,10 @@ async def my_plan(current_user: dict = Depends(require_school_staff), db: AsyncS
 def require_school_feature(feature: str):
     """Dependency factory: gate any endpoint behind a plan feature.
 
+    Owner spec §7: the check is plan + per-school overrides — the Super
+    Admin's feature toggles apply here, so a disabled feature is blocked
+    even if the plan includes it.
+
     Usage:  deps = [Depends(require_school_feature("cbt"))]
     """
 
@@ -344,6 +361,20 @@ def require_school_feature(feature: str):
             raise HTTPException(status_code=400, detail="No school linked to this account")
         sub = await _active_subscription(db, UUID(sid))
         plan = sub.plan if sub else None
+        override = None
+        try:
+            campus = (
+                await db.execute(select(SchoolCampus.feature_overrides).where(SchoolCampus.id == UUID(sid)))
+            ).scalar_one_or_none()
+            override = (campus or {}).get(feature)
+        except Exception:
+            override = None
+        if override is False:
+            pretty = feature.replace("_", " ")
+            raise HTTPException(
+                status_code=403,
+                detail=f"{pretty.capitalize()} has been disabled for your school by the Scholaxia team.",
+            )
         if not plan or not plan_has_feature(plan, feature):
             pretty = feature.replace("_", " ")
             raise HTTPException(
@@ -396,6 +427,13 @@ async def list_schools(
                 "admin_email": admin[0] if admin else None,
                 "admin_name": admin[1] if admin else None,
                 "is_active": r.is_active,
+                "approval_status": r.approval_status or "approved",
+                "approved_at": r.approved_at.isoformat() if r.approved_at else None,
+                "rejection_reason": r.rejection_reason,
+                "feature_overrides": r.feature_overrides or {},
+                "contact_email": r.contact_email,
+                "contact_phone": r.contact_phone,
+                "logo_url": getattr(r, "logo_url", None),
             }
         )
     return {"schools": out, "count": len(out)}
@@ -459,6 +497,146 @@ async def change_school_plan(
         "subscription_active": True,
         "expires_at": expires.isoformat() if expires else None,
     }
+
+
+# ------------------------------------------- approval + feature control ----
+
+class ReviewIn(BaseModel):
+    reason: str | None = Field(default=None, max_length=500)
+
+
+class FeatureTogglesIn(BaseModel):
+    # {"attendance": true, "fees": false, ...} — omitted features are untouched
+    features: dict[str, bool]
+
+
+async def _campus_or_404(db: AsyncSession, school_id: UUID) -> SchoolCampus:
+    campus = (
+        await db.execute(select(SchoolCampus).where(SchoolCampus.id == school_id))
+    ).scalar_one_or_none()
+    if not campus:
+        raise HTTPException(status_code=404, detail="School not found")
+    return campus
+
+
+@router.post("/super-admin/schools/{school_id}/approve")
+async def approve_school(
+    school_id: UUID,
+    current_user: dict = Depends(_require_super_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Owner spec §3: Pending → Approved. Creates the school's subdomain
+    environment (the slug already exists; approval flips it live)."""
+    campus = await _campus_or_404(db, school_id)
+    campus.approval_status = "approved"
+    campus.approved_at = naive_utc_now()
+    campus.rejection_reason = None
+    campus.is_active = True
+    await db.commit()
+    return {
+        "school_id": str(campus.id),
+        "approval_status": "approved",
+        "private_link": f"https://{campus.slug}.{BASE_DOMAIN_DEFAULT}",
+    }
+
+
+@router.post("/super-admin/schools/{school_id}/reject")
+async def reject_school(
+    school_id: UUID,
+    payload: ReviewIn,
+    current_user: dict = Depends(_require_super_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    campus = await _campus_or_404(db, school_id)
+    campus.approval_status = "rejected"
+    campus.rejection_reason = (payload.reason or "").strip() or None
+    campus.is_active = False
+    await db.commit()
+    return {"school_id": str(campus.id), "approval_status": "rejected"}
+
+
+@router.post("/super-admin/schools/{school_id}/suspend")
+async def suspend_school(
+    school_id: UUID,
+    payload: ReviewIn,
+    current_user: dict = Depends(_require_super_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    campus = await _campus_or_404(db, school_id)
+    campus.approval_status = "suspended"
+    campus.rejection_reason = (payload.reason or "").strip() or None
+    campus.is_active = False
+    await db.commit()
+    return {"school_id": str(campus.id), "approval_status": "suspended"}
+
+
+@router.post("/super-admin/schools/{school_id}/reactivate")
+async def reactivate_school(
+    school_id: UUID,
+    current_user: dict = Depends(_require_super_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Lift a suspension — back to approved/active."""
+    campus = await _campus_or_404(db, school_id)
+    campus.approval_status = "approved"
+    campus.rejection_reason = None
+    campus.is_active = True
+    await db.commit()
+    return {"school_id": str(campus.id), "approval_status": "approved"}
+
+
+@router.get("/super-admin/schools/{school_id}/features")
+async def school_features(
+    school_id: UUID,
+    current_user: dict = Depends(_require_super_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Owner spec §7: every feature + whether it's on for this school
+    (plan-derived, then per-school overrides on top)."""
+    campus = await _campus_or_404(db, school_id)
+    sub = await _active_subscription(db, school_id)
+    plan = sub.plan if sub else campus.subscription_plan
+    overrides = campus.feature_overrides or {}
+    features = {}
+    for f in ALL_FEATURES:
+        plan_on = plan_has_feature(plan, f)
+        override = overrides.get(f)
+        if override is None:
+            effective = plan_on
+        else:
+            effective = bool(override) and plan_on  # overrides can only turn OFF, or re-enable a plan feature
+        features[f] = {
+            "plan_includes": plan_on,
+            "override": override,
+            "enabled": effective,
+        }
+    return {
+        "school_id": str(campus.id),
+        "school_name": campus.name,
+        "plan": plan,
+        "features": features,
+    }
+
+
+@router.post("/super-admin/schools/{school_id}/features")
+async def set_school_features(
+    school_id: UUID,
+    payload: FeatureTogglesIn,
+    current_user: dict = Depends(_require_super_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Owner spec §7: Super Admin enables/disables individual features per
+    school, independent of the plan."""
+    campus = await _campus_or_404(db, school_id)
+    unknown = [k for k in payload.features if k not in ALL_FEATURES]
+    if unknown:
+        raise HTTPException(status_code=422, detail=f"Unknown features: {unknown}")
+    overrides = dict(campus.feature_overrides or {})
+    for fname, on in payload.features.items():
+        overrides[fname] = bool(on)
+    campus.feature_overrides = overrides
+    await db.commit()
+    return {"school_id": str(campus.id), "feature_overrides": overrides}
 
 
 @router.get("/super-admin/income")

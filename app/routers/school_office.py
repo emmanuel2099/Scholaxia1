@@ -214,7 +214,7 @@ async def candidate_slip(
 class SchoolStudentIn(BaseModel):
     school_id: Optional[str] = None
     full_name: str
-    email: EmailStr
+    email: Optional[EmailStr] = None  # optional — school students log in with their Student ID
     class_name: str
     student_id: Optional[str] = None
     password: Optional[str] = None
@@ -233,14 +233,23 @@ def _student_row(user: User, profile: StudentProfile | None, campus: SchoolCampu
 
 
 async def _create_school_student(db: AsyncSession, campus: SchoolCampus, payload: SchoolStudentIn) -> tuple[User, str]:
-    email = str(payload.email).lower()
+    sid = (payload.student_id or "").strip().upper() or (
+        (campus.code or "STU").upper()[:8] + "-" + secrets.token_hex(2).upper()
+    )
+    email = str(payload.email or "").lower().strip()
+    if not email:
+        # No email provided — synthesize a unique placeholder (students log
+        # in with their Student ID, never this address).
+        base_slug = (campus.slug or "school").replace("-", "")
+        email = f"{sid.lower()}@{base_slug}.scholaxia.local"
+        while (
+            await db.execute(select(User.id).where(User.email == email))
+        ).scalar_one_or_none() is not None:
+            email = f"{sid.lower()}-{secrets.token_hex(2)}@{base_slug}.scholaxia.local"
     existing = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
     if existing:
         raise HTTPException(status_code=400, detail=f"Email already in use: {email}")
     password = (payload.password or "").strip() or secrets.token_urlsafe(8)
-    sid = (payload.student_id or "").strip().upper() or (
-        (campus.code or "STU").upper()[:8] + "-" + secrets.token_hex(2).upper()
-    )
     user = User(
         email=email,
         hashed_password=hash_password(password),
@@ -333,8 +342,8 @@ async def import_school_students(
         klass = (row.get("class") or row.get("class_name") or "").strip()
         sid = (row.get("student_id") or row.get("id") or "").strip()
         password = (row.get("password") or "").strip() or None
-        if not name or not email or not klass:
-            errors.append(f"Row {i}: name, email and class are required")
+        if not name or not klass:
+            errors.append(f"Row {i}: name and class are required (email optional — students log in with their Student ID)")
             continue
         try:
             user, pw = await _create_school_student(

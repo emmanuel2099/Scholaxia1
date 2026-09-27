@@ -109,6 +109,44 @@ _SCHEMA_STATEMENTS = (
     "ALTER TABLE external_exams ADD COLUMN IF NOT EXISTS allowed_classes JSON NULL",
     "ALTER TABLE external_exam_attempts ADD COLUMN IF NOT EXISTS student_user_id UUID NULL",
     "ALTER TABLE external_exam_attempts ALTER COLUMN candidate_id DROP NOT NULL",
+    # Owner spec §25: scores hidden from students until the school publishes
+    "ALTER TABLE external_exam_attempts ADD COLUMN IF NOT EXISTS result_status VARCHAR(20) NULL",
+    "UPDATE external_exam_attempts SET result_status = 'hidden' WHERE result_status IS NULL",
+    # Owner spec OFFLINE SECURITY: single-use access codes (consumed on first
+    # exam submission) + audit trail of offline synchronization.
+    "ALTER TABLE school_exam_candidates ADD COLUMN IF NOT EXISTS is_used BOOLEAN NOT NULL DEFAULT FALSE",
+    "ALTER TABLE school_exam_candidates ADD COLUMN IF NOT EXISTS used_at TIMESTAMP NULL",
+    "ALTER TABLE school_exam_candidates ADD COLUMN IF NOT EXISTS used_for_exam_id UUID NULL",
+    """
+    CREATE TABLE IF NOT EXISTS offline_sync_audits (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        attempt_code VARCHAR(40) NULL,
+        exam_id UUID NULL REFERENCES external_exams(id),
+        school_id UUID NULL REFERENCES school_campuses(id),
+        student_user_id UUID NULL REFERENCES users(id),
+        event VARCHAR(32) NOT NULL DEFAULT 'received',
+        channel VARCHAR(24) NOT NULL DEFAULT 'online',
+        offline_started_at TIMESTAMP NULL,
+        offline_submitted_at TIMESTAMP NULL,
+        synced_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+        detail JSON NULL,
+        created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_offline_sync_audits_exam ON offline_sync_audits (exam_id)",
+    "CREATE INDEX IF NOT EXISTS ix_offline_sync_audits_school ON offline_sync_audits (school_id)",
+    "CREATE INDEX IF NOT EXISTS ix_offline_sync_audits_student ON offline_sync_audits (student_user_id)",
+    # Owner spec §3/§7: school approval workflow + per-school feature toggles
+    "ALTER TABLE school_campuses ADD COLUMN IF NOT EXISTS approval_status VARCHAR(20) NULL",
+    "ALTER TABLE school_campuses ADD COLUMN IF NOT EXISTS approved_at TIMESTAMP NULL",
+    "ALTER TABLE school_campuses ADD COLUMN IF NOT EXISTS rejection_reason VARCHAR(500) NULL",
+    "ALTER TABLE school_campuses ADD COLUMN IF NOT EXISTS feature_overrides JSON NULL",
+    "ALTER TABLE school_campuses ADD COLUMN IF NOT EXISTS contact_email VARCHAR(255) NULL",
+    "ALTER TABLE school_campuses ADD COLUMN IF NOT EXISTS contact_phone VARCHAR(40) NULL",
+    "ALTER TABLE school_campuses ADD COLUMN IF NOT EXISTS address VARCHAR(500) NULL",
+    "ALTER TABLE school_campuses ADD COLUMN IF NOT EXISTS logo_url VARCHAR(500) NULL",
+    "UPDATE school_campuses SET approval_status = 'approved' WHERE approval_status IS NULL AND is_active IS TRUE",
+    "UPDATE school_campuses SET approval_status = 'pending' WHERE approval_status IS NULL",
     # payments
     "ALTER TABLE payments ADD COLUMN IF NOT EXISTS flutterwave_tx_ref VARCHAR(255) NULL",
     "ALTER TABLE payments ADD COLUMN IF NOT EXISTS flutterwave_transaction_id VARCHAR(255) NULL",

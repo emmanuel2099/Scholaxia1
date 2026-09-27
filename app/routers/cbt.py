@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, Field
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timedelta
 import httpx
 import json
 import uuid
@@ -254,6 +254,14 @@ class ResultResponse(BaseModel):
     total_correct: int
     total_wrong: int
     weak_topics: list
+    # Owner spec §22/§25: set to "hidden" for school exams until the school
+    # publishes results — clients show a confirmation instead of the score.
+    result_status: Optional[str] = None
+    message: Optional[str] = None
+    # Duplicate-submission safety: True when this exact attempt was already
+    # submitted (the response is idempotent — nothing was re-marked).
+    already_submitted: Optional[bool] = None
+    submitted_at: Optional[datetime] = None
 
 
 class ExamSummary(BaseModel):
@@ -1754,6 +1762,13 @@ async def teacher_school_exam_results(
 class InternalSubmitRequest(BaseModel):
     answers: dict  # {question_id: "A"|"B"|"C"|"D"}
     is_auto_submit: bool = False
+    # Offline-security telemetry (site + desktop): when the exam was started
+    # and submitted on the device, and whether this arrives from the offline
+    # submission queue on reconnect. The server records and validates all of it.
+    started_at: Optional[datetime] = None
+    submitted_at: Optional[datetime] = None
+    offline_sync: bool = False
+    client: Optional[str] = None
 
 
 async def _notify_subject_teachers(db: AsyncSession, exam: CBTExam, student_name: str) -> None:
@@ -1884,8 +1899,49 @@ async def submit_internal_exam(
             CBTSession.submitted_at != None,  # noqa: E711
         )
     )
-    if existing_res.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="You already submitted this exam.")
+    existing = existing_res.scalars().first()
+    if existing is not None:
+        # Owner spec — Prevent submitting the same attempt multiple times +
+        # Handle duplicate submissions safely: the first submission wins and
+        # every retry (including a replayed offline-sync queue) gets the same
+        # idempotent response instead of a 400 that would loop the queue.
+        from app.models.external_exam import OfflineSyncAudit
+
+        db.add(
+            OfflineSyncAudit(
+                exam_id=exam.id,
+                school_id=exam.school_id,
+                student_user_id=current_user["sub"],
+                event="duplicate_ignored",
+                channel="offline_sync" if payload.offline_sync else "online",
+                offline_started_at=payload.started_at,
+                offline_submitted_at=payload.submitted_at,
+                detail={
+                    "client": payload.client,
+                    "session_id": str(existing.id),
+                    "first_submitted_at": existing.submitted_at.isoformat() if existing.submitted_at else None,
+                },
+            )
+        )
+        await db.flush()
+        return ResultResponse(
+            score=0,
+            percentage=0,
+            total_correct=0,
+            total_wrong=0,
+            weak_topics=[],
+            result_status="hidden",
+            already_submitted=True,
+            submitted_at=existing.submitted_at,
+            message=(
+                "This exam was already submitted. "
+                + (
+                    "Your result will be available when published by your school."
+                    if getattr(exam, "is_school_exam", False)
+                    else "Your official score stands — no new submission was created."
+                )
+            ),
+        )
 
     q_res = await db.execute(select(CBTQuestion).where(CBTQuestion.exam_id == exam.id))
     questions = q_res.scalars().all()
@@ -1905,9 +1961,28 @@ async def submit_internal_exam(
     total = correct + wrong
     percentage = round((correct / total) * 100, 2) if total > 0 else 0.0
 
+    # Record exam start / submission time: the server keeps its own receipt
+    # time (authoritative) and stores the device-reported times in the audit
+    # trail so the school can cross-check them later.
+    def _sane_device_time(value: Optional[datetime]) -> Optional[datetime]:
+        if value is None:
+            return None
+        try:
+            if value.tzinfo is not None:
+                value = value.astimezone(tz=None).replace(tzinfo=None)
+        except Exception:
+            return None
+        if value.year < 2020 or value > datetime.utcnow() + timedelta(days=366):
+            return None
+        return value
+
+    device_started = _sane_device_time(payload.started_at)
+    device_submitted = _sane_device_time(payload.submitted_at)
+
     session = CBTSession(
         student_id=current_user["sub"],
         exam_id=exam.id,
+        started_at=device_started or datetime.utcnow(),
         answers=payload.answers,
         score=correct,
         percentage=percentage,
@@ -1920,10 +1995,48 @@ async def submit_internal_exam(
     db.add(session)
     await db.flush()
 
+    # Owner spec — Keep an audit trail of synchronization: one row per
+    # offline-taken school-exam submission the server receives.
+    from app.models.external_exam import OfflineSyncAudit
+
+    db.add(
+        OfflineSyncAudit(
+            exam_id=exam.id,
+            school_id=exam.school_id,
+            student_user_id=current_user["sub"],
+            event="received",
+            channel="offline_sync" if payload.offline_sync else "online",
+            offline_started_at=device_started,
+            offline_submitted_at=device_submitted,
+            detail={
+                "client": payload.client,
+                "session_id": str(session.id),
+                "server_received_at": session.submitted_at.isoformat() if session.submitted_at else None,
+                "device_submitted_at": device_submitted.isoformat() if device_submitted else None,
+                "started_at": session.started_at.isoformat() if session.started_at else None,
+                "answers_count": len(payload.answers or {}),
+            },
+        )
+    )
+    await db.flush()
+
     student_res = await db.execute(select(User).where(User.id == current_user["sub"]))
     student = student_res.scalar_one_or_none()
     student_name = (student.full_name or student.email or "A student") if student else "A student"
     await _notify_subject_teachers(db, exam, student_name)
+
+    # Owner spec §22/§25: school-exam scores stay hidden from the student
+    # until the school publishes. Score is still stored server-side.
+    if getattr(exam, "is_school_exam", False):
+        return ResultResponse(
+            score=0,
+            percentage=0,
+            total_correct=0,
+            total_wrong=0,
+            weak_topics=[],
+            result_status="hidden",
+            message="Exam submitted successfully. Your result will be available when published by your school.",
+        )
 
     return ResultResponse(
         score=correct,

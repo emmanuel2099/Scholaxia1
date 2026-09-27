@@ -2,7 +2,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, text
+from sqlalchemy import select, text, func
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 from app.core.database import get_db
@@ -47,6 +47,11 @@ class LoginRequest(BaseModel):
     password: str
     email: Optional[EmailStr] = None
     phone: Optional[str] = None  # legacy phone login (older clients)
+    # School platform: students sign in WITHOUT email — student ID /
+    # registration number + password (or the slip access code).
+    student_id: Optional[str] = None
+    access_code: Optional[str] = None
+    email_or_id: Optional[str] = None  # single identifier field from the web form
 
 
 class SendOtpRequest(BaseModel):
@@ -700,7 +705,16 @@ async def _payload_from_request(request: Request) -> LoginRequest:
         form = await request.form()
         email = (str(form.get("email") or "")).strip() or None
         phone = (str(form.get("phone") or "")).strip() or None
-        return LoginRequest(email=email, password=str(form.get("password") or ""), phone=phone)
+        ident = (str(form.get("email_or_id") or form.get("student_id") or "")).strip() or None
+        access = (str(form.get("access_code") or "")).strip() or None
+        return LoginRequest(
+            email=email,
+            password=str(form.get("password") or ""),
+            phone=phone,
+            student_id=ident,
+            email_or_id=ident,
+            access_code=access,
+        )
     try:
         data = await request.json()
     except Exception:
@@ -730,9 +744,63 @@ async def login_form(request: Request, db: AsyncSession = Depends(get_db)):
     return await login(request, db)
 
 
+async def _find_school_student(db: AsyncSession, identifier: str):
+    """Find a school student by student ID / reg number (no email needed).
+
+    Matches StudentProfile.school_student_id first (admission number), then
+    full name as a last resort (exact, case-insensitive) — school students
+    often have no email at all.
+    """
+    ident = (identifier or "").strip()
+    if not ident:
+        return None
+    row = (
+        await db.execute(
+            select(User)
+            .join(StudentProfile, StudentProfile.user_id == User.id)
+            .where(
+                User.role == UserRole.student,
+                func.upper(StudentProfile.school_student_id) == ident.upper(),
+            )
+            .limit(2)
+        )
+    ).scalars().all()
+    if not row:
+        row = (
+            await db.execute(
+                select(User)
+                .join(StudentProfile, StudentProfile.user_id == User.id)
+                .where(
+                    User.role == UserRole.student,
+                    func.upper(User.full_name) == ident.upper(),
+                )
+                .limit(2)
+            )
+        ).scalars().all()
+    if not row:
+        return None
+    if len(row) > 1:
+        # Ambiguous (duplicate names): prefer one attached to a school
+        with_school = [u for u in row if u.school_id is not None]
+        if len(with_school) == 1:
+            return with_school[0]
+        raise HTTPException(
+            status_code=409,
+            detail="This student ID matches more than one account. Ask your school to check the records.",
+        )
+    return row[0]
+
+
 async def _login_user(payload: LoginRequest, db: AsyncSession):
     email_raw = (payload.email or "").strip()
+    ident_raw = (payload.student_id or payload.email_or_id or "").strip()
     phone_raw = (payload.phone or "").strip()
+
+    # Single identifier field: an "@" means email, anything else is a
+    # student ID / registration number (school platform — no email needed).
+    if not email_raw and ident_raw and "@" in ident_raw:
+        email_raw, ident_raw = ident_raw, ""
+
     user = await _user_from_sql(db, email_raw) if email_raw else None
 
     if user is None and phone_raw:
@@ -742,10 +810,32 @@ async def _login_user(payload: LoginRequest, db: AsyncSession):
             phone = phone_raw
         user = await _find_user_by_phone(db, phone)
 
+    if user is None and ident_raw:
+        # School platform: student ID / registration number login (no email)
+        user = await _find_school_student(db, ident_raw)
+        if user is not None and payload.access_code:
+            # Access code accepted in either field; if a password is absent,
+            # the slip's access code doubles as the password.
+            slip = (
+                await db.execute(
+                    text(
+                        """
+                        SELECT access_code FROM school_exam_candidates
+                        WHERE UPPER(access_code) = UPPER(:code)
+                          AND user_id = :uid
+                        LIMIT 1
+                        """
+                    ),
+                    {"code": (payload.access_code or "").strip(), "uid": user.id},
+                )
+            ).first()
+            if slip:
+                payload.password = (payload.access_code or "").strip()
+
     if not user or not user.hashed_password:
         raise HTTPException(
             status_code=401,
-            detail="No account found for this email. Please sign up first.",
+            detail="No account found for that Student ID or email. Ask your school to register you, or sign up.",
         )
     if not verify_password(payload.password, user.hashed_password):
         raise HTTPException(
@@ -765,7 +855,8 @@ async def _login_user(payload: LoginRequest, db: AsyncSession):
                 await db.execute(
                     text(
                         """
-                        SELECT name, COALESCE(subscription_active, false) AS subscription_active
+                        SELECT name, COALESCE(subscription_active, false) AS subscription_active,
+                               approval_status
                         FROM school_campuses WHERE id = :id LIMIT 1
                         """
                     ),
@@ -773,8 +864,20 @@ async def _login_user(payload: LoginRequest, db: AsyncSession):
                 )
             ).mappings().first()
             if campus:
+                # Owner spec §3: a school that is still pending (or was
+                # rejected/suspended) cannot sign its people in yet.
+                status = (campus["approval_status"] or "approved").lower()
+                if status in ("pending", "rejected", "suspended"):
+                    why = {
+                        "pending": "Your school is still pending review by Scholaxia. Try again once it is approved.",
+                        "rejected": "Your school's registration was not approved. Contact Scholaxia support.",
+                        "suspended": "Your school's account is currently suspended. Contact Scholaxia support.",
+                    }[status]
+                    raise HTTPException(status_code=403, detail=why)
                 school_name = campus["name"]
                 school_sub = bool(campus["subscription_active"])
+        except HTTPException:
+            raise
         except Exception:
             await _safe_rollback(db)
 

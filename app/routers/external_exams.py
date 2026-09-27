@@ -16,6 +16,7 @@ from app.models.external_exam import (
     ExternalExamAnswer,
     ExternalExamAttempt,
     ExternalExamQuestion,
+    OfflineSyncAudit,
 )
 from app.models.school_campus import SchoolCampus
 from app.models.school_office import SchoolExamCandidate
@@ -463,6 +464,97 @@ async def unpublish_exam(
     return {"ok": True}
 
 
+@staff_router.post("/{exam_id}/results/publish")
+async def publish_exam_results(
+    exam_id: str,
+    payload: Optional[dict] = None,
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Owner spec §26: the school admin reviews submissions, then publishes.
+    Publishing flips every marked attempt of this exam to result_status=
+    'published', which unlocks scores for students. Optional body:
+    {"publish": false} unpublishes (hides again)."""
+    exam = (await db.execute(select(ExternalExam).where(ExternalExam.id == exam_id))).scalar_one_or_none()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    campus = await _campus(db, current_user, str(exam.school_id))
+    publish = True
+    if isinstance(payload, dict):
+        publish = bool(payload.get("publish", True))
+    new_status = "published" if publish else "hidden"
+    rows = (
+        await db.execute(
+            select(ExternalExamAttempt).where(
+                ExternalExamAttempt.exam_id == exam.id,
+                ExternalExamAttempt.school_id == campus.id,
+                ExternalExamAttempt.marked_at.isnot(None),
+            )
+        )
+    ).scalars().all()
+    for attempt in rows:
+        attempt.result_status = new_status
+    await db.commit()
+    return {
+        "ok": True,
+        "exam_id": str(exam.id),
+        "result_status": new_status,
+        "attempts_updated": len(rows),
+    }
+
+
+@staff_router.get("/{exam_id}/sync-audit")
+async def exam_sync_audit(
+    exam_id: str,
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Owner spec — Keep an audit trail of synchronization.
+
+    Every offline sync event for this exam: when the device says the exam was
+    started/submitted, when the server received it, and any duplicates that
+    were rejected (idempotent, never double-marked).
+    """
+    exam = (await db.execute(select(ExternalExam).where(ExternalExam.id == exam_id))).scalar_one_or_none()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    campus = await _campus(db, current_user, str(exam.school_id))
+    rows = (
+        await db.execute(
+            select(OfflineSyncAudit)
+            .where(
+                OfflineSyncAudit.exam_id == exam.id,
+                OfflineSyncAudit.school_id == campus.id,
+            )
+            .order_by(OfflineSyncAudit.created_at.desc())
+            .limit(500)
+        )
+    ).scalars().all()
+    name_for = {}
+    ids = {str(r.student_user_id) for r in rows if r.student_user_id}
+    if ids:
+        users = (await db.execute(select(User).where(User.id.in_(ids)))).scalars().all()
+        name_for = {str(u.id): (u.full_name or u.email) for u in users}
+    return {
+        "exam_id": str(exam.id),
+        "events": [
+            {
+                "id": str(r.id),
+                "event": r.event,
+                "channel": r.channel,
+                "attempt_code": r.attempt_code,
+                "student_name": name_for.get(str(r.student_user_id)),
+                "started_at": r.offline_started_at.isoformat() if r.offline_started_at else None,
+                "submitted_at": r.offline_submitted_at.isoformat() if r.offline_submitted_at else None,
+                "synced_at": r.synced_at.isoformat() if r.synced_at else None,
+                "detail": r.detail or {},
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ],
+    }
+
+
 @staff_router.get("/{exam_id}/results")
 async def exam_results(
     exam_id: str,
@@ -524,6 +616,7 @@ async def exam_results(
                 "percentage": attempt.percentage,
                 "grade": attempt.grade,
                 "status": "Passed" if attempt.passed else "Failed",
+                "result_status": attempt.result_status or "hidden",
                 "submitted_at": attempt.submitted_at.isoformat() if attempt.submitted_at else None,
             }
         )
@@ -591,6 +684,12 @@ class AuthExamIn(BaseModel):
     attempt_code: Optional[str] = None
     started_at: Optional[datetime] = None
     answers: dict[str, str] = Field(default_factory=dict)
+    # Offline-security telemetry sent by the clients (site + desktop):
+    # when the attempt was actually started and submitted on the device.
+    # The server records both and cross-checks them against its own clock.
+    submitted_at: Optional[datetime] = None
+    offline_sync: bool = False
+    client: Optional[str] = None
 
 
 @public_router.post("/package")
@@ -706,6 +805,49 @@ async def student_start(
     }
 
 
+def _clamp_dt(value: Optional[datetime]) -> Optional[datetime]:
+    """Reject device clocks that are nonsense (year < 2020 or > 1 year ahead)."""
+    if value is None:
+        return None
+    try:
+        if value.tzinfo is not None:
+            value = value.astimezone(tz=None).replace(tzinfo=None)
+    except Exception:
+        return None
+    if value.year < 2020 or value > naive_utc_now() + timedelta(days=366):
+        return None
+    return value
+
+
+async def _log_sync(
+    db: AsyncSession,
+    *,
+    event: str,
+    exam: Optional[ExternalExam],
+    student_user_id: Optional[str],
+    attempt_code: Optional[str] = None,
+    channel: str = "online",
+    started_at: Optional[datetime] = None,
+    submitted_at: Optional[datetime] = None,
+    detail: Optional[dict] = None,
+) -> None:
+    """Owner spec OFFLINE SECURITY: keep an audit trail of synchronization."""
+    db.add(
+        OfflineSyncAudit(
+            attempt_code=(attempt_code or "").strip().upper() or None,
+            exam_id=exam.id if exam else None,
+            school_id=exam.school_id if exam else None,
+            student_user_id=student_user_id,
+            event=event,
+            channel=channel,
+            offline_started_at=started_at,
+            offline_submitted_at=submitted_at,
+            detail=detail,
+        )
+    )
+    await db.flush()
+
+
 @public_router.post("/submit")
 async def student_submit(
     payload: AuthExamIn,
@@ -724,20 +866,50 @@ async def student_submit(
     ).scalar_one_or_none()
     if attempt and attempt.student_user_id and attempt.student_user_id != user.id:
         raise HTTPException(status_code=403, detail="This attempt belongs to another student")
+    published = (attempt.result_status or "hidden") == "published" if attempt else False
+    started_dt = _clamp_dt(payload.started_at)
+    submitted_dt = _clamp_dt(payload.submitted_at)
     if attempt and attempt.marked_at:
-        return {
+        # Owner spec — Prevent submitting the same attempt multiple times:
+        # the first submission wins; every retry gets the SAME idempotent
+        # response (no double-marking, no score change). This is also what
+        # makes duplicate offline syncs safe — a replayed queue hits here.
+        await _log_sync(
+            db,
+            event="duplicate_ignored",
+            exam=exam,
+            student_user_id=user.id,
+            attempt_code=attempt.attempt_code,
+            channel="offline_sync" if payload.offline_sync else "online",
+            started_at=started_dt or attempt.started_at,
+            submitted_at=submitted_dt,
+            detail={
+                "client": payload.client,
+                "first_submitted_at": attempt.submitted_at.isoformat() if attempt.submitted_at else None,
+            },
+        )
+        base = {
             "already_submitted": True,
             "attempt_code": attempt.attempt_code,
             "result_code": attempt.result_code,
             "student_name": user.full_name,
             "candidate_id": getattr(profile, "school_student_id", None) if profile else None,
             "class_name": profile.education_level if profile else None,
-            "score": attempt.score,
+            "result_status": attempt.result_status or "hidden",
+            # Owner spec §22/§25: the score stays hidden until the school
+            # publishes results — the student only sees a confirmation.
+            "score": attempt.score if published else None,
             "total_marks": exam.total_marks,
-            "percentage": attempt.percentage,
-            "grade": attempt.grade,
-            "status": "Passed" if attempt.passed else "Failed",
+            "percentage": attempt.percentage if published else None,
+            "grade": attempt.grade if published else None,
+            "status": ("Passed" if attempt.passed else "Failed") if published else "Result withheld — awaiting school publication",
+            "message": (
+                "Exam already submitted. Your result will be available when your school publishes it."
+                if not published
+                else None
+            ),
         }
+        return base
     now = naive_utc_now()
     if not attempt:
         attempt = ExternalExamAttempt(
@@ -745,15 +917,57 @@ async def student_submit(
             exam_id=exam.id,
             school_id=exam.school_id,
             student_user_id=user.id,
-            started_at=payload.started_at or now,
-            expires_at=(payload.started_at or now) + timedelta(minutes=exam.duration_minutes or 120),
+            # Record exam start time: prefer the device-reported start (the
+            # attempt may have been taken fully offline), clamped to a sane
+            # window so a doctored clock cannot fake a 2019 start.
+            started_at=started_dt or now,
+            expires_at=(started_dt or now) + timedelta(minutes=exam.duration_minutes or 120),
             sync_status="pending",
+            result_status="hidden",
         )
         db.add(attempt)
         await db.flush()
+    elif attempt.started_at is None and started_dt is not None:
+        attempt.started_at = started_dt
     attempt.submitted_at = now
     attempt.student_user_id = user.id
     attempt = await _mark_attempt(db, exam, attempt, payload.answers or {})
+    await _log_sync(
+        db,
+        event="received",
+        exam=exam,
+        student_user_id=user.id,
+        attempt_code=attempt.attempt_code,
+        channel="offline_sync" if payload.offline_sync else "online",
+        started_at=attempt.started_at,
+        # Record submission time — both the device-reported one (telemetry)
+        # and the authoritative server receipt time (attempt.submitted_at).
+        submitted_at=submitted_dt,
+        detail={
+            "client": payload.client,
+            "server_received_at": attempt.submitted_at.isoformat() if attempt.submitted_at else None,
+            "device_submitted_at": submitted_dt.isoformat() if submitted_dt else None,
+            "started_at": attempt.started_at.isoformat() if attempt.started_at else None,
+            "answers_count": len(payload.answers or {}),
+        },
+    )
+    # Owner spec — Prevent reuse of an access code after submission: consume
+    # the candidate slip code that matches this student on first submit so a
+    # shared/leaked slip cannot start another exam.
+    try:
+        slip_res = await db.execute(
+            select(SchoolExamCandidate).where(
+                SchoolExamCandidate.user_id == user.id,
+                SchoolExamCandidate.is_used == False,  # noqa: E712
+            )
+        )
+        for slip in slip_res.scalars().all():
+            slip.is_used = True
+            slip.used_at = now
+            slip.used_for_exam_id = exam.id
+    except Exception:
+        pass  # consumption must never block a valid submission
+    newly_published = (attempt.result_status or "hidden") == "published"
     return {
         "already_submitted": False,
         "attempt_code": attempt.attempt_code,
@@ -761,11 +975,23 @@ async def student_submit(
         "student_name": user.full_name,
         "candidate_id": getattr(profile, "school_student_id", None) if profile else None,
         "class_name": profile.education_level if profile else None,
-        "score": attempt.score,
+        "result_status": attempt.result_status or "hidden",
+        # Owner spec §22: no score on submission — the student sees only the
+        # confirmation; the school marks/publishes and then results unlock.
+        "score": attempt.score if newly_published else None,
         "total_marks": exam.total_marks,
-        "percentage": attempt.percentage,
-        "grade": attempt.grade,
-        "status": "Passed" if attempt.passed else "Failed",
+        "percentage": attempt.percentage if newly_published else None,
+        "grade": attempt.grade if newly_published else None,
+        "status": (
+            ("Passed" if attempt.passed else "Failed")
+            if newly_published
+            else "Result withheld — awaiting school publication"
+        ),
+        "message": (
+            "Exam submitted successfully. Your result will be available when your school publishes it."
+            if not newly_published
+            else None
+        ),
     }
 
 
