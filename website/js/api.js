@@ -7,6 +7,11 @@
       if (host === "scholaxia1.onrender.com") {
         return String(location.origin || "").replace(/\/$/, "") || "https://scholaxia1.onrender.com";
       }
+      // School private links (divine-light.scholaxia.com) are served by the same
+      // Render service, so the API is same-origin there too.
+      if (/\.scholaxia\.com$/i.test(host) && host.toLowerCase() !== "scholaxia.com" && host.toLowerCase() !== "www.scholaxia.com") {
+        return String(location.origin || "").replace(/\/$/, "");
+      }
       // Local dev server (e.g. 127.0.0.1:8000) has no reachable database —
       // call the production API directly (CORS allows all origins).
       if (host === "localhost" || host === "127.0.0.1") {
@@ -16,6 +21,15 @@
     return "https://scholaxia1.onrender.com";
   })();
   global.API_BASE = API_BASE;
+  global.SCHOLAXIA_SCHOOL_HOST = (function () {
+    try {
+      var host = String((global.location && location.hostname) || "").toLowerCase();
+      if (/\.scholaxia\.com$/i.test(host) && host !== "scholaxia.com" && host !== "www.scholaxia.com") {
+        return host.split(".")[0];
+      }
+    } catch (e) {}
+    return null;
+  })();
 
   function fetchTimeout(ms) {
     var ctrl = new AbortController();
@@ -178,11 +192,17 @@
 
   async function loginApi(email, password) {
     var last = null;
+    // "email" may actually be a Student ID / registration number (school
+    // platform login without email) — send it in the right field.
+    var identField = String(email || "").indexOf("@") >= 0 ? "email" : "email_or_id";
+    var identBody = {};
+    identBody[identField] = email;
+    identBody.password = password;
     try {
       return await api("/api/v1/auth/login", {
         method: "POST",
         noAuth: true,
-        body: { email: email, password: password },
+        body: identBody,
         timeout: 20000,
         retries: 1,
         preferXhr: true,
@@ -196,7 +216,7 @@
       }
     }
     try {
-      return await formPost("/api/v1/auth/login", { email: email, password: password }, 20000);
+      return await formPost("/api/v1/auth/login", identBody, 20000);
     } catch (formErr) {
       var e = last || formErr;
       var friendly = friendlyFetchError(e);

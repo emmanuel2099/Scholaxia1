@@ -8,7 +8,7 @@
 
   var ROLE_META = {
     student: {
-      subLogin: "Student portal — live classes, CBT & study tools",
+      subLogin: "Student portal — log in with your email or school Student ID",
       subSignup: "Create a free student account",
       allowSignup: true,
     },
@@ -275,6 +275,54 @@
     redirectAfterAuth(actual);
   }
 
+  /* ── School private-link branding (divine-light.scholaxia.com etc.) ── */
+  var schoolInfo = null;
+
+  function applySchoolBranding() {
+    var slug = window.SCHOLAXIA_SCHOOL_HOST;
+    if (!slug || !api || typeof api.api !== "function") return;
+    var kicker = $("authVisualKicker");
+    var title = $("authVisualTitle");
+    var lead = $("authVisualLead");
+    var sub = $("portalSub");
+    var back = $("authBack");
+    if (back) back.hidden = true; // no "main site" escape hatch inside a school portal
+    if (sub) sub.textContent = "Loading your school…";
+    api
+      .api("/public/schools/by-slug/" + encodeURIComponent(slug), { method: "GET" })
+      .then(function (data) {
+        schoolInfo = data || null;
+        var name = (data && (data.name || data.slug)) || "your school";
+        var pretty = String(name).replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+        try { localStorage.setItem("sia_school_slug", slug); } catch (e) {}
+        try { localStorage.setItem("sia_school_name", pretty); } catch (e2) {}
+        if (kicker) kicker.textContent = pretty;
+        if (title) title.innerHTML = "Welcome to<br /><span>" + esc(pretty) + "</span>";
+        if (lead) lead.textContent = "Sign in with the Student ID and password from your school office.";
+        if (sub) sub.textContent = ""; // updateCopy() fills the role-specific line
+        if (data && data.logo_url) {
+          var img = $("authVisualImg");
+          var brand = document.querySelector(".auth-brand img");
+          if (brand) brand.src = data.logo_url;
+          if (img) img.src = data.logo_url;
+          var fav = document.querySelector("link[rel='icon']");
+          if (fav) fav.href = data.logo_url;
+        }
+        document.title = pretty + " — Sign in";
+      })
+      .catch(function () {
+        if (sub) sub.textContent = "";
+        // Unknown/unapproved school: the backend already shows a friendly page
+        // for the root path; here just keep the default Scholaxia copy.
+      });
+  }
+
+  function esc(s) {
+    return String(s || "").replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
   async function onLogin(e) {
     e.preventDefault();
     var email = $("loginEmail").value.trim();
@@ -283,7 +331,7 @@
     var errEl = $("loginError");
     showErr(errEl);
     if (!email || !password) {
-      showErr(errEl, "Enter email and password.");
+      showErr(errEl, "Enter your email or Student ID, and your password.");
       return;
     }
     btn.disabled = true;
@@ -466,6 +514,8 @@
       showErr($("signupError"), "Auth scripts failed to load. Refresh the page.");
       return;
     }
+
+    applySchoolBranding();
 
     var params = new URLSearchParams(window.location.search);
     nextUrl = safeNext(params.get("next") || "");

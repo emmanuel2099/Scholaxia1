@@ -1,7 +1,9 @@
 from pathlib import Path
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, Query, Depends, HTTPException
+BASE_DOMAIN = "scholaxia.com"
+
+from fastapi import FastAPI, WebSocket, Query, Request, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -197,7 +199,81 @@ async def debug_sia(db: AsyncSession = Depends(get_db)):
         return {"status": "error", "detail": str(e), "trace": traceback.format_exc()}
 
 
-from fastapi.responses import FileResponse  # noqa: F811 — kept near routes for clarity
+from fastapi.responses import FileResponse, RedirectResponse, HTMLResponse  # noqa: F811 — kept near routes for clarity
+
+
+# ------------------------------------------------------- school subdomains ----
+# Owner spec: each school gets its own private link (divine-light.scholaxia.com).
+# DNS points *.scholaxia.com (and the root) at this Render service; the app then
+# routes per Host header: school subdomains get the student app, the root/Render
+# host gets the marketing site + /admin + /app.
+
+
+def _request_host(request: Request) -> str:
+    """Client-visible hostname (Render proxies keep it in the Host header)."""
+    host = (request.headers.get("x-forwarded-host") or request.headers.get("host") or "").strip().lower()
+    return host.split(":")[0]
+
+
+def _is_school_host(host: str) -> bool:
+    return bool(host) and host.endswith(f".{BASE_DOMAIN}") and host != f"www.{BASE_DOMAIN}" and "." not in host[: -len(BASE_DOMAIN) - 1]
+
+
+def _school_slug_from_host(host: str) -> str | None:
+    if not _is_school_host(host):
+        return None
+    return host[: -len(BASE_DOMAIN) - 1]
+
+
+def _static_file(name: str) -> FileResponse:
+    if not WEBSITE_STATIC_DIR.is_dir():
+        raise HTTPException(status_code=404, detail="Student app folder missing on this deploy")
+    target = WEBSITE_STATIC_DIR / name
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="Not found")
+    no_cache = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
+    return FileResponse(target, headers=no_cache)
+
+
+_UNKNOWN_SCHOOL_PAGE = """<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>School not found — Scholaxia</title>
+<style>body{{font-family:system-ui,-apple-system,'Segoe UI',sans-serif;background:#0b1530;color:#eaf2ff;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0}}
+.card{{max-width:420px;text-align:center;padding:40px 32px;border-radius:18px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12)}}
+h1{{font-size:1.3rem;margin:0 0 10px}}p{{opacity:.8;line-height:1.5;margin:0 0 18px}}a{{color:#ffd166;font-weight:600}}</style></head>
+<body><div class="card"><h1>School not found</h1>
+<p>No Scholaxia school is registered at <strong>{host}</strong> (or it is not approved yet). Double-check the link with your school.</p>
+<a href="https://scholaxia.com/">Go to the main Scholaxia site →</a></div></body></html>"""
+
+
+async def _school_host_response(request: Request, slug: str, full_path: str):
+    from app.core.database import AsyncSessionLocal
+    from app.routers.school_core import school_by_slug
+
+    async with AsyncSessionLocal() as db:
+        try:
+            await school_by_slug(slug, db)
+        except HTTPException:
+            return HTMLResponse(_UNKNOWN_SCHOOL_PAGE.format(host=_request_host(request)), status_code=404)
+
+    path = (full_path or "").strip()
+    if not path or path.endswith("/"):
+        return _static_file("index.html")
+    safe = Path(path)
+    if ".." in safe.parts:
+        raise HTTPException(status_code=400, detail="Invalid path")
+    full = (WEBSITE_STATIC_DIR / safe).resolve()
+    try:
+        full.relative_to(WEBSITE_STATIC_DIR.resolve())
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Not found")
+    if full.is_file():
+        no_cache = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
+        return FileResponse(full, headers=no_cache)
+    # Unknown file → the SPA entry (lets deep links like /student.html work).
+    return _static_file("index.html")
+
 
 # Explicit routes so /app works even if StaticFiles mount order is flaky on Render.
 @app.get("/app")
@@ -247,3 +323,16 @@ if ADMIN_STATIC_DIR.is_dir():
         StaticFiles(directory=str(ADMIN_STATIC_DIR), html=True),
         name="admin_ui",
     )
+
+
+# ── School subdomain catch-all — MUST stay last so /api, /docs, /app, /admin …
+# are matched by their explicit routes first. ──
+@app.get("/{full_path:path}", include_in_schema=False)
+async def school_host_router(request: Request, full_path: str):
+    """Serve the student SPA on school private links (divine-light.scholaxia.com).
+    On any other host this 404s — the main site is handled by explicit routes."""
+    host = _request_host(request)
+    slug = _school_slug_from_host(host)
+    if not slug:
+        raise HTTPException(status_code=404, detail="Not found")
+    return await _school_host_response(request, slug, full_path)
