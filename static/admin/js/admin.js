@@ -4034,6 +4034,30 @@ function reactivateSchool(id) {
   _sxSchoolAction(id, "reactivate", {});
 }
 
+async function editSchool(id) {
+  var rows = (window.__sxSchools || []);
+  var s = null;
+  for (var i = 0; i < rows.length; i++) { if (rows[i].school_id === id) { s = rows[i]; break; } }
+  if (!s) { window.alert("School data not loaded yet — refresh and try again."); return; }
+  var slug = window.prompt("Private link (letters/numbers/dashes). Link becomes <slug>.scholaxia.com:", s.slug || "");
+  if (slug === null) return;
+  var logo = window.prompt("Logo image URL (leave empty for none):", s.logo_url || "");
+  if (logo === null) logo = s.logo_url || "";
+  var type = window.prompt("School type: private or public:", (s.school_type || "private"));
+  if (type === null) type = s.school_type || "";
+  var cat = window.prompt("Category: mixed, boys or girls:", (s.category || "mixed"));
+  if (cat === null) cat = s.category || "";
+  try {
+    await adminApi("/api/v1/super-admin/schools/" + id, {
+      method: "PATCH",
+      body: JSON.stringify({ slug: slug, logo_url: logo, school_type: type, category: cat }),
+    });
+    loadSchoolsAdmin();
+  } catch (e) {
+    window.alert(e.message || "Could not save");
+  }
+}
+
 async function setSchoolPlan(id) {
   var plan = window.prompt("Plan: basic (₦20,000), standard (₦35,000) or premium (₦60,000):", "basic");
   if (!plan) return;
@@ -4061,8 +4085,9 @@ async function loadSchoolsAdmin() {
   try {
     var data = await adminApi("/api/v1/super-admin/schools");
     var rows = (data && data.schools) || [];
+    window.__sxSchools = rows;
     if (!rows.length) { el.innerHTML = '<div class="empty-state">No schools yet. Add the first school above.</div>'; return; }
-    el.innerHTML = '<table class="data-table"><thead><tr><th>School</th><th>City</th><th>Status</th><th>Plan</th><th>Private link</th><th>School admins</th><th>Actions</th></tr></thead><tbody>' +
+    el.innerHTML = '<table class="data-table"><thead><tr><th>School</th><th>Type</th><th>City</th><th>Status</th><th>Plan</th><th>Private link</th><th>School admins</th><th>Actions</th></tr></thead><tbody>' +
       rows.map(function (s) {
         var ads = (s.admin_email ? escHtml(s.admin_name || "") + " (" + escHtml(s.admin_email) + ")" : "—");
         var status = String(s.approval_status || "approved").toLowerCase();
@@ -4076,8 +4101,11 @@ async function loadSchoolsAdmin() {
         } else {
           acts = '<button class="btn-sm danger" onclick="suspendSchool(\'' + s.school_id + '\')">Suspend</button> ';
         }
-        acts += '<button class="btn-sm" onclick="setSchoolPlan(\'' + s.school_id + '\')">' + (s.plan ? "Change plan" : "Set plan") + "</button>";
-        return "<tr><td><strong>" + escHtml(s.name) + "</strong></td><td>" + escHtml(s.city || "—") + "</td><td>" + _sxApprovalBadge(status) + "</td><td>" + planTxt + "</td><td>" + _sxPrivateLink(s) + "</td><td>" + ads + "</td><td>" + acts + "</td></tr>";
+        acts += '<button class="btn-sm" onclick="setSchoolPlan(\'' + s.school_id + '\')">' + (s.plan ? "Change plan" : "Set plan") + "</button> ";
+        acts += '<button class="btn-sm secondary" onclick="editSchool(\'' + s.school_id + '\')">Edit link/logo</button>';
+        var typeTxt = (s.school_type ? escHtml(s.school_type.charAt(0).toUpperCase() + s.school_type.slice(1)) : "—") +
+          (s.category && s.category !== "mixed" ? " · " + escHtml(s.category.charAt(0).toUpperCase() + s.category.slice(1)) + " only" : " · Mixed");
+        return "<tr><td><strong>" + escHtml(s.name) + "</strong></td><td>" + typeTxt + "</td><td>" + escHtml(s.city || "—") + "</td><td>" + _sxApprovalBadge(status) + "</td><td>" + planTxt + "</td><td>" + _sxPrivateLink(s) + "</td><td>" + ads + "</td><td>" + acts + "</td></tr>";
       }).join("") + "</tbody></table>";
   } catch (e) {
     el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";

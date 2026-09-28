@@ -315,6 +315,8 @@ async def ensure_school_campus_schema() -> None:
     stmts = (
         "ALTER TABLE school_campuses ADD COLUMN IF NOT EXISTS subscription_active BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE school_campuses ADD COLUMN IF NOT EXISTS subscription_plan VARCHAR(80) NULL",
+        "ALTER TABLE school_campuses ADD COLUMN IF NOT EXISTS school_type VARCHAR(20) NULL",
+        "ALTER TABLE school_campuses ADD COLUMN IF NOT EXISTS category VARCHAR(20) NULL",
     )
     for stmt in stmts:
         try:

@@ -137,6 +137,8 @@ class SchoolRegisterIn(BaseModel):
     state: str | None = None
     address: str | None = Field(default=None, max_length=500)
     logo_url: str | None = Field(default=None, max_length=500)
+    school_type: str | None = Field(default=None, max_length=20)  # private | public
+    category: str | None = Field(default=None, max_length=20)  # mixed | boys | girls
     admin_full_name: str = Field(min_length=2, max_length=255)
     admin_email: EmailStr
     admin_phone: str | None = None
@@ -176,6 +178,13 @@ async def register_school(payload: SchoolRegisterIn, db: AsyncSession = Depends(
         if (await db.execute(phone_query)).scalar_one_or_none():
             raise HTTPException(status_code=409, detail="An account with this phone number already exists")
 
+    school_type = (payload.school_type or "").lower().strip() or None
+    if school_type and school_type not in ("private", "public"):
+        raise HTTPException(status_code=422, detail="school_type must be private or public")
+    category = (payload.category or "").lower().strip() or None
+    if category and category not in ("mixed", "boys", "girls"):
+        raise HTTPException(status_code=422, detail="category must be mixed, boys or girls")
+
     campus = SchoolCampus(
         name=payload.school_name.strip(),
         slug=await _unique_slug(db, payload.school_name),
@@ -183,6 +192,8 @@ async def register_school(payload: SchoolRegisterIn, db: AsyncSession = Depends(
         state=payload.state,
         address=payload.address,
         logo_url=payload.logo_url,
+        school_type=school_type,
+        category=category,
         contact_email=email,
         contact_phone=phone,
         is_active=True,
@@ -246,6 +257,8 @@ async def register_school(payload: SchoolRegisterIn, db: AsyncSession = Depends(
         "private_link_fallback": f"https://scholaxia1.onrender.com/school/{campus.slug}/",
         "plan": plan,
         "price_ngn": plan_price_ngn(plan) if plan else 0,
+        "school_type": campus.school_type,
+        "category": campus.category,
         "status": "pending_review",
         "approval_status": "pending",
         "account_linked": linked_account,
@@ -290,6 +303,8 @@ async def school_by_slug(slug: str, db: AsyncSession = Depends(get_db)) -> dict:
         "state": row.state,
         "plan": sub.plan if sub else None,
         "logo_url": getattr(row, "logo_url", None),
+        "school_type": getattr(row, "school_type", None),
+        "category": getattr(row, "category", None),
     }
 
 
@@ -436,6 +451,8 @@ async def list_schools(
                 "contact_email": r.contact_email,
                 "contact_phone": r.contact_phone,
                 "logo_url": getattr(r, "logo_url", None),
+                "school_type": getattr(r, "school_type", None),
+                "category": getattr(r, "category", None),
             }
         )
     return {"schools": out, "count": len(out)}
@@ -510,6 +527,14 @@ class ReviewIn(BaseModel):
 class FeatureTogglesIn(BaseModel):
     # {"attendance": true, "fees": false, ...} — omitted features are untouched
     features: dict[str, bool]
+
+
+class SchoolEditIn(BaseModel):
+    """Super-admin edits: private link (slug), logo, school type, category."""
+    slug: str | None = Field(default=None, min_length=2, max_length=60)
+    logo_url: str | None = Field(default=None, max_length=500)
+    school_type: str | None = Field(default=None, max_length=20)  # private | public
+    category: str | None = Field(default=None, max_length=20)  # mixed | boys | girls
 
 
 async def _campus_or_404(db: AsyncSession, school_id: UUID) -> SchoolCampus:
@@ -587,6 +612,58 @@ async def reactivate_school(
     campus.is_active = True
     await db.commit()
     return {"school_id": str(campus.id), "approval_status": "approved"}
+
+
+@router.patch("/super-admin/schools/{school_id}")
+async def edit_school(
+    school_id: UUID,
+    payload: SchoolEditIn,
+    current_user: dict = Depends(_require_super_admin),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Super-admin edits a school's private link, logo and type/category.
+
+    Only provided fields are changed. Changing the slug changes the school's
+    link (<slug>.scholaxia.com and /school/<slug>/) immediately — must stay
+    unique and URL-safe.
+    """
+    campus = await _campus_or_404(db, school_id)
+
+    if payload.slug is not None:
+        new_slug = slugify(payload.slug)[:60]
+        if not new_slug:
+            raise HTTPException(status_code=422, detail="Slug cannot be empty")
+        if new_slug != campus.slug:
+            clash = (
+                await db.execute(select(SchoolCampus.id).where(SchoolCampus.slug == new_slug))
+            ).scalar_one_or_none()
+            if clash:
+                raise HTTPException(status_code=409, detail=f"The link '{new_slug}' is already taken by another school")
+            campus.slug = new_slug
+
+    if payload.logo_url is not None:
+        campus.logo_url = payload.logo_url.strip() or None
+    if payload.school_type is not None:
+        st = payload.school_type.lower().strip() or None
+        if st and st not in ("private", "public"):
+            raise HTTPException(status_code=422, detail="school_type must be private or public")
+        campus.school_type = st
+    if payload.category is not None:
+        cat = payload.category.lower().strip() or None
+        if cat and cat not in ("mixed", "boys", "girls"):
+            raise HTTPException(status_code=422, detail="category must be mixed, boys or girls")
+        campus.category = cat
+
+    await db.commit()
+    return {
+        "school_id": str(campus.id),
+        "slug": campus.slug,
+        "private_link": f"https://{campus.slug}.{BASE_DOMAIN_DEFAULT}" if campus.slug else None,
+        "private_link_fallback": f"https://scholaxia1.onrender.com/school/{campus.slug}/" if campus.slug else None,
+        "logo_url": campus.logo_url,
+        "school_type": campus.school_type,
+        "category": campus.category,
+    }
 
 
 @router.get("/super-admin/schools/{school_id}/features")
