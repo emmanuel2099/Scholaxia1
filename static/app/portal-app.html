@@ -16,7 +16,7 @@
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Outfit',system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:15px}
 button{font-family:inherit;cursor:pointer}
-input,select{font-family:inherit;font-size:14.5px}
+input,select,textarea{font-family:inherit;font-size:14.5px}
 
 /* ── LOGIN ── */
 #login{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(140deg,#eef4ff 0%,#dfe9fb 55%,#cddcf7 100%);padding:24px}
@@ -35,6 +35,7 @@ input,select{font-family:inherit;font-size:14.5px}
 .f-label{display:block;font-weight:600;font-size:13.5px;margin:14px 0 6px;color:var(--navy)}
 .f-in{width:100%;padding:12px 14px;border:1.5px solid var(--line);border-radius:11px;outline:none;background:#fbfcff;transition:border .15s}
 .f-in:focus{border-color:var(--blue);background:#fff}
+textarea.f-in{resize:vertical;min-height:60px}
 .login-row{display:flex;justify-content:space-between;align-items:center;margin:14px 0 18px;font-size:13.5px;color:var(--mut)}
 .btn-login{width:100%;padding:13px;border:none;border-radius:12px;background:var(--blue);color:#fff;font-size:16px;font-weight:700;transition:background .15s}
 .btn-login:hover{background:var(--blue2)}
@@ -67,15 +68,17 @@ input,select{font-family:inherit;font-size:14.5px}
 .who .nm{font-weight:700;font-size:14px;line-height:1.1}
 .who .rl{color:var(--mut);font-size:12px}
 .content{padding:26px;max-width:1200px;width:100%}
-.page{display:none}
-.page.on{display:block}
-.page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:20px}
+.page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:20px;flex-wrap:wrap}
 .page-head h1{font-size:26px;font-weight:800;color:var(--navy)}
 .page-head p{color:var(--mut);margin-top:3px}
+.head-actions{display:flex;gap:10px;flex-wrap:wrap}
 .btn{display:inline-flex;align-items:center;gap:8px;padding:11px 18px;border:none;border-radius:11px;background:var(--blue);color:#fff;font-weight:600;font-size:14.5px}
 .btn:hover{background:var(--blue2)}
 .btn.ghost{background:#fff;color:var(--blue);border:1.5px solid var(--blue)}
+.btn.green{background:var(--ok)}.btn.green:hover{background:#128a3e}
+.btn.red{background:var(--bad)}.btn.red:hover{background:#b91c1c}
 .btn.sm{padding:7px 12px;font-size:13px;border-radius:9px}
+.btn[disabled]{opacity:.6;cursor:wait}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:16px;margin-bottom:22px}
 .card{background:var(--card);border-radius:var(--rad);box-shadow:var(--sh);padding:18px}
 .card .cl{display:flex;gap:12px;align-items:center}
@@ -85,7 +88,7 @@ input,select{font-family:inherit;font-size:14.5px}
 .panel{background:var(--card);border-radius:var(--rad);box-shadow:var(--sh);padding:20px;margin-bottom:20px}
 .panel h3{font-size:16.5px;margin-bottom:14px;color:var(--navy)}
 table{width:100%;border-collapse:collapse;font-size:14px}
-th{ text-align:left;color:var(--mut);font-weight:600;font-size:12.5px;text-transform:uppercase;letter-spacing:.03em;padding:10px 12px;border-bottom:1.5px solid var(--line)}
+th{text-align:left;color:var(--mut);font-weight:600;font-size:12.5px;text-transform:uppercase;letter-spacing:.03em;padding:10px 12px;border-bottom:1.5px solid var(--line)}
 td{padding:12px;border-bottom:1px solid var(--line);vertical-align:middle}
 tr:last-child td{border-bottom:none}
 .pill{display:inline-block;padding:3px 11px;border-radius:999px;font-size:12px;font-weight:600}
@@ -94,20 +97,48 @@ tr:last-child td{border-bottom:none}
 .pill.bad{background:var(--badbg);color:var(--bad)}
 .pill.blue{background:var(--sky);color:var(--blue)}
 .pill.gray{background:#eef1f7;color:var(--mut)}
+.pill.violet{background:#f3e8ff;color:#7c3aed}
 .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
 .form-grid .full{grid-column:1/-1}
 .empty{color:var(--mut);text-align:center;padding:26px 10px;font-size:14px}
 .muted{color:var(--mut)}
 .stat-mini{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px}
 .chip{background:var(--sky);color:var(--blue);border-radius:999px;padding:6px 13px;font-size:12.5px;font-weight:600}
+.chip.g{background:var(--okbg);color:var(--ok)}.chip.w{background:var(--warnbg);color:var(--warn)}.chip.r{background:var(--badbg);color:var(--bad)}
 .tabs{display:flex;gap:4px;border-bottom:1.5px solid var(--line);margin-bottom:16px}
 .tabs button{background:none;border:none;padding:11px 16px;font-size:14px;font-weight:600;color:var(--mut);border-bottom:2.5px solid transparent;margin-bottom:-1.5px}
 .tabs button.on{color:var(--blue);border-color:var(--blue)}
 .radio-row{display:flex;gap:10px;flex-wrap:wrap}
 .radio-row label{display:flex;align-items:center;gap:7px;border:1.5px solid var(--line);border-radius:10px;padding:9px 13px;font-size:13.5px;cursor:pointer;background:#fbfcff}
-.radio-row input{accent-color:var(--blue)}
-#toast{position:fixed;bottom:22px;right:22px;background:var(--navy);color:#fff;padding:12px 18px;border-radius:12px;font-size:14px;display:none;z-index:99;box-shadow:0 10px 30px rgba(13,27,62,.3)}
+#toast{position:fixed;bottom:22px;right:22px;background:var(--navy);color:#fff;padding:12px 18px;border-radius:12px;font-size:14px;display:none;z-index:999;box-shadow:0 10px 30px rgba(13,27,62,.3);max-width:420px}
 @media(max-width:900px){.shell{grid-template-columns:1fr}.sidebar{position:fixed;z-index:50;width:250px;transform:translateX(-100%);transition:transform .2s}.sidebar.open{transform:none}.content{padding:16px}}
+
+/* ── MODALS ── */
+.mb-back{position:fixed;inset:0;background:rgba(13,27,62,.45);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;z-index:500;padding:18px}
+.mb-modal{background:#fff;border-radius:18px;box-shadow:0 30px 80px rgba(13,27,62,.35);width:100%;max-width:560px;max-height:92vh;display:flex;flex-direction:column;animation:mbin .16s ease-out}
+.mb-modal.wide{max-width:760px}
+@keyframes mbin{from{transform:translateY(14px);opacity:0}to{transform:none;opacity:1}}
+.mb-head{display:flex;align-items:center;justify-content:space-between;padding:18px 22px 0}
+.mb-head h3{font-size:18px;color:var(--navy);font-weight:800}
+.mb-x{background:#f1f4fa;border:none;border-radius:9px;width:32px;height:32px;font-size:14px;color:var(--mut)}
+.mb-x:hover{background:#e6ebf5;color:var(--ink)}
+.mb-body{padding:16px 22px;overflow-y:auto}
+.mb-foot{display:flex;justify-content:flex-end;gap:10px;padding:14px 22px 18px;border-top:1px solid var(--line)}
+.mrow{margin-bottom:13px}
+.mrow .f-label{margin:0 0 5px}
+.mhint{font-size:12.5px;color:var(--mut);margin-top:4px}
+.merr{display:none;margin-top:10px;padding:9px 12px;border-radius:9px;background:var(--badbg);color:var(--bad);font-size:13px}
+.mnote{background:var(--okbg);border:1px solid #bfe8cf;color:#116a35;border-radius:10px;padding:12px 14px;font-size:14px;line-height:1.6}
+.mnote code{background:#fff;border:1px solid #bfe8cf;border-radius:6px;padding:2px 7px;font-size:13px;font-weight:700}
+.qrow{border:1.5px solid var(--line);border-radius:12px;padding:13px;margin-bottom:12px;background:#fbfcff}
+.qrow .qtop{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.qrow .qtop b{font-size:13px;color:var(--blue)}
+.qrow .opts{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:9px}
+.qrow .opt{display:flex;align-items:center;gap:8px}
+.qrow .opt b{font-size:12.5px;color:var(--mut);width:16px}
+.doc-pill{display:inline-flex;align-items:center;gap:6px;background:var(--sky);color:var(--blue);border-radius:999px;padding:4px 12px;font-size:12.5px;font-weight:600;text-decoration:none}
+.spin{display:inline-block;width:15px;height:15px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px}
+@keyframes sp{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
@@ -150,7 +181,7 @@ tr:last-child td{border-bottom:none}
     </aside>
     <div class="main">
       <div class="topbar">
-        <div class="search">🔍 <input id="gSearch" placeholder="Search anything…" /></div>
+        <div class="search">🔍 <input id="gSearch" placeholder="Search students… (press Enter)" /></div>
         <div class="who"><div class="avatar" id="uAvatar">A</div><div><div class="nm" id="uName">—</div><div class="rl">School Admin</div></div>
           <button class="btn sm ghost" onclick="logout()" style="margin-left:8px">Log out</button></div>
       </div>
@@ -181,41 +212,102 @@ tr:last-child td{border-bottom:none}
     API = location.origin + "/api/v1";
   }
 
-  var S = { school: null, user: null, token: localStorage.getItem("sx_portal_token_" + slug) || null, subjects: [], classes: [], cache: {} };
+  var S = { school: null, user: null, token: localStorage.getItem("sx_portal_token_" + slug) || null, cache: {} };
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
   var money = function (n) { return "₦" + Number(n || 0).toLocaleString("en-NG"); };
 
-  function toast(msg) { var t = $("toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(t._h); t._h = setTimeout(function () { t.style.display = "none"; }, 2600); }
+  function toast(msg) { var t = $("toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(t._h); t._h = setTimeout(function () { t.style.display = "none"; }, 3000); }
 
+  /* Friendly error text — never "[object Object]" */
+  function errText(e) {
+    if (e == null) return "Something went wrong";
+    if (typeof e === "string") return e;
+    var raw = e.message != null ? e.message : null;
+    if (raw != null) {
+      var s = String(raw);
+      if (s === "[object Object]" || s === "[object Undefined]") { try { s = JSON.stringify(e); } catch (_) { s = ""; } }
+      try {
+        var arr = JSON.parse(s);
+        if (Array.isArray(arr)) {
+          return arr.map(function (v) { return (v && v.msg ? v.msg : "") + (v && v.loc && v.loc.length ? " (" + v.loc.join(".") + ")" : ""); }).filter(Boolean).join("; ") || "Invalid input";
+        }
+      } catch (_) {}
+      if (s.indexOf("[object") === 0) { try { s = JSON.stringify(e); } catch (_) {} }
+      return s || "Something went wrong";
+    }
+    try { return JSON.stringify(e); } catch (_) { return "Something went wrong"; }
+  }
+  function detailOf(d) {
+    if (!d) return null;
+    var det = d.detail != null ? d.detail : (d.message != null ? d.message : null);
+    if (det == null) return null;
+    if (typeof det === "string") return det;
+    if (Array.isArray(det)) return det.map(function (v) { return v && v.msg ? v.msg + (v.loc ? " (" + v.loc.join(".") + ")" : "") : ""; }).filter(Boolean).join("; ") || "Invalid input";
+    try { return det.msg || JSON.stringify(det); } catch (_) { return "Request failed"; }
+  }
+  function toastErr(e) { toast("⚠️ " + errText(e)); }
+
+  function _headers(json) {
+    var h = {};
+    if (json !== false) h["Content-Type"] = "application/json";
+    if (S.token) h["Authorization"] = "Bearer " + S.token;
+    return h;
+  }
+  function _handle(r) {
+    return r.text().then(function (txt) {
+      var d = null;
+      try { d = txt ? JSON.parse(txt) : null; } catch (_) { d = null; }
+      if (r.status === 401 && S.token) { logout(); throw new Error("Session expired — log in again."); }
+      if (!r.ok) throw new Error(detailOf(d) || ("Request failed (" + r.status + ")"));
+      return d;
+    });
+  }
   function api(path, opts) {
     opts = opts || {};
     return fetch(API + "/school-portal/" + slug + path, {
       method: opts.method || "GET",
-      headers: Object.assign({ "Content-Type": "application/json" }, S.token ? { Authorization: "Bearer " + S.token } : {}),
-      body: opts.body ? JSON.stringify(opts.body) : undefined,
-    }).then(function (r) {
-      if (r.status === 401) { logout(); throw new Error("Session expired — log in again."); }
-      return r.json().then(function (d) {
-        if (!r.ok) throw new Error((d && d.detail) || "Request failed (" + r.status + ")");
-        return d;
-      });
-    });
+      headers: _headers(!opts.form),
+      body: opts.form ? opts.form : (opts.body ? JSON.stringify(opts.body) : undefined),
+    }).then(_handle);
   }
-  // School-office APIs (students/teachers/exams/results) live under /admin/school-office
   function officeApi(path, opts) {
     opts = opts || {};
     return fetch(API + "/admin/school-office" + path, {
       method: opts.method || "GET",
-      headers: Object.assign({ "Content-Type": "application/json" }, S.token ? { Authorization: "Bearer " + S.token } : {}),
-      body: opts.body ? JSON.stringify(opts.body) : undefined,
-    }).then(function (r) {
-      return r.json().then(function (d) {
-        if (!r.ok) throw new Error((d && d.detail) || "Request failed (" + r.status + ")");
-        return d;
-      });
-    });
+      headers: _headers(!opts.form),
+      body: opts.form ? opts.form : (opts.body ? JSON.stringify(opts.body) : undefined),
+    }).then(_handle);
   }
+
+  /* ── MODAL SYSTEM (replaces every prompt/alert/confirm) ── */
+  window.closeModal = function () { var b = $("mb"); if (b) b.remove(); };
+  function openModal(title, bodyHTML, footHTML, wide) {
+    closeModal();
+    var b = document.createElement("div"); b.id = "mb"; b.className = "mb-back";
+    b.innerHTML = '<div class="mb-modal' + (wide ? " wide" : "") + '" role="dialog" aria-modal="true">' +
+      '<div class="mb-head"><h3>' + title + '</h3><button class="mb-x" onclick="closeModal()" aria-label="Close">✕</button></div>' +
+      '<div class="mb-body">' + bodyHTML + '</div>' +
+      (footHTML ? '<div class="mb-foot">' + footHTML + '</div>' : '') + '</div>';
+    b.addEventListener("mousedown", function (e) { if (e.target === b) closeModal(); });
+    document.body.appendChild(b);
+    var f = b.querySelector("input,select,textarea,button.btn"); if (f) f.focus();
+    return b;
+  }
+  function mErr(msg) {
+    var box = document.querySelector("#mb .merr"); if (!box) return;
+    box.textContent = msg; box.style.display = "block";
+  }
+  function busy(btn, on, label) {
+    if (!btn) return;
+    btn.disabled = !!on;
+    btn.innerHTML = on ? '<span class="spin"></span> Working…' : label;
+  }
+  window.confirmModal = function (title, msg, onYes, yesLabel, red) {
+    openModal(esc(title), '<p style="font-size:14.5px;line-height:1.6">' + msg + '</p>',
+      '<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn ' + (red ? "red" : "") + '" id="cfYes">' + (yesLabel || "Confirm") + '</button>');
+    $("cfYes").addEventListener("click", function () { onYes($("cfYes")); });
+  };
 
   /* ── LOGIN SCREEN ── */
   function initLogin() {
@@ -230,40 +322,38 @@ tr:last-child td{border-bottom:none}
     }).catch(function () {});
     if (S.token) { tryEnter(); }
   }
-
   function setLogo(wrapEl, url) {
     if (!url) return;
     wrapEl.innerHTML = '<img src="' + esc(url) + '" alt="logo" onerror="this.parentNode.innerHTML=\'<span>🎓</span>\'" />';
   }
-
   $("loginForm").addEventListener("submit", function (e) {
     e.preventDefault();
     var btn = $("lgBtn"), err = $("lgErr");
     err.style.display = "none";
-    btn.disabled = true; btn.textContent = "Logging in…";
+    btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Logging in…';
     fetch(API + "/school-portal/" + slug + "/login", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ identifier: $("lgId").value.trim(), password: $("lgPw").value }),
-    }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); }).then(function (res) {
-      if (!res.ok) throw new Error(res.d.detail || "Login failed");
-      S.token = res.d.access_token; S.user = res.d.user; S.school = res.d.school;
+    }).then(_handle).then(function (d) {
+      S.token = d.access_token; S.user = d.user; S.school = d.school;
       localStorage.setItem("sx_portal_token_" + slug, S.token);
-      localStorage.setItem("sx_portal_user_" + slug, JSON.stringify(res.d.user));
+      localStorage.setItem("sx_portal_user_" + slug, JSON.stringify(d.user));
       enter();
     }).catch(function (ex) {
-      err.textContent = ex.message || "Could not log in"; err.style.display = "block";
-      btn.disabled = false; btn.textContent = "→  Log In";
+      err.textContent = errText(ex) || "Could not log in"; err.style.display = "block";
+      btn.disabled = false; btn.innerHTML = "→&nbsp; Log In";
     });
   });
-
   function logout() {
     localStorage.removeItem("sx_portal_token_" + slug);
+    localStorage.removeItem("sx_portal_user_" + slug);
     location.reload();
   }
-
+  window.logout = logout;
   function tryEnter() {
     var u = localStorage.getItem("sx_portal_user_" + slug);
-    if (u) { S.user = JSON.parse(u); enter(); } else { logout(); }
+    if (u) { try { S.user = JSON.parse(u); enter(); return; } catch (e) {} }
+    logout();
   }
 
   /* ── APP SHELL ── */
@@ -273,7 +363,6 @@ tr:last-child td{border-bottom:none}
     ["results", "📊", "Results"], ["attendance", "🗓️", "Attendance"], ["fees", "💳", "Fees & Finance"],
     ["reports", "📈", "Reports"], ["settings", "⚙️", "Settings"],
   ];
-
   function enter() {
     $("login").style.display = "none";
     $("app").style.display = "block";
@@ -282,19 +371,21 @@ tr:last-child td{border-bottom:none}
     $("uName").textContent = (S.user && S.user.full_name) || "Admin";
     $("uAvatar").textContent = ((S.user && S.user.full_name) || "A").charAt(0).toUpperCase();
     setLogo($("sbLogoWrap"), S.school && S.school.logo_url);
-    var nav = $("nav");
-    nav.innerHTML = PAGES.map(function (p) {
+    $("nav").innerHTML = PAGES.map(function (p) {
       return '<button data-p="' + p[0] + '" onclick="showPage(\'' + p[0] + '\')"><span class="ico">' + p[1] + '</span>' + p[2] + '</button>';
     }).join("");
+    $("gSearch").addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && this.value.trim()) { showPage("students"); setTimeout(function () { var q = $("stQ"); if (q) { q.value = $("gSearch").value.trim(); loadStudents(); } }, 60); }
+    });
     showPage("dashboard");
   }
   window.showPage = function (p) {
     document.querySelectorAll(".nav button").forEach(function (b) { b.classList.toggle("on", b.dataset.p === p); });
-    if (R[p]) { try { R[p](); } catch (e) { $("pages").innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; } }
+    closeModal();
+    if (R[p]) { try { R[p](); } catch (e) { $("pages").innerHTML = '<div class="panel"><div class="empty">' + esc(errText(e)) + '</div></div>'; } }
   };
-
   function head(title, sub, btn) {
-    return '<div class="page-head"><div><h1>' + title + '</h1><p>' + sub + '</p></div>' + (btn || "") + '</div>';
+    return '<div class="page-head"><div><h1>' + title + '</h1><p>' + sub + '</p></div>' + (btn ? '<div class="head-actions">' + btn + '</div>' : "") + '</div>';
   }
   function statCard(ico, bg, label, val, extra) {
     return '<div class="card"><div class="cl"><div class="cico" style="background:' + bg + '">' + ico + '</div><div><div class="clab">' + label + '</div><div class="cval">' + val + '</div></div></div>' + (extra ? '<div class="muted" style="margin-top:8px;font-size:12.5px">' + extra + '</div>' : "") + '</div>';
@@ -303,16 +394,20 @@ tr:last-child td{border-bottom:none}
     if (!rows.length) return '<div class="empty">Nothing here yet.</div>';
     return '<div style="overflow-x:auto"><table><thead><tr>' + headers.map(function (h) { return '<th>' + h + '</th>'; }).join("") + '</tr></thead><tbody>' + rows.join("") + '</tbody></table></div>';
   }
+  function dt(s) { try { return s ? new Date(s).toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—"; } catch (e) { return "—"; } }
+  function dOnly(s) { try { return s ? new Date(s).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "—"; } catch (e) { return "—"; } }
 
   /* ── PAGE RENDERERS ── */
   var R = {};
 
+  /* ═══ DASHBOARD ═══ */
   R.dashboard = function () {
-    $("pages").innerHTML = head("Dashboard", "Welcome back" + (S.user ? ", " + esc(S.user.full_name.split(" ")[0]) : "") + " — here's your school at a glance.") + '<div class="cards" id="dCards"><div class="empty">Loading…</div></div>' +
+    $("pages").innerHTML = head("Dashboard", "Welcome back" + (S.user ? ", " + esc(S.user.full_name.split(" ")[0]) : "") + " — here's your school at a glance.") +
+      '<div class="cards" id="dCards"><div class="panel"><div class="empty">Loading…</div></div></div>' +
       '<div class="panel"><h3>Quick actions</h3><div class="radio-row">' +
       '<label onclick="showPage(\'students\')">👥 Add / view students</label><label onclick="showPage(\'exams\')">📝 Create exam or CBT</label>' +
-      '<label onclick="showPage(\'results\')">📊 Publish results</label><label onclick="showPage(\'attendance\')">🗓️ Mark attendance</label>' +
-      '<label onclick="showPage(\'settings\')">⚙️ School settings</label></div></div>';
+      '<label onclick="showPage(\'results\')">📊 View results</label><label onclick="showPage(\'attendance\')">🗓️ Mark attendance</label>' +
+      '<label onclick="showPage(\'fees\')">💳 Record a payment</label><label onclick="showPage(\'settings\')">⚙️ School settings</label></div></div>';
     api("/dashboard").then(function (d) {
       if (d.school) { $("sbSchool").textContent = d.school.name; }
       var st = d.stats || {};
@@ -321,11 +416,13 @@ tr:last-child td{border-bottom:none}
         statCard("👨‍🏫", "#e7f8ee", "Teachers", st.teachers || 0) +
         statCard("📝", "#fdf3e3", "Exams & CBTs", st.exams || 0) +
         statCard("✅", "#f3e8ff", "Exam Submissions", st.exam_submissions || 0);
-    }).catch(function (e) { $("dCards").innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
+    }).catch(function (e) { $("dCards").innerHTML = '<div class="panel"><div class="empty">' + esc(errText(e)) + '</div></div>'; });
   };
 
+  /* ═══ STUDENTS ═══ */
   R.students = function () {
-    $("pages").innerHTML = head("Students", "Everyone enrolled in your school.", '<button class="btn" onclick="addStudent()">+ Add Student</button>') +
+    $("pages").innerHTML = head("Students", "Everyone enrolled in your school.",
+        '<button class="btn" onclick="addStudent()">+ Add Student</button><button class="btn ghost" onclick="importStudents()">⬆ Import CSV</button>') +
       '<div class="panel"><div class="form-grid"><div><input class="f-in" id="stQ" placeholder="Search by name, ID or email…" oninput="loadStudents()" /></div>' +
       '<div><select class="f-in" id="stCls" onchange="loadStudents()"><option value="">All classes</option></select></div></div>' +
       '<div id="stTbl"><div class="empty">Loading…</div></div></div>';
@@ -335,27 +432,75 @@ tr:last-child td{border-bottom:none}
     var q = ($("stQ") && $("stQ").value) || "", cls = ($("stCls") && $("stCls").value) || "";
     officeApi("/students?q=" + encodeURIComponent(q) + (cls ? "&class_name=" + encodeURIComponent(cls) : "")).then(function (d) {
       var rows = (d.students || []).map(function (s) {
-        return '<tr><td><strong>' + esc(s.full_name) + '</strong></td><td>' + esc(s.student_id || "—") + '</td><td>' + esc(s.email || "—") + '</td><td><span class="pill blue">' + esc(s.class_name || "—") + '</span></td><td>' + (s.is_active ? '<span class="pill ok">Active</span>' : '<span class="pill gray">Disabled</span>') + '</td></tr>';
+        return '<tr><td><strong>' + esc(s.full_name) + '</strong></td><td><span class="pill violet">' + esc(s.student_id || "—") + '</span></td><td>' + esc(s.email || "—") + '</td><td><span class="pill blue">' + esc(s.class_name || "—") + '</span></td><td>' + (s.is_active ? '<span class="pill ok">Active</span>' : '<span class="pill gray">Disabled</span>') + '</td></tr>';
       });
       $("stTbl").innerHTML = tbl(["Name", "Student ID", "Email", "Class", "Status"], rows);
-      if (!$("stCls").options.length || $("stCls").options.length < 2) {
+      if ($("stCls").options.length < 2) {
         var levels = {};
         (d.students || []).forEach(function (s) { if (s.class_name) levels[s.class_name] = 1; });
         $("stCls").innerHTML = '<option value="">All classes</option>' + Object.keys(levels).sort().map(function (l) { return '<option>' + esc(l) + '</option>'; }).join("");
         if (cls) $("stCls").value = cls;
       }
-    }).catch(function (e) { $("stTbl").innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
+    }).catch(function (e) { $("stTbl").innerHTML = '<div class="empty">' + esc(errText(e)) + '</div>'; });
   };
+  function genPw() {
+    var c = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789", out = "";
+    for (var i = 0; i < 10; i++) out += c.charAt(Math.floor(Math.random() * c.length));
+    return out;
+  }
   window.addStudent = function () {
-    var name = prompt("Student full name:"); if (!name) return;
-    var cls = prompt("Class (e.g. JSS1, SS2):", "JSS1"); if (!cls) return;
-    var pw = prompt("Set a password for this student (min 8 chars):"); if (!pw || pw.length < 8) { alert("Password must be at least 8 characters."); return; }
-    officeApi("/students", { method: "POST", body: { full_name: name, class_name: cls, password: pw } }).then(function (d) {
-      toast("Student added — Student ID: " + (d.student_id || d.id));
-      loadStudents();
-    }).catch(function (e) { alert(e.message); });
+    openModal("Add Student",
+      '<div class="mrow"><label class="f-label">Full name *</label><input class="f-in" id="adName" placeholder="e.g. Amara Okafor" /></div>' +
+      '<div class="mrow"><label class="f-label">Class *</label><input class="f-in" id="adCls" list="clsList" placeholder="e.g. JSS1" /><datalist id="clsList"></datalist><div class="mhint">Type a class like JSS1, JSS2, SS1…</div></div>' +
+      '<div class="mrow"><label class="f-label">Email (optional)</label><input class="f-in" id="adEmail" type="email" placeholder="student@email.com" /><div class="mhint">Leave empty — students log in with their Student ID.</div></div>' +
+      '<div class="mrow"><label class="f-label">Password (min 8 chars) *</label><div style="display:flex;gap:8px"><input class="f-in" id="adPw" style="flex:1" /><button class="btn sm ghost" type="button" onclick="$(\'adPw\').value=genPw()">🎲 Generate</button></div></div>' +
+      '<div class="merr"></div>',
+      '<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="adSave">Add student</button>');
+    api("/classes").then(function (d) {
+      var dl = $("clsList"); if (!dl) return;
+      dl.innerHTML = (d.classes || []).map(function (c) { return '<option value="' + esc(c.name) + '">'; }).join("");
+    }).catch(function () {});
+    $("adPw").value = genPw();
+    $("adSave").addEventListener("click", function () {
+      var name = $("adName").value.trim(), cls = $("adCls").value.trim(), pw = $("adPw").value, em = $("adEmail").value.trim();
+      if (!name) return mErr("Enter the student's full name.");
+      if (!cls) return mErr("Enter a class.");
+      if (!pw || pw.length < 8) return mErr("Password must be at least 8 characters.");
+      busy($("adSave"), true);
+      officeApi("/students", { method: "POST", body: { full_name: name, class_name: cls, password: pw, email: em || null } }).then(function (d) {
+        closeModal();
+        openModal("✅ Student created",
+          '<div class="mnote">Share these login details with the student:<br/><br/>Student ID: <code>' + esc(d.student_id || d.id || "—") + '</code><br/>Password: <code>' + esc(d.password || pw) + '</code><br/>Class: <code>' + esc(cls) + '</code></div>' +
+          '<p class="mhint" style="margin-top:10px">The student logs in on your school link with this Student ID + password.</p>',
+          '<button class="btn" onclick="closeModal()">Done</button>');
+        loadStudents();
+      }).catch(function (e) { busy($("adSave"), false, "Add student"); mErr(errText(e)); });
+    });
+  };
+  window.importStudents = function () {
+    openModal("Import Students (CSV)",
+      '<p class="mhint" style="margin-bottom:12px">CSV columns: <code>full_name, class_name</code> (plus optional <code>email</code>, <code>student_id</code>). Passwords are auto-generated and shown after import.</p>' +
+      '<div class="mrow"><input type="file" id="impFile" accept=".csv,text/csv" class="f-in" /></div><div class="merr"></div>',
+      '<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="impGo">Import</button>');
+    $("impGo").addEventListener("click", function () {
+      var f = $("impFile").files[0];
+      if (!f) return mErr("Choose a .csv file first.");
+      var fd = new FormData(); fd.append("file", f);
+      busy($("impGo"), true);
+      officeApi("/students/import", { method: "POST", form: fd }).then(function (d) {
+        closeModal();
+        var made = d.created || [];
+        openModal("✅ Imported " + (d.created_count != null ? d.created_count : made.length) + " students",
+          (d.errors && d.errors.length ? '<p class="mhint" style="margin-bottom:10px;color:var(--bad)">Skipped: ' + esc(d.errors.join("; ")) + '</p>' : "") +
+          '<div style="max-height:300px;overflow:auto">' + tbl(["Name", "Student ID", "Password"], made.map(function (s) {
+            return '<tr><td>' + esc(s.full_name) + '</td><td><span class="pill violet">' + esc(s.student_id || "—") + '</span></td><td><code>' + esc(s.password || "—") + '</code></td></tr>';
+          })) + '</div>', '<button class="btn" onclick="closeModal()">Done</button>', true);
+        loadStudents();
+      }).catch(function (e) { busy($("impGo"), false, "Import"); mErr(errText(e)); });
+    });
   };
 
+  /* ═══ TEACHERS ═══ */
   R.teachers = function () {
     $("pages").innerHTML = head("Teachers", "Teaching staff in your school.", '<button class="btn" onclick="addTeacher()">+ Add Teacher</button>') +
       '<div class="panel"><div id="tTbl"><div class="empty">Loading…</div></div></div>';
@@ -364,36 +509,67 @@ tr:last-child td{border-bottom:none}
         return '<tr><td><strong>' + esc(t.full_name) + '</strong></td><td>' + esc(t.email) + '</td><td>' + (t.subjects || []).map(function (s) { return '<span class="pill blue">' + esc(s) + '</span>'; }).join(" ") + '</td><td>' + esc((t.academic_classes || []).join(", ") || "—") + '</td></tr>';
       });
       $("tTbl").innerHTML = tbl(["Name", "Email", "Subjects", "Classes"], rows);
-    }).catch(function (e) { $("tTbl").innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
+    }).catch(function (e) { $("tTbl").innerHTML = '<div class="empty">' + esc(errText(e)) + '</div>'; });
   };
   window.addTeacher = function () {
-    var name = prompt("Teacher full name:"); if (!name) return;
-    var email = prompt("Teacher email:"); if (!email) return;
-    var pw = prompt("Password (min 8 chars):"); if (!pw || pw.length < 8) { alert("Password too short."); return; }
-    officeApi("/teachers", { method: "POST", body: { full_name: name, email: email, password: pw } }).then(function () {
-      toast("Teacher added"); showPage("teachers");
-    }).catch(function (e) { alert(e.message); });
+    openModal("Add Teacher",
+      '<div class="mrow"><label class="f-label">Full name *</label><input class="f-in" id="thName" placeholder="e.g. Mr. John Ade" /></div>' +
+      '<div class="mrow"><label class="f-label">Email *</label><input class="f-in" id="thEmail" type="email" placeholder="teacher@yourschool.com" /></div>' +
+      '<div class="mrow"><label class="f-label">Password (min 8 chars) *</label><div style="display:flex;gap:8px"><input class="f-in" id="thPw" style="flex:1" /><button class="btn sm ghost" type="button" onclick="$(\'thPw\').value=genPw()">🎲 Generate</button></div></div>' +
+      '<div class="form-grid"><div><label class="f-label">Subjects (comma-separated)</label><input class="f-in" id="thSubs" placeholder="Mathematics, Physics" /></div>' +
+      '<div><label class="f-label">Classes (comma-separated)</label><input class="f-in" id="thCls" placeholder="JSS1, SS2" /></div></div>' +
+      '<div class="merr"></div>',
+      '<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="thSave">Add teacher</button>');
+    $("thPw").value = genPw();
+    $("thSave").addEventListener("click", function () {
+      var name = $("thName").value.trim(), email = $("thEmail").value.trim(), pw = $("thPw").value;
+      if (!name) return mErr("Enter the teacher's name.");
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return mErr("Enter a valid email.");
+      if (!pw || pw.length < 8) return mErr("Password must be at least 8 characters.");
+      busy($("thSave"), true);
+      officeApi("/teachers", { method: "POST", body: { full_name: name, email: email, password: pw,
+        subjects: $("thSubs").value.split(",").map(function (s) { return s.trim(); }).filter(Boolean),
+        academic_classes: $("thCls").value.split(",").map(function (s) { return s.trim(); }).filter(Boolean) } }).then(function () {
+        closeModal(); toast("Teacher added"); showPage("teachers");
+      }).catch(function (e) { busy($("thSave"), false, "Add teacher"); mErr(errText(e)); });
+    });
   };
 
+  /* ═══ CLASSES ═══ */
   R.classes = function () {
     $("pages").innerHTML = head("Classes", "Class groups and their sizes.", '<button class="btn" onclick="addClass()">+ Add Class</button>') +
       '<div class="panel"><div id="cTbl"><div class="empty">Loading…</div></div></div>';
     api("/classes").then(function (d) {
       var rows = (d.classes || []).map(function (c) {
-        return '<tr><td><strong>' + esc(c.name) + '</strong></td><td>' + esc(c.level || "—") + '</td><td>' + (c.student_count || 0) + ' students</td><td><button class="btn sm ghost" onclick="delClass(\'' + c.id + '\')">Delete</button></td></tr>';
+        return '<tr><td><strong>' + esc(c.name) + '</strong></td><td><span class="pill blue">' + esc(c.level || "—") + '</span></td><td><span class="pill ok">' + (c.student_count || 0) + ' students</span></td><td><button class="btn sm red" onclick="delClass(\'' + c.id + '\',\'' + esc(c.name) + '\')">Delete</button></td></tr>';
       });
       $("cTbl").innerHTML = tbl(["Class", "Level", "Students", ""], rows);
-    }).catch(function (e) { $("cTbl").innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
+    }).catch(function (e) { $("cTbl").innerHTML = '<div class="empty">' + esc(errText(e)) + '</div>'; });
   };
   window.addClass = function () {
-    var name = prompt("Class name (e.g. JSS1 A):"); if (!name) return;
-    api("/classes", { method: "POST", body: { name: name, level: name.slice(0, 4).toUpperCase() } }).then(function () { toast("Class added"); showPage("classes"); }).catch(function (e) { alert(e.message); });
+    openModal("Add Class",
+      '<div class="mrow"><label class="f-label">Class name *</label><input class="f-in" id="clName" placeholder="e.g. JSS1 A" /></div>' +
+      '<div class="mrow"><label class="f-label">Level</label><select class="f-in" id="clLevel"><option>Nursery 1</option><option>Nursery 2</option><option>Primary 1</option><option>Primary 2</option><option>Primary 3</option><option>Primary 4</option><option>Primary 5</option><option>Primary 6</option><option>JSS1</option><option>JSS2</option><option>JSS3</option><option>SS1</option><option>SS2</option><option>SS3</option></select><div class="mhint">Used to group students by level.</div></div>' +
+      '<div class="merr"></div>',
+      '<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="clSave">Add class</button>');
+    $("clSave").addEventListener("click", function () {
+      var name = $("clName").value.trim();
+      if (!name) return mErr("Enter a class name.");
+      busy($("clSave"), true);
+      api("/classes", { method: "POST", body: { name: name, level: $("clLevel").value, section: "A" } }).then(function () {
+        closeModal(); toast("Class added"); showPage("classes");
+      }).catch(function (e) { busy($("clSave"), false, "Add class"); mErr(errText(e)); });
+    });
   };
-  window.delClass = function (id) {
-    if (!confirm("Delete this class?")) return;
-    api("/classes/" + id, { method: "DELETE" }).then(function () { showPage("classes"); }).catch(function (e) { alert(e.message); });
+  window.delClass = function (id, name) {
+    confirmModal("Delete class", 'Delete <strong>' + esc(name) + '</strong>? Students keep their accounts; only this class group is removed.', function (btn) {
+      busy(btn, true);
+      api("/classes/" + id, { method: "DELETE" }).then(function () { closeModal(); toast("Class deleted"); showPage("classes"); })
+        .catch(function (e) { busy(btn, false, "Delete"); mErr(errText(e)); });
+    }, "Delete", true);
   };
 
+  /* ═══ SUBJECTS ═══ */
   R.subjects = function () {
     $("pages").innerHTML = head("Subjects", "Manage and organize all subjects in your school.", '<button class="btn" onclick="addSubject()">+ Add Subject</button>') +
       '<div class="stat-mini" id="subStats"></div><div class="panel"><div id="subTbl"><div class="empty">Loading…</div></div></div>';
@@ -402,107 +578,327 @@ tr:last-child td{border-bottom:none}
   function loadSubjects() {
     api("/subjects").then(function (d) {
       var rows = (d.subjects || []).map(function (s) {
-        return '<tr><td><strong>' + esc(s.name) + '</strong></td><td>' + esc(s.code) + '</td><td><span class="pill ' + (s.subject_type === "core" ? "blue" : s.subject_type === "elective" ? "warn" : "gray") + '">' + esc(s.subject_type) + '</span></td><td>' + esc((s.class_levels || []).join(", ") || "All") + '</td><td>' + (s.is_active !== false ? '<span class="pill ok">Active</span>' : '<span class="pill gray">Inactive</span>') + '</td><td><button class="btn sm ghost" onclick="delSubject(\'' + s.id + '\')">Delete</button></td></tr>';
+        return '<tr><td><strong>' + esc(s.name) + '</strong></td><td><span class="pill violet">' + esc(s.code) + '</span></td><td><span class="pill ' + (s.subject_type === "core" ? "blue" : s.subject_type === "elective" ? "warn" : "gray") + '">' + esc(s.subject_type) + '</span></td><td>' + esc((s.class_levels || []).join(", ") || "All") + '</td><td>' + (s.is_active !== false ? '<span class="pill ok">Active</span>' : '<span class="pill gray">Inactive</span>') + '</td><td><button class="btn sm red" onclick="delSubject(\'' + s.id + '\',\'' + esc(s.name) + '\')">Delete</button></td></tr>';
       });
       $("subTbl").innerHTML = tbl(["Subject", "Code", "Type", "Classes", "Status", ""], rows);
       var st = d.stats || {};
-      $("subStats").innerHTML = '<span class="chip">Total: ' + (st.total || 0) + '</span><span class="chip">Active: ' + (st.active || 0) + '</span><span class="chip">Core: ' + (st.core || 0) + '</span>';
-    }).catch(function (e) { $("subTbl").innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
+      $("subStats").innerHTML = '<span class="chip">Total: ' + (st.total || 0) + '</span><span class="chip g">Active: ' + (st.active || 0) + '</span><span class="chip">Core: ' + (st.core || 0) + '</span>' + (st.inactive ? '<span class="chip w">Inactive: ' + st.inactive + '</span>' : "");
+    }).catch(function (e) { $("subTbl").innerHTML = '<div class="empty">' + esc(errText(e)) + '</div>'; });
   }
   window.loadSubjects = loadSubjects;
   window.addSubject = function () {
-    var name = prompt("Subject name (e.g. Mathematics):"); if (!name) return;
-    var code = prompt("Subject code (e.g. MTH):"); if (!code) return;
-    var type = prompt("Type: core, general or elective:", "core"); if (!type) return;
-    api("/subjects", { method: "POST", body: { name: name, code: code, subject_type: type.toLowerCase() } }).then(function () { toast("Subject added"); showPage("subjects"); }).catch(function (e) { alert(e.message); });
+    openModal("Add Subject",
+      '<div class="form-grid"><div><label class="f-label">Subject name *</label><input class="f-in" id="sjName" placeholder="e.g. Mathematics" /></div>' +
+      '<div><label class="f-label">Code *</label><input class="f-in" id="sjCode" placeholder="e.g. MTH" maxlength="20" /></div></div>' +
+      '<div class="mrow"><label class="f-label">Type</label><select class="f-in" id="sjType"><option value="core">Core — compulsory for all students</option><option value="general">General — school-wide</option><option value="elective">Elective — students choose it</option></select></div>' +
+      '<div class="mrow"><label class="f-label">Offered to classes (optional)</label><input class="f-in" id="sjLevels" placeholder="e.g. JSS1, JSS2 — leave empty for all" /></div>' +
+      '<div class="merr"></div>',
+      '<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="sjSave">Add subject</button>');
+    $("sjSave").addEventListener("click", function () {
+      var name = $("sjName").value.trim(), code = $("sjCode").value.trim().toUpperCase();
+      if (!name) return mErr("Enter a subject name.");
+      if (!code) return mErr("Enter a subject code.");
+      busy($("sjSave"), true);
+      api("/subjects", { method: "POST", body: { name: name, code: code, subject_type: $("sjType").value,
+        class_levels: $("sjLevels").value.split(",").map(function (s) { return s.trim(); }).filter(Boolean) } }).then(function () {
+        closeModal(); toast("Subject added"); showPage("subjects");
+      }).catch(function (e) { busy($("sjSave"), false, "Add subject"); mErr(errText(e)); });
+    });
   };
-  window.delSubject = function (id) {
-    if (!confirm("Delete this subject?")) return;
-    api("/subjects/" + id, { method: "DELETE" }).then(function () { showPage("subjects"); }).catch(function (e) { alert(e.message); });
+  window.delSubject = function (id, name) {
+    confirmModal("Delete subject", 'Delete <strong>' + esc(name) + '</strong> from your school\'s subjects?', function (btn) {
+      busy(btn, true);
+      api("/subjects/" + id, { method: "DELETE" }).then(function () { closeModal(); toast("Subject deleted"); showPage("subjects"); })
+        .catch(function (e) { busy(btn, false, "Delete"); mErr(errText(e)); });
+    }, "Delete", true);
   };
 
+  /* ═══ EXAMS & CBT ═══ */
   R.exams = function () {
-    $("pages").innerHTML = head("Exams & CBT", "Create, manage and monitor exams and CBTs.", '<button class="btn" onclick="createExam()">+ Create Exam / CBT</button>') +
-      '<div class="panel"><div id="exTbl"><div class="empty">Loading…</div></div></div>';
+    $("pages").innerHTML = head("Exams & CBT", "Create, manage and monitor exams and CBTs.",
+        '<button class="btn" onclick="createExamModal()">+ Create Exam</button><button class="btn ghost" onclick="importExamModal()">⬆ Import from file</button>') +
+      '<div class="stat-mini" id="exStats"></div><div class="panel"><div id="exTbl"><div class="empty">Loading…</div></div></div>';
     officeApi("/exam-counts").then(function (d) {
-      var rows = (d.exams || d || []).map(function (x) {
+      var list = d.exams || [];
+      window.__exams = list;
+      var active = list.filter(function (x) { return x.is_published; }).length;
+      $("exStats").innerHTML = '<span class="chip">Total: ' + list.length + '</span><span class="chip g">Active: ' + active + '</span><span class="chip w">Drafts: ' + (list.length - active) + '</span>';
+      var rows = list.map(function (x) {
         var st = x.is_published ? '<span class="pill ok">Active</span>' : '<span class="pill warn">Draft</span>';
-        return '<tr><td><strong>' + esc(x.title) + '</strong></td><td><span class="pill blue">' + esc(x.subject || "—") + '</span></td><td>' + (x.taken_count || 0) + ' taken</td><td>' + (x.scheduled_start ? new Date(x.scheduled_start).toLocaleString() : "—") + '</td><td>' + st + '</td></tr>';
+        var doc = x.document_url ? '<a class="doc-pill" href="' + esc(x.document_url) + '" target="_blank" rel="noopener">📎 ' + esc(x.document_name || "Document") + '</a>' : '<span class="muted" style="font-size:12.5px">—</span>';
+        var acts =
+          '<button class="btn sm ghost" onclick="attachDoc(\'' + x.id + '\',\'' + esc(x.title).replace(/'/g, "") + '\')">📎 Document</button> ' +
+          '<button class="btn sm ghost" onclick="addQuestions(\'' + x.id + '\',\'' + esc(x.title).replace(/'/g, "") + '\')">➕ Questions</button> ' +
+          '<button class="btn sm ghost" onclick="togglePublish(\'' + x.id + '\',' + (x.is_published ? "false" : "true") + ')">' + (x.is_published ? "Unpublish" : "Publish") + '</button> ' +
+          '<button class="btn sm red" onclick="delExam(\'' + x.id + '\',\'' + esc(x.title).replace(/'/g, "") + '\')">Delete</button>';
+        return '<tr><td><strong>' + esc(x.title) + '</strong></td><td><span class="pill blue">' + esc(x.subject || "—") + '</span></td><td>' + (x.total_questions != null ? x.total_questions : "—") + '</td><td>' + (x.taken_count || 0) + ' taken</td><td>' + dt(x.scheduled_start) + '</td><td>' + doc + '</td><td>' + st + '</td><td style="white-space:nowrap">' + acts + '</td></tr>';
       });
-      $("exTbl").innerHTML = tbl(["Exam", "Subject", "Submissions", "Scheduled", "Status"], rows);
-    }).catch(function (e) { $("exTbl").innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
-  };
-  window.createExam = function () {
-    var title = prompt("Exam title:"); if (!title) return;
-    var subject = prompt("Subject:", "Mathematics"); if (!subject) return;
-    var dur = parseInt(prompt("Duration in minutes:", "60"), 10) || 60;
-    officeApi("/exams", { method: "POST", body: { title: title, subject: subject, duration_minutes: dur } }).then(function () { toast("Exam created"); showPage("exams"); }).catch(function (e) { alert(e.message); });
+      $("exTbl").innerHTML = tbl(["Exam", "Subject", "Qs", "Submissions", "Scheduled", "Document", "Status", "Actions"], rows);
+    }).catch(function (e) { $("exTbl").innerHTML = '<div class="empty">' + esc(errText(e)) + '</div>'; });
   };
 
+  var __qn = 0;
+  function qRowHTML() {
+    __qn++;
+    return '<div class="qrow" data-qid="' + __qn + '">' +
+      '<div class="qtop"><b>Question ' + __qn + '</b><button class="mb-x" style="width:26px;height:26px" onclick="this.closest(\'.qrow\').remove()" title="Remove">✕</button></div>' +
+      '<textarea class="f-in qtext" placeholder="Type the question…"></textarea>' +
+      '<div class="opts">' +
+      '<div class="opt"><b>A</b><input class="f-in oa" placeholder="Option A" /></div>' +
+      '<div class="opt"><b>B</b><input class="f-in ob" placeholder="Option B" /></div>' +
+      '<div class="opt"><b>C</b><input class="f-in oc" placeholder="Option C" /></div>' +
+      '<div class="opt"><b>D</b><input class="f-in od" placeholder="Option D" /></div></div>' +
+      '<div class="mrow" style="margin:9px 0 0"><label class="f-label" style="margin:0 0 4px">Correct answer</label>' +
+      '<select class="f-in qco" style="width:120px"><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option></select></div></div>';
+  }
+  function examFormHTML(tab) {
+    return '<div class="tabs" id="exTabs"><button data-t="write" class="' + (tab !== "file" ? "on" : "") + '" onclick="exTab(\'write\')">✍️ Write questions</button>' +
+      '<button data-t="file" class="' + (tab === "file" ? "on" : "") + '" onclick="exTab(\'file\')">📄 Upload file</button></div>' +
+      '<div id="exWrite" style="display:' + (tab !== "file" ? "block" : "none") + '">' +
+      '<div class="form-grid"><div><label class="f-label">Exam title *</label><input class="f-in" id="exTitle" placeholder="e.g. Mid-term Mathematics Test" /></div>' +
+      '<div><label class="f-label">Subject *</label><input class="f-in" id="exSubject" list="exSubjList" placeholder="e.g. Mathematics" /><datalist id="exSubjList"></datalist></div></div>' +
+      '<div class="form-grid"><div><label class="f-label">Duration (minutes)</label><input class="f-in" id="exDur" type="number" min="5" max="300" value="45" /></div>' +
+      '<div><label class="f-label">Publish immediately</label><select class="f-in" id="exPub"><option value="yes">Yes — students see it at once</option><option value="no">No — keep as draft</option></select></div></div>' +
+      '<div class="form-grid"><div><label class="f-label">Available from (optional)</label><input class="f-in" id="exStart" type="datetime-local" /></div>' +
+      '<div><label class="f-label">Available until (optional)</label><input class="f-in" id="exEnd" type="datetime-local" /></div></div>' +
+      '<label class="f-label">Questions</label><div id="qList">' + qRowHTML() + '</div>' +
+      '<button class="btn sm ghost" onclick="addQRow()">+ Add question</button></div>' +
+      '<div id="exFile" style="display:' + (tab === "file" ? "block" : "none") + '">' +
+      '<p class="mhint" style="margin-bottom:12px">Upload a questions file — <strong>.json</strong>, <strong>.csv</strong> or <strong>.pdf</strong> (the same formats the Scholaxia importer accepts). CSV needs a header row: <code>question_text,option_a,option_b,option_c,option_d,correct_option</code>.</p>' +
+      '<div class="form-grid"><div><label class="f-label">Exam title (CSV/PDF)</label><input class="f-in" id="exFTitle" placeholder="Used if the file has none" /></div>' +
+      '<div><label class="f-label">Subject (CSV/PDF)</label><input class="f-in" id="exFSubject" placeholder="Used if the file has none" /></div></div>' +
+      '<div class="form-grid"><div><label class="f-label">Duration (minutes)</label><input class="f-in" id="exFDur" type="number" min="5" max="300" value="45" /></div>' +
+      '<div><label class="f-label">Questions file *</label><input class="f-in" id="exFFile" type="file" accept=".json,.csv,.pdf" /></div></div></div>' +
+      '<div class="merr"></div>';
+  }
+  window.exTab = function (t) {
+    document.querySelectorAll("#exTabs button").forEach(function (b) { b.classList.toggle("on", b.dataset.t === t); });
+    $("exWrite").style.display = t === "write" ? "block" : "none";
+    $("exFile").style.display = t === "file" ? "block" : "none";
+  };
+  window.addQRow = function () { $("qList").insertAdjacentHTML("beforeend", qRowHTML()); };
+  function isoOrNull(v) { try { return v ? new Date(v).toISOString() : null; } catch (e) { return null; } }
+  window.createExamModal = function () {
+    openModal("Create Exam / CBT", examFormHTML("write"), null, true);
+    api("/subjects").then(function (d) {
+      var dl = $("exSubjList"); if (dl) dl.innerHTML = (d.subjects || []).map(function (s) { return '<option value="' + esc(s.name) + '">'; }).join("");
+    }).catch(function () {});
+    var foot = document.querySelector("#mb .mb-head");
+    var bar = document.createElement("div"); bar.className = "mb-foot";
+    bar.innerHTML = '<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="exSave">Create exam</button>';
+    document.querySelector("#mb .mb-modal").appendChild(bar);
+    $("exSave").addEventListener("click", function () {
+      if ($("exWrite").style.display !== "none") {
+        var title = $("exTitle").value.trim(), subject = $("exSubject").value.trim();
+        if (!title) return mErr("Enter an exam title.");
+        if (!subject) return mErr("Enter a subject.");
+        var qs = [];
+        document.querySelectorAll("#qList .qrow").forEach(function (row) {
+          var qt = row.querySelector(".qtext").value.trim();
+          var oa = row.querySelector(".oa").value.trim(), ob = row.querySelector(".ob").value.trim(),
+              oc = row.querySelector(".oc").value.trim(), od = row.querySelector(".od").value.trim();
+          if (!qt) return;
+          qs.push({ question_text: qt, option_a: oa || "A", option_b: ob || "B", option_c: oc || "C", option_d: od || "D", correct_option: row.querySelector(".qco").value });
+        });
+        if (!qs.length) return mErr("Add at least one complete question.");
+        busy($("exSave"), true);
+        officeApi("/exams", { method: "POST", body: {
+          title: title, subject: subject, duration_minutes: parseInt($("exDur").value, 10) || 45,
+          scheduled_start: isoOrNull($("exStart").value), scheduled_end: isoOrNull($("exEnd").value),
+          questions: qs, is_published: $("exPub").value === "yes" } }).then(function () {
+          closeModal(); toast("Exam created 🎉"); showPage("exams");
+        }).catch(function (e) { busy($("exSave"), false, "Create exam"); mErr(errText(e)); });
+      } else {
+        var f = $("exFFile").files[0];
+        if (!f) return mErr("Choose a .json, .csv or .pdf file.");
+        var fd = new FormData();
+        fd.append("file", f);
+        fd.append("title", $("exFTitle").value.trim());
+        fd.append("subject", $("exFSubject").value.trim());
+        fd.append("duration_minutes", $("exFDur").value || "45");
+        busy($("exSave"), true);
+        api("/exams/import", { method: "POST", form: fd }).then(function (d) {
+          closeModal();
+          var made = d.created || [];
+          openModal("✅ Exam imported",
+            '<div class="mnote">' + made.map(function (c) { return '<div>📝 <strong>' + esc(c.title) + '</strong> — ' + c.questions + ' questions</div>'; }).join("") + '</div>',
+            '<button class="btn" onclick="closeModal()">Done</button>');
+          showPage("exams");
+        }).catch(function (e) { busy($("exSave"), false, "Create exam"); mErr(errText(e)); });
+      }
+    });
+  };
+  window.importExamModal = function () { createExamModal(); exTab("file"); };
+  window.attachDoc = function (examId, title) {
+    openModal("Attach document — " + esc(title),
+      '<p class="mhint" style="margin-bottom:12px">Students see this file with the exam. <strong>Any document type</strong> works: PDF, Word, images, audio, video, slides… (max 40MB)</p>' +
+      '<div class="mrow"><input type="file" id="docFile" class="f-in" /></div><div class="merr"></div>',
+      '<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="docGo">Upload & attach</button>');
+    $("docGo").addEventListener("click", function () {
+      var f = $("docFile").files[0];
+      if (!f) return mErr("Choose a file first.");
+      var fd = new FormData(); fd.append("file", f);
+      busy($("docGo"), true);
+      api("/exams/" + examId + "/document", { method: "POST", form: fd }).then(function () {
+        closeModal(); toast("Document attached 📎"); showPage("exams");
+      }).catch(function (e) { busy($("docGo"), false, "Upload & attach"); mErr(errText(e)); });
+    });
+  };
+  window.addQuestions = function (examId, title) {
+    __qn = 0;
+    openModal("Add questions — " + esc(title), '<div id="qList">' + qRowHTML() + qRowHTML() + '</div><button class="btn sm ghost" onclick="addQRow()">+ Add question</button><div class="merr" style="margin-top:10px"></div>', null, true);
+    var bar = document.createElement("div"); bar.className = "mb-foot";
+    bar.innerHTML = '<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="qAddGo">Add to exam</button>';
+    document.querySelector("#mb .mb-modal").appendChild(bar);
+    $("qAddGo").addEventListener("click", function () {
+      var qs = [];
+      document.querySelectorAll("#qList .qrow").forEach(function (row) {
+        var qt = row.querySelector(".qtext").value.trim();
+        if (!qt) return;
+        qs.push({ question_text: qt, option_a: row.querySelector(".oa").value.trim() || "A", option_b: row.querySelector(".ob").value.trim() || "B", option_c: row.querySelector(".oc").value.trim() || "C", option_d: row.querySelector(".od").value.trim() || "D", correct_option: row.querySelector(".qco").value });
+      });
+      if (!qs.length) return mErr("Write at least one complete question.");
+      busy($("qAddGo"), true);
+      api("/exams/" + examId + "/questions", { method: "POST", body: qs }).then(function () {
+        closeModal(); toast("Questions added"); showPage("exams");
+      }).catch(function (e) { busy($("qAddGo"), false, "Add to exam"); mErr(errText(e)); });
+    });
+  };
+  window.togglePublish = function (examId, publish) {
+    officeApi("/exams/" + examId, { method: "PATCH", body: { is_published: publish } })
+      .then(function () { toast(publish ? "Exam published" : "Exam unpublished"); showPage("exams"); })
+      .catch(toastErr);
+  };
+  window.delExam = function (examId, title) {
+    confirmModal("Delete exam", 'Delete <strong>' + esc(title) + '</strong>? Its questions and submissions are removed too. This cannot be undone.', function (btn) {
+      busy(btn, true);
+      api("/exams/" + examId, { method: "DELETE" }).then(function () { closeModal(); toast("Exam deleted"); showPage("exams"); })
+        .catch(function (e) { busy(btn, false, "Delete"); mErr(errText(e)); });
+    }, "Delete exam", true);
+  };
+
+  /* ═══ RESULTS ═══ */
   R.results = function () {
     $("pages").innerHTML = head("Results", "Submitted exam results (hidden from students until you publish).") +
-      '<div class="panel"><div id="rTbl"><div class="empty">Loading…</div></div></div>';
-    officeApi("/results").then(function (d) {
-      var rows = (d.results || []).map(function (r) {
-        return '<tr><td><strong>' + esc(r.student_name || "—") + '</strong></td><td>' + esc(r.exam_title || r.title || "—") + '</td><td>' + esc(r.subject || "—") + '</td><td><strong>' + esc(r.score != null ? r.score : (r.total_score != null ? r.total_score : "—")) + '</strong>' + (r.total_marks ? ' / ' + esc(r.total_marks) : "") + '</td><td>' + (r.submitted_at ? new Date(r.submitted_at).toLocaleDateString() : "—") + '</td></tr>';
+      '<div class="panel"><div class="form-grid"><div><select class="f-in" id="rSubj" onchange="loadResults()"><option value="">All subjects</option></select></div></div>' +
+      '<div id="rTbl"><div class="empty">Loading…</div></div></div>';
+    loadResults();
+  };
+  window.loadResults = function () {
+    var subj = ($("rSubj") && $("rSubj").value) || "";
+    officeApi("/results" + (subj ? "?subject=" + encodeURIComponent(subj) : "")).then(function (d) {
+      var list = d.results || [];
+      var subs = {};
+      list.forEach(function (r) { if (r.subject) subs[r.subject] = 1; });
+      var sel = $("rSubj");
+      if (sel && sel.options.length < 2) {
+        sel.innerHTML = '<option value="">All subjects</option>' + Object.keys(subs).sort().map(function (s) { return '<option>' + esc(s) + '</option>'; }).join("");
+        if (subj) sel.value = subj;
+      }
+      var rows = list.map(function (r) {
+        var pct = (r.score != null && r.total_marks) ? Math.round(100 * r.score / r.total_marks) + "%" : "—";
+        return '<tr><td><strong>' + esc(r.student_name || "—") + '</strong></td><td>' + esc(r.exam_title || r.title || "—") + '</td><td><span class="pill blue">' + esc(r.subject || "—") + '</span></td><td><strong>' + esc(r.score != null ? r.score : "—") + '</strong>' + (r.total_marks ? ' / ' + esc(r.total_marks) : "") + '</td><td>' + pct + '</td><td>' + dOnly(r.submitted_at) + '</td></tr>';
       });
-      $("rTbl").innerHTML = tbl(["Student", "Exam", "Subject", "Score", "Submitted"], rows);
-    }).catch(function (e) { $("rTbl").innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
+      $("rTbl").innerHTML = tbl(["Student", "Exam", "Subject", "Score", "Percent", "Submitted"], rows);
+    }).catch(function (e) { $("rTbl").innerHTML = '<div class="empty">' + esc(errText(e)) + '</div>'; });
   };
 
+  /* ═══ ATTENDANCE ═══ */
+  window.__attMarks = {};
   R.attendance = function () {
-    $("pages").innerHTML = head("Attendance", "Mark and track daily student attendance.", '<span class="chip" id="attDate"></span>') +
+    var today = new Date().toISOString().slice(0, 10);
+    $("pages").innerHTML = head("Attendance", "Mark and track daily student attendance.",
+        '<input class="f-in" type="date" id="attDateIn" value="' + today + '" max="' + today + '" style="width:170px" onchange="loadAttendance(this.value)" /><button class="btn ghost" onclick="markAllPresent()">✓ All present</button>') +
       '<div class="stat-mini" id="attSum"></div><div class="panel"><div id="attTbl"><div class="empty">Loading…</div></div>' +
-      '<button class="btn" style="margin-top:14px" onclick="saveAttendance()">💾 Save register</button></div>';
+      '<div style="margin-top:14px;display:flex;gap:10px"><button class="btn" onclick="saveAttendance()">💾 Save register</button><span class="muted" id="attSaved" style="align-self:center;font-size:13px"></span></div></div>';
+    loadAttendance(today);
+  };
+  window.loadAttendance = function (date) {
     window.__attMarks = {};
-    api("/attendance").then(function (d) {
-      $("attDate").textContent = d.date;
+    api("/attendance" + (date ? "?date=" + encodeURIComponent(date) : "")).then(function (d) {
       var s = d.summary || {};
-      $("attSum").innerHTML = '<span class="chip">Total: ' + s.total + '</span><span class="chip" style="background:var(--okbg);color:var(--ok)">Present: ' + s.present + '</span><span class="chip" style="background:var(--badbg);color:var(--bad)">Absent: ' + s.absent + '</span><span class="chip" style="background:var(--warnbg);color:var(--warn)">Late: ' + s.late + '</span>';
-      var rows = (d.students || []).map(function (st, i) {
+      $("attSum").innerHTML = '<span class="chip">Total: ' + s.total + '</span><span class="chip g">Present: ' + s.present + '</span><span class="chip r">Absent: ' + s.absent + '</span><span class="chip w">Late: ' + s.late + '</span><span class="chip">' + (d.date || "") + '</span>';
+      var rows = (d.students || []).map(function (st) {
         window.__attMarks[st.student_id] = st.status;
-        var opts = ["present", "absent", "late", "unmarked"].map(function (v) {
-          return '<option value="' + v + '"' + (st.status === v ? " selected" : "") + '>' + v.charAt(0).toUpperCase() + v.slice(1) + '</option>';
+        var opts = ["unmarked", "present", "absent", "late"].map(function (v) {
+          return '<option value="' + v + '"' + (st.status === v ? " selected" : "") + '>' + (v === "unmarked" ? "—" : v.charAt(0).toUpperCase() + v.slice(1)) + '</option>';
         }).join("");
-        return '<tr><td><strong>' + esc(st.full_name) + '</strong></td><td>' + esc(st.student_id) + '</td><td><span class="pill blue">' + esc(st.class_name) + '</span></td><td><select class="f-in" style="padding:7px 10px" onchange="__attMarks[\'' + esc(st.student_id) + '\']=this.value">' + opts + '</select></td></tr>';
+        return '<tr><td><strong>' + esc(st.full_name) + '</strong></td><td><span class="pill violet">' + esc(st.student_id) + '</span></td><td><span class="pill blue">' + esc(st.class_name) + '</span></td><td><select class="f-in" style="padding:7px 10px;width:130px" onchange="setMark(\'' + esc(st.student_id) + '\', this.value)">' + opts + '</select></td></tr>';
       });
-      $("attTbl").innerHTML = tbl(["Student", "ID", "Class", "Status"], rows);
-    }).catch(function (e) { $("attTbl").innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
+      $("attTbl").innerHTML = rows.length ? tbl(["Student", "ID", "Class", "Status"], rows) : '<div class="empty">No students yet — add students first.</div>';
+    }).catch(function (e) { $("attTbl").innerHTML = '<div class="empty">' + esc(errText(e)) + '</div>'; });
+  };
+  window.setMark = function (sid, v) { window.__attMarks[sid] = v; $("attSaved").textContent = "Unsaved changes"; };
+  window.markAllPresent = function () {
+    Object.keys(window.__attMarks).forEach(function (k) { window.__attMarks[k] = "present"; });
+    document.querySelectorAll("#attTbl select").forEach(function (s) { s.value = "present"; });
+    $("attSaved").textContent = "Unsaved changes";
   };
   window.saveAttendance = function () {
-    var date = ($("attDate").textContent || "").trim();
+    var date = ($("attDateIn") && $("attDateIn").value) || new Date().toISOString().slice(0, 10);
     api("/attendance", { method: "POST", body: { date: date, marks: window.__attMarks || {} } }).then(function (r) {
       toast("Register saved — " + r.marked + " students");
-      showPage("attendance");
-    }).catch(function (e) { alert(e.message); });
+      $("attSaved").textContent = "Saved ✓";
+      loadAttendance(date);
+    }).catch(toastErr);
   };
 
+  /* ═══ FEES & FINANCE ═══ */
   R.fees = function () {
     $("pages").innerHTML = head("Fees & Finance", "Track payments and outstanding fees.", '<button class="btn" onclick="addFee()">+ Record Payment</button>') +
       '<div class="cards" id="feeCards"></div><div class="panel"><div id="feeTbl"><div class="empty">Loading…</div></div></div>';
-    api("/fees").then(function (d) {
+    Promise.all([api("/fees"), officeApi("/students")]).then(function (all) {
+      var d = all[0];
+      window.__students = (all[1].students || []);
       var st = d.stats || {};
       $("feeCards").innerHTML =
         statCard("💰", "#e8f0fe", "Total Billed", money(st.total_due)) +
-        statCard("✅", "#e7f8ee", "Total Paid", money(st.total_paid), st.collection_rate + "% collected") +
+        statCard("✅", "#e7f8ee", "Total Paid", money(st.total_paid), (st.collection_rate || 0) + "% collected") +
         statCard("⏰", "#fdf3e3", "Outstanding", money(st.outstanding)) +
         statCard("🧾", "#f3e8ff", "Records", st.records || 0);
       var rows = (d.fees || []).map(function (f) {
         var pill = f.status === "paid" ? "ok" : f.status === "overdue" ? "bad" : "warn";
-        return '<tr><td>' + esc(f.date) + '</td><td><strong>' + esc(f.student_name) + '</strong></td><td>' + esc(f.class_name || "—") + '</td><td>' + esc(f.fee_type) + '</td><td><strong>' + money(f.amount) + '</strong></td><td>' + esc(f.method) + '</td><td><span class="pill ' + pill + '">' + esc(f.status) + '</span></td></tr>';
+        var act = '<button class="btn sm ghost" onclick="feeStatus(\'' + f.id + '\',\'paid\')">Mark paid</button> ' +
+          '<button class="btn sm red" onclick="delFee(\'' + f.id + '\')">Delete</button>';
+        return '<tr><td>' + dOnly(f.date) + '</td><td><strong>' + esc(f.student_name) + '</strong></td><td>' + esc(f.class_name || "—") + '</td><td>' + esc(f.fee_type) + '</td><td><strong>' + money(f.amount) + '</strong></td><td>' + esc(f.method) + '</td><td><span class="pill ' + pill + '">' + esc(f.status) + '</span></td><td style="white-space:nowrap">' + act + '</td></tr>';
       });
-      $("feeTbl").innerHTML = tbl(["Date", "Student", "Class", "Fee type", "Amount", "Method", "Status"], rows);
-    }).catch(function (e) { $("feeTbl").innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
+      $("feeTbl").innerHTML = tbl(["Date", "Student", "Class", "Fee type", "Amount", "Method", "Status", ""], rows);
+    }).catch(function (e) { $("feeTbl").innerHTML = '<div class="empty">' + esc(errText(e)) + '</div>'; });
   };
   window.addFee = function () {
-    var name = prompt("Student name:"); if (!name) return;
-    var amount = parseFloat(prompt("Amount (₦):", "50000")); if (!(amount > 0)) return;
-    var type = prompt("Fee type:", "School Fees") || "School Fees";
-    var method = (prompt("Payment method: cash, transfer, pos or online:", "transfer") || "transfer").toLowerCase();
-    var status = (prompt("Status: paid, pending or overdue:", "paid") || "paid").toLowerCase();
-    api("/fees", { method: "POST", body: { student_name: name, amount: amount, fee_type: type, method: method, status: status } }).then(function () { toast("Payment recorded"); showPage("fees"); }).catch(function (e) { alert(e.message); });
+    openModal("Record Payment",
+      '<div class="mrow"><label class="f-label">Student *</label><input class="f-in" id="feeName" list="feeStuds" placeholder="Pick or type a name" /><datalist id="feeStuds">' +
+      (window.__students || []).map(function (s) { return '<option value="' + esc(s.full_name) + '">'; }).join("") + '</datalist></div>' +
+      '<div class="form-grid"><div><label class="f-label">Amount (₦) *</label><input class="f-in" id="feeAmt" type="number" min="1" placeholder="50000" /></div>' +
+      '<div><label class="f-label">Fee type</label><select class="f-in" id="feeType"><option>School Fees</option><option>Exam Fee</option><option>Books</option><option>Uniform</option><option>Transport</option><option>Other</option></select></div></div>' +
+      '<div class="form-grid"><div><label class="f-label">Method</label><select class="f-in" id="feeMethod"><option value="transfer">Bank transfer</option><option value="cash">Cash</option><option value="pos">POS</option><option value="online">Online</option></select></div>' +
+      '<div><label class="f-label">Status</label><select class="f-in" id="feeStatusSel"><option value="paid">Paid</option><option value="pending">Pending</option><option value="overdue">Overdue</option></select></div></div>' +
+      '<div class="merr"></div>',
+      '<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="feeSave">Save payment</button>');
+    $("feeSave").addEventListener("click", function () {
+      var name = $("feeName").value.trim(), amt = parseFloat($("feeAmt").value);
+      if (!name) return mErr("Enter the student's name.");
+      if (!(amt > 0)) return mErr("Enter a valid amount.");
+      busy($("feeSave"), true);
+      var stu = (window.__students || []).find(function (s) { return s.full_name.toLowerCase() === name.toLowerCase(); });
+      api("/fees", { method: "POST", body: { student_name: name, amount: amt, fee_type: $("feeType").value, method: $("feeMethod").value, status: $("feeStatusSel").value,
+        student_id: stu ? stu.student_id : null, class_name: stu ? stu.class_name : null } }).then(function () {
+        closeModal(); toast("Payment recorded"); showPage("fees");
+      }).catch(function (e) { busy($("feeSave"), false, "Save payment"); mErr(errText(e)); });
+    });
+  };
+  window.feeStatus = function (feeId, status) {
+    api("/fees/" + feeId + "?status=" + status, { method: "PATCH" }).then(function () { toast("Updated"); showPage("fees"); }).catch(toastErr);
+  };
+  window.delFee = function (feeId) {
+    confirmModal("Delete record", "Remove this fee record? The student's payment history loses this entry.", function (btn) {
+      busy(btn, true);
+      api("/fees/" + feeId, { method: "DELETE" }).then(function () { closeModal(); toast("Record deleted"); showPage("fees"); })
+        .catch(function (e) { busy(btn, false, "Delete"); mErr(errText(e)); });
+    }, "Delete", true);
   };
 
+  /* ═══ REPORTS ═══ */
   R.reports = function () {
     $("pages").innerHTML = head("Reports", "Performance overview for your school.") +
       '<div class="panel" id="repBody"><div class="empty">Loading…</div></div>';
@@ -510,16 +906,30 @@ tr:last-child td{border-bottom:none}
       var st = all[0].stats || {}; var results = all[1].results || [];
       var graded = results.filter(function (r) { return r.score != null && r.total_marks; });
       var avg = graded.length ? Math.round(graded.reduce(function (a, r) { return a + (100 * r.score / r.total_marks); }, 0) / graded.length) : null;
+      var bySubj = {};
+      graded.forEach(function (r) {
+        var k = r.subject || "General";
+        (bySubj[k] = bySubj[k] || []).push(100 * r.score / r.total_marks);
+      });
+      var subjRows = Object.keys(bySubj).sort().map(function (k) {
+        var arr = bySubj[k];
+        var a = Math.round(arr.reduce(function (x, y) { return x + y; }, 0) / arr.length);
+        var pill = a >= 70 ? "ok" : a >= 50 ? "warn" : "bad";
+        return '<tr><td><strong>' + esc(k) + '</strong></td><td>' + arr.length + '</td><td><span class="pill ' + pill + '">' + a + '% average</span></td></tr>';
+      });
       $("repBody").innerHTML =
         '<div class="cards">' +
         statCard("👥", "#e8f0fe", "Students", st.students || 0) +
         statCard("📝", "#fdf3e3", "Exams", st.exams || 0) +
         statCard("✅", "#e7f8ee", "Submissions", st.exam_submissions || 0) +
         statCard("📈", "#f3e8ff", "Average Score", avg == null ? "—" : avg + "%") +
-        '</div><p class="muted">Based on ' + graded.length + ' graded submissions. Term reports, class rankings and PDF exports are added as results accumulate.</p>';
-    }).catch(function (e) { $("repBody").innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
+        '</div>' +
+        '<div class="panel"><h3>Performance by subject</h3>' +
+        (subjRows.length ? tbl(["Subject", "Submissions", "Average"], subjRows) : '<div class="empty">No graded submissions yet.</div>') + '</div>';
+    }).catch(function (e) { $("repBody").innerHTML = '<div class="empty">' + esc(errText(e)) + '</div>'; });
   };
 
+  /* ═══ SETTINGS ═══ */
   R.settings = function () {
     $("pages").innerHTML = head("Settings", "Your school information.") + '<div class="panel" id="setBody"><div class="empty">Loading…</div></div>';
     api("/settings").then(function (d) {
@@ -533,12 +943,15 @@ tr:last-child td{border-bottom:none}
         '<div><label class="f-label">Contact email</label><input class="f-in" id="setEmail" value="' + esc(s.contact_email || "") + '" /></div>' +
         '<div><label class="f-label">Contact phone</label><input class="f-in" id="setPhone" value="' + esc(s.contact_phone || "") + '" /></div>' +
         '<div class="full"><label class="f-label">Address</label><input class="f-in" id="setAddr" value="' + esc(s.address || "") + '" /></div>' +
-        '</div><button class="btn" onclick="saveSettings()">💾 Save changes</button>' +
-        '<p class="muted" style="margin-top:12px">School name, link and logo are managed by the main Scholaxia admin — contact support to change them.</p>';
-    }).catch(function (e) { $("setBody").innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
+        '</div><button class="btn" onclick="saveSettings(this)">💾 Save changes</button>' +
+        '<p class="muted" style="margin-top:12px">School name, private link and logo are managed by the main Scholaxia admin — contact support to change them.</p>';
+    }).catch(function (e) { $("setBody").innerHTML = '<div class="empty">' + esc(errText(e)) + '</div>'; });
   };
-  window.saveSettings = function () {
-    api("/settings", { method: "PATCH", body: { address: $("setAddr").value, contact_email: $("setEmail").value, contact_phone: $("setPhone").value } }).then(function () { toast("Settings saved"); }).catch(function (e) { alert(e.message); });
+  window.saveSettings = function (btn) {
+    busy(btn, true);
+    api("/settings", { method: "PATCH", body: { address: $("setAddr").value, contact_email: $("setEmail").value, contact_phone: $("setPhone").value } })
+      .then(function () { busy(btn, false, "💾 Save changes"); toast("Settings saved"); })
+      .catch(function (e) { busy(btn, false, "💾 Save changes"); toastErr(e); });
   };
 
   /* ── BOOT ── */

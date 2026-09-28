@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import delete, func, or_, select, text
 from sqlalchemy.orm.attributes import flag_modified
@@ -27,14 +27,31 @@ router = APIRouter(prefix="/admin/school-office", tags=["School office"])
 portal_router = APIRouter(prefix="/school-portal", tags=["School portal"])
 
 
-@portal_router.get("/{slug}/public")
-async def portal_public_info(slug: str, db: AsyncSession = Depends(get_db)):
-    """Branding for the school's login screen. Only minimal public fields."""
+_schema_ensured = False
+
+
+async def _ensure_schema_once() -> None:
+    """Run the campus-column migration at most ONCE per process.
+
+    initialize_database() already does this at boot; this is only a safety
+    net. Running 8 ALTER TABLE statements on every request caused parallel
+    requests to serialize on table locks and every portal tab to hang on
+    "Loading…".
+    """
+    global _schema_ensured
+    if _schema_ensured:
+        return
     from app.core.startup_db import ensure_school_campus_schema
     try:
         await ensure_school_campus_schema()
-    except Exception:
-        pass
+    finally:
+        _schema_ensured = True
+
+
+@portal_router.get("/{slug}/public")
+async def portal_public_info(slug: str, db: AsyncSession = Depends(get_db)):
+    """Branding for the school's login screen. Only minimal public fields."""
+    await _ensure_schema_once()
     row = (
         await db.execute(
             select(SchoolCampus).where(
@@ -454,11 +471,7 @@ async def _campus(db: AsyncSession, current_user: dict, school_id: str | None = 
     sid = current_user.get("school_id") if current_user.get("role") == "school_admin" else school_id
     if not sid:
         raise HTTPException(status_code=400, detail="Main admin must add a school first, then pick it here")
-    try:
-        from app.core.startup_db import ensure_school_campus_schema
-        await ensure_school_campus_schema()
-    except Exception:
-        pass
+    await _ensure_schema_once()
     try:
         row = (await db.execute(select(SchoolCampus).where(SchoolCampus.id == sid))).scalar_one_or_none()
         if not row or not row.is_active:
@@ -1035,6 +1048,9 @@ async def exam_counts(
                 "taken_count": int(taken),
                 "scheduled_start": exam.scheduled_start.isoformat() if exam.scheduled_start else None,
                 "scheduled_end": exam.scheduled_end.isoformat() if exam.scheduled_end else None,
+                "total_questions": exam.total_questions,
+                "document_url": exam.notes_url,
+                "document_name": exam.notes_title,
             }
         )
     return {"exams": out}
@@ -1167,3 +1183,225 @@ async def host_school_live_class(
         "is_live": live_class.is_live,
         "school_name": campus.name,
     }
+
+
+# ── Exam authoring: import questions from a file, attach any document ──
+
+@portal_router.post("/{slug}/exams/import", status_code=201)
+async def portal_import_exam(
+    slug: str,
+    file: UploadFile = File(...),
+    title: str = Form(""),
+    subject: str = Form(""),
+    duration_minutes: int = Form(45),
+    scheduled_start: Optional[str] = Form(None),
+    scheduled_end: Optional[str] = Form(None),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a school exam by uploading a .json / .csv / .pdf question file.
+
+    The parser accepts the same formats as the main admin CBT importer, so a
+    school can prepare questions in any of those and upload them here.
+    """
+    from app.services.cbt_import import parse_cbt_file
+
+    info = await portal_public_info(slug, db)
+    campus = await _campus(db, current_user, info["school_id"])
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="The uploaded file is empty")
+    defaults = {
+        "title": (title or "").strip(),
+        "subject": (subject or "").strip(),
+        "duration_minutes": max(5, min(int(duration_minutes or 45), 300)),
+        "exam_type": "SCHOOL",
+        "is_published": True,
+    }
+    try:
+        parsed = parse_cbt_file(file.filename or "", content, defaults)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not parsed:
+        raise HTTPException(status_code=400, detail="No exams found in the file")
+
+    created = []
+    for item in parsed[:20]:  # sanity cap per upload
+        qs = [q for q in (item.get("questions") or []) if q.get("question_text")]
+        if not qs:
+            continue
+        try:
+            start = datetime.fromisoformat(scheduled_start.replace("Z", "+00:00")) if scheduled_start else None
+            end = datetime.fromisoformat(scheduled_end.replace("Z", "+00:00")) if scheduled_end else None
+        except ValueError:
+            start = end = None
+        exam = CBTExam(
+            title=(item.get("title") or "Untitled exam").strip(),
+            subject=(item.get("subject") or "General").strip(),
+            exam_type="SCHOOL",
+            duration_minutes=max(5, min(int(item.get("duration_minutes") or defaults["duration_minutes"]), 300)),
+            total_questions=len(qs),
+            created_by=current_user["sub"],
+            is_published=bool(item.get("is_published", True)),
+            is_school_exam=True,
+            school_id=campus.id,
+            scheduled_start=start,
+            scheduled_end=end,
+            ai_locked=True,
+            camera_required=False,
+            block_minimize=True,
+        )
+        db.add(exam)
+        await db.flush()
+        for q in qs:
+            opt = (q.get("correct_option") or "A").upper()[:1]
+            if opt not in ("A", "B", "C", "D"):
+                opt = "A"
+            db.add(
+                CBTQuestion(
+                    exam_id=exam.id,
+                    question_text=str(q.get("question_text"))[:2000],
+                    option_a=str(q.get("option_a") or "")[:500],
+                    option_b=str(q.get("option_b") or "")[:500],
+                    option_c=str(q.get("option_c") or "")[:500],
+                    option_d=str(q.get("option_d") or "")[:500],
+                    correct_option=opt,
+                    explanation=(str(q.get("explanation"))[:1000] if q.get("explanation") else None),
+                )
+            )
+        created.append({"id": str(exam.id), "title": exam.title, "questions": len(qs)})
+    if not created:
+        raise HTTPException(status_code=400, detail="File parsed but contained no usable questions")
+    await db.commit()
+    return {"ok": True, "created": created, "count": len(created)}
+
+
+@portal_router.post("/{slug}/exams/{exam_id}/document")
+async def portal_attach_exam_document(
+    slug: str,
+    exam_id: str,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Attach ANY document type to an exam (PDF, DOCX, images, audio, video…).
+
+    Students taking the exam on the site can open/download it. Stored in
+    Cloudinary; the URL lives on the exam row.
+    """
+    from app.services.media_service import upload_file
+
+    info = await portal_public_info(slug, db)
+    campus = await _campus(db, current_user, info["school_id"])
+    exam = (await db.execute(select(CBTExam).where(CBTExam.id == exam_id, CBTExam.school_id == campus.id))).scalar_one_or_none()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found in your school")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(content) > 40 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large (max 40MB)")
+    try:
+        result = upload_file(content, "school_exam_docs", filename=file.filename or "document")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {exc}")
+    exam.notes_url = result.get("secure_url") or result.get("url")
+    exam.notes_title = (file.filename or "document")[:255]
+    await db.commit()
+    return {"ok": True, "document_url": exam.notes_url, "document_name": exam.notes_title}
+
+
+@portal_router.post("/{slug}/exams/{exam_id}/questions", status_code=201)
+async def portal_add_exam_questions(
+    slug: str,
+    exam_id: str,
+    payload: list[SchoolExamQuestionIn],
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Append typed questions to an existing school exam."""
+    info = await portal_public_info(slug, db)
+    campus = await _campus(db, current_user, info["school_id"])
+    exam = (await db.execute(select(CBTExam).where(CBTExam.id == exam_id, CBTExam.school_id == campus.id))).scalar_one_or_none()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found in your school")
+    if not payload:
+        raise HTTPException(status_code=400, detail="Add at least one question")
+    for q in payload:
+        opt = (q.correct_option or "A").upper()[:1]
+        if opt not in ("A", "B", "C", "D"):
+            opt = "A"
+        db.add(
+            CBTQuestion(
+                exam_id=exam.id,
+                question_text=q.question_text[:2000],
+                option_a=q.option_a[:500],
+                option_b=q.option_b[:500],
+                option_c=q.option_c[:500],
+                option_d=q.option_d[:500],
+                correct_option=opt,
+            )
+        )
+    exam.total_questions = (
+        int((await db.execute(select(func.count(CBTQuestion.id)).where(CBTQuestion.exam_id == exam.id))).scalar() or 0)
+    )
+    await db.commit()
+    return {"ok": True, "total_questions": exam.total_questions}
+
+
+@portal_router.delete("/{slug}/exams/{exam_id}")
+async def portal_delete_exam(
+    slug: str,
+    exam_id: str,
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    info = await portal_public_info(slug, db)
+    campus = await _campus(db, current_user, info["school_id"])
+    exam = (await db.execute(select(CBTExam).where(CBTExam.id == exam_id, CBTExam.school_id == campus.id))).scalar_one_or_none()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found in your school")
+    await db.execute(delete(CBTQuestion).where(CBTQuestion.exam_id == exam.id))
+    await db.execute(delete(CBTSession).where(CBTSession.exam_id == exam.id))
+    await db.execute(delete(CBTExam).where(CBTExam.id == exam.id))
+    await db.commit()
+    return {"ok": True}
+
+
+@portal_router.delete("/{slug}/fees/{fee_id}")
+async def portal_delete_fee(
+    slug: str,
+    fee_id: str,
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    info = await portal_public_info(slug, db)
+    campus = await _campus(db, current_user, info["school_id"])
+    rows = [r for r in (getattr(campus, "portal_fees", None) or []) if r.get("id") != fee_id]
+    campus.portal_fees = rows
+    flag_modified(campus, "portal_fees")
+    await db.commit()
+    return {"ok": True, "fees": rows}
+
+
+@portal_router.patch("/{slug}/fees/{fee_id}")
+async def portal_update_fee(
+    slug: str,
+    fee_id: str,
+    status: str = Query(..., description="paid | pending | overdue"),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    info = await portal_public_info(slug, db)
+    campus = await _campus(db, current_user, info["school_id"])
+    if status not in ("paid", "pending", "overdue"):
+        raise HTTPException(status_code=400, detail="status must be paid, pending or overdue")
+    rows = list(getattr(campus, "portal_fees", None) or [])
+    for r in rows:
+        if r.get("id") == fee_id:
+            r["status"] = status
+            break
+    campus.portal_fees = rows
+    flag_modified(campus, "portal_fees")
+    await db.commit()
+    return {"ok": True, "fees": rows}
