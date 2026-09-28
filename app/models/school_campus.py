@@ -34,6 +34,13 @@ class SchoolCampus(Base):
     school_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
     # mixed | boys | girls (single-sex schools)
     category: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # School-portal data (branded admin dashboard): subject/class registries,
+    # attendance registers and fee records — JSON keeps each school's data
+    # self-contained without extra tables.
+    portal_subjects: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    portal_classes: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    portal_attendance: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # date -> {student_id: status}
+    portal_fees: Mapped[list | None] = mapped_column(JSON, nullable=True)
     subscription_active: Mapped[bool] = mapped_column(Boolean, default=False)
     subscription_plan: Mapped[str | None] = mapped_column(String(80), nullable=True)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True)

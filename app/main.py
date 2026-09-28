@@ -110,6 +110,7 @@ app.include_router(sil.router, prefix="/api/v1")
 app.include_router(cbt_coupons.router, prefix="/api/v1")
 app.include_router(videos.router, prefix="/api/v1")
 app.include_router(school_office.router, prefix="/api/v1")
+app.include_router(school_office.portal_router, prefix="/api/v1")
 app.include_router(external_exams.staff_router, prefix="/api/v1")
 app.include_router(external_exams.public_router, prefix="/api/v1")
 app.include_router(schools.router, prefix="/api/v1")
@@ -263,7 +264,7 @@ async def _school_host_response(request: Request, slug: str, full_path: str):
 
     path = (full_path or "").strip()
     if not path or path.endswith("/"):
-        return _static_file("index.html")
+        return _static_file("portal-app.html")
     safe = Path(path)
     if ".." in safe.parts:
         raise HTTPException(status_code=400, detail="Invalid path")
@@ -275,8 +276,8 @@ async def _school_host_response(request: Request, slug: str, full_path: str):
     if full.is_file():
         no_cache = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
         return FileResponse(full, headers=no_cache)
-    # Unknown file → the SPA entry (lets deep links like /student.html work).
-    return _static_file("index.html")
+    # Unknown file → the portal SPA entry (deep links stay inside the school app).
+    return _static_file("portal-app.html")
 
 
 # Explicit routes so /app works even if StaticFiles mount order is flaky on Render.

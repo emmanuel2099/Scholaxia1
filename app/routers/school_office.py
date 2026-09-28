@@ -1,10 +1,12 @@
 import secrets
 from datetime import datetime
 from typing import Optional
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import delete, func, or_, select, text
+from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -18,6 +20,432 @@ from app.models.live_class import LiveClass
 from app.core.datetime_utils import naive_utc_now
 
 router = APIRouter(prefix="/admin/school-office", tags=["School office"])
+
+# ── School portal (branded admin dashboard on <slug>.scholaxia.com) ───────
+# New public router so school links can bootstrap + authenticate without
+# touching the admin-only router above.
+portal_router = APIRouter(prefix="/school-portal", tags=["School portal"])
+
+
+@portal_router.get("/{slug}/public")
+async def portal_public_info(slug: str, db: AsyncSession = Depends(get_db)):
+    """Branding for the school's login screen. Only minimal public fields."""
+    from app.core.startup_db import ensure_school_campus_schema
+    try:
+        await ensure_school_campus_schema()
+    except Exception:
+        pass
+    row = (
+        await db.execute(
+            select(SchoolCampus).where(
+                SchoolCampus.slug == slug.lower().strip(),
+                SchoolCampus.is_active.is_(True),
+            )
+        )
+    ).scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="School not found")
+    status = (getattr(row, "approval_status", None) or "approved").lower()
+    return {
+        "school_id": str(row.id),
+        "slug": row.slug,
+        "name": row.name,
+        "city": row.city,
+        "state": row.state,
+        "logo_url": getattr(row, "logo_url", None),
+        "school_type": getattr(row, "school_type", None),
+        "category": getattr(row, "category", None),
+        "approval_status": status,
+        "login_open": status == "approved",
+    }
+
+
+class PortalLoginIn(BaseModel):
+    identifier: str = Field(min_length=2, max_length=255)
+    password: str = Field(min_length=1, max_length=128)
+
+
+@portal_router.post("/{slug}/login")
+async def portal_login(slug: str, payload: PortalLoginIn, db: AsyncSession = Depends(get_db)):
+    """School-staff login on the school's own link.
+
+    Accepts the school admin's email or the phone they registered with; the
+    password is the one set during registration. Returns the same token shape
+    as /auth/login so the SPA can call every existing API.
+    """
+    from app.core.security import verify_password, create_access_token
+
+    info = await portal_public_info(slug, db)
+    if not info.get("login_open"):
+        raise HTTPException(status_code=403, detail="This school is not active yet")
+
+    ident = payload.identifier.strip().lower()
+    row = (
+        await db.execute(
+            select(User).where(
+                User.school_id == UUID(info["school_id"]),
+                User.role == UserRole.school_admin,
+                func.lower(User.email) == ident,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None and ident.replace(" ", "").isdigit():
+        row = (
+            await db.execute(
+                select(User).where(
+                    User.school_id == UUID(info["school_id"]),
+                    User.role == UserRole.school_admin,
+                    func.replace(User.phone, " ", "") == ident,
+                )
+            )
+        ).scalar_one_or_none()
+    if row is None or not row.hashed_password or not verify_password(payload.password, row.hashed_password):
+        raise HTTPException(status_code=401, detail="Incorrect email/phone or password for this school")
+    if not row.is_active:
+        raise HTTPException(status_code=403, detail="This account has been disabled")
+
+    token = create_access_token(str(row.id), row.role)
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "role": "school_admin",
+        "user": {
+            "id": str(row.id),
+            "full_name": row.full_name,
+            "email": row.email,
+            "school_id": str(row.school_id),
+            "school_name": info["name"],
+            "school_slug": info["slug"],
+        },
+        "school": info,
+    }
+
+
+@portal_router.get("/{slug}/dashboard")
+async def portal_dashboard(slug: str, current_user: dict = Depends(require_school_staff), db: AsyncSession = Depends(get_db)):
+    """Headline numbers for the portal home page."""
+    info = await portal_public_info(slug, db)
+    campus = await _campus(db, current_user, info["school_id"])
+
+    students = (
+        await db.execute(
+            select(func.count(User.id)).where(User.school_id == campus.id, User.role == UserRole.student)
+        )
+    ).scalar() or 0
+    teachers = (
+        await db.execute(
+            select(func.count(User.id)).where(User.school_id == campus.id, User.role == UserRole.teacher)
+        )
+    ).scalar() or 0
+    exams = (
+        await db.execute(
+            select(func.count(CBTExam.id)).where(CBTExam.school_id == campus.id, CBTExam.is_school_exam == True)  # noqa: E712
+        )
+    ).scalar() or 0
+    subs = (
+        await db.execute(
+            select(func.count(CBTSession.id)).join(CBTExam, CBTExam.id == CBTSession.exam_id).where(
+                CBTExam.school_id == campus.id,
+                CBTSession.submitted_at.isnot(None),
+            )
+        )
+    ).scalar() or 0
+    return {
+        "school": {
+            "name": campus.name,
+            "slug": campus.slug,
+            "logo_url": getattr(campus, "logo_url", None),
+            "school_type": getattr(campus, "school_type", None),
+            "category": getattr(campus, "category", None),
+            "city": campus.city,
+            "state": campus.state,
+        },
+        "stats": {
+            "students": int(students),
+            "teachers": int(teachers),
+            "exams": int(exams),
+            "exam_submissions": int(subs),
+        },
+    }
+
+
+class SubjectIn(BaseModel):
+    name: str = Field(min_length=2, max_length=120)
+    code: str = Field(min_length=2, max_length=20)
+    subject_type: str = Field(default="core", max_length=20)  # core | general | elective
+    class_levels: list[str] = []  # e.g. ["JSS1", "JSS2"]
+    is_active: bool = True
+
+
+class ClassIn(BaseModel):
+    name: str = Field(min_length=2, max_length=40)  # e.g. JSS1 A
+    section: str = Field(default="A", max_length=10)
+    level: str = Field(default="", max_length=20)  # JSS1 / SS2 …
+
+
+# Per-school subject + class registries (JSON columns on the campus row keep
+# this table-free and instantly available to every school).
+def _subjects_of(campus: SchoolCampus) -> list[dict]:
+    return list(getattr(campus, "portal_subjects", None) or [])
+
+
+def _classes_of(campus: SchoolCampus) -> list[dict]:
+    return list(getattr(campus, "portal_classes", None) or [])
+
+
+@portal_router.get("/{slug}/subjects")
+async def portal_subjects(slug: str, current_user: dict = Depends(require_school_staff), db: AsyncSession = Depends(get_db)):
+    info = await portal_public_info(slug, db)
+    campus = await _campus(db, current_user, info["school_id"])
+    rows = _subjects_of(campus)
+    return {
+        "subjects": rows,
+        "stats": {
+            "total": len(rows),
+            "active": len([r for r in rows if r.get("is_active", True)]),
+            "inactive": len([r for r in rows if not r.get("is_active", True)]),
+            "core": len([r for r in rows if r.get("subject_type") == "core"]),
+        },
+    }
+
+
+@portal_router.post("/{slug}/subjects", status_code=201)
+async def portal_add_subject(slug: str, payload: SubjectIn, current_user: dict = Depends(require_school_staff), db: AsyncSession = Depends(get_db)):
+    info = await portal_public_info(slug, db)
+    campus = await _campus(db, current_user, info["school_id"])
+    rows = _subjects_of(campus)
+    code = payload.code.strip().upper()
+    for r in rows:
+        if str(r.get("code", "")).upper() == code:
+            raise HTTPException(status_code=409, detail=f"Subject code {code} already exists")
+    rows.append(
+        {
+            "id": secrets.token_hex(6),
+            "name": payload.name.strip(),
+            "code": code,
+            "subject_type": payload.subject_type,
+            "class_levels": payload.class_levels or [],
+            "is_active": payload.is_active,
+            "created_at": naive_utc_now().isoformat(),
+        }
+    )
+    campus.portal_subjects = rows
+    flag_modified(campus, "portal_subjects")
+    await db.commit()
+    return {"ok": True, "subjects": rows}
+
+
+@portal_router.delete("/{slug}/subjects/{subject_id}")
+async def portal_delete_subject(slug: str, subject_id: str, current_user: dict = Depends(require_school_staff), db: AsyncSession = Depends(get_db)):
+    info = await portal_public_info(slug, db)
+    campus = await _campus(db, current_user, info["school_id"])
+    rows = [r for r in _subjects_of(campus) if r.get("id") != subject_id]
+    campus.portal_subjects = rows
+    flag_modified(campus, "portal_subjects")
+    await db.commit()
+    return {"ok": True, "subjects": rows}
+
+
+@portal_router.get("/{slug}/classes")
+async def portal_classes(slug: str, current_user: dict = Depends(require_school_staff), db: AsyncSession = Depends(get_db)):
+    info = await portal_public_info(slug, db)
+    campus = await _campus(db, current_user, info["school_id"])
+    rows = _classes_of(campus)
+    # Live head-count per class from real student accounts.
+    counts = dict(
+        (await db.execute(
+            select(StudentProfile.education_level, func.count(User.id))
+            .join(User, User.id == StudentProfile.user_id)
+            .where(User.school_id == campus.id, User.role == UserRole.student)
+            .group_by(StudentProfile.education_level)
+        )).all()
+    )
+    out = []
+    for r in rows:
+        level = (r.get("level") or "").upper()
+        out.append({**r, "student_count": int(counts.get(level, 0))})
+    return {"classes": out, "total": len(out)}
+
+
+@portal_router.post("/{slug}/classes", status_code=201)
+async def portal_add_class(slug: str, payload: ClassIn, current_user: dict = Depends(require_school_staff), db: AsyncSession = Depends(get_db)):
+    info = await portal_public_info(slug, db)
+    campus = await _campus(db, current_user, info["school_id"])
+    rows = _classes_of(campus)
+    name = payload.name.strip()
+    for r in rows:
+        if str(r.get("name", "")).lower() == name.lower():
+            raise HTTPException(status_code=409, detail=f"Class '{name}' already exists")
+    rows.append({"id": secrets.token_hex(6), "name": name, "section": payload.section or "A", "level": (payload.level or name[:3]).upper()})
+    campus.portal_classes = rows
+    flag_modified(campus, "portal_classes")
+    await db.commit()
+    return {"ok": True, "classes": rows}
+
+
+@portal_router.delete("/{slug}/classes/{class_id}")
+async def portal_delete_class(slug: str, class_id: str, current_user: dict = Depends(require_school_staff), db: AsyncSession = Depends(get_db)):
+    info = await portal_public_info(slug, db)
+    campus = await _campus(db, current_user, info["school_id"])
+    rows = [r for r in _classes_of(campus) if r.get("id") != class_id]
+    campus.portal_classes = rows
+    flag_modified(campus, "portal_classes")
+    await db.commit()
+    return {"ok": True, "classes": rows}
+
+
+@portal_router.get("/{slug}/attendance")
+async def portal_attendance(slug: str, date: Optional[str] = Query(None), current_user: dict = Depends(require_school_staff), db: AsyncSession = Depends(get_db)):
+    """Attendance register for a date. Real student roster; marks stored per
+    date in the campus JSON so the register persists across reloads."""
+    info = await portal_public_info(slug, db)
+    campus = await _campus(db, current_user, info["school_id"])
+    day = (date or naive_utc_now().date().isoformat())[:10]
+    students = (
+        await db.execute(
+            select(User, StudentProfile)
+            .outerjoin(StudentProfile, StudentProfile.user_id == User.id)
+            .where(User.school_id == campus.id, User.role == UserRole.student)
+            .order_by(User.full_name)
+        )
+    ).all()
+    marks = dict((getattr(campus, "portal_attendance", None) or {}).get(day, {}))
+    out = []
+    for user, profile in students:
+        sid = getattr(profile, "school_student_id", None) or str(user.id)
+        out.append(
+            {
+                "id": str(user.id),
+                "student_id": sid,
+                "full_name": user.full_name,
+                "class_name": (profile.education_level if profile else "") or "—",
+                "status": marks.get(sid) or "unmarked",  # present | absent | late | unmarked
+            }
+        )
+    present = len([r for r in out if r["status"] == "present"])
+    absent = len([r for r in out if r["status"] == "absent"])
+    late = len([r for r in out if r["status"] == "late"])
+    return {
+        "date": day,
+        "students": out,
+        "summary": {"total": len(out), "present": present, "absent": absent, "late": late},
+    }
+
+
+class AttendanceMarkIn(BaseModel):
+    date: str = Field(min_length=10, max_length=10)
+    marks: dict[str, str]  # student_id -> present|absent|late
+
+
+@portal_router.post("/{slug}/attendance")
+async def portal_mark_attendance(slug: str, payload: AttendanceMarkIn, current_user: dict = Depends(require_school_staff), db: AsyncSession = Depends(get_db)):
+    info = await portal_public_info(slug, db)
+    campus = await _campus(db, current_user, info["school_id"])
+    store = dict(getattr(campus, "portal_attendance", None) or {})
+    day = payload.date[:10]
+    clean = {k: ("present" if v == "present" else "absent" if v == "absent" else "late" if v == "late" else "unmarked") for k, v in payload.marks.items()}
+    store[day] = clean
+    campus.portal_attendance = store
+    flag_modified(campus, "portal_attendance")
+    await db.commit()
+    return {"ok": True, "date": day, "marked": len(clean)}
+
+
+@portal_router.get("/{slug}/fees")
+async def portal_fees(slug: str, current_user: dict = Depends(require_school_staff), db: AsyncSession = Depends(get_db)):
+    """Fee records for the school. Stored per-school in JSON; created via POST."""
+    info = await portal_public_info(slug, db)
+    campus = await _campus(db, current_user, info["school_id"])
+    rows = list(getattr(campus, "portal_fees", None) or [])
+    total_due = sum(float(r.get("amount", 0)) for r in rows)
+    paid = [r for r in rows if r.get("status") == "paid"]
+    total_paid = sum(float(r.get("amount", 0)) for r in paid)
+    return {
+        "fees": rows,
+        "stats": {
+            "records": len(rows),
+            "total_due": total_due,
+            "total_paid": total_paid,
+            "outstanding": total_due - total_paid,
+            "collection_rate": round(100 * total_paid / total_due, 1) if total_due else 0,
+        },
+    }
+
+
+class FeeIn(BaseModel):
+    student_name: str = Field(min_length=2, max_length=255)
+    student_id: str | None = None
+    class_name: str | None = None
+    fee_type: str = Field(default="School Fees", max_length=60)
+    amount: float = Field(ge=0)
+    method: str = Field(default="cash", max_length=30)  # cash | transfer | pos | online
+    status: str = Field(default="paid", max_length=20)  # paid | pending | overdue
+
+
+@portal_router.post("/{slug}/fees", status_code=201)
+async def portal_add_fee(slug: str, payload: FeeIn, current_user: dict = Depends(require_school_staff), db: AsyncSession = Depends(get_db)):
+    info = await portal_public_info(slug, db)
+    campus = await _campus(db, current_user, info["school_id"])
+    rows = list(getattr(campus, "portal_fees", None) or [])
+    rows.insert(
+        0,
+        {
+            "id": secrets.token_hex(6),
+            "date": naive_utc_now().date().isoformat(),
+            "student_name": payload.student_name.strip(),
+            "student_id": (payload.student_id or "").strip() or None,
+            "class_name": (payload.class_name or "").strip() or None,
+            "fee_type": payload.fee_type,
+            "amount": float(payload.amount),
+            "method": payload.method,
+            "status": payload.status if payload.status in ("paid", "pending", "overdue") else "pending",
+        },
+    )
+    campus.portal_fees = rows[:1000]
+    flag_modified(campus, "portal_fees")
+    await db.commit()
+    return {"ok": True, "fees": rows[:1000]}
+
+
+@portal_router.get("/{slug}/settings")
+async def portal_settings(slug: str, current_user: dict = Depends(require_school_staff), db: AsyncSession = Depends(get_db)):
+    info = await portal_public_info(slug, db)
+    campus = await _campus(db, current_user, info["school_id"])
+    return {
+        "school": {
+            "name": campus.name,
+            "slug": campus.slug,
+            "logo_url": getattr(campus, "logo_url", None),
+            "school_type": getattr(campus, "school_type", None),
+            "category": getattr(campus, "category", None),
+            "city": campus.city,
+            "state": campus.state,
+            "address": getattr(campus, "address", None),
+            "contact_email": getattr(campus, "contact_email", None),
+            "contact_phone": getattr(campus, "contact_phone", None),
+        },
+        "private_link": f"https://{campus.slug}.scholaxia.com/" if campus.slug else None,
+    }
+
+
+class PortalSettingsIn(BaseModel):
+    address: str | None = Field(default=None, max_length=500)
+    contact_email: str | None = Field(default=None, max_length=255)
+    contact_phone: str | None = Field(default=None, max_length=40)
+
+
+@portal_router.patch("/{slug}/settings")
+async def portal_update_settings(slug: str, payload: PortalSettingsIn, current_user: dict = Depends(require_school_staff), db: AsyncSession = Depends(get_db)):
+    info = await portal_public_info(slug, db)
+    campus = await _campus(db, current_user, info["school_id"])
+    if payload.address is not None:
+        campus.address = payload.address.strip() or None
+    if payload.contact_email is not None:
+        campus.contact_email = payload.contact_email.strip().lower() or None
+    if payload.contact_phone is not None:
+        campus.contact_phone = payload.contact_phone.strip() or None
+    await db.commit()
+    return {"ok": True}
 
 
 async def _campus(db: AsyncSession, current_user: dict, school_id: str | None = None) -> SchoolCampus:
