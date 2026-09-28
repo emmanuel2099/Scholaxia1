@@ -3984,18 +3984,100 @@ function schoolOfficeQuery(extra) {
   return parts.length ? "?" + parts.join("&") : "";
 }
 
+/* ── Super-admin school approval (pending → approved/rejected/suspended) ── */
+var SX_APPROVAL_LABEL = { pending: "Pending review", approved: "Approved", rejected: "Rejected", suspended: "Suspended" };
+
+function _sxApprovalBadge(status) {
+  var st = String(status || "pending").toLowerCase();
+  var label = SX_APPROVAL_LABEL[st] || st;
+  var cls = st === "approved" ? "ok" : st === "pending" ? "school" : "live";
+  return '<span class="badge ' + cls + '">' + escHtml(label) + '</span>';
+}
+
+function _sxPrivateLink(s) {
+  if (!s || !s.slug) return "—";
+  var url = "https://" + s.slug + ".scholaxia.com/";
+  var approved = String(s.approval_status || "approved").toLowerCase() === "approved";
+  return approved
+    ? '<a href="' + escHtml(url) + '" target="_blank" rel="noopener">' + escHtml(url) + "</a>"
+    : '<span class="muted">' + escHtml(url) + " (live after approval)</span>";
+}
+
+async function _sxSchoolAction(schoolId, action, body, confirmText) {
+  if (confirmText && !window.confirm(confirmText)) return;
+  try {
+    await adminApi("/api/v1/super-admin/schools/" + schoolId + "/" + action, {
+      method: "POST",
+      body: JSON.stringify(body || {}),
+    });
+    loadSchoolsAdmin();
+  } catch (e) {
+    window.alert(e.message || "Action failed");
+  }
+}
+
+function approveSchool(id) {
+  _sxSchoolAction(id, "approve", {}, "Approve this school? Its private link goes live.");
+}
+
+function rejectSchool(id) {
+  var reason = window.prompt("Reason for rejecting (optional):", "") || "";
+  _sxSchoolAction(id, "reject", { reason: reason }, reason === "" ? "Reject this school without a reason?" : null);
+}
+
+function suspendSchool(id) {
+  var reason = window.prompt("Reason for suspending (optional):", "") || "";
+  _sxSchoolAction(id, "suspend", { reason: reason }, "Suspend this school? Students and admins lose access until reactivated.");
+}
+
+function reactivateSchool(id) {
+  _sxSchoolAction(id, "reactivate", {});
+}
+
+async function setSchoolPlan(id) {
+  var plan = window.prompt("Plan: basic (₦20,000), standard (₦35,000) or premium (₦60,000):", "basic");
+  if (!plan) return;
+  plan = plan.toLowerCase().trim();
+  if (plan !== "basic" && plan !== "standard" && plan !== "premium") {
+    window.alert("Plan must be basic, standard or premium.");
+    return;
+  }
+  var months = parseInt(window.prompt("How many months? (0 = no expiry)", "12"), 10) || 0;
+  try {
+    await adminApi("/api/v1/super-admin/schools/" + id + "/plan", {
+      method: "POST",
+      body: JSON.stringify({ plan: plan, months: months, term_label: months ? months + " month(s)" : "" }),
+    });
+    loadSchoolsAdmin();
+  } catch (e) {
+    window.alert(e.message || "Could not set plan");
+  }
+}
+
 async function loadSchoolsAdmin() {
   var el = document.getElementById("schools-table");
   if (!el) return;
   el.innerHTML = '<div class="loading">Loading…</div>';
   try {
-    var data = await adminApi("/api/v1/admin/schools");
+    var data = await adminApi("/api/v1/super-admin/schools");
     var rows = (data && data.schools) || [];
     if (!rows.length) { el.innerHTML = '<div class="empty-state">No schools yet. Add the first school above.</div>'; return; }
-    el.innerHTML = '<table class="data-table"><thead><tr><th>School</th><th>Code</th><th>City</th><th>School admins</th></tr></thead><tbody>' +
+    el.innerHTML = '<table class="data-table"><thead><tr><th>School</th><th>City</th><th>Status</th><th>Plan</th><th>Private link</th><th>School admins</th><th>Actions</th></tr></thead><tbody>' +
       rows.map(function (s) {
-        var ads = (s.admins || []).map(function (a) { return escHtml(a.full_name) + " (" + escHtml(a.email) + ")"; }).join("<br>");
-        return "<tr><td>" + escHtml(s.name) + "</td><td>" + escHtml(s.code || "—") + "</td><td>" + escHtml(s.city || "—") + "</td><td>" + (ads || "—") + "</td></tr>";
+        var ads = (s.admin_email ? escHtml(s.admin_name || "") + " (" + escHtml(s.admin_email) + ")" : "—");
+        var status = String(s.approval_status || "approved").toLowerCase();
+        var planTxt = (s.plan ? escHtml(s.plan) : "—") + (s.subscription_active ? " ✓" : " (no sub)");
+        var acts = "";
+        if (status === "pending") {
+          acts = '<button class="btn-sm" onclick="approveSchool(\'' + s.school_id + '\')">Approve</button> ' +
+                 '<button class="btn-sm danger" onclick="rejectSchool(\'' + s.school_id + '\')">Reject</button> ';
+        } else if (status === "suspended") {
+          acts = '<button class="btn-sm" onclick="reactivateSchool(\'' + s.school_id + '\')">Reactivate</button> ';
+        } else {
+          acts = '<button class="btn-sm danger" onclick="suspendSchool(\'' + s.school_id + '\')">Suspend</button> ';
+        }
+        acts += '<button class="btn-sm" onclick="setSchoolPlan(\'' + s.school_id + '\')">' + (s.plan ? "Change plan" : "Set plan") + "</button>";
+        return "<tr><td><strong>" + escHtml(s.name) + "</strong></td><td>" + escHtml(s.city || "—") + "</td><td>" + _sxApprovalBadge(status) + "</td><td>" + planTxt + "</td><td>" + _sxPrivateLink(s) + "</td><td>" + ads + "</td><td>" + acts + "</td></tr>";
       }).join("") + "</tbody></table>";
   } catch (e) {
     el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";
