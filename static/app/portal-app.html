@@ -20,7 +20,11 @@ input,select{font-family:inherit;font-size:14.5px}
 
 /* ── LOGIN ── */
 #login{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(140deg,#eef4ff 0%,#dfe9fb 55%,#cddcf7 100%);padding:24px}
-.login-card{background:#fff;border-radius:22px;box-shadow:0 24px 70px rgba(13,27,62,.18);max-width:420px;width:100%;padding:38px 34px}
+.login-wrap{display:grid;grid-template-columns:440px minmax(320px,560px);max-width:1020px;width:100%;background:linear-gradient(160deg,#f6faff 0%,#e8f1fd 100%);border-radius:24px;box-shadow:0 24px 70px rgba(13,27,62,.18);overflow:hidden}
+.login-hero{display:flex;align-items:flex-end;justify-content:center;padding:10px 10px 0;background:radial-gradient(120% 90% at 70% 10%,#dcebfe 0%,#c6dcf9 60%,#b3cff5 100%);min-height:560px}
+.login-hero img{max-width:100%;max-height:100%;object-fit:contain;display:block}
+.login-card{background:transparent;border-radius:0;box-shadow:none;max-width:none;width:100%;padding:44px 42px}
+@media(max-width:860px){.login-wrap{grid-template-columns:1fr}.login-hero{display:none}.login-card{padding:34px 26px}}
 .login-brand{display:flex;align-items:center;gap:12px;margin-bottom:22px}
 .login-brand img{width:52px;height:52px;border-radius:12px;object-fit:cover;background:var(--sky)}
 .login-brand .fallback-logo{width:52px;height:52px;border-radius:12px;background:var(--navy);color:#f7c948;display:flex;align-items:center;justify-content:center;font-size:26px}
@@ -110,6 +114,7 @@ tr:last-child td{border-bottom:none}
 
 <!-- ═══════════ LOGIN ═══════════ -->
 <div id="login">
+  <div class="login-wrap">
   <div class="login-card">
     <div class="login-brand">
       <div class="blogo" id="lgLogoWrap"><span>🎓</span></div>
@@ -127,6 +132,8 @@ tr:last-child td{border-bottom:none}
       <div class="login-err" id="lgErr"></div>
     </form>
     <p class="login-foot">Powered by Scholaxia · <span id="lgLink"></span></p>
+  </div>
+  <div class="login-hero"><img src="media/portal-login-hero.png" alt="" /></div>
   </div>
 </div>
 

@@ -104,7 +104,9 @@ async def portal_login(slug: str, payload: PortalLoginIn, db: AsyncSession = Dep
     if not row.is_active:
         raise HTTPException(status_code=403, detail="This account has been disabled")
 
-    token = create_access_token(str(row.id), row.role)
+    # sv must match the user's current token_version or every authenticated
+    # call 401s ("logged in on another device") — the logout loop.
+    token = create_access_token(str(row.id), row.role, session_version=int(getattr(row, "token_version", 0) or 0))
     return {
         "access_token": token,
         "token_type": "bearer",
