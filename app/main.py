@@ -256,6 +256,10 @@ async def _school_host_response(request: Request, slug: str, full_path: str):
             await school_by_slug(slug, db)
         except HTTPException:
             return HTMLResponse(_UNKNOWN_SCHOOL_PAGE.format(host=_request_host(request)), status_code=404)
+        except Exception:
+            # DB hiccup (e.g. waking from idle): fail open — serve the app and
+            # let the page's own API calls surface any real error.
+            pass
 
     path = (full_path or "").strip()
     if not path or path.endswith("/"):
@@ -345,10 +349,37 @@ async def school_path_link_assets(slug: str, asset_path: str, request: Request):
 # are matched by their explicit routes first. ──
 @app.get("/{full_path:path}", include_in_schema=False)
 async def school_host_router(request: Request, full_path: str):
-    """Serve the student SPA on school private links (divine-light.scholaxia.com).
-    On any other host this 404s — the main site is handled by explicit routes."""
+    """Final catch-all:
+    - school subdomains (divine-light.scholaxia.com) → the school-branded
+      student SPA ("school not found" page for unknown/unapproved slugs);
+    - the main hosts (scholaxia.com, www, scholaxia1.onrender.com) → the
+      marketing/student site, so pointing the root domain at Render is safe;
+    - anything else → 404."""
     host = _request_host(request)
     slug = _school_slug_from_host(host)
-    if not slug:
+    if slug:
+        return await _school_host_response(request, slug, full_path)
+    main_hosts = {
+        BASE_DOMAIN,
+        f"www.{BASE_DOMAIN}",
+        "scholaxia1.onrender.com",
+        "localhost",
+        "127.0.0.1",
+        "testserver",
+    }
+    if host not in main_hosts:
         raise HTTPException(status_code=404, detail="Not found")
-    return await _school_host_response(request, slug, full_path)
+    if not full_path or full_path.endswith("/"):
+        return _static_file("index.html")
+    safe = Path(full_path)
+    if ".." in safe.parts:
+        raise HTTPException(status_code=400, detail="Invalid path")
+    full = (WEBSITE_STATIC_DIR / safe).resolve()
+    try:
+        full.relative_to(WEBSITE_STATIC_DIR.resolve())
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Not found")
+    if full.is_file():
+        no_cache = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
+        return FileResponse(full, headers=no_cache)
+    return _static_file("index.html")
