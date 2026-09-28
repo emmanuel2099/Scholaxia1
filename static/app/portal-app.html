@@ -613,30 +613,105 @@ tr:last-child td{border-bottom:none}
     }, "Delete", true);
   };
 
-  /* ═══ EXAMS & CBT ═══ */
+  /* ═══ EXAMS & CBT — full CBT engine (reference admin-dashboard pattern) ═══ */
+  var CB = ""; // api base for the school-CBT engine
+  function cbtApi(path, opts) {
+    opts = opts || {};
+    var sid = (S.user && S.user.school_id) || null;
+    var sep = path.indexOf("?") >= 0 ? "&" : "?";
+    return fetch(API + "/school-cbt" + path + (sid ? sep + "school_id=" + sid : ""), {
+      method: opts.method || "GET",
+      headers: _headers(!opts.form),
+      body: opts.form ? opts.form : (opts.body ? JSON.stringify(opts.body) : undefined),
+    }).then(_handle);
+  }
+  var EX_TAB = "exams";
   R.exams = function () {
-    $("pages").innerHTML = head("Exams & CBT", "Create, manage and monitor exams and CBTs.",
-        '<button class="btn" onclick="createExamModal()">+ Create Exam</button><button class="btn ghost" onclick="importExamModal()">⬆ Import from file</button>') +
-      '<div class="stat-mini" id="exStats"></div><div class="panel"><div id="exTbl"><div class="empty">Loading…</div></div></div>';
-    officeApi("/exam-counts").then(function (d) {
+    var tabs = [["exams", "📋 Exams"], ["bank", "🏦 Exam Bank"], ["codes", "🔑 Exam Students & Codes"], ["schedule", "🗓️ Exam Schedule"], ["results", "🏆 Results"]];
+    $("pages").innerHTML = head("Exams & CBT", "Build your question bank, create exams, assign students, print access codes, view results and grant retakes.",
+        '<button class="btn" onclick="createExamModal()">+ Create Examination</button>') +
+      '<div class="tabs" id="exTabs">' + tabs.map(function (t) {
+        return '<button data-t="' + t[0] + '" class="' + (EX_TAB === t[0] ? "on" : "") + '" onclick="exTab(\'' + t[0] + '\')">' + t[1] + '</button>';
+      }).join("") + '</div><div id="exBody"><div class="empty">Loading…</div></div>';
+    renderExTab();
+  };
+  window.exTab = function (t) {
+    EX_TAB = t;
+    document.querySelectorAll("#exTabs button").forEach(function (b) { b.classList.toggle("on", b.dataset.t === t); });
+    renderExTab();
+  };
+  function renderExTab() {
+    if (EX_TAB === "exams") return exList();
+    if (EX_TAB === "bank") return bankList();
+    if (EX_TAB === "codes") return codesList();
+    if (EX_TAB === "schedule") return scheduleList();
+    if (EX_TAB === "results") return resultsList();
+  }
+
+  /* — Exams list (reference: Exam | Class | Subject | Questions | Duration | Mode | Status) — */
+  function modePill(m) {
+    var mm = (m || "ONLINE").toUpperCase();
+    return '<span class="pill ' + (mm === "ONLINE" ? "ok" : mm === "OFFLINE" ? "warn" : "blue") + '">' + mm + '</span>';
+  }
+  function fmtDurM(mins) { var h = Math.floor((mins || 0) / 60), m = (mins || 0) % 60; return (h ? h + "h" + (m ? " " + m + "m" : "") : m + "m") || "—"; }
+  function exList() {
+    cbtApi("/exams").then(function (d) {
       var list = d.exams || [];
-      window.__exams = list;
-      var active = list.filter(function (x) { return x.is_published; }).length;
-      $("exStats").innerHTML = '<span class="chip">Total: ' + list.length + '</span><span class="chip g">Active: ' + active + '</span><span class="chip w">Drafts: ' + (list.length - active) + '</span>';
+      window.__sxexams = list;
+      var draft = list.filter(function (x) { return x.status === "draft"; }).length;
+      var sched = list.filter(function (x) { return x.status === "published" && x.scheduled_start; }).length;
+      var active = list.filter(function (x) { return x.status === "published"; }).length;
+      var done = list.filter(function (x) { return x.status === "completed"; }).length;
       var rows = list.map(function (x) {
-        var st = x.is_published ? '<span class="pill ok">Active</span>' : '<span class="pill warn">Draft</span>';
-        var doc = x.document_url ? '<a class="doc-pill" href="' + esc(x.document_url) + '" target="_blank" rel="noopener">📎 ' + esc(x.document_name || "Document") + '</a>' : '<span class="muted" style="font-size:12.5px">—</span>';
-        var acts =
-          '<button class="btn sm ghost" onclick="attachDoc(\'' + x.id + '\',\'' + esc(x.title).replace(/'/g, "") + '\')">📎 Document</button> ' +
-          '<button class="btn sm ghost" onclick="addQuestions(\'' + x.id + '\',\'' + esc(x.title).replace(/'/g, "") + '\')">➕ Questions</button> ' +
-          '<button class="btn sm ghost" onclick="togglePublish(\'' + x.id + '\',' + (x.is_published ? "false" : "true") + ')">' + (x.is_published ? "Unpublish" : "Publish") + '</button> ' +
-          '<button class="btn sm red" onclick="delExam(\'' + x.id + '\',\'' + esc(x.title).replace(/'/g, "") + '\')">Delete</button>';
-        return '<tr><td><strong>' + esc(x.title) + '</strong></td><td><span class="pill blue">' + esc(x.subject || "—") + '</span></td><td>' + (x.total_questions != null ? x.total_questions : "—") + '</td><td>' + (x.taken_count || 0) + ' taken</td><td>' + dt(x.scheduled_start) + '</td><td>' + doc + '</td><td>' + st + '</td><td style="white-space:nowrap">' + acts + '</td></tr>';
+        var st = x.status === "published" ? '<span class="pill ok">Published</span>' : x.status === "completed" ? '<span class="pill gray">Completed</span>' : '<span class="pill warn">Draft</span>';
+        var acts = '<button class="btn sm ghost" onclick="examPreview(\'' + x.id + '\')">👁 Preview</button> ' +
+          '<button class="btn sm ghost" onclick="codesForExam(\'' + x.id + '\',\'' + esc(x.title).replace(/'/g, "") + '\')">🔑 Codes</button> ' +
+          '<button class="btn sm ghost" onclick="examResultsView(\'' + x.id + '\',\'' + esc(x.title).replace(/'/g, "") + '\')">📊 Results</button> ' +
+          (x.status === "published"
+            ? '<button class="btn sm ghost" onclick="toggleSxPublish(\'' + x.id + '\',false)">Unpublish</button>'
+            : '<button class="btn sm green" onclick="toggleSxPublish(\'' + x.id + '\',true)">Publish</button> ') +
+          '<button class="btn sm red" onclick="delSxExam(\'' + x.id + '\',\'' + esc(x.title).replace(/'/g, "") + '\')">Delete</button>';
+        return '<tr><td><strong>' + esc(x.title) + '</strong></td><td><span class="pill violet">' + esc(x.class_name || "—") + '</span></td><td><span class="pill blue">' + esc(x.subject || "—") + '</span></td><td>' + (x.question_count || 0) + '</td><td>' + fmtDurM(x.duration_minutes) + '</td><td>' + modePill(x.exam_mode) + '</td><td>' + x.total_mark + '</td><td>' + (x.submission_count || 0) + '</td><td>' + st + '</td><td style="white-space:nowrap">' + acts + '</td></tr>';
       });
-      $("exTbl").innerHTML = tbl(["Exam", "Subject", "Qs", "Submissions", "Scheduled", "Document", "Status", "Actions"], rows);
-    }).catch(function (e) { $("exTbl").innerHTML = '<div class="empty">' + esc(errText(e)) + '</div>'; });
+      $("exBody").innerHTML =
+        '<div class="stat-mini"><span class="chip">Total: ' + list.length + '</span><span class="chip w">Draft: ' + draft + '</span><span class="chip g">Published: ' + active + '</span><span class="chip">Scheduled: ' + sched + '</span><span class="chip gray">Completed: ' + done + '</span></div>' +
+        '<div class="panel">' + tbl(["Exam", "Class", "Subject", "Questions", "Duration", "Mode", "Total Mark", "Submissions", "Status", "Actions"], rows) + '</div>';
+    }).catch(function (e) { $("exBody").innerHTML = '<div class="panel"><div class="empty">' + esc(errText(e)) + '</div></div>'; });
+  }
+  window.toggleSxPublish = function (id, pub) {
+    cbtApi("/exams/" + id, { method: "PATCH", body: { is_published: pub } })
+      .then(function () { toast(pub ? "Exam published — students can now see it" : "Exam unpublished"); renderExTab(); })
+      .catch(toastErr);
+  };
+  window.delSxExam = function (id, title) {
+    confirmModal("Delete exam", 'Delete <strong>' + esc(title) + '</strong>? This removes its questions and access codes. Exams with submissions cannot be deleted.', function (btn) {
+      busy(btn, true);
+      cbtApi("/exams/" + id, { method: "DELETE" }).then(function () { closeModal(); toast("Exam deleted"); renderExTab(); })
+        .catch(function (e) { busy(btn, false, "Delete"); mErr(errText(e)); });
+    }, "Delete", true);
+  };
+  window.examPreview = function (id) {
+    cbtApi("/exams/" + id).then(function (d) {
+      openModal("Exam Preview",
+        '<div class="mnote" style="font-size:15px"><strong>' + esc(d.subject) + '</strong><br/>' + esc(d.class_name) + (d.term ? " · " + esc(d.term) : "") + (d.session ? " · " + esc(d.session) : "") + '</div>' +
+        '<div class="form-grid" style="margin-top:14px">' +
+        '<div><label class="f-label">Total Mark</label><div>' + d.total_mark + '</div></div>' +
+        '<div><label class="f-label">Questions</label><div>' + d.question_count + '</div></div>' +
+        '<div><label class="f-label">Questions to Answer</label><div>' + (d.questions_to_answer || d.question_count) + '</div></div>' +
+        '<div><label class="f-label">Duration</label><div>' + fmtDurM(d.duration_minutes) + '</div></div>' +
+        '<div><label class="f-label">Mode</label><div>' + modePill(d.exam_mode) + '</div></div>' +
+        '<div><label class="f-label">Status</label><div>' + (d.is_published ? '<span class="pill ok">Published</span>' : '<span class="pill warn">Draft</span>') + '</div></div>' +
+        '</div>' +
+        (d.instructions ? '<label class="f-label">Instructions</label><p class="mhint">' + esc(d.instructions) + '</p>' : "") +
+        '<label class="f-label">Assigned To — ' + (d.assigned || []).length + ' students</label>' +
+        '<div style="max-height:220px;overflow:auto">' + tbl(["Student", "Class", "Reg Number", "Access Code", "Used"], (d.assigned || []).map(function (s) {
+          return '<tr><td>' + esc(s.full_name) + '</td><td>' + esc(s.class_name) + '</td><td><code>' + esc(s.reg_number || "—") + '</code></td><td><code>' + esc(s.access_code || "—") + '</code></td><td>' + (s.code_used ? '<span class="pill ok">Yes</span>' : '<span class="pill gray">No</span>') + '</td></tr>';
+        })) + '</div>',
+        '<button class="btn ghost" onclick="closeModal()">Close</button>', true);
+    }).catch(toastErr);
   };
 
+  /* — Create Examination wizard (§26: 8 sections) — */
   var __qn = 0;
   function qRowHTML() {
     __qn++;
@@ -651,133 +726,304 @@ tr:last-child td{border-bottom:none}
       '<div class="mrow" style="margin:9px 0 0"><label class="f-label" style="margin:0 0 4px">Correct answer</label>' +
       '<select class="f-in qco" style="width:120px"><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option></select></div></div>';
   }
-  function examFormHTML(tab) {
-    return '<div class="tabs" id="exTabs"><button data-t="write" class="' + (tab !== "file" ? "on" : "") + '" onclick="exTab(\'write\')">✍️ Write questions</button>' +
-      '<button data-t="file" class="' + (tab === "file" ? "on" : "") + '" onclick="exTab(\'file\')">📄 Upload file</button></div>' +
-      '<div id="exWrite" style="display:' + (tab !== "file" ? "block" : "none") + '">' +
-      '<div class="form-grid"><div><label class="f-label">Exam title *</label><input class="f-in" id="exTitle" placeholder="e.g. Mid-term Mathematics Test" /></div>' +
+  window.addQRow = function () { $("qList").insertAdjacentHTML("beforeend", qRowHTML()); };
+  function examFormHTML() {
+    return '<div class="mnote"><strong>1 · Basic Information</strong></div>' +
+      '<div class="form-grid"><div><label class="f-label">Examination Name *</label><input class="f-in" id="exTitle" placeholder="e.g. First Term Mathematics Examination" /></div>' +
       '<div><label class="f-label">Subject *</label><input class="f-in" id="exSubject" list="exSubjList" placeholder="e.g. Mathematics" /><datalist id="exSubjList"></datalist></div></div>' +
-      '<div class="form-grid"><div><label class="f-label">Duration (minutes)</label><input class="f-in" id="exDur" type="number" min="5" max="300" value="45" /></div>' +
-      '<div><label class="f-label">Publish immediately</label><select class="f-in" id="exPub"><option value="yes">Yes — students see it at once</option><option value="no">No — keep as draft</option></select></div></div>' +
-      '<div class="form-grid"><div><label class="f-label">Available from (optional)</label><input class="f-in" id="exStart" type="datetime-local" /></div>' +
-      '<div><label class="f-label">Available until (optional)</label><input class="f-in" id="exEnd" type="datetime-local" /></div></div>' +
-      '<label class="f-label">Questions</label><div id="qList">' + qRowHTML() + '</div>' +
-      '<button class="btn sm ghost" onclick="addQRow()">+ Add question</button></div>' +
-      '<div id="exFile" style="display:' + (tab === "file" ? "block" : "none") + '">' +
-      '<p class="mhint" style="margin-bottom:12px">Upload a questions file — <strong>.json</strong>, <strong>.csv</strong> or <strong>.pdf</strong> (the same formats the Scholaxia importer accepts). CSV needs a header row: <code>question_text,option_a,option_b,option_c,option_d,correct_option</code>.</p>' +
-      '<div class="form-grid"><div><label class="f-label">Exam title (CSV/PDF)</label><input class="f-in" id="exFTitle" placeholder="Used if the file has none" /></div>' +
-      '<div><label class="f-label">Subject (CSV/PDF)</label><input class="f-in" id="exFSubject" placeholder="Used if the file has none" /></div></div>' +
-      '<div class="form-grid"><div><label class="f-label">Duration (minutes)</label><input class="f-in" id="exFDur" type="number" min="5" max="300" value="45" /></div>' +
-      '<div><label class="f-label">Questions file *</label><input class="f-in" id="exFFile" type="file" accept=".json,.csv,.pdf" /></div></div></div>' +
+      '<div class="form-grid"><div><label class="f-label">Class *</label><input class="f-in" id="exClass" list="exClsList" placeholder="e.g. SS2" /><datalist id="exClsList"></datalist></div>' +
+      '<div><label class="f-label">Exam Type</label><select class="f-in" id="exType"><option>SCHOOL</option><option>JAMB</option><option>WAEC</option><option>NECO</option><option>COMMON_ENTRANCE</option></select></div></div>' +
+      '<div class="form-grid"><div><label class="f-label">Academic Session</label><input class="f-in" id="exSession" placeholder="e.g. 2026/2027" /></div>' +
+      '<div><label class="f-label">Term</label><select class="f-in" id="exTerm"><option value="">—</option><option>First Term</option><option>Second Term</option><option>Third Term</option></select></div></div>' +
+      '<div class="mrow"><label class="f-label">Instructions (students read these before starting)</label><textarea class="f-in" id="exInstr" rows="2" placeholder="Read each question carefully. Select the correct answer. You can review your answers before submission."></textarea></div>' +
+      '<div class="mnote" style="margin-top:14px"><strong>2 · Examination Configuration</strong></div>' +
+      '<div class="form-grid"><div><label class="f-label">Exam Mode *</label><select class="f-in" id="exMode"><option value="ONLINE">Online — internet required</option><option value="OFFLINE">Offline — students download first</option><option value="HYBRID">Online + Offline — works with or without internet</option></select></div>' +
+      '<div><label class="f-label">Total Mark *</label><input class="f-in" id="exMark" type="number" min="1" max="1000" value="100" /><div class="mhint">e.g. 100, 60 or 50 — the school decides.</div></div></div>' +
+      '<div class="form-grid"><div><label class="f-label">Duration (minutes) *</label><input class="f-in" id="exDur" type="number" min="5" max="600" value="90" /><div class="mhint">1h 30m = 90 minutes</div></div>' +
+      '<div><label class="f-label">Questions to Display</label><input class="f-in" id="exDisp" type="number" min="0" value="0" /><div class="mhint">0 = show all questions in the exam</div></div></div>' +
+      '<div class="mrow"><label class="f-label">Questions to Answer</label><input class="f-in" id="exAns" type="number" min="0" value="0" /><div class="mhint">0 = all displayed questions must be answered. Bank of 100 → display 50 → answer 40 is supported.</div></div>' +
+      '<div class="mnote" style="margin-top:14px"><strong>3 · Question Selection</strong></div>' +
+      '<div class="tabs" id="selTabs"><button class="on" data-t="write" onclick="selTab(\'write\')">✍️ Type questions</button><button data-t="bank" onclick="selTab(\'bank\')">🏦 From Exam Bank</button><button data-t="file" onclick="selTab(\'file\')">📄 Upload file</button></div>' +
+      '<div id="selWrite"><div id="qList">' + qRowHTML() + '</div><button class="btn sm ghost" onclick="addQRow()">+ Add question</button></div>' +
+      '<div id="selBank" style="display:none"><div id="bankPickList"><div class="empty">Loading question banks…</div></div>' +
+      '<div class="form-grid" style="margin-top:10px"><div><label class="f-label">Auto-pick N random questions</label><input class="f-in" id="exAuto" type="number" min="0" value="0" /></div><div></div></div></div>' +
+      '<div id="selFile" style="display:none"><p class="mhint">Create the exam first (Save Draft), then open it under Exam Bank → upload questions. This keeps large files from blocking creation.</p></div>' +
+      '<div class="mnote" style="margin-top:14px"><strong>4 · Question Settings</strong></div>' +
+      '<div class="radio-row"><label><input type="checkbox" id="exRq" /> Randomize questions</label><label><input type="checkbox" id="exRo" /> Randomize options</label><label><input type="checkbox" id="exRev" checked /> Allow review before submit</label><label><input type="checkbox" id="exPrev" checked /> Allow Previous/Next</label><label><input type="checkbox" id="exFlag" checked /> Allow flagging</label></div>' +
+      '<div class="mnote" style="margin-top:14px"><strong>5 · Scheduling</strong></div>' +
+      '<div class="form-grid"><div><label class="f-label">Exam Date</label><input class="f-in" id="exDate" type="datetime-local" /></div>' +
+      '<div><label class="f-label">Availability Ends (optional)</label><input class="f-in" id="exEnd" type="datetime-local" /></div></div>' +
+      '<div class="mnote" style="margin-top:14px"><strong>6 · Student Assignment</strong></div>' +
+      '<div class="mrow"><label class="f-label">Assign to classes (comma-separated, or leave empty)</label><input class="f-in" id="exClasses" placeholder="e.g. SS2A, SS2B — empty = whole school can take it" /></div>' +
+      '<div class="mrow"><label class="f-label">Assign to specific students</label><select class="f-in" id="exStudents" multiple size="4" style="min-height:88px"></select><div class="mhint">Hold Ctrl/Cmd to select several — optional.</div></div>' +
+      '<div class="mnote" style="margin-top:14px"><strong>7 · Access Control</strong></div>' +
+      '<div class="radio-row"><label><input type="checkbox" id="exGenCodes" checked /> Generate access codes (SCH-XXXX-XXXX) for every assigned student</label></div>' +
+      '<div class="form-grid"><div><label class="f-label">Codes expire (optional)</label><input class="f-in" id="exCodeExp" type="datetime-local" /></div>' +
+      '<div><label class="f-label">Maximum attempts</label><input class="f-in" id="exMaxAtt" type="number" min="1" max="10" value="1" /></div></div>' +
+      '<div class="mnote" style="margin-top:14px"><strong>8 · Publish</strong></div>' +
+      '<div class="radio-row"><label><input type="radio" name="exPub" value="draft" checked /> Save as Draft</label><label><input type="radio" name="exPub" value="publish" /> Publish Examination now</label></div>' +
       '<div class="merr"></div>';
   }
-  window.exTab = function (t) {
-    document.querySelectorAll("#exTabs button").forEach(function (b) { b.classList.toggle("on", b.dataset.t === t); });
-    $("exWrite").style.display = t === "write" ? "block" : "none";
-    $("exFile").style.display = t === "file" ? "block" : "none";
+  window.selTab = function (t) {
+    document.querySelectorAll("#selTabs button").forEach(function (b) { b.classList.toggle("on", b.dataset.t === t); });
+    $("selWrite").style.display = t === "write" ? "block" : "none";
+    $("selBank").style.display = t === "bank" ? "block" : "none";
+    $("selFile").style.display = t === "file" ? "block" : "none";
   };
-  window.addQRow = function () { $("qList").insertAdjacentHTML("beforeend", qRowHTML()); };
-  function isoOrNull(v) { try { return v ? new Date(v).toISOString() : null; } catch (e) { return null; } }
   window.createExamModal = function () {
-    openModal("Create Exam / CBT", examFormHTML("write"), null, true);
+    openModal("Create Examination", examFormHTML(), null, true);
     api("/subjects").then(function (d) {
       var dl = $("exSubjList"); if (dl) dl.innerHTML = (d.subjects || []).map(function (s) { return '<option value="' + esc(s.name) + '">'; }).join("");
     }).catch(function () {});
-    var foot = document.querySelector("#mb .mb-head");
+    api("/classes").then(function (d) {
+      var dl = $("exClsList"); if (dl) dl.innerHTML = (d.classes || []).map(function (c) { return '<option value="' + esc(c.name) + '">'; }).join("");
+    }).catch(function () {});
+    officeApi("/students").then(function (d) {
+      var sel = $("exStudents"); if (sel) sel.innerHTML = (d.students || []).map(function (s) {
+        return '<option value="' + s.id + '">' + esc(s.full_name + (s.class_name ? " — " + s.class_name : "")) + '</option>';
+      }).join("");
+    }).catch(function () {});
+    cbtApi("/banks").then(function (d) {
+      var box = $("bankPickList"); if (!box) return;
+      var banks = d.banks || [];
+      if (!banks.length) { box.innerHTML = '<div class="empty">No question banks yet — create one under the Exam Bank tab first.</div>'; return; }
+      window.__bankPicks = {};
+      box.innerHTML = banks.map(function (b) {
+        return '<div class="radio-row" style="margin-bottom:8px"><label><input type="checkbox" onchange="__bankPicks[\'' + b.id + '\']=this.checked?' + b.question_count + ':0" /> <strong>' + esc(b.name) + '</strong> — ' + esc(b.subject) + ' · ' + esc(b.class_name) + ' · ' + b.question_count + ' questions</label></div>';
+      }).join("");
+    }).catch(function () { var box = $("bankPickList"); if (box) box.innerHTML = '<div class="empty">Could not load question banks.</div>'; });
     var bar = document.createElement("div"); bar.className = "mb-foot";
-    bar.innerHTML = '<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="exSave">Create exam</button>';
+    bar.innerHTML = '<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="exSave">Create Examination</button>';
     document.querySelector("#mb .mb-modal").appendChild(bar);
     $("exSave").addEventListener("click", function () {
-      if ($("exWrite").style.display !== "none") {
-        var title = $("exTitle").value.trim(), subject = $("exSubject").value.trim();
-        if (!title) return mErr("Enter an exam title.");
-        if (!subject) return mErr("Enter a subject.");
-        var qs = [];
-        document.querySelectorAll("#qList .qrow").forEach(function (row) {
-          var qt = row.querySelector(".qtext").value.trim();
-          var oa = row.querySelector(".oa").value.trim(), ob = row.querySelector(".ob").value.trim(),
-              oc = row.querySelector(".oc").value.trim(), od = row.querySelector(".od").value.trim();
-          if (!qt) return;
-          qs.push({ question_text: qt, option_a: oa || "A", option_b: ob || "B", option_c: oc || "C", option_d: od || "D", correct_option: row.querySelector(".qco").value });
-        });
-        if (!qs.length) return mErr("Add at least one complete question.");
-        busy($("exSave"), true);
-        officeApi("/exams", { method: "POST", body: {
-          title: title, subject: subject, duration_minutes: parseInt($("exDur").value, 10) || 45,
-          scheduled_start: isoOrNull($("exStart").value), scheduled_end: isoOrNull($("exEnd").value),
-          questions: qs, is_published: $("exPub").value === "yes" } }).then(function () {
-          closeModal(); toast("Exam created 🎉"); showPage("exams");
-        }).catch(function (e) { busy($("exSave"), false, "Create exam"); mErr(errText(e)); });
-      } else {
-        var f = $("exFFile").files[0];
-        if (!f) return mErr("Choose a .json, .csv or .pdf file.");
-        var fd = new FormData();
-        fd.append("file", f);
-        fd.append("title", $("exFTitle").value.trim());
-        fd.append("subject", $("exFSubject").value.trim());
-        fd.append("duration_minutes", $("exFDur").value || "45");
-        busy($("exSave"), true);
-        api("/exams/import", { method: "POST", form: fd }).then(function (d) {
-          closeModal();
-          var made = d.created || [];
-          openModal("✅ Exam imported",
-            '<div class="mnote">' + made.map(function (c) { return '<div>📝 <strong>' + esc(c.title) + '</strong> — ' + c.questions + ' questions</div>'; }).join("") + '</div>',
-            '<button class="btn" onclick="closeModal()">Done</button>');
-          showPage("exams");
-        }).catch(function (e) { busy($("exSave"), false, "Create exam"); mErr(errText(e)); });
-      }
-    });
-  };
-  window.importExamModal = function () { createExamModal(); exTab("file"); };
-  window.attachDoc = function (examId, title) {
-    openModal("Attach document — " + esc(title),
-      '<p class="mhint" style="margin-bottom:12px">Students see this file with the exam. <strong>Any document type</strong> works: PDF, Word, images, audio, video, slides… (max 40MB)</p>' +
-      '<div class="mrow"><input type="file" id="docFile" class="f-in" /></div><div class="merr"></div>',
-      '<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="docGo">Upload & attach</button>');
-    $("docGo").addEventListener("click", function () {
-      var f = $("docFile").files[0];
-      if (!f) return mErr("Choose a file first.");
-      var fd = new FormData(); fd.append("file", f);
-      busy($("docGo"), true);
-      api("/exams/" + examId + "/document", { method: "POST", form: fd }).then(function () {
-        closeModal(); toast("Document attached 📎"); showPage("exams");
-      }).catch(function (e) { busy($("docGo"), false, "Upload & attach"); mErr(errText(e)); });
-    });
-  };
-  window.addQuestions = function (examId, title) {
-    __qn = 0;
-    openModal("Add questions — " + esc(title), '<div id="qList">' + qRowHTML() + qRowHTML() + '</div><button class="btn sm ghost" onclick="addQRow()">+ Add question</button><div class="merr" style="margin-top:10px"></div>', null, true);
-    var bar = document.createElement("div"); bar.className = "mb-foot";
-    bar.innerHTML = '<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="qAddGo">Add to exam</button>';
-    document.querySelector("#mb .mb-modal").appendChild(bar);
-    $("qAddGo").addEventListener("click", function () {
+      var title = $("exTitle").value.trim(), subject = $("exSubject").value.trim(), cls = $("exClass").value.trim();
+      if (!title) return mErr("Enter the examination name.");
+      if (!subject) return mErr("Enter the subject.");
+      if (!cls) return mErr("Enter the class.");
       var qs = [];
       document.querySelectorAll("#qList .qrow").forEach(function (row) {
         var qt = row.querySelector(".qtext").value.trim();
         if (!qt) return;
         qs.push({ question_text: qt, option_a: row.querySelector(".oa").value.trim() || "A", option_b: row.querySelector(".ob").value.trim() || "B", option_c: row.querySelector(".oc").value.trim() || "C", option_d: row.querySelector(".od").value.trim() || "D", correct_option: row.querySelector(".qco").value });
       });
-      if (!qs.length) return mErr("Write at least one complete question.");
-      busy($("qAddGo"), true);
-      api("/exams/" + examId + "/questions", { method: "POST", body: qs }).then(function () {
-        closeModal(); toast("Questions added"); showPage("exams");
-      }).catch(function (e) { busy($("qAddGo"), false, "Add to exam"); mErr(errText(e)); });
+      var bankIds = Object.keys(window.__bankPicks || {}).filter(function (k) { return window.__bankPicks[k] > 0; });
+      var mode = $("exMode").value;
+      var students = Array.prototype.slice.call($("exStudents").selectedOptions || []).map(function (o) { return o.value; });
+      var classList = $("exClasses").value.split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+      if (!qs.length && !bankIds.length) return mErr("Add questions — type them or pick at least one Exam Bank.");
+      if (!students.length && !classList.length) return mErr("Assign the exam — enter classes or pick students.");
+      var publish = (document.querySelector('input[name="exPub"]:checked') || {}).value === "publish";
+      busy($("exSave"), true);
+      cbtApi("/exams", { method: "POST", body: {
+        title: title, subject: subject, class_name: cls, exam_type: $("exType").value,
+        session: $("exSession").value.trim() || null, term: $("exTerm").value || null,
+        instructions: $("exInstr").value.trim() || null,
+        exam_mode: mode, total_mark: parseInt($("exMark").value, 10) || 100,
+        duration_minutes: parseInt($("exDur").value, 10) || 60,
+        questions_to_display: parseInt($("exDisp").value, 10) || 0,
+        questions_to_answer: parseInt($("exAns").value, 10) || 0,
+        randomize_questions: $("exRq").checked, randomize_options: $("exRo").checked,
+        allow_review: $("exRev").checked, allow_previous: $("exPrev").checked, allow_flagging: $("exFlag").checked,
+        bank_ids: bankIds, auto_pick_count: parseInt($("exAuto").value, 10) || 0,
+        questions: qs,
+        exam_date: isoOrNull($("exDate").value), scheduled_end: isoOrNull($("exEnd").value),
+        assigned_student_ids: students, assigned_class_names: classList,
+        generate_codes: $("exGenCodes").checked,
+        access_code_expires_at: isoOrNull($("exCodeExp").value),
+        max_attempts: parseInt($("exMaxAtt").value, 10) || 1,
+        publish: publish,
+      } }).then(function (d) {
+        closeModal();
+        openModal("✅ Examination created",
+          '<div class="mnote">📝 <strong>' + esc(d.title) + '</strong> — ' + d.question_count + ' questions<br/>' +
+          '👥 ' + d.students_assigned + ' students assigned<br/>🔑 ' + d.access_codes_created + ' access codes generated' +
+          (publish ? '<br/>🟢 <strong>Published</strong> — students can log in now' : '<br/>🟡 Saved as draft — publish when ready') + '</div>' +
+          '<p class="mhint" style="margin-top:10px">Students log in at <strong>your-school-link/exam</strong> with their Registration Number + Access Code (see the Exam Students & Codes tab).</p>',
+          '<button class="btn" onclick="closeModal();exTab(\'codes\')">View access codes</button>', true);
+        showPage("exams");
+      }).catch(function (e) { busy($("exSave"), false, "Create Examination"); mErr(errText(e)); });
     });
   };
-  window.togglePublish = function (examId, publish) {
-    officeApi("/exams/" + examId, { method: "PATCH", body: { is_published: publish } })
-      .then(function () { toast(publish ? "Exam published" : "Exam unpublished"); showPage("exams"); })
-      .catch(toastErr);
+  function isoOrNull(v) { try { return v ? new Date(v).toISOString() : null; } catch (e) { return null; } }
+  function bankList() {
+    cbtApi("/banks").then(function (d) {
+      var banks = d.banks || [];
+      window.__banks = banks;
+      $("exBody").innerHTML =
+        '<div class="stat-mini"><span class="chip">Banks: ' + banks.length + '</span><span class="chip g">Questions: ' + banks.reduce(function (a, b) { return a + (b.question_count || 0); }, 0) + '</span><button class="btn sm" onclick="addBank()">+ New Question Bank</button></div>' +
+        '<div class="panel">' + tbl(["Bank", "Subject", "Class", "Questions", "Status", ""], banks.map(function (b) {
+          return '<tr><td><strong>' + esc(b.name) + '</strong></td><td><span class="pill blue">' + esc(b.subject) + '</span></td><td><span class="pill violet">' + esc(b.class_name) + '</span></td><td>' + b.question_count + '</td><td><span class="pill ' + (b.status === "active" ? "ok" : "gray") + '">' + esc(b.status) + '</span></td>' +
+            '<td style="white-space:nowrap"><button class="btn sm ghost" onclick="openBank(\'' + b.id + '\')">📂 Questions</button> <button class="btn sm ghost" onclick="addBankQ(\'' + b.id + '\',\'' + esc(b.name).replace(/'/g, "") + '\')">➕ Add</button> <button class="btn sm red" onclick="delBank(\'' + b.id + '\',\'' + esc(b.name).replace(/'/g, "") + '\')">Delete</button></td></tr>';
+        })) + '</div>';
+    }).catch(function (e) { $("exBody").innerHTML = '<div class="panel"><div class="empty">' + esc(errText(e)) + '</div></div>'; });
+  }
+  window.addBank = function () {
+    openModal("New Question Bank",
+      '<div class="mrow"><label class="f-label">Bank name *</label><input class="f-in" id="bkName" placeholder="e.g. Mathematics SS2 Question Bank" /></div>' +
+      '<div class="form-grid"><div><label class="f-label">Subject *</label><input class="f-in" id="bkSubject" placeholder="e.g. Mathematics" /></div>' +
+      '<div><label class="f-label">Class *</label><input class="f-in" id="bkClass" placeholder="e.g. SS2" /></div></div>' +
+      '<div class="merr"></div>',
+      '<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="bkSave">Create bank</button>');
+    $("bkSave").addEventListener("click", function () {
+      if (!$("bkName").value.trim()) return mErr("Enter a bank name.");
+      if (!$("bkSubject").value.trim()) return mErr("Enter the subject.");
+      if (!$("bkClass").value.trim()) return mErr("Enter the class.");
+      busy($("bkSave"), true);
+      cbtApi("/banks", { method: "POST", body: { name: $("bkName").value.trim(), subject: $("bkSubject").value.trim(), class_name: $("bkClass").value.trim() } })
+        .then(function () { closeModal(); toast("Question bank created"); renderExTab(); })
+        .catch(function (e) { busy($("bkSave"), false, "Create bank"); mErr(errText(e)); });
+    });
   };
-  window.delExam = function (examId, title) {
-    confirmModal("Delete exam", 'Delete <strong>' + esc(title) + '</strong>? Its questions and submissions are removed too. This cannot be undone.', function (btn) {
+  window.delBank = function (id, name) {
+    confirmModal("Delete bank", 'Delete <strong>' + esc(name) + '</strong> and ALL its questions? Exams already created keep their own copies.', function (btn) {
       busy(btn, true);
-      api("/exams/" + examId, { method: "DELETE" }).then(function () { closeModal(); toast("Exam deleted"); showPage("exams"); })
+      cbtApi("/banks/" + id, { method: "DELETE" }).then(function () { closeModal(); toast("Bank deleted"); renderExTab(); })
         .catch(function (e) { busy(btn, false, "Delete"); mErr(errText(e)); });
-    }, "Delete exam", true);
+    }, "Delete", true);
+  };
+  window.openBank = function (id) {
+    cbtApi("/banks/" + id + "/questions").then(function (d) {
+      var rows = (d.questions || []).map(function (q, i) {
+        return '<tr><td>' + (i + 1) + '</td><td>' + esc(q.question_text.slice(0, 90)) + (q.question_text.length > 90 ? "…" : "") + '</td><td>' + esc(q.topic || "—") + '</td><td>' + esc(q.difficulty) + '</td><td><strong>' + esc(q.correct_option) + '</strong></td>' +
+          '<td><button class="btn sm red" onclick="delBankQ(\'' + id + '\',\'' + q.id + '\')">✕</button></td></tr>';
+      });
+      openModal("🏦 " + esc(d.bank.name) + " — " + (d.questions || []).length + " questions",
+        '<div style="max-height:420px;overflow:auto">' + tbl(["#", "Question", "Topic", "Difficulty", "Answer", ""], rows) + '</div>',
+        '<button class="btn ghost" onclick="closeModal()">Close</button><button class="btn" onclick="closeModal();addBankQ(\'' + id + '\',\'\')">➕ Add questions</button>', true);
+    }).catch(toastErr);
+  };
+  window.delBankQ = function (bankId, qid) {
+    cbtApi("/banks/" + bankId + "/questions/" + qid, { method: "DELETE" }).then(function () { toast("Question removed"); closeModal(); openBank(bankId); renderExTab(); }).catch(toastErr);
+  };
+  window.addBankQ = function (bankId) {
+    __qn = 0;
+    openModal("Add questions to bank", '<div id="qList">' + qRowHTML() + qRowHTML() + '</div><button class="btn sm ghost" onclick="addQRow()">+ Add question</button>' +
+      '<div class="form-grid" style="margin-top:12px"><div><label class="f-label">Topic (optional)</label><input class="f-in" id="bqTopic" placeholder="e.g. Algebra" /></div>' +
+      '<div><label class="f-label">Marks each</label><input class="f-in" id="bqMarks" type="number" min="1" value="1" /></div></div><div class="merr"></div>', null, true);
+    var bar = document.createElement("div"); bar.className = "mb-foot";
+    bar.innerHTML = '<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="bqGo">Add to bank</button>';
+    document.querySelector("#mb .mb-modal").appendChild(bar);
+    $("bqGo").addEventListener("click", function () {
+      var qs = [];
+      document.querySelectorAll("#qList .qrow").forEach(function (row) {
+        var qt = row.querySelector(".qtext").value.trim();
+        if (!qt) return;
+        qs.push({ question_text: qt, option_a: row.querySelector(".oa").value.trim() || "A", option_b: row.querySelector(".ob").value.trim() || "B", option_c: row.querySelector(".oc").value.trim() || "C", option_d: row.querySelector(".od").value.trim() || "D", correct_option: row.querySelector(".qco").value, topic: $("bqTopic").value.trim() || null, marks: parseInt($("bqMarks").value, 10) || 1 });
+      });
+      if (!qs.length) return mErr("Write at least one complete question.");
+      busy($("bqGo"), true);
+      cbtApi("/banks/" + bankId + "/questions", { method: "POST", body: qs }).then(function (d) {
+        closeModal(); toast(d.added + " questions added to bank"); renderExTab();
+      }).catch(function (e) { busy($("bqGo"), false, "Add to bank"); mErr(errText(e)); });
+    });
   };
 
-  /* ═══ RESULTS ═══ */
+  /* — Exam Students & Codes tab (reference: Reg Number | Full Name | Class | Subject | Access Code | Status) — */
+  function codesList() {
+    cbtApi("/exams").then(function (d) {
+      var exams = d.exams || [];
+      if (!exams.length) { $("exBody").innerHTML = '<div class="panel"><div class="empty">Create an examination first — access codes are generated per exam.</div></div>'; return; }
+      $("exBody").innerHTML = '<div class="panel"><h3>Exam Students & Access Codes</h3><p class="mhint" style="margin-bottom:14px">Students log in at <strong>your-school-link/exam</strong> with their Registration Number + Access Code. Codes work only for their exam and expire when you set.</p><div class="form-grid"><div><select class="f-in" id="cdExam" onchange="codesForExam(this.value, \'\')">' +
+        exams.map(function (x) { return '<option value="' + x.id + '">' + esc(x.title) + " — " + esc(x.class_name) + '</option>'; }).join("") + '</select></div><div>' +
+        '<button class="btn ghost" onclick="regenCodes()">🔄 Generate missing codes</button></div></div><div id="cdTbl"><div class="empty">Loading…</div></div></div>';
+      codesForExam(exams[0].id, "");
+    }).catch(function (e) { $("exBody").innerHTML = '<div class="panel"><div class="empty">' + esc(errText(e)) + '</div></div>'; });
+  }
+  window.codesForExam = function (examId) {
+    if (!examId) return;
+    cbtApi("/exams/" + examId).then(function (d) {
+      var rows = (d.assigned || []).map(function (s, i) {
+        return '<tr><td>' + (i + 1) + '</td><td><code>' + esc(s.reg_number || "—") + '</code></td><td><strong>' + esc(s.full_name) + '</strong></td><td><span class="pill violet">' + esc(s.class_name || "—") + '</span></td><td><span class="pill blue">' + esc(d.subject) + '</span></td><td><code>' + esc(s.access_code || "—") + '</code></td><td>' + (s.code_used ? '<span class="pill ok">Used</span>' : '<span class="pill gray">Not used</span>') + '</td></tr>';
+      });
+      var box = $("cdTbl");
+      if (box) box.innerHTML = rows.length ? tbl(["S/N", "Reg Number", "Full Name", "Class", "Subject", "Access Code", "Status"], rows) : '<div class="empty">No students assigned to this exam yet.</div>';
+      var sel = $("cdExam");
+      if (sel) { Array.prototype.forEach.call(sel.options, function (o) { if (o.value === examId) sel.value = examId; }); }
+    }).catch(function (e) { var box = $("cdTbl"); if (box) box.innerHTML = '<div class="empty">' + esc(errText(e)) + '</div>'; });
+  };
+  window.regenCodes = function () {
+    var sel = $("cdExam"); if (!sel || !sel.value) return;
+    cbtApi("/exams/" + sel.value + "/access-codes", { method: "POST" }).then(function (d) {
+      toast(d.new_codes + " new access code(s) generated"); codesForExam(sel.value);
+    }).catch(toastErr);
+  };
+
+  /* — Exam Schedule tab (reference: Subjects | Date & Time | Duration | Venue/Class) — */
+  function scheduleList() {
+    cbtApi("/exams").then(function (d) {
+      var exams = d.exams || [];
+      var rows = exams.map(function (x) {
+        var when = x.exam_date ? dOnly(x.exam_date) : (x.scheduled_start ? dOnly(x.scheduled_start) : "—");
+        var win = (x.scheduled_start ? dt(x.scheduled_start) : "—") + " → " + (x.scheduled_end ? dt(x.scheduled_end) : "open");
+        return '<tr><td><strong>' + esc(x.title) + '</strong></td><td><span class="pill blue">' + esc(x.subject) + '</span></td><td><span class="pill violet">' + esc(x.class_name) + '</span></td><td>' + when + '</td><td>' + win + '</td><td>' + fmtDurM(x.duration_minutes) + '</td><td>' + modePill(x.exam_mode) + '</td><td>' + (x.submission_count || 0) + ' submitted</td>' +
+          '<td style="white-space:nowrap"><button class="btn sm ghost" onclick="editSchedule(\'' + x.id + '\',\'' + esc(x.title).replace(/'/g, "") + '\',' + JSON.stringify(JSON.stringify({ s: x.scheduled_start, e: x.scheduled_end })) + ')">🗓 Reschedule</button></td></tr>';
+      });
+      $("exBody").innerHTML = '<div class="panel">' + tbl(["Exam", "Subject", "Class", "Date", "Window", "Duration", "Mode", "Progress", ""], rows) + '</div>';
+    }).catch(function (e) { $("exBody").innerHTML = '<div class="panel"><div class="empty">' + esc(errText(e)) + '</div></div>'; });
+  }
+  window.editSchedule = function (id, title, whenJson) {
+    var w = {}; try { w = JSON.parse(JSON.parse(whenJson)); } catch (e) {}
+    var toLocal = function (iso) { try { return iso ? new Date(iso).toISOString().slice(0, 16) : ""; } catch (e) { return ""; } };
+    openModal("Reschedule — " + esc(title),
+      '<div class="form-grid"><div><label class="f-label">Exam date & time</label><input class="f-in" id="scDate" type="datetime-local" value="' + toLocal(w.s) + '" /></div>' +
+      '<div><label class="f-label">Window closes</label><input class="f-in" id="scEnd" type="datetime-local" value="' + toLocal(w.e) + '" /></div></div><div class="merr"></div>',
+      '<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="scSave">Save schedule</button>');
+    $("scSave").addEventListener("click", function () {
+      busy($("scSave"), true);
+      cbtApi("/exams/" + id, { method: "PATCH", body: { exam_date: isoOrNull($("scDate").value), scheduled_start: isoOrNull($("scDate").value), scheduled_end: isoOrNull($("scEnd").value) } })
+        .then(function () { closeModal(); toast("Schedule saved"); renderExTab(); })
+        .catch(function (e) { busy($("scSave"), false, "Save schedule"); mErr(errText(e)); });
+    });
+  };
+
+  /* — Results tab (reference: Student | Reg Number | Correct | Score | Percentage | Grade | Date | Actions) — */
+  function resultsList() {
+    cbtApi("/exams").then(function (d) {
+      var exams = d.exams || [];
+      if (!exams.length) { $("exBody").innerHTML = '<div class="panel"><div class="empty">No examinations yet.</div></div>'; return; }
+      $("exBody").innerHTML = '<div class="panel"><div class="form-grid"><div><select class="f-in" id="rvExam" onchange="examResultsView(this.value, \'\')">' +
+        exams.map(function (x) { return '<option value="' + x.id + '">' + esc(x.title) + " — " + esc(x.class_name) + '</option>'; }).join("") + '</select></div><div>' +
+        '<button class="btn ghost" id="rvPublish" onclick="publishResults()">📢 Publish results to students</button></div></div>' +
+        '<div id="rvTbl"><div class="empty">Loading…</div></div></div>';
+      examResultsView(exams[0].id, "");
+    }).catch(function (e) { $("exBody").innerHTML = '<div class="panel"><div class="empty">' + esc(errText(e)) + '</div></div>'; });
+  }
+  window.examResultsView = function (examId) {
+    if (!examId) return;
+    window.__rvExam = examId;
+    cbtApi("/exams/" + examId + "/results").then(function (d) {
+      var rows = (d.results || []).map(function (r, i) {
+        return '<tr><td>' + (i + 1) + '</td><td><strong>' + esc(r.student_name) + '</strong></td><td>' + r.total_questions + '</td><td><strong style="color:var(--ok)">' + r.correct_answers + '</strong></td><td><strong>' + r.final_score + ' / ' + r.total_mark + '</strong></td><td>' + r.percentage + '%</td><td><span class="pill ' + (r.percentage >= 50 ? "ok" : "bad") + '">' + esc(r.grade || "—") + '</span></td><td>' + dOnly(r.submitted_at) + '</td>' +
+          '<td><button class="btn sm ghost" onclick="grantRetake(\'' + esc(r.student_id) + '\',\'' + esc(r.student_name).replace(/'/g, "") + '\')">↻ Grant Retake</button></td></tr>';
+      });
+      var box = $("rvTbl");
+      if (box) box.innerHTML = rows.length ? tbl(["S/N", "Student Name", "Total Questions", "Correct Answers", "Total Score", "Percentage", "Grade", "Date", "Actions"], rows)
+        : '<div class="empty">No submissions for this exam yet.</div>';
+      var pub = $("rvPublish");
+      if (pub && d.exam) pub.innerHTML = d.exam.results_published ? "🙈 Unpublish results" : "📢 Publish results to students";
+    }).catch(function (e) { var box = $("rvTbl"); if (box) box.innerHTML = '<div class="empty">' + esc(errText(e)) + '</div>'; });
+  };
+  window.publishResults = function () {
+    var examId = window.__rvExam; if (!examId) return;
+    cbtApi("/exams/" + examId + "/results").then(function (d) {
+      var pub = !!d.exam.results_published;
+      cbtApi("/exams/" + examId + "/publish-results?publish=" + (!pub), { method: "POST" }).then(function () {
+        toast(!pub ? "Results published — students can see their scores" : "Results hidden from students");
+        examResultsView(examId);
+      }).catch(toastErr);
+    }).catch(toastErr);
+  };
+  window.grantRetake = function (studentId, name) {
+    var examId = window.__rvExam; if (!examId) return;
+    confirmModal("Grant Exam Retake", 'Allow <strong>' + esc(name) + '</strong> to retake this examination? Their previous attempt is cleared and a fresh attempt is recorded.', function (btn) {
+      busy(btn, true);
+      cbtApi("/exams/" + examId + "/retake", { method: "POST", body: { student_ids: [studentId] } }).then(function () {
+        closeModal(); toast("Retake granted — student can start again"); examResultsView(examId);
+      }).catch(function (e) { busy(btn, false, "Confirm"); mErr(errText(e)); });
+    }, "Grant retake");
+  };
+
+  /* ═══ RESULTS (legacy CBT practice results) ═══ */
   R.results = function () {
     $("pages").innerHTML = head("Results", "Submitted exam results (hidden from students until you publish).") +
       '<div class="panel"><div class="form-grid"><div><select class="f-in" id="rSubj" onchange="loadResults()"><option value="">All subjects</option></select></div></div>' +

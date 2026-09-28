@@ -33,7 +33,7 @@ from app.routers import app_meta
 from app.routers import marketplace
 from app.routers import kid_games
 from app.routers import sil
-from app.routers import cbt_coupons, cbt_practice, videos, school_office, schools, external_exams
+from app.routers import cbt_coupons, cbt_practice, videos, school_office, school_cbt, schools, external_exams
 from app.routers import cbt_subject_change
 from app.routers import school_core, school_results_router
 from app.routers import past_questions_shop
@@ -111,6 +111,7 @@ app.include_router(cbt_coupons.router, prefix="/api/v1")
 app.include_router(videos.router, prefix="/api/v1")
 app.include_router(school_office.router, prefix="/api/v1")
 app.include_router(school_office.portal_router, prefix="/api/v1")
+app.include_router(school_cbt.router, prefix="/api/v1")
 app.include_router(external_exams.staff_router, prefix="/api/v1")
 app.include_router(external_exams.public_router, prefix="/api/v1")
 app.include_router(schools.router, prefix="/api/v1")
@@ -265,6 +266,9 @@ async def _school_host_response(request: Request, slug: str, full_path: str):
     path = (full_path or "").strip()
     if not path or path.endswith("/"):
         return _static_file("portal-app.html")
+    # Student CBT examination portal: <slug>.scholaxia.com/exam or /exam/
+    if path.strip("/") == "exam":
+        return _static_file("exam-app.html")
     safe = Path(path)
     if ".." in safe.parts:
         raise HTTPException(status_code=400, detail="Invalid path")
@@ -277,6 +281,7 @@ async def _school_host_response(request: Request, slug: str, full_path: str):
         no_cache = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
         return FileResponse(full, headers=no_cache)
     # Unknown file → the portal SPA entry (deep links stay inside the school app).
+    return _static_file("portal-app.html")
     return _static_file("portal-app.html")
 
 

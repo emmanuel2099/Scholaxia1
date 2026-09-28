@@ -564,6 +564,243 @@ async def ensure_community_posts_columns() -> None:
             logger.warning("community/groups column migrate skipped: %s (%s)", stmt, exc)
 
 
+async def ensure_school_cbt_schema() -> None:
+    """SCHOLAXIA CBT engine (spec §31): exam bank, exams, access codes,
+    attempts, answers, downloads, sync logs, results.
+
+    New tables are create_all's job at boot; these statements cover the
+    tenant/index safety nets on databases where they pre-exist.
+    Runs ONLY from initialize_database() at boot — never per request
+    (per-request ALTERs deadlocked table locks and hung every portal tab).
+    """
+    stmts = (
+        """
+        CREATE TABLE IF NOT EXISTS school_ex_question_banks (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            school_id UUID NOT NULL REFERENCES school_campuses(id),
+            name VARCHAR(200) NOT NULL,
+            subject VARCHAR(120) NOT NULL,
+            class_name VARCHAR(40) NOT NULL,
+            description TEXT NULL,
+            status VARCHAR(12) NOT NULL DEFAULT 'active',
+            created_by UUID NULL REFERENCES users(id),
+            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_school_ex_question_banks_school ON school_ex_question_banks (school_id)",
+        """
+        CREATE TABLE IF NOT EXISTS school_ex_questions (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            bank_id UUID NOT NULL REFERENCES school_ex_question_banks(id),
+            school_id UUID NOT NULL REFERENCES school_campuses(id),
+            question_text TEXT NOT NULL,
+            option_a TEXT NOT NULL DEFAULT '',
+            option_b TEXT NOT NULL DEFAULT '',
+            option_c TEXT NOT NULL DEFAULT '',
+            option_d TEXT NOT NULL DEFAULT '',
+            correct_option VARCHAR(12) NOT NULL DEFAULT 'A',
+            question_type VARCHAR(16) NOT NULL DEFAULT 'mcq',
+            topic VARCHAR(255) NULL,
+            sub_topic VARCHAR(255) NULL,
+            marks INTEGER NOT NULL DEFAULT 1,
+            difficulty VARCHAR(10) NOT NULL DEFAULT 'medium',
+            explanation TEXT NULL,
+            year VARCHAR(20) NULL,
+            tags JSON NULL,
+            image_url VARCHAR(500) NULL,
+            status VARCHAR(12) NOT NULL DEFAULT 'active'
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_school_ex_questions_bank ON school_ex_questions (bank_id)",
+        "CREATE INDEX IF NOT EXISTS ix_school_ex_questions_school ON school_ex_questions (school_id)",
+        """
+        CREATE TABLE IF NOT EXISTS school_exams (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            school_id UUID NOT NULL REFERENCES school_campuses(id),
+            title VARCHAR(255) NOT NULL,
+            subject VARCHAR(120) NOT NULL,
+            class_name VARCHAR(40) NOT NULL,
+            exam_type VARCHAR(30) NOT NULL DEFAULT 'SCHOOL',
+            session VARCHAR(30) NULL,
+            term VARCHAR(30) NULL,
+            instructions TEXT NULL,
+            exam_mode VARCHAR(10) NOT NULL DEFAULT 'ONLINE',
+            total_mark INTEGER NOT NULL DEFAULT 100,
+            duration_minutes INTEGER NOT NULL DEFAULT 60,
+            questions_to_display INTEGER NOT NULL DEFAULT 0,
+            questions_to_answer INTEGER NOT NULL DEFAULT 0,
+            randomize_questions BOOLEAN NOT NULL DEFAULT FALSE,
+            randomize_options BOOLEAN NOT NULL DEFAULT FALSE,
+            allow_review BOOLEAN NOT NULL DEFAULT TRUE,
+            allow_previous BOOLEAN NOT NULL DEFAULT TRUE,
+            allow_flagging BOOLEAN NOT NULL DEFAULT TRUE,
+            bank_ids JSON NULL,
+            selected_question_ids JSON NULL,
+            auto_pick_count INTEGER NOT NULL DEFAULT 0,
+            exam_date TIMESTAMP NULL,
+            scheduled_start TIMESTAMP NULL,
+            scheduled_end TIMESTAMP NULL,
+            assigned_student_ids JSON NULL,
+            assigned_class_names JSON NULL,
+            access_code_expires_at TIMESTAMP NULL,
+            max_attempts INTEGER NOT NULL DEFAULT 1,
+            retake_student_ids JSON NULL,
+            results_published BOOLEAN NOT NULL DEFAULT FALSE,
+            status VARCHAR(12) NOT NULL DEFAULT 'draft',
+            is_published BOOLEAN NOT NULL DEFAULT FALSE,
+            created_by UUID NULL REFERENCES users(id),
+            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_school_exams_school ON school_exams (school_id)",
+        "CREATE INDEX IF NOT EXISTS ix_school_exams_status ON school_exams (status)",
+        """
+        CREATE TABLE IF NOT EXISTS school_exam_questions (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            exam_id UUID NOT NULL REFERENCES school_exams(id),
+            school_id UUID NOT NULL REFERENCES school_campuses(id),
+            bank_question_id UUID NULL REFERENCES school_ex_questions(id),
+            question_text TEXT NOT NULL,
+            option_a TEXT NOT NULL DEFAULT '',
+            option_b TEXT NOT NULL DEFAULT '',
+            option_c TEXT NOT NULL DEFAULT '',
+            option_d TEXT NOT NULL DEFAULT '',
+            correct_option VARCHAR(12) NOT NULL DEFAULT 'A',
+            question_type VARCHAR(16) NOT NULL DEFAULT 'mcq',
+            topic VARCHAR(255) NULL,
+            marks INTEGER NOT NULL DEFAULT 1,
+            position INTEGER NOT NULL DEFAULT 0
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_school_exam_questions_exam ON school_exam_questions (exam_id)",
+        """
+        CREATE TABLE IF NOT EXISTS school_exam_assignments (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            school_id UUID NOT NULL REFERENCES school_campuses(id),
+            exam_id UUID NOT NULL REFERENCES school_exams(id),
+            student_id UUID NOT NULL REFERENCES users(id),
+            class_name VARCHAR(40) NULL,
+            subject VARCHAR(120) NULL,
+            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+        )
+        """,
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_school_exam_assignments ON school_exam_assignments (exam_id, student_id)",
+        "CREATE INDEX IF NOT EXISTS ix_school_exam_assignments_student ON school_exam_assignments (student_id)",
+        """
+        CREATE TABLE IF NOT EXISTS school_exam_access_codes (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            school_id UUID NOT NULL REFERENCES school_campuses(id),
+            exam_id UUID NOT NULL REFERENCES school_exams(id),
+            student_id UUID NOT NULL REFERENCES users(id),
+            reg_number VARCHAR(40) NOT NULL,
+            access_code VARCHAR(40) NOT NULL,
+            is_used BOOLEAN NOT NULL DEFAULT FALSE,
+            used_at TIMESTAMP NULL,
+            expires_at TIMESTAMP NULL,
+            failed_attempts INTEGER NOT NULL DEFAULT 0,
+            locked_until TIMESTAMP NULL,
+            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+        )
+        """,
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_school_exam_codes ON school_exam_access_codes (exam_id, student_id)",
+        "CREATE INDEX IF NOT EXISTS ix_school_exam_codes_reg ON school_exam_access_codes (reg_number)",
+        "CREATE INDEX IF NOT EXISTS ix_school_exam_codes_code ON school_exam_access_codes (access_code)",
+        """
+        CREATE TABLE IF NOT EXISTS school_exam_attempts (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            school_id UUID NOT NULL REFERENCES school_campuses(id),
+            exam_id UUID NOT NULL REFERENCES school_exams(id),
+            student_id UUID NOT NULL REFERENCES users(id),
+            access_code_id UUID NULL REFERENCES school_exam_access_codes(id),
+            started_at TIMESTAMP WITHOUT TIME ZONE NOT NULL DEFAULT NOW(),
+            deadline_at TIMESTAMP NULL,
+            submitted_at TIMESTAMP NULL,
+            is_auto_submitted BOOLEAN NOT NULL DEFAULT FALSE,
+            status VARCHAR(12) NOT NULL DEFAULT 'in_progress',
+            sync_status VARCHAR(24) NULL,
+            question_order JSON NULL,
+            option_order JSON NULL,
+            retake_granted BOOLEAN NOT NULL DEFAULT FALSE
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_school_exam_attempts_exam ON school_exam_attempts (exam_id)",
+        "CREATE INDEX IF NOT EXISTS ix_school_exam_attempts_student ON school_exam_attempts (student_id)",
+        """
+        CREATE TABLE IF NOT EXISTS school_exam_answers (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            school_id UUID NOT NULL REFERENCES school_campuses(id),
+            attempt_id UUID NOT NULL REFERENCES school_exam_attempts(id),
+            exam_question_id UUID NOT NULL REFERENCES school_exam_questions(id),
+            student_id UUID NOT NULL REFERENCES users(id),
+            answer VARCHAR(50) NULL,
+            is_flagged BOOLEAN NOT NULL DEFAULT FALSE,
+            updated_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW(),
+            synced_offline BOOLEAN NOT NULL DEFAULT FALSE
+        )
+        """,
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_school_exam_answers ON school_exam_answers (attempt_id, exam_question_id)",
+        """
+        CREATE TABLE IF NOT EXISTS school_exam_downloads (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            school_id UUID NOT NULL REFERENCES school_campuses(id),
+            exam_id UUID NOT NULL REFERENCES school_exams(id),
+            student_id UUID NOT NULL REFERENCES users(id),
+            checksum VARCHAR(80) NULL,
+            verified BOOLEAN NOT NULL DEFAULT TRUE,
+            question_order JSON NULL,
+            option_order JSON NULL,
+            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_school_exam_downloads_exam ON school_exam_downloads (exam_id)",
+        "CREATE INDEX IF NOT EXISTS ix_school_exam_downloads_student ON school_exam_downloads (student_id)",
+        """
+        CREATE TABLE IF NOT EXISTS school_exam_sync_logs (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            school_id UUID NOT NULL REFERENCES school_campuses(id),
+            exam_id UUID NOT NULL REFERENCES school_exams(id),
+            attempt_id UUID NULL REFERENCES school_exam_attempts(id),
+            student_id UUID NOT NULL REFERENCES users(id),
+            event VARCHAR(32) NOT NULL,
+            channel VARCHAR(16) NOT NULL DEFAULT 'online',
+            detail JSON NULL,
+            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_school_exam_sync_logs_exam ON school_exam_sync_logs (exam_id)",
+        "CREATE INDEX IF NOT EXISTS ix_school_exam_sync_logs_student ON school_exam_sync_logs (student_id)",
+        """
+        CREATE TABLE IF NOT EXISTS school_exam_results (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            school_id UUID NOT NULL REFERENCES school_campuses(id),
+            exam_id UUID NOT NULL REFERENCES school_exams(id),
+            student_id UUID NOT NULL REFERENCES users(id),
+            attempt_id UUID NULL REFERENCES school_exam_attempts(id),
+            total_questions INTEGER NOT NULL DEFAULT 0,
+            questions_answered INTEGER NOT NULL DEFAULT 0,
+            correct_count INTEGER NOT NULL DEFAULT 0,
+            wrong_count INTEGER NOT NULL DEFAULT 0,
+            raw_score DOUBLE PRECISION NOT NULL DEFAULT 0,
+            raw_total DOUBLE PRECISION NOT NULL DEFAULT 0,
+            total_mark INTEGER NOT NULL DEFAULT 100,
+            final_score DOUBLE PRECISION NOT NULL DEFAULT 0,
+            percentage DOUBLE PRECISION NOT NULL DEFAULT 0,
+            grade VARCHAR(5) NULL,
+            is_published BOOLEAN NOT NULL DEFAULT FALSE,
+            published_at TIMESTAMP NULL,
+            created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT NOW()
+        )
+        """,
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_school_exam_results ON school_exam_results (exam_id, student_id)",
+    )
+    for stmt in stmts:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text(stmt))
+        except Exception as exc:
+            logger.warning("school CBT schema skipped: %.100s (%s)", stmt, exc)
+
+
 async def ensure_live_class_schema() -> None:
     """Columns/tables required for Join live + Access codes (avoids Internal Server Error)."""
     stmts = (
@@ -646,6 +883,10 @@ async def initialize_database() -> bool:
         await ensure_live_class_schema()
     except Exception as exc:
         logger.warning("ensure_live_class_schema: %s", exc)
+    try:
+        await ensure_school_cbt_schema()
+    except Exception as exc:
+        logger.warning("ensure_school_cbt_schema: %s", exc)
     try:
         from app.services.cbt_access import ensure_student_entitlements_schema
         await ensure_student_entitlements_schema()

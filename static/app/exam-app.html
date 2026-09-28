@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Scholaxia — Examination Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --navy:#0d1b3e; --blue:#1a6ef5; --blue2:#0f56d6; --sky:#eaf2ff; --ink:#152242;
+  --mut:#5d6b8a; --line:#e3e9f4; --bg:#f4f7fd; --ok:#16a34a; --okbg:#e7f8ee;
+  --warn:#d97706; --warnbg:#fdf3e3; --bad:#dc2626; --badbg:#fdeaea; --rad:16px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Outfit',system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:15px}
+button{font-family:inherit;cursor:pointer}
+input{font-family:inherit;font-size:15px}
+#toast{position:fixed;bottom:22px;right:22px;background:var(--navy);color:#fff;padding:12px 18px;border-radius:12px;font-size:14px;display:none;z-index:999;box-shadow:0 10px 30px rgba(13,27,62,.3);max-width:420px}
+
+/* ═══ LOGIN (mockup 1) ═══ */
+#login{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#eef4ff 0%,#dfe9fb 45%,#ccd9f6 100%);position:relative;overflow:hidden;padding:24px}
+.blob{position:absolute;border-radius:50%;filter:blur(10px);opacity:.55;pointer-events:none}
+.blob.b1{width:520px;height:520px;background:radial-gradient(circle,#b9ccf8,#cddcf7 70%);top:-160px;right:-120px}
+.blob.b2{width:420px;height:420px;background:radial-gradient(circle,#c4d5f9,#d8e3fa 70%);bottom:-140px;left:-100px}
+.edu{position:absolute;font-size:120px;opacity:.13;color:#1a6ef5}
+.edu.e1{left:6%;top:16%;transform:rotate(-12deg)}
+.edu.e2{right:7%;bottom:14%}
+.hand{position:absolute;left:8%;top:18%;font-family:'Segoe Script','Comic Sans MS',cursive;color:#1a6ef5;font-size:24px;line-height:1.6;transform:rotate(-14deg);font-weight:600}
+@media(max-width:760px){.hand,.edu{display:none}}
+.exam-card{position:relative;z-index:2;background:#fff;border-radius:24px;box-shadow:0 30px 80px rgba(13,27,62,.22);padding:52px 56px;width:100%;max-width:560px}
+@media(max-width:560px){.exam-card{padding:36px 24px}}
+.exam-brand{display:flex;align-items:center;justify-content:center;gap:13px;margin-bottom:26px}
+.exam-brand img{height:58px}
+.exam-brand .fb{display:none;font-size:34px}
+.exam-card h1{font-size:34px;font-weight:800;color:var(--navy);text-align:center;letter-spacing:-.5px}
+.exam-card .sub{text-align:center;color:var(--mut);margin:8px 0 30px}
+.fgroup{display:flex;align-items:center;gap:10px;font-weight:700;font-size:13px;letter-spacing:.04em;color:var(--navy);margin:18px 0 8px;text-transform:uppercase}
+.fgroup .gico{width:30px;height:30px;border-radius:50%;background:var(--sky);color:var(--blue);display:flex;align-items:center;justify-content:center;font-size:15px}
+.inwrap{position:relative;display:flex;align-items:center}
+.inwrap .lico{position:absolute;left:14px;color:#9aa7c2;font-size:17px}
+.f-in{width:100%;padding:14px 46px;border:1.5px solid var(--line);border-radius:12px;outline:none;background:#fbfcff;transition:border .15s}
+.f-in:focus{border-color:var(--blue);background:#fff}
+.eye{position:absolute;right:12px;background:none;border:none;color:var(--mut);font-size:18px;padding:4px}
+.btn-login{width:100%;margin-top:28px;padding:15px;border:none;border-radius:12px;background:var(--blue);color:#fff;font-size:16.5px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;transition:background .15s}
+.btn-login:hover{background:var(--blue2)}
+.btn-login[disabled]{opacity:.65;cursor:wait}
+.login-err{display:none;margin-top:16px;padding:11px 14px;border-radius:10px;background:var(--badbg);color:var(--bad);font-size:13.5px}
+.login-foot{margin-top:22px;text-align:center;font-size:14px}
+.login-foot a{color:var(--blue);font-weight:600;text-decoration:none}
+.login-foot a:hover{text-decoration:underline}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* ═══ EXAM HOME (§15) ═══ */
+.hidden{display:none!important}
+.top{background:#fff;border-bottom:1px solid var(--line);padding:14px 26px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:40}
+.top .tb{display:flex;align-items:center;gap:11px}
+.top .tb img{height:34px}
+.top .tb b{color:var(--navy);font-size:19px;letter-spacing:-.3px}
+.top .who{display:flex;align-items:center;gap:10px;font-weight:600;color:var(--navy)}
+.top .ava{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--blue),#7c3aed);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700}
+.wrap{max-width:1060px;margin:0 auto;padding:30px 20px}
+.wrap h2{font-size:24px;color:var(--navy);font-weight:800;margin-bottom:4px}
+.wrap .lead{color:var(--mut);margin-bottom:22px}
+.examgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:18px}
+.ecard{background:#fff;border-radius:var(--rad);box-shadow:0 2px 14px rgba(21,34,66,.07);padding:20px;display:flex;flex-direction:column;gap:8px}
+.ecard h3{font-size:18px;color:var(--navy)}
+.ecard .esub{color:var(--mut);font-size:13.5px}
+.emeta{display:flex;gap:14px;flex-wrap:wrap;color:var(--mut);font-size:13px;margin:8px 0}
+.emeta b{color:var(--ink)}
+.mode-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:999px;font-size:12px;font-weight:700}
+.mode-pill.online{background:var(--okbg);color:var(--ok)}
+.mode-pill.offline{background:var(--warnbg);color:var(--warn)}
+.mode-pill.hybrid{background:var(--sky);color:var(--blue)}
+.btn-go{margin-top:10px;padding:12px;border:none;border-radius:11px;background:var(--blue);color:#fff;font-weight:700;font-size:14.5px}
+.btn-go:hover{background:var(--blue2)}
+.btn-go[disabled]{opacity:.6;cursor:not-allowed}
+.okrow{display:flex;gap:8px;align-items:center;color:var(--ok);font-weight:600;font-size:13.5px}
+.dlbtn{background:var(--warn)}
+.scorecard{background:var(--okbg);border-radius:11px;padding:10px 14px;font-size:13.5px;color:var(--ok);font-weight:600}
+
+/* ═══ CBT INTERFACE (mockup 2) ═══ */
+#exam{display:grid;grid-template-columns:1fr 380px;gap:22px;max-width:1280px;margin:0 auto;padding:24px 20px 60px}
+@media(max-width:1000px){#exam{grid-template-columns:1fr}}
+.qcard{background:#fff;border-radius:var(--rad);box-shadow:0 2px 14px rgba(21,34,66,.07);padding:24px}
+.qhead{display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:20px}
+.qhead .qico{width:52px;height:52px;border-radius:13px;background:var(--sky);display:flex;align-items:center;justify-content:center;font-size:24px}
+.qhead h2{font-size:20px;color:var(--navy)}
+.qhead .qsub{color:var(--mut);font-size:13.5px;margin-top:2px}
+.qhead .pill-ok{margin-left:auto;display:flex;align-items:center;gap:7px;background:var(--okbg);color:var(--ok);padding:7px 14px;border-radius:999px;font-size:13px;font-weight:700}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.qnum{color:var(--blue);font-weight:700;font-size:15.5px}
+.flagrow{display:flex;justify-content:flex-end;margin-bottom:8px}
+.flagbtn{background:none;border:none;color:var(--blue);font-weight:600;font-size:14px;display:flex;gap:7px;align-items:center}
+.flagbtn.on{color:var(--warn)}
+.qtext{font-size:19px;line-height:1.65;margin:14px 0 22px;color:var(--ink)}
+.opt{display:flex;align-items:center;gap:16px;border:1.5px solid var(--line);border-radius:12px;padding:17px 20px;margin-bottom:13px;cursor:pointer;transition:border .12s,background .12s;font-size:16px}
+.opt:hover{border-color:#bcd0f7}
+.opt.sel{border-color:var(--blue);background:#f4f8ff}
+.opt .radio{width:20px;height:20px;border:2px solid #b9c4dd;border-radius:50%;flex:none;position:relative}
+.opt.sel .radio{border-color:var(--blue)}
+.opt.sel .radio::after{content:"";position:absolute;inset:3px;background:var(--blue);border-radius:50%}
+.opt .ol{font-weight:800;color:var(--navy);width:16px}
+.qnav{display:flex;justify-content:space-between;border-top:1px solid var(--line);padding-top:18px;margin-top:16px}
+.btn-nav{padding:12px 26px;border-radius:11px;font-weight:600;font-size:14.5px;border:1.5px solid var(--line);background:#fff;color:var(--ink)}
+.btn-nav:hover{border-color:var(--blue);color:var(--blue)}
+.btn-nav.primary{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn-nav.primary:hover{background:var(--blue2)}
+.side .tcard{background:linear-gradient(135deg,var(--blue) 0%,#2f7ff7 100%);border-radius:var(--rad);padding:18px 22px;color:#fff;display:flex;align-items:center;gap:16px;margin-bottom:18px}
+.tcard .clock{font-size:30px}
+.tcard .tlab{font-size:12.5px;opacity:.9}
+.tcard .tval{font-size:26px;font-weight:800;letter-spacing:1px;font-variant-numeric:tabular-nums}
+.side .pcard{background:#fff;border-radius:var(--rad);box-shadow:0 2px 14px rgba(21,34,66,.07);padding:20px}
+.pcard h3{font-size:16.5px;color:var(--navy);margin-bottom:10px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--mut);margin-bottom:14px}
+.legend span{display:flex;align-items:center;gap:6px}
+.ld{width:10px;height:10px;border-radius:50%}
+.ld.cur{background:var(--blue)}.ld.ans{background:var(--ok)}.ld.not{background:#d7dfeb;border:1px solid #b9c4dd}.ld.mk{background:var(--bad)}
+.palette{display:grid;grid-template-columns:repeat(8,1fr);gap:8px}
+@media(max-width:520px){.palette{grid-template-columns:repeat(6,1fr)}}
+.pal{height:38px;border-radius:9px;border:1px solid var(--line);background:#fff;font-weight:600;font-size:13.5px;color:var(--ink);display:flex;align-items:center;justify-content:center}
+.pal.ans{background:var(--ok);border-color:var(--ok);color:#fff}
+.pal.cur{background:var(--blue);border-color:var(--blue);color:#fff}
+.pal.mk{background:var(--bad);border-color:var(--bad);color:#fff}
+.pal.ans.mk{background:#8b1a1a;border-color:#8b1a1a}
+.pnote{margin-top:14px;background:var(--sky);border-radius:11px;padding:12px 14px;font-size:13px;color:var(--blue);display:flex;gap:9px;line-height:1.5}
+.submitbar{margin-top:16px}
+.btn-submit{width:100%;padding:13px;border:none;border-radius:11px;background:var(--ok);color:#fff;font-weight:700;font-size:15px}
+.btn-submit:hover{background:#128a3e}
+
+/* summary modal */
+.mback{position:fixed;inset:0;background:rgba(13,27,62,.5);display:flex;align-items:center;justify-content:center;z-index:500;padding:18px}
+.mmodal{background:#fff;border-radius:18px;max-width:480px;width:100%;padding:28px;box-shadow:0 30px 80px rgba(13,27,62,.35)}
+.mmodal h3{font-size:20px;color:var(--navy);margin-bottom:14px}
+.sumrow{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);font-size:14.5px}
+.sumrow b{color:var(--navy)}
+.mnote{margin-top:14px;font-size:13px;color:var(--mut);line-height:1.55}
+.macts{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}
+.btn-m{padding:11px 20px;border-radius:10px;font-weight:600;border:1.5px solid var(--line);background:#fff}
+.btn-m.primary{background:var(--ok);border-color:var(--ok);color:#fff}
+.btn-m.danger{background:var(--blue);border-color:var(--blue);color:#fff}
+.syncbox{margin-top:14px;border-radius:12px;padding:14px 16px;font-size:13.5px;line-height:1.6}
+.syncbox.wait{background:var(--warnbg);color:var(--warn)}
+.syncbox.done{background:var(--okbg);color:var(--ok)}
+</style>
+</head>
+<body>
+<div id="toast"></div>
+
+<!-- ═══ LOGIN ═══ -->
+<div id="login">
+  <div class="blob b1"></div><div class="blob b2"></div>
+  <div class="hand">Your<br/>Future<br/>Matters</div>
+  <div class="edu e1">🎓</div><div class="edu e2">📘</div>
+  <form class="exam-card" id="loginForm" autocomplete="off">
+    <div class="exam-brand">
+      <img src="/media/logo-main.png" alt="Scholaxia" onerror="this.outerHTML='<span class=\'fb\'>🎓</span>'" />
+      <div>
+        <div style="font-size:27px;font-weight:800;color:var(--blue);letter-spacing:-.5px">Scholaxia</div>
+        <div style="font-size:11px;letter-spacing:.28em;color:var(--mut);font-weight:600">LEARN • PRACTICE • EXCEL</div>
+      </div>
+    </div>
+    <h1>Welcome Back!</h1>
+    <p class="sub">Examinations are ongoing — wishing you all good luck.</p>
+    <div class="fgroup"><span class="gico">👤</span> Registration Number</div>
+    <div class="inwrap"><span class="lico">👤</span>
+      <input class="f-in" id="lgReg" placeholder="SCHX/26/544560" required />
+    </div>
+    <div class="fgroup"><span class="gico">🔑</span> Access Code</div>
+    <div class="inwrap"><span class="lico">🔒</span>
+      <input class="f-in" id="lgCode" type="password" placeholder="••••••" required style="letter-spacing:2px" />
+      <button type="button" class="eye" onclick="toggleEye()" aria-label="Show access code">👁</button>
+    </div>
+    <button class="btn-login" id="lgBtn" type="submit">⮕&nbsp; Login to Examination</button>
+    <div class="login-err" id="lgErr"></div>
+    <div class="login-foot">🔍 Lost your details? <a href="#" onclick="retrieveDetails();return false">Retrieve Login Details</a></div>
+  </form>
+</div>
+
+<!-- ═══ APP ═══ -->
+<div id="app" class="hidden">
+  <div class="top">
+    <div class="tb" onclick="goHome()" style="cursor:pointer">
+      <img src="/media/logo-main.png" alt="" onerror="this.style.display='none'" />
+      <b>Scholaxia</b>
+    </div>
+    <div class="who" id="whoBox"></div>
+  </div>
+
+  <!-- exam home -->
+  <div class="wrap" id="home">
+    <h2 id="hello">Welcome!</h2>
+    <p class="lead">Your Examinations</p>
+    <div class="examgrid" id="examGrid"><div class="ecard">Loading…</div></div>
+  </div>
+
+  <!-- CBT interface -->
+  <div id="exam" class="hidden">
+    <div class="qcard">
+      <div class="qhead">
+        <div class="qico">📝</div>
+        <div>
+          <h2 id="qSubject">—</h2>
+          <div class="qsub" id="qSub">—</div>
+        </div>
+        <div class="pill-ok"><span class="dot"></span> Exam Loaded</div>
+      </div>
+      <div class="flagrow"><button class="flagbtn" id="flagBtn" onclick="toggleFlag()">⚑ Flag Question</button></div>
+      <div class="qnum" id="qNum">Question 1</div>
+      <div class="qtext" id="qText">—</div>
+      <div id="qOpts"></div>
+      <div class="qnav">
+        <button class="btn-nav" id="btnPrev" onclick="move(-1)">← Previous</button>
+        <button class="btn-nav primary" id="btnNext" onclick="move(1)">Next →</button>
+      </div>
+    </div>
+    <div class="side">
+      <div class="tcard">
+        <div class="clock">🕐</div>
+        <div>
+          <div class="tlab">Time Remaining</div>
+          <div class="tval" id="timer">--:--:--</div>
+        </div>
+      </div>
+      <div class="pcard">
+        <h3>Question Palette</h3>
+        <div class="legend">
+          <span><span class="ld cur"></span> Current</span>
+          <span><span class="ld ans"></span> Answered</span>
+          <span><span class="ld not"></span> Not Answered</span>
+          <span><span class="ld mk"></span> Marked</span>
+        </div>
+        <div class="palette" id="palette"></div>
+        <div class="pnote">ⓘ You can review your answers before submitting the exam.</div>
+        <div class="submitbar"><button class="btn-submit" onclick="openSummary()">Submit Examination</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var API = "https://scholaxia1.onrender.com/api/v1";
+  if (/scholaxia1\.onrender\.com$/.test(location.hostname) || /\.scholaxia\.com$/.test(location.hostname) || location.hostname === "localhost") {
+    API = location.origin + "/api/v1";
+  }
+  var TK = "sx_exam_token", TU = "sx_exam_user";
+  var S = { token: localStorage.getItem(TK) || null, me: null, exams: [], current: null };
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
+
+  function toast(msg) { var t = $("toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(t._h); t._h = setTimeout(function () { t.style.display = "none"; }, 3200); }
+  function detailOf(d) {
+    if (!d) return null;
+    var det = d.detail != null ? d.detail : (d.message != null ? d.message : null);
+    if (det == null) return null;
+    if (typeof det === "string") return det;
+    if (Array.isArray(det)) return det.map(function (v) { return v && v.msg ? v.msg : ""; }).filter(Boolean).join("; ") || "Invalid input";
+    try { return det.msg || JSON.stringify(det); } catch (_) { return "Request failed"; }
+  }
+  function api(path, opts) {
+    opts = opts || {};
+    var h = {};
+    if (!opts.form) h["Content-Type"] = "application/json";
+    if (S.token) h["Authorization"] = "Bearer " + S.token;
+    return fetch(API + path, { method: opts.method || "GET", headers: h, body: opts.body ? JSON.stringify(opts.body) : undefined })
+      .then(function (r) {
+        return r.text().then(function (txt) {
+          var d = null; try { d = txt ? JSON.parse(txt) : null; } catch (_) {}
+          if (r.status === 401 && path !== "/school-cbt/student/login") { logout(); throw new Error(detailOf(d) || "Session expired — log in again."); }
+          if (!r.ok) throw new Error(detailOf(d) || ("Request failed (" + r.status + ")"));
+          return d;
+        });
+      });
+  }
+
+  window.toggleEye = function () {
+    var el = $("lgCode");
+    el.type = el.type === "password" ? "text" : "password";
+  };
+  window.retrieveDetails = function () {
+    toast("Ask your school exam officer — they issued your Registration Number and Access Code.");
+  };
+  function logout() {
+    localStorage.removeItem(TK); localStorage.removeItem(TU);
+    S.token = null; S.me = null; location.reload();
+  }
+  window.examLogout = logout;
+
+  $("loginForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var btn = $("lgBtn"), err = $("lgErr");
+    err.style.display = "none";
+    btn.disabled = true; btn.innerHTML = '<span class="spin"></span> Logging in…';
+    api("/school-cbt/student/login", { method: "POST", body: { reg_number: $("lgReg").value.trim(), access_code: $("lgCode").value.trim() } })
+      .then(function (d) {
+        S.token = d.access_token; S.me = d.student;
+        localStorage.setItem(TK, S.token);
+        localStorage.setItem(TU, JSON.stringify(d.student));
+        enterHome();
+      })
+      .catch(function (ex) {
+        err.textContent = ex.message || "Could not log in"; err.style.display = "block";
+        btn.disabled = false; btn.innerHTML = "⮕&nbsp; Login to Examination";
+      });
+  });
+
+  function enterHome() {
+    $("login").style.display = "none";
+    $("app").classList.remove("hidden");
+    $("whoBox").innerHTML = '<span class="ava">' + esc((S.me && S.me.full_name || "S").charAt(0).toUpperCase()) + '</span>' + esc(S.me && S.me.full_name || "") +
+      ' <button class="btn-nav" style="padding:8px 14px;margin-left:8px" onclick="examLogout()">Log out</button>';
+    $("hello").textContent = "Welcome, " + ((S.me && S.me.full_name || "").split(" ")[0] || "student");
+    loadExams();
+  }
+  function tryResume() {
+    var u = localStorage.getItem(TU);
+    if (S.token && u) { try { S.me = JSON.parse(u); enterHome(); } catch (e) { logout(); } }
+  }
+
+  function fmtDur(mins) {
+    var h = Math.floor(mins / 60), m = mins % 60;
+    return (h ? h + " Hour" + (h > 1 ? "s" : "") + (m ? " " : "") : "") + (m || !h ? m + " Minutes" : "");
+  }
+  function loadExams() {
+    api("/school-cbt/student/my-exams").then(function (d) {
+      S.exams = d.exams || [];
+      $("examGrid").innerHTML = S.exams.length ? S.exams.map(function (x) {
+        var mode = (x.exam_mode || "ONLINE").toUpperCase();
+        var pill = '<span class="mode-pill ' + mode.toLowerCase() + '">' + (mode === "ONLINE" ? "🌐" : mode === "OFFLINE" ? "⬇" : "🔄") + " " + mode + "</span>";
+        var body = "";
+        if (x.attempt_status === "submitted") {
+          body = '<div class="okrow">✓ Completed</div>';
+          if (x.result) body += '<div class="scorecard">Score: ' + esc(x.result.final_score) + " / " + esc(x.result.total_mark) + " (" + esc(x.result.grade) + ")</div>";
+          else body += '<div class="scorecard" style="background:var(--warnbg);color:var(--warn)">Result waiting for your school to publish</div>';
+        } else if (x.needs_download) {
+          body = '<button class="btn-go dlbtn" onclick="downloadExam(\'' + x.id + '\')">⬇ Download Examination</button>';
+        } else {
+          body = '<button class="btn-go" onclick="openExam(\'' + x.id + '\')">' + (x.downloaded && mode !== "ONLINE" ? "OPEN EXAM" : "START EXAM") + "</button>";
+        }
+        if (!x.window_open && x.attempt_status !== "submitted") {
+          body = '<div class="okrow" style="color:var(--warn)">⏰ Not available yet — check your exam date</div>';
+        }
+        return '<div class="ecard">' +
+          '<h3>' + esc(x.subject) + '</h3>' +
+          '<div class="esub">' + esc(x.class_name) + (x.term ? " · " + esc(x.term) : "") + (x.session ? " · " + esc(x.session) : "") + '</div>' +
+        '<div class="emeta"><span><b>' + x.questions + '</b> Questions</span><span><b>' + fmtDur(x.duration_minutes) + '</b></span><span>Total Mark: <b>' + x.total_mark + '</b></span></div>' +
+        pill + body + '</div>';
+      }).join("") : '<div class="ecard">No examinations assigned to you yet.</div>';
+    }).catch(function (e) { $("examGrid").innerHTML = '<div class="ecard">' + esc(e.message) + '</div>'; });
+  }
+  window.downloadExam = function (examId) {
+    toast("Downloading examination…");
+    api("/school-cbt/student/exams/" + examId + "/download", { method: "POST" }).then(function (pkg) {
+      try {
+        localStorage.setItem("sx_exam_pkg_" + examId, JSON.stringify(pkg));
+      } catch (e) { /* storage full — online fallback still works */ }
+      loadExams();
+      toast("✓ Exam downloaded, verified and ready");
+    }).catch(function (e) { toast("⚠️ " + e.message); });
+  };
+
+  /* ── CBT RUNNER ── */
+  var R = null; // active runner state
+  window.openExam = function (examId) {
+    api("/school-cbt/student/exams/" + examId + "/start", { method: "POST" }).then(function (d) {
+      R = {
+        attemptId: d.attempt_id,
+        exam: d.exam,
+        seconds: d.seconds_remaining,
+        questions: d.questions,
+        idx: 0,
+        answers: {},
+        flags: {},
+        pkgExamId: examId,
+      };
+      d.questions.forEach(function (q) {
+        if (q.saved_answer) R.answers[q.id] = q.saved_answer;
+        if (q.is_flagged) R.flags[q.id] = true;
+      });
+      startRunner();
+    }).catch(function (e) { toast("⚠️ " + e.message); });
+  };
+  function startRunner() {
+    $("home").classList.add("hidden");
+    $("exam").classList.remove("hidden");
+    $("qSubject").textContent = R.exam.subject;
+    $("qSub").textContent = R.exam.title + " · " + R.questions.length + " Questions · " + fmtDur(R.exam.duration_minutes);
+    if (!R.exam.allow_flagging) $("flagBtn").style.display = "none";
+    buildPalette();
+    renderQ();
+    tick(); clearInterval(R._th); R._th = setInterval(tick, 1000);
+  }
+  function tick() {
+    if (!R) return;
+    R.seconds--;
+    if (R.seconds <= 0) { R.seconds = 0; clearInterval(R._th); toast("Time is up — submitting…"); doSubmit(true); return; }
+    var h = Math.floor(R.seconds / 3600), m = Math.floor((R.seconds % 3600) / 60), s = R.seconds % 60;
+    var p = function (n) { return (n < 10 ? "0" : "") + n; };
+    $("timer").textContent = p(h) + ":" + p(m) + ":" + p(s);
+    if (R.seconds === 300) toast("⏰ 5 minutes remaining!");
+  }
+  function renderQ() {
+    var q = R.questions[R.idx];
+    $("qNum").textContent = "Question " + (R.idx + 1) + " of " + R.questions.length;
+    $("qText").textContent = q.question_text;
+    $("flagBtn").classList.toggle("on", !!R.flags[q.id]);
+    $("flagBtn").innerHTML = R.flags[q.id] ? "⚑ Flagged ✓" : "⚑ Flag Question";
+    $("btnPrev").style.display = R.exam.allow_previous === false && R.idx === 0 ? "none" : "";
+    $("qOpts").innerHTML = (q.options || []).map(function (o) {
+      var sel = R.answers[q.id] === o.label;
+      return '<div class="opt' + (sel ? " sel" : "") + '" onclick="pick(\'' + o.label + '\')">' +
+        '<span class="radio"></span><span class="ol">' + esc(o.label) + "</span><span>" + esc(o.text) + "</span></div>";
+    }).join("");
+    buildPalette();
+  }
+  window.pick = function (label) {
+    var q = R.questions[R.idx];
+    R.answers[q.id] = label;
+    saveAnswer(q.id, label, false);
+    renderQ();
+  };
+  function saveAnswer(qid, answer, offline) {
+    api("/school-cbt/student/answers", { method: "POST", body: { attempt_id: R.attemptId, question_id: qid, answer: answer, offline_sync: !!offline } })
+      .catch(function () { queueOffline({ question_id: qid, answer: answer }); });
+  }
+  window.toggleFlag = function () {
+    var q = R.questions[R.idx];
+    R.flags[q.id] = !R.flags[q.id];
+    api("/school-cbt/student/answers", { method: "POST", body: { attempt_id: R.attemptId, question_id: q.id, is_flagged: R.flags[q.id] } })
+      .catch(function () {});
+    renderQ();
+  };
+  window.move = function (dir) {
+    var n = R.idx + dir;
+    if (n < 0 || n >= R.questions.length) { if (n >= R.questions.length) openSummary(); return; }
+    if (dir > 0 && R.exam.allow_previous === false && R.flags._seen && !R.flags._seen[n]) { /* forward-only exams */ }
+    R.idx = n;
+    renderQ();
+  };
+  function buildPalette() {
+    $("palette").innerHTML = R.questions.map(function (q, i) {
+      var cls = "pal";
+      if (i === R.idx) cls += " cur";
+      else if (R.answers[q.id]) cls += " ans";
+      if (R.flags[q.id]) cls += " mk";
+      return '<button class="' + cls + '" onclick="jump(' + i + ')">' + (i + 1) + "</button>";
+    }).join("");
+  }
+  window.jump = function (i) { R.idx = i; renderQ(); };
+
+  /* ── SUBMIT FLOW (§22) ── */
+  window.openSummary = function () {
+    var total = R.questions.length;
+    var answered = R.questions.filter(function (q) { return R.answers[q.id]; }).length;
+    var marked = R.questions.filter(function (q) { return R.flags[q.id]; }).length;
+    var b = document.createElement("div"); b.className = "mback"; b.id = "sumM";
+    b.innerHTML = '<div class="mmodal"><h3>Examination Summary</h3>' +
+      '<div class="sumrow"><span>Total Questions</span><b>' + total + "</b></div>" +
+      '<div class="sumrow"><span>Answered</span><b style="color:var(--ok)">' + answered + "</b></div>" +
+      '<div class="sumrow"><span>Not Answered</span><b style="color:var(--bad)">' + (total - answered) + "</b></div>" +
+      '<div class="sumrow" style="border:none"><span>Marked for Review</span><b style="color:var(--warn)">' + marked + "</b></div>" +
+      '<div class="mnote">Are you sure you want to submit? You will not be able to change your answers after final submission.</div>' +
+      '<div class="macts"><button class="btn-m" id="sumCancel">Review Answers</button><button class="btn-m danger" id="sumGo">Submit</button></div></div>';
+    document.body.appendChild(b);
+    $("sumCancel").onclick = function () { b.remove(); };
+    $("sumGo").onclick = function () { b.remove(); doSubmit(false); };
+  };
+  function doSubmit(auto) {
+    var answered = R.questions.filter(function (q) { return R.answers[q.id]; }).length;
+    var payload = {
+      attempt_id: R.attemptId,
+      is_auto_submit: !!auto,
+      client: "web-portal",
+      started_at: null,
+      submitted_at: new Date().toISOString(),
+    };
+    // Try online submit; fall back to the §23 "Waiting for Secure Sync" flow.
+    api("/school-cbt/student/exams/" + R.exam.id + "/submit", { method: "POST", body: payload })
+      .then(function (d) { showCompletion(d, false); })
+      .catch(function () { showOfflineWait(payload); });
+  }
+  function showOfflineWait(payload) {
+    // §23 — save the submission to the local encrypted queue; sync on return.
+    try { localStorage.setItem("sx_exam_pending_" + R.exam.id, JSON.stringify(payload)); } catch (e) {}
+    var b = document.createElement("div"); b.className = "mback";
+    b.innerHTML = '<div class="mmodal"><h3>Examination Completed</h3>' +
+      '<p style="font-size:14.5px;line-height:1.6">Your answers have been securely saved.<br/><br/>Internet connection is currently unavailable.<br/>Your examination will be securely synchronized when a connection becomes available.</p>' +
+      '<div class="syncbox wait" id="syncBox">STATUS: Waiting for Secure Sync…</div>' +
+      '<div class="macts"><button class="btn-m primary" id="syncClose">OK</button></div></div>';
+    document.body.appendChild(b);
+    $("syncClose").onclick = function () { b.remove(); goHome(); };
+    watchSync(payload);
+  }
+  function watchSync(payload) {
+    var tries = 0;
+    var h = setInterval(function () {
+      tries++;
+      var box = $("syncBox");
+      if (!box) { clearInterval(h); return; }
+      box.textContent = "Connecting…";
+      api("/school-cbt/student/sync", { method: "POST", body: { attempt_id: payload.attempt_id, submit: true, offline_sync: true, submitted_at: payload.submitted_at, client: "web-portal-offline" } })
+        .then(function () {
+          clearInterval(h);
+          try { localStorage.removeItem("sx_exam_pending_" + R.exam.id); } catch (e) {}
+          box.className = "syncbox done";
+          box.textContent = "✓ Connecting… Verifying examination… Uploading answers… Submission Successful";
+          setTimeout(function () { var m = document.querySelector(".mback"); if (m) m.remove(); goHome(); }, 1600);
+        })
+        .catch(function () {
+          if (box) box.textContent = "STATUS: Waiting for Secure Sync…";
+          if (tries > 30) clearInterval(h);
+        });
+    }, 10000);
+  }
+  function showCompletion(d, offline) {
+    var s = d.summary || {};
+    var b = document.createElement("div"); b.className = "mback";
+    var scoreHTML = "";
+    if (s.final_score != null) {
+      scoreHTML = '<div class="sumrow"><span>Your Score</span><b style="color:var(--ok)">' + s.final_score + " / " + s.total_mark + " (" + esc(s.grade || "") + ")</b></div>";
+    }
+    b.innerHTML = '<div class="mmodal"><h3>✅ Examination Submitted</h3>' +
+      '<div class="sumrow"><span>Questions</span><b>' + (s.total_questions != null ? s.total_questions : R.questions.length) + "</b></div>" +
+      '<div class="sumrow"><span>Answered</span><b>' + (s.answered != null ? s.answered : answeredCount()) + "</b></div>" +
+      scoreHTML +
+      '<div class="mnote">' + esc(d.message || "Submitted successfully.") + "</div>" +
+      '<div class="macts"><button class="btn-m primary" id="doneGo">Done</button></div></div>';
+    document.body.appendChild(b);
+    $("doneGo").onclick = function () { b.remove(); goHome(); };
+  }
+  function answeredCount() { return R ? R.questions.filter(function (q) { return R.answers[q.id]; }).length : 0; }
+  function goHome() {
+    if (R) { clearInterval(R._th); }
+    R = null;
+    $("exam").classList.add("hidden");
+    $("home").classList.remove("hidden");
+    loadExams();
+  }
+
+  /* boot */
+  tryResume();
+})();
+</script>
+</body>
+</html>

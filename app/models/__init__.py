@@ -27,6 +27,19 @@ from app.models.student_analytics import StudentLearningProfile, LessonSession
 from app.models.school_campus import SchoolCampus
 from app.models.cbt_coupon import CbtCoupon, CbtCouponRedemption
 from app.models.school_office import SchoolExamCandidate
+from app.models.school_cbt import (
+    SchoolExQuestionBank,
+    SchoolExQuestion,
+    SchoolExam,
+    SchoolExamQuestion,
+    SchoolExamAssignment,
+    SchoolExamAccessCode,
+    SchoolExamAttempt,
+    SchoolExamAnswer,
+    SchoolExamDownload,
+    SchoolExamSyncLog,
+    SchoolExamResult,
+)
 from app.models.external_exam import (
     ExternalExam,
     ExternalExamQuestion,
