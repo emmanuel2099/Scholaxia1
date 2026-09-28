@@ -8,7 +8,7 @@
 
   var ROLE_META = {
     student: {
-      subLogin: "Student portal — live classes, CBT & study tools",
+      subLogin: "Student portal — log in with your email or school Student ID",
       subSignup: "Create a free student account",
       allowSignup: true,
     },
@@ -275,6 +275,64 @@
     redirectAfterAuth(actual);
   }
 
+  function esc(s) {
+    return String(s || "").replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  /* ── School private-link branding (divine-light.scholaxia.com or /school/<slug>/ or ?school=<slug>) ── */
+  var schoolInfo = null;
+
+  function currentSchoolSlug() {
+    try {
+      var qs = new URLSearchParams(window.location.search);
+      var fromQuery = (qs.get("school") || qs.get("school_slug") || "").toLowerCase().replace(/[^a-z0-9-]/g, "");
+      if (fromQuery) return fromQuery;
+      if (window.SCHOLAXIA_SCHOOL_HOST) return window.SCHOLAXIA_SCHOOL_HOST;
+      var m = String(window.location.pathname || "").match(/^\/school\/([a-z0-9-]+)/i);
+      if (m) return m[1].toLowerCase();
+    } catch (e) {}
+    return null;
+  }
+
+  function applySchoolBranding() {
+    var slug = currentSchoolSlug();
+    if (!slug || !api || typeof api.api !== "function") return;
+    var kicker = $("authVisualKicker");
+    var title = $("authVisualTitle");
+    var lead = $("authVisualLead");
+    var sub = $("portalSub");
+    var back = $("authBack");
+    if (back) back.hidden = true; // no "main site" escape hatch inside a school portal
+    if (sub) sub.textContent = "Loading your school…";
+    api
+      .api("/public/schools/by-slug/" + encodeURIComponent(slug), { method: "GET" })
+      .then(function (data) {
+        schoolInfo = data || null;
+        var name = (data && (data.name || data.slug)) || "your school";
+        var pretty = String(name).replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+        try { localStorage.setItem("sia_school_slug", slug); } catch (e) {}
+        try { localStorage.setItem("sia_school_name", pretty); } catch (e2) {}
+        if (kicker) kicker.textContent = pretty;
+        if (title) title.innerHTML = "Welcome to<br /><span>" + esc(pretty) + "</span>";
+        if (lead) lead.textContent = "Sign in with the Student ID and password from your school office.";
+        if (sub) sub.textContent = ""; // updateCopy() fills the role-specific line
+        if (data && data.logo_url) {
+          var img = $("authVisualImg");
+          var brand = document.querySelector(".auth-brand img");
+          if (brand) brand.src = data.logo_url;
+          if (img) img.src = data.logo_url;
+          var fav = document.querySelector("link[rel='icon']");
+          if (fav) fav.href = data.logo_url;
+        }
+        document.title = pretty + " — Sign in";
+      })
+      .catch(function () {
+        if (sub) sub.textContent = "";
+      });
+  }
+
   async function onLogin(e) {
     e.preventDefault();
     var email = $("loginEmail").value.trim();
@@ -283,7 +341,7 @@
     var errEl = $("loginError");
     showErr(errEl);
     if (!email || !password) {
-      showErr(errEl, "Enter email and password.");
+      showErr(errEl, "Enter your email or Student ID, and your password.");
       return;
     }
     btn.disabled = true;
@@ -466,6 +524,10 @@
       showErr($("signupError"), "Auth scripts failed to load. Refresh the page.");
       return;
     }
+
+    applySchoolBranding();
+
+    applySchoolBranding();
 
     var params = new URLSearchParams(window.location.search);
     nextUrl = safeNext(params.get("next") || "");

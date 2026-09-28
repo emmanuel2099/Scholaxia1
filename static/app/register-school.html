@@ -311,6 +311,7 @@
 
   <!-- ================= Plans ================= -->
   <section class="plans-section" id="plans">
+    <p class="fine" style="text-align:center;margin-bottom:10px">Plans are optional — you can register now and choose a plan later.</p>
     <div class="plans" id="plansGrid">
       <p class="fine">Loading plans…</p>
     </div>
@@ -387,7 +388,7 @@
           </div>
         </div>
 
-        <input type="hidden" name="plan" id="planField" value="standard" />
+        <input type="hidden" name="plan" id="planField" value="" />
         <p class="error" id="err"></p>
         <div class="form-foot">
           <button class="btn-submit" type="submit" id="submitBtn">Register School</button>
@@ -397,17 +398,18 @@
 
       <div class="success" id="preview">
         <div class="big">🎉</div>
-        <h2>Your school is live!</h2>
-        <p class="muted">Share your private link with teachers and parents:</p>
+        <h2>Registration received!</h2>
+        <p class="muted">Your school is now <strong>pending review</strong> by the Scholaxia team. Once approved, your private link goes live:</p>
         <div class="link-pill"><strong id="privLink"></strong></div>
         <p class="note" id="privNote"></p>
+        <p class="note" id="planNote" style="margin-top:6px"></p>
       </div>
     </div>
   </section>
 
   <script src="js/api.js"></script>
   <script>
-    var selectedPlan = "standard";
+    var selectedPlan = ""; // optional — "choose later" is the default (no payment gate)
     var PLAN_FEATURE_LABELS = {
       students: "Manage students by class",
       subjects: "Give subjects to students",
@@ -487,7 +489,11 @@
       var fd = new FormData(form);
       var body = {};
       fd.forEach(function (v, k) { body[k] = v; });
-      body.plan = selectedPlan;
+      body.plan = selectedPlan || null; // plan optional — Super Admin sets it on approval
+      var planNote = document.getElementById("planNote");
+      if (planNote) planNote.textContent = selectedPlan
+        ? "" 
+        : "No plan selected — the Scholaxia team will help you choose a plan after your school is approved.";
       try {
         var res = await fetch(API_BASE + "/api/v1/public/schools/register", {
           method: "POST",
@@ -496,8 +502,19 @@
         });
         var data = await res.json();
         if (!res.ok) throw new Error(data.detail || "Registration failed");
-        document.getElementById("privLink").textContent = data.private_link;
-        document.getElementById("privNote").textContent = data.message || "";
+        var linkEl = document.getElementById("privLink");
+        linkEl.textContent = data.private_link;
+        var noteEl = document.getElementById("privNote");
+        noteEl.textContent = data.message || "";
+        // Fallback link that works immediately on Render (no DNS wait):
+        if (data.private_link_fallback) {
+          var pill = linkEl.parentElement;
+          var fb = document.createElement("p");
+          fb.style.margin = "10px 0 0";
+          fb.style.fontSize = "13px";
+          fb.innerHTML = 'Works right now (no DNS wait): <a href="' + data.private_link_fallback + '"><strong>' + data.private_link_fallback + '</strong></a>';
+          pill.insertAdjacentElement("afterend", fb);
+        }
         document.getElementById("preview").style.display = "block";
         form.style.display = "none";
         document.querySelector(".form-head").style.display = "none";

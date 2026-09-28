@@ -325,6 +325,22 @@ if ADMIN_STATIC_DIR.is_dir():
     )
 
 
+# ── Path-based school links (work TODAY on https://scholaxia1.onrender.com/school/<slug>/
+# while DNS for *.scholaxia.com is being set up; the subdomain catch-all below
+# keeps serving them once the wildcard exists). ──
+@app.get("/school/{slug}", include_in_schema=False)
+async def school_path_link(slug: str, request: Request):
+    """Redirect /school/<slug> → /school/<slug>/ so relative assets resolve."""
+    return RedirectResponse(url=f"/school/{slug}/", status_code=307)
+
+
+@app.get("/school/{slug}/{asset_path:path}", include_in_schema=False)
+async def school_path_link_assets(slug: str, asset_path: str, request: Request):
+    """Serve the school-branded student SPA at /school/<slug>/… on ANY host
+    (no DNS needed). Deep links to unknown files fall back to the SPA entry."""
+    return await _school_host_response(request, slug.lower().strip(), asset_path)
+
+
 # ── School subdomain catch-all — MUST stay last so /api, /docs, /app, /admin …
 # are matched by their explicit routes first. ──
 @app.get("/{full_path:path}", include_in_schema=False)

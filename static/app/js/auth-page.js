@@ -275,11 +275,23 @@
     redirectAfterAuth(actual);
   }
 
-  /* ── School private-link branding (divine-light.scholaxia.com etc.) ── */
+  /* ── School private-link branding (divine-light.scholaxia.com or /school/<slug>/ or ?school=<slug>) ── */
   var schoolInfo = null;
 
+  function currentSchoolSlug() {
+    try {
+      var qs = new URLSearchParams(window.location.search);
+      var fromQuery = (qs.get("school") || qs.get("school_slug") || "").toLowerCase().replace(/[^a-z0-9-]/g, "");
+      if (fromQuery) return fromQuery;
+      if (window.SCHOLAXIA_SCHOOL_HOST) return window.SCHOLAXIA_SCHOOL_HOST;
+      var m = String(window.location.pathname || "").match(/^\/school\/([a-z0-9-]+)/i);
+      if (m) return m[1].toLowerCase();
+    } catch (e) {}
+    return null;
+  }
+
   function applySchoolBranding() {
-    var slug = window.SCHOLAXIA_SCHOOL_HOST;
+    var slug = currentSchoolSlug();
     if (!slug || !api || typeof api.api !== "function") return;
     var kicker = $("authVisualKicker");
     var title = $("authVisualTitle");

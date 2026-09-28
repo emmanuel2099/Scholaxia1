@@ -242,6 +242,8 @@ async def register_school(payload: SchoolRegisterIn, db: AsyncSession = Depends(
         "school_id": str(campus.id),
         "slug": campus.slug,
         "private_link": f"https://{campus.slug}.{BASE_DOMAIN_DEFAULT}",
+        # Works immediately on Render — no DNS setup needed.
+        "private_link_fallback": f"https://scholaxia1.onrender.com/school/{campus.slug}/",
         "plan": plan,
         "price_ngn": plan_price_ngn(plan) if plan else 0,
         "status": "pending_review",
@@ -537,6 +539,8 @@ async def approve_school(
         "school_id": str(campus.id),
         "approval_status": "approved",
         "private_link": f"https://{campus.slug}.{BASE_DOMAIN_DEFAULT}",
+        # Works immediately on Render — no DNS setup needed.
+        "private_link_fallback": f"https://scholaxia1.onrender.com/school/{campus.slug}/",
     }
 
 
