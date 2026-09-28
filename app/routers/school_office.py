@@ -1211,9 +1211,12 @@ async def portal_import_exam(
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="The uploaded file is empty")
+    # Forgiving defaults: CSV/PDF files may not carry a title/subject inside,
+    # so fall back to the filename stem and "General" instead of rejecting.
+    stem = (file.filename or "exam").rsplit(".", 1)[0].replace("_", " ").replace("-", " ").strip() or "Imported exam"
     defaults = {
-        "title": (title or "").strip(),
-        "subject": (subject or "").strip(),
+        "title": (title or "").strip() or stem[:120],
+        "subject": (subject or "").strip() or "General",
         "duration_minutes": max(5, min(int(duration_minutes or 45), 300)),
         "exam_type": "SCHOOL",
         "is_published": True,
