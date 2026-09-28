@@ -283,7 +283,7 @@ tr:last-child td{border-bottom:none}
   }
   window.showPage = function (p) {
     document.querySelectorAll(".nav button").forEach(function (b) { b.classList.toggle("on", b.dataset.p === p); });
-    render(p);
+    if (R[p]) { try { R[p](); } catch (e) { $("pages").innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; } }
   };
 
   function head(title, sub, btn) {
