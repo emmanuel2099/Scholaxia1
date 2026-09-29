@@ -960,21 +960,261 @@ async def schedule_exam(
     return await patch_exam(exam_id, payload, school_id, current_user, db)
 
 
-# ── Access codes (§13): regenerate / list ────────────────────────────────
+# ── Access codes (§13): dedicated generation tab ─────────────────────────
+# The portal keeps Reg Number + Access Code generation on its OWN tab,
+# separate from exam-student assignment. These endpoints power it.
+
+class CodesIn(BaseModel):
+    """Generate credentials on demand. None of the fields are required —
+    an empty payload generates codes for every student already assigned to
+    the exam (missing ones only, never rotates existing codes)."""
+    student_ids: list[str] = []   # explicit students (joined to the exam if needed)
+    class_names: list[str] = []   # or whole classes, resolved through the school
+    regenerate: bool = False      # True → also issue NEW codes to students who have one
+
+
+async def _codes_for(db: AsyncSession, exam: SchoolExam, payload: CodesIn, sid: UUID) -> int:
+    """Ensure every wanted student has an assignment row + access code.
+    Returns how many NEW codes were minted."""
+    # Resolve wanted students (explicit ids ∪ class members), school-scoped.
+    wanted: list[UUID] = []
+    for s in payload.student_ids or []:
+        try:
+            wanted.append(UUID(str(s)))
+        except ValueError:
+            continue
+    for cls in payload.class_names or []:
+        c = str(cls).strip().upper()
+        if not c:
+            continue
+        wanted.extend(
+            (
+                await db.execute(
+                    select(User.id)
+                    .join(StudentProfile, StudentProfile.user_id == User.id)
+                    .where(
+                        User.school_id == sid,
+                        User.role == UserRole.student,
+                        func.upper(StudentProfile.education_level) == c,
+                    )
+                )
+            ).scalars().all()
+        )
+    # Tenant guard (§30) — explicit ids must belong to THIS school.
+    if wanted:
+        allowed = {
+            str(r)
+            for r in (
+                await db.execute(
+                    select(User.id).where(
+                        User.id.in_(wanted),
+                        User.school_id == sid,
+                        User.role == UserRole.student,
+                    )
+                )
+            ).scalars().all()
+        }
+        if len(allowed) != len({str(w) for w in wanted}):
+            raise HTTPException(status_code=400, detail="Some students were not found in your school")
+        wanted = [UUID(v) for v in allowed]
+
+    have_assignment = {
+        str(r) for r in (
+            await db.execute(
+                select(SchoolExamAssignment.student_id).where(SchoolExamAssignment.exam_id == exam.id)
+            )
+        ).scalars().all()
+    }
+    for suid in wanted:
+        if str(suid) not in have_assignment:
+            db.add(
+                SchoolExamAssignment(
+                    school_id=sid, exam_id=exam.id, student_id=suid, subject=exam.subject,
+                )
+            )
+            have_assignment.add(str(suid))
+    await db.flush()
+
+    codes = {
+        str(c.student_id): c
+        for c in (
+            await db.execute(select(SchoolExamAccessCode).where(SchoolExamAccessCode.exam_id == exam.id))
+        ).scalars().all()
+    }
+    made = 0
+    for suid in {str(u) for u in wanted}:
+        row = codes.get(suid)
+        if row and not payload.regenerate:
+            continue
+        if row:
+            row.access_code = _new_access_code()
+            row.failed_attempts = 0
+            row.locked_until = None
+        else:
+            db.add(
+                SchoolExamAccessCode(
+                    school_id=exam.school_id,
+                    exam_id=exam.id,
+                    student_id=UUID(suid),
+                    reg_number=await _reg_number_for(db, exam.school_id, UUID(suid)),
+                    access_code=_new_access_code(),
+                    expires_at=exam.access_code_expires_at,
+                )
+            )
+        made += 1
+    # Codes for assigned students who have none yet (e.g. class-bulk assigns).
+    made += await _ensure_access_codes(db, exam)
+    return made
+
 
 @router.post("/exams/{exam_id}/access-codes")
-async def regenerate_codes(
+async def generate_codes(
+    exam_id: str,
+    payload: CodesIn | None = None,
+    school_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """§13 — generate Registration Numbers + Access Codes on demand.
+    Empty body = fill in codes for students already assigned; pass
+    student_ids / class_names to admit more students; regenerate=True
+    re-issues codes (old ones stop working immediately)."""
+    sid = _staff_school_id(current_user, school_id)
+    exam = await _get_school_exam(db, exam_id, sid)
+    made = await _codes_for(db, exam, payload or CodesIn(), sid)
+    await db.flush()
+    return {"ok": True, "new_codes": made}
+
+
+@router.get("/exams/{exam_id}/codes")
+async def list_codes(
     exam_id: str,
     school_id: Optional[str] = Query(None),
     current_user: dict = Depends(require_school_staff),
     db: AsyncSession = Depends(get_db),
 ):
+    """Credential slips for printing: one row per assigned student."""
     sid = _staff_school_id(current_user, school_id)
     exam = await _get_school_exam(db, exam_id, sid)
-    made = await _materialize_assignments(db, exam, sid)
-    made += await _ensure_access_codes(db, exam)
+    assignments = {
+        str(a.student_id): a
+        for a in (
+            await db.execute(select(SchoolExamAssignment).where(SchoolExamAssignment.exam_id == exam.id))
+        ).scalars().all()
+    }
+    rows = (
+        await db.execute(
+            select(SchoolExamAccessCode, User)
+            .join(User, User.id == SchoolExamAccessCode.student_id)
+            .where(SchoolExamAccessCode.exam_id == exam.id)
+            .order_by(SchoolExamAccessCode.reg_number)
+        )
+    ).all()
+    now = naive_utc_now()
+    out = []
+    for code, user in rows:
+        assign = assignments.get(str(user.id))
+        out.append(
+            {
+                "student_id": str(user.id),
+                "full_name": user.full_name,
+                "class_name": (assign.class_name if assign else None) or exam.class_name,
+                "reg_number": code.reg_number,
+                "access_code": code.access_code,
+                "is_used": bool(code.is_used),
+                "locked": bool(code.locked_until and code.locked_until > now),
+                "expires_at": code.expires_at.isoformat() if code.expires_at else None,
+            }
+        )
+    return {"codes": out}
+
+
+@router.post("/exams/{exam_id}/codes/{student_id}/reset")
+async def reset_code(
+    exam_id: str,
+    student_id: str,
+    school_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Issue a FRESH access code for one student (old code invalid; lock and
+    failure counters cleared). Use when a student forgets theirs or gets locked."""
+    sid = _staff_school_id(current_user, school_id)
+    exam = await _get_school_exam(db, exam_id, sid)
+    row = (
+        await db.execute(
+            select(SchoolExamAccessCode).where(
+                SchoolExamAccessCode.exam_id == exam.id,
+                SchoolExamAccessCode.student_id == UUID(student_id),
+            )
+        )
+    ).scalar_one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="No access code found for this student on this exam")
+    row.access_code = _new_access_code()
+    row.failed_attempts = 0
+    row.locked_until = None
+    row.expires_at = exam.access_code_expires_at
     await db.flush()
-    return {"ok": True, "new_codes": made}
+    return {"ok": True, "reg_number": row.reg_number, "access_code": row.access_code}
+
+
+@router.delete("/exams/{exam_id}/codes/{student_id}")
+async def revoke_code(
+    exam_id: str,
+    student_id: str,
+    school_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Stop a student from logging into THIS exam (e.g. wrong assignment).
+    Their login immediately returns 'Registration number or access code is
+    incorrect' because the code row is gone."""
+    sid = _staff_school_id(current_user, school_id)
+    exam = await _get_school_exam(db, exam_id, sid)
+    res = await db.execute(
+        delete(SchoolExamAccessCode).where(
+            SchoolExamAccessCode.exam_id == exam.id,
+            SchoolExamAccessCode.student_id == UUID(student_id),
+        )
+    )
+    await db.execute(
+        delete(SchoolExamAssignment).where(
+            SchoolExamAssignment.exam_id == exam.id,
+            SchoolExamAssignment.student_id == UUID(student_id),
+        )
+    )
+    await db.flush()
+    return {"ok": True, "revoked": int(res.rowcount or 0)}
+
+
+@router.get("/codes/students")
+async def codes_student_directory(
+    school_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Compact student directory for the codes tab's assign form."""
+    sid = _staff_school_id(current_user, school_id)
+    rows = (
+        await db.execute(
+            select(User, StudentProfile)
+            .join(StudentProfile, StudentProfile.user_id == User.id)
+            .where(User.school_id == sid, User.role == UserRole.student, User.is_active == True)  # noqa: E712
+            .order_by(User.full_name)
+        )
+    ).all()
+    return {
+        "students": [
+            {
+                "id": str(u.id),
+                "full_name": u.full_name,
+                "class_name": (p.education_level or "").upper() if p else None,
+                "school_student_id": getattr(p, "school_student_id", None) if p else None,
+            }
+            for u, p in rows
+        ]
+    }
 
 
 # ═════════════════════════════════════════════════════════════════════════

@@ -143,6 +143,51 @@ input{font-family:inherit;font-size:15px}
 .syncbox{margin-top:14px;border-radius:12px;padding:14px 16px;font-size:13.5px;line-height:1.6}
 .syncbox.wait{background:var(--warnbg);color:var(--warn)}
 .syncbox.done{background:var(--okbg);color:var(--ok)}
+
+/* ═══ MOBILE (exam mockups: palette grid, timer card, stacked options) ═══ */
+@media(max-width:1000px){
+  #exam{grid-template-columns:1fr;gap:16px;padding:18px 14px 56px}
+  .top{padding:12px 16px}
+  .top .tb b{font-size:17px}
+  .top .who{font-size:13.5px}
+  .qcard{padding:18px 16px;border-radius:14px}
+  .qhead{gap:11px;padding-bottom:12px;margin-bottom:14px}
+  .qhead .qico{width:42px;height:42px;border-radius:11px;font-size:19px}
+  .qhead h2{font-size:17px}
+  .qhead .pill-ok{padding:6px 11px;font-size:12px}
+  .tcard{padding:14px 18px;margin-bottom:14px}
+  .tcard .clock{font-size:24px}
+  .tcard .tval{font-size:22px}
+  .pcard{padding:16px}
+}
+@media(max-width:600px){
+  .wrap{padding:20px 12px}
+  .wrap h2{font-size:20px}
+  .wrap .lead{margin-bottom:16px}
+  .examgrid{grid-template-columns:1fr}
+  .ecard{padding:16px}
+  .top .who .wname{display:none}
+  .qtext{font-size:16.5px;margin:10px 0 16px}
+  .opt{padding:14px 15px;font-size:15px;gap:12px;margin-bottom:10px}
+  .opt .radio{width:18px;height:18px}
+  .qnav{gap:10px}
+  .qnav .btn-nav{flex:1;padding:12px 10px;font-size:14px}
+  .legend{gap:10px;font-size:11.5px}
+  .mback{padding:12px}
+  .mmodal{padding:22px 18px}
+  .pnote{font-size:12.5px;padding:10px 12px}
+}
+@media(max-width:520px){
+  .palette{grid-template-columns:repeat(6,1fr);gap:6px}
+  .pal{height:34px;font-size:12.5px;border-radius:8px}
+}
+@media(max-width:400px){
+  .exam-card{padding:30px 18px}
+  .exam-card h1{font-size:26px}
+  .exam-brand img{height:48px}
+  .f-in{padding:13px 42px}
+  .btn-login{margin-top:22px;padding:14px;font-size:15.5px}
+}
 </style>
 </head>
 <body>
@@ -309,7 +354,7 @@ input{font-family:inherit;font-size:15px}
   function enterHome() {
     $("login").style.display = "none";
     $("app").classList.remove("hidden");
-    $("whoBox").innerHTML = '<span class="ava">' + esc((S.me && S.me.full_name || "S").charAt(0).toUpperCase()) + '</span>' + esc(S.me && S.me.full_name || "") +
+    $("whoBox").innerHTML = '<span class="ava">' + esc((S.me && S.me.full_name || "S").charAt(0).toUpperCase()) + '</span><span class="wname">' + esc(S.me && S.me.full_name || "") + '</span>' +
       ' <button class="btn-nav" style="padding:8px 14px;margin-left:8px" onclick="examLogout()">Log out</button>';
     $("hello").textContent = "Welcome, " + ((S.me && S.me.full_name || "").split(" ")[0] || "student");
     loadExams();

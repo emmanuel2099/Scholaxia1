@@ -317,6 +317,26 @@ async def main():
         dup = await scbt.submit_attempt(exam_id, scbt.SubmitIn(attempt_id=att_id), credentials=tok, db=db)
         check("duplicate flagged", dup["already_submitted"] is True)
 
+        print("\n── 9b. Access-code management (dedicated tab endpoints) ──")
+        listing = await scbt.list_codes(exam_id, staff_school, admin_user, db)
+        check("list_codes returns 2 slips", len(listing["codes"]) == 2, str(len(listing["codes"])))
+        c0 = listing["codes"][0]
+        check("slip fields present", all(k in c0 for k in ("reg_number", "access_code", "is_used", "locked", "full_name")), str(c0)[:120])
+        reset = await scbt.reset_code(exam_id, str(students[0].id), staff_school, admin_user, db)
+        check("reset issues fresh code", reset["access_code"] != code1 and reset["reg_number"] == reg1, reset["access_code"])
+        fresh_login = await scbt.student_exam_login(
+            scbt.StudentLoginIn(reg_number=reg1, access_code=reset["access_code"]), db)
+        check("fresh code logs in", bool(fresh_login["access_token"]))
+        try:
+            await scbt.student_exam_login(scbt.StudentLoginIn(reg_number=reg1, access_code=code1), db)
+            check("old code dead after reset", False, "no exception")
+        except HTTPException as e:
+            check("old code dead after reset", e.status_code == 401, str(e.status_code))
+        dir_all = await scbt.codes_student_directory(school_id=None, current_user=admin_user, db=db)
+        check("directory is tenant-scoped",
+              {s["id"] for s in dir_all["students"]} == {str(su.id) for su in students},
+              str(dir_all)[:150])
+
         print("\n── 10. Result hidden until publish (§22) ──")
         mine2 = await scbt.student_my_exams(credentials=tok, db=db)
         check("student sees no result before publish", mine2["exams"][0]["result"] is None)
