@@ -452,7 +452,10 @@ tr:last-child td{border-bottom:none}
   /* ── APP SHELL ── */
   var PAGES = [
     ["dashboard", "🏠", "Dashboard"], ["students", "👥", "Students"], ["teachers", "👨‍🏫", "Teachers"],
-    ["classes", "🎓", "Classes"], ["subjects", "📚", "Subjects"], ["exams", "📝", "Exams & CBT"],
+    ["classes", "🎓", "Classes"], ["subjects", "📚", "Subjects"],
+    ["exams", "📋", "Exam Settings"], ["exbank", "🏦", "Access Subjects"], ["exreg", "🧾", "Register Student"],
+    ["exstudents", "👨‍🎓", "Exam Students"], ["excodes", "🔑", "Access Codes"], ["exsched", "🗓️", "Exam Schedule"],
+    ["exup", "📤", "Upload Results"], ["exresults", "🏆", "Exam Results"],
     ["results", "📊", "Results"], ["attendance", "🗓️", "Attendance"], ["fees", "💳", "Fees & Finance"],
     ["reports", "📈", "Reports"], ["settings", "⚙️", "Settings"],
   ];
@@ -732,55 +735,41 @@ tr:last-child td{border-bottom:none}
       body: opts.form ? opts.form : (opts.body ? JSON.stringify(opts.body) : undefined),
     }).then(_handle);
   }
-  /* ═══ EXAMS & CBT — each function is its OWN tab in the sidebar,
+  /* ═══ EXAMS & CBT — each function is its OWN tab in the MAIN sidebar,
      exactly like the reference dashboard (Register Student, Exam Students,
      Access Subjects, Exam Schedule, Exam Results…). ═══ */
   var EX_PAGE = "exams";
   var EX_PAGES = [
-    ["exams", "📋", "Exam Settings", "Create exams, configure marks/duration/mode"],
-    ["bank", "🏦", "Access Subjects", "Question bank per class — JS1 to SS3 — upload questions"],
-    ["exreg", "🧾", "Register Student", "Register students for exams — reg number + access code"],
-    ["students", "👥", "Exam Students", "Assigned students, exam taken status"],
-    ["codes", "🔑", "Access Codes", "Generate, print, reset access codes"],
-    ["schedule", "🗓️", "Exam Schedule", "Pick a class — set date, time and duration"],
-    ["up", "📤", "Upload Results", "Result sheets per class, term and subject"],
-    ["results", "🏆", "Exam Results", "Scores, grades, publish and Grant Retake"],
+    ["exams", "Exam Settings", "Create exams, configure marks/duration/mode", "<button class=\"btn\" onclick=\"createExamModal()\">+ Create Examination</button>"],
+    ["exbank", "Access Subjects", "Question bank per class — JS1 to SS3 — upload questions", "<button class=\"btn\" onclick=\"uploadQuestionsModal()\">⬆ Upload Questions</button>"],
+    ["exreg", "Register Student", "Register students for exams — reg number + access code", ""],
+    ["exstudents", "Exam Students", "Assigned students, exam taken status", ""],
+    ["excodes", "Access Codes", "Generate, print, reset access codes", "<button class=\"btn ghost\" onclick=\"printCodeSlips()\">🖨️ Print Slips</button>"],
+    ["exsched", "Exam Schedule", "Pick a class — set date, time and duration", ""],
+    ["exup", "Upload Results", "Result sheets per class, term and subject", ""],
+    ["exresults", "Exam Results", "Scores, grades, publish and Grant Retake", ""],
   ];
-  R.exams = function () { showExPage("exams"); };
-  window.showExPage = function (key) {
-    EX_PAGE = key;
-    var meta = EX_PAGES.filter(function (p) { return p[0] === key; })[0] || EX_PAGES[0];
-    var nav = EX_PAGES.map(function (p) {
-      return '<button class="' + (p[0] === key ? "on" : "") + '" onclick="showExPage(\'' + p[0] + '\')">' +
-        '<span style="width:22px;display:inline-block">' + p[1] + '</span>' + p[2] + '</button>';
-    }).join("");
-    var actions = key === "exams" ? '<button class="btn" onclick="createExamModal()">+ Create Examination</button>'
-      : key === "bank" ? '<button class="btn" onclick="uploadQuestionsModal()">⬆ Upload Questions</button>'
-      : key === "codes" ? '<button class="btn ghost" onclick="printCodeSlips()">🖨️ Print Slips</button>'
-      : "";
-    $("pages").innerHTML =
-      '<div class="exside-wrap"><aside class="exside">' +
-      '<div class="exside-label">Examination</div>' + nav +
-      '<div class="exside-label" style="margin-top:14px">General</div>' +
-      '<button onclick="showPage(\'results\')"><span style="width:22px;display:inline-block">📊</span>Portal Results</button>' +
-      '<button onclick="showPage(\'fees\')"><span style="width:22px;display:inline-block">💳</span>Fees & Finance</button>' +
-      '</aside><div class="exmain">' +
-      head(meta[2], meta[3], actions) +
-      '<div id="exBody"><div class="empty">Loading…</div></div></div></div>';
+  function exShell(meta) {
+    EX_PAGE = meta[0];
+    $("pages").innerHTML = head(meta[1], meta[2], meta[3]) +
+      '<div id="exBody"><div class="empty">Loading…</div></div>';
     renderExPage();
-  };
+  }
+  EX_PAGES.forEach(function (p) { R[p[0]] = function () { exShell(p); }; });
   function renderExPage() {
     if (EX_PAGE === "exams") return exList();
-    if (EX_PAGE === "bank") return bankList();
+    if (EX_PAGE === "exbank") return bankList();
     if (EX_PAGE === "exreg") return exRegList();
-    if (EX_PAGE === "students") return studentsList();
-    if (EX_PAGE === "codes") return codesList();
-    if (EX_PAGE === "schedule") return scheduleList();
-    if (EX_PAGE === "up") return upList();
-    if (EX_PAGE === "results") return resultsList();
+    if (EX_PAGE === "exstudents") return studentsList();
+    if (EX_PAGE === "excodes") return codesList();
+    if (EX_PAGE === "exsched") return scheduleList();
+    if (EX_PAGE === "exup") return upList();
+    if (EX_PAGE === "exresults") return resultsList();
   }
-  /* legacy aliases — older actions call exTab / renderExTab */
-  window.exTab = showExPage;
+  /* legacy aliases — older actions call exTab / renderExTab with old keys */
+  var EX_KEY_MAP = { exams: "exams", bank: "exbank", exreg: "exreg", students: "exstudents", codes: "excodes", schedule: "exsched", up: "exup", results: "exresults" };
+  window.exTab = function (t) { showPage(EX_KEY_MAP[t] || t); };
+  window.showExPage = window.exTab;
   window.renderExTab = renderExPage;
 
   /* — Register Student page (reference: pick class → Registered Students in
@@ -1270,7 +1259,7 @@ tr:last-child td{border-bottom:none}
     }).catch(function (e) { var b = $("cdTbl"); if (b) b.innerHTML = '<div class="empty">' + esc(errText(e)) + '</div>'; });
   };
   window.openCodesFor = function (examId) {
-    if (EX_TAB === "codes") { codesForExam(examId); return; }
+    if (EX_PAGE === "excodes") { codesForExam(examId); return; }
     window.__cdPending = examId;
     exTab("codes");
   };
