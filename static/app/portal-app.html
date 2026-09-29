@@ -856,9 +856,16 @@ tr:last-child td{border-bottom:none}
   }
   function fmtDurM(mins) { var h = Math.floor((mins || 0) / 60), m = (mins || 0) % 60; return (h ? h + "h" + (m ? " " + m + "m" : "") : m + "m") || "—"; }
   function exList() {
-    cbtApi("/exams").then(function (d) {
-      var list = d.exams || [];
+    Promise.all([cbtApi("/exams"), cbtApi("/students/register")]).then(function (all) {
+      var list = all[0].exams || [];
+      var meta = all[1] || { categories: [], class_subjects: {} };
       window.__sxexams = list;
+      var classes = Object.keys(meta.class_subjects || {}).sort();
+      var subjects = [];
+      classes.forEach(function (c) { (meta.class_subjects[c] || []).forEach(function (s) { if (subjects.indexOf(s) < 0) subjects.push(s); }); });
+      subjects.sort();
+      var clsOpts = classes.map(function (c) { return '<option value="' + esc(c) + '">' + esc(c) + '</option>'; }).join("");
+      var subjOpts = subjects.map(function (s) { return '<option value="' + esc(s) + '">' + esc(s) + '</option>'; }).join("");
       var draft = list.filter(function (x) { return x.status === "draft"; }).length;
       var sched = list.filter(function (x) { return x.status === "published" && x.scheduled_start; }).length;
       var active = list.filter(function (x) { return x.status === "published"; }).length;
@@ -875,10 +882,38 @@ tr:last-child td{border-bottom:none}
         return '<tr><td><strong>' + esc(x.title) + '</strong></td><td><span class="pill violet">' + esc(x.class_name || "—") + '</span></td><td><span class="pill blue">' + esc(x.subject || "—") + '</span></td><td>' + (x.question_count || 0) + '</td><td>' + fmtDurM(x.duration_minutes) + '</td><td>' + modePill(x.exam_mode) + '</td><td>' + x.total_mark + '</td><td>' + (x.submission_count || 0) + '</td><td>' + st + '</td><td style="white-space:nowrap">' + acts + '</td></tr>';
       });
       $("exBody").innerHTML =
+        '<div class="panel"><h3>⚙️ Examination Settings</h3>' +
+        '<p class="mhint" style="margin-bottom:14px">Set up an examination: pick the class and subject, configure duration, total mark and how the questions behave — then create it. Questions themselves are uploaded under <strong>Access Subjects</strong>.</p>' +
+        '<div class="form-grid rg3"><div><label class="f-label">Examination Name *</label><input class="f-in" id="exTitle" placeholder="e.g. First Term Mathematics Examination" /></div>' +
+        '<div><label class="f-label">Subject *</label><input class="f-in" id="exSubject" list="exSubjList" placeholder="e.g. Mathematics" /><datalist id="exSubjList">' + subjOpts + '</datalist></div>' +
+        '<div><label class="f-label">Class *</label><select class="f-in" id="exClass">' + (clsOpts ? '<option value="">-- Select class --</option>' + clsOpts : '<option value="">-- No classes yet: add them under Classes --</option>') + '</select></div></div>' +
+        '<div class="form-grid rg3"><div><label class="f-label">Exam Type</label><select class="f-in" id="exType"><option>SCHOOL</option><option>JAMB</option><option>WAEC</option><option>NECO</option><option>COMMON_ENTRANCE</option></select></div>' +
+        '<div><label class="f-label">Duration (minutes) *</label><input class="f-in" id="exDur" type="number" min="5" max="300" value="60" /></div>' +
+        '<div><label class="f-label">Total Mark</label><input class="f-in" id="exMark" type="number" min="1" value="100" /></div></div>' +
+        '<div class="radio-row" style="margin-bottom:14px"><button class="btn green" onclick="exQuickCreate()">➕ Create Examination</button><button class="btn ghost" onclick="createExamModal()">🛠 Full wizard (questions, mode, randomization…)</button></div>' +
+        '<div class="merr" id="exQErr"></div></div>' +
         '<div class="stat-mini"><span class="chip">Total: ' + list.length + '</span><span class="chip w">Draft: ' + draft + '</span><span class="chip g">Published: ' + active + '</span><span class="chip">Scheduled: ' + sched + '</span><span class="chip gray">Completed: ' + done + '</span></div>' +
-        '<div class="panel">' + tbl(["Exam", "Class", "Subject", "Questions", "Duration", "Mode", "Total Mark", "Submissions", "Status", "Actions"], rows) + '</div>';
+        '<div class="panel">' + (rows.length ? tbl(["Exam", "Class", "Subject", "Questions", "Duration", "Mode", "Total Mark", "Submissions", "Status", "Actions"], rows) : '<div class="empty">No examinations yet — set one up above.</div>') + '</div>';
     }).catch(function (e) { $("exBody").innerHTML = '<div class="panel"><div class="empty">' + esc(errText(e)) + '</div></div>'; });
   }
+  window.exQuickCreate = function () {
+    var title = $("exTitle").value.trim(), subj = $("exSubject").value.trim(), cls = $("exClass").value;
+    var err = $("exQErr");
+    err.style.display = "none";
+    if (!title) { err.textContent = "Enter the examination name."; err.style.display = "block"; return; }
+    if (!subj) { err.textContent = "Enter the subject."; err.style.display = "block"; return; }
+    if (!cls) { err.textContent = "Select the class."; err.style.display = "block"; return; }
+    cbtApi("/exams", { method: "POST", body: {
+      title: title, subject: subj, class_name: cls, exam_type: $("exType").value,
+      duration_minutes: parseInt($("exDur").value, 10) || 60,
+      total_mark: parseInt($("exMark").value, 10) || 100,
+      assigned_class_names: [cls],
+      generate_codes: true, publish: false,
+    } }).then(function (d) {
+      toast("✓ " + d.title + " created — now upload questions under Access Subjects, then schedule it");
+      exList();
+    }).catch(function (e) { err.textContent = errText(e); err.style.display = "block"; });
+  };
   window.toggleSxPublish = function (id, pub) {
     cbtApi("/exams/" + id, { method: "PATCH", body: { is_published: pub } })
       .then(function () { toast(pub ? "Exam published — students can now see it" : "Exam unpublished"); renderExTab(); })

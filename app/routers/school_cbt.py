@@ -47,6 +47,7 @@ from app.models.school_cbt import (
     grade_from_percentage,
 )
 from app.models.user import User, UserRole, StudentProfile
+from app.models.school_campus import SchoolCampus
 
 router = APIRouter(prefix="/school-cbt", tags=["School CBT"])
 
@@ -396,10 +397,42 @@ async def import_bank_questions(
         "exam_type": "SCHOOL",
         "is_published": True,
     }
+    name_lower = (file.filename or "").lower()
+    flagged = 0
     try:
         parsed = parse_cbt_file(file.filename or "", content, defaults)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        # Notes-style PDFs usually fail the strict parser (no marked answers,
+        # low confidence). The question bank is a DRAFT store — accept the
+        # extraction and flag incomplete answers instead of rejecting the
+        # whole upload; the school fixes the answer key in the bank.
+        if not (name_lower.endswith(".pdf") or content[:5] == b"%PDF-"):
+            raise HTTPException(status_code=400, detail=str(exc))
+        from app.services.cbt_pdf_parser import parse_pdf_questions
+
+        result = parse_pdf_questions(content)
+        extracted = result["questions"]
+        if not extracted:
+            raise HTTPException(status_code=400, detail=str(exc))
+        flagged = sum(1 for q in extracted if not str(q.get("correct_option") or "").strip())
+        parsed = [
+            {
+                "title": defaults["title"],
+                "subject": subj,
+                "duration_minutes": 60,
+                "questions": [
+                    {
+                        "question_text": q.get("question_text"),
+                        "option_a": q.get("option_a"),
+                        "option_b": q.get("option_b"),
+                        "option_c": q.get("option_c"),
+                        "option_d": q.get("option_d"),
+                        "correct_option": q.get("correct_option") or "A",
+                    }
+                    for q in extracted
+                ],
+            }
+        ]
 
     qs = []
     for item in parsed:
@@ -471,6 +504,7 @@ async def import_bank_questions(
         "bank_name": bank.name,
         "class_name": bank.class_name,
         "added": len(qs),
+        "flagged": flagged,
         "bank_total": int(bank_total or 0),
     }
 
@@ -1020,6 +1054,40 @@ async def register_form_options(
         cls = (e.class_name or "").strip().upper()
         if cls:
             classes.setdefault(cls, set()).add(e.subject)
+    # Merge the school's own registries (Classes tab / Subjects tab) so the
+    # dropdowns are NEVER empty just because no exam exists yet.
+    campus = (
+        await db.execute(select(SchoolCampus).where(SchoolCampus.id == sid))
+    ).scalar_one_or_none()
+    reg_classes = [
+        str((c.get("name") if isinstance(c, dict) else c) or "").strip().upper()
+        for c in (getattr(campus, "portal_classes", None) or [])
+    ]
+    reg_subjects = [
+        str((s.get("name") if isinstance(s, dict) else s) or "").strip()
+        for s in (getattr(campus, "portal_subjects", None) or [])
+    ]
+    for cls in filter(None, reg_classes):
+        classes.setdefault(cls, set()).update(x for x in reg_subjects if x)
+    # Fallback 2 — classes that actually have students; subjects already in
+    # the question bank. Guarantees usable dropdowns for a fresh school.
+    for (cls,) in (
+        await db.execute(
+            select(func.upper(StudentProfile.education_level))
+            .join(User, User.id == StudentProfile.user_id)
+            .where(User.school_id == sid, User.role == UserRole.student)
+            .distinct()
+        )
+    ).all():
+        if cls:
+            classes.setdefault(cls, set())
+    for b in (
+        await db.execute(
+            select(SchoolExQuestionBank).where(SchoolExQuestionBank.school_id == sid)
+        )
+    ).scalars().all():
+        if b.class_name:
+            classes.setdefault(b.class_name.upper(), set()).add(b.subject)
     cats: dict[str, list[str]] = {"junior": [], "senior": [], "other": []}
     for cls in sorted(classes):
         if cls.startswith("JS"):
