@@ -159,9 +159,6 @@ tr:last-child td{border-bottom:none}
   .mb-foot{padding:12px 16px 14px;flex-wrap:wrap}
   .mb-foot .btn{flex:1;justify-content:center}
   .mb-foot .btn + .btn{margin-left:0}
-  /* Codes tab: stack the exam picker above its action buttons */
-  .cd-ctl > div:nth-child(2) .radio-row{margin-top:0}
-  .cd-ctl{display:flex!important;flex-direction:column!important;gap:10px}
   .qrow .opts{grid-template-columns:1fr}
 }
 @media(max-width:480px){
@@ -454,7 +451,7 @@ tr:last-child td{border-bottom:none}
     ["dashboard", "🏠", "Dashboard"], ["students", "👥", "Students"], ["teachers", "👨‍🏫", "Teachers"],
     ["classes", "🎓", "Classes"], ["subjects", "📚", "Subjects"],
     ["exams", "📋", "Exam Settings"], ["exbank", "🏦", "Access Subjects"], ["exreg", "🧾", "Register Student"],
-    ["exstudents", "👨‍🎓", "Exam Students"], ["excodes", "🔑", "Access Codes"], ["exsched", "🗓️", "Exam Schedule"],
+    ["exstudents", "👨‍🎓", "Exam Students"], ["exsched", "🗓️", "Exam Schedule"],
     ["exup", "📤", "Upload Results"], ["exresults", "🏆", "Exam Results"],
     ["results", "📊", "Results"], ["attendance", "🗓️", "Attendance"], ["fees", "💳", "Fees & Finance"],
     ["reports", "📈", "Reports"], ["settings", "⚙️", "Settings"],
@@ -743,8 +740,7 @@ tr:last-child td{border-bottom:none}
     ["exams", "Exam Settings", "Create exams, configure marks/duration/mode", "<button class=\"btn\" onclick=\"createExamModal()\">+ Create Examination</button>"],
     ["exbank", "Access Subjects", "Question bank per class — JS1 to SS3 — upload questions", "<button class=\"btn\" onclick=\"uploadQuestionsModal()\">⬆ Upload Questions</button>"],
     ["exreg", "Register Student", "Register students for exams — reg number + access code", ""],
-    ["exstudents", "Exam Students", "Assigned students, exam taken status", ""],
-    ["excodes", "Access Codes", "Generate, print, reset access codes", "<button class=\"btn ghost\" onclick=\"printCodeSlips()\">🖨️ Print Slips</button>"],
+    ["exstudents", "Exam Students", "Reg numbers, access codes, exam-taken status — manage per exam", ""],
     ["exsched", "Exam Schedule", "Pick a class — set date, time and duration", ""],
     ["exup", "Upload Results", "Result sheets per class, term and subject", ""],
     ["exresults", "Exam Results", "Scores, grades, publish and Grant Retake", ""],
@@ -761,13 +757,12 @@ tr:last-child td{border-bottom:none}
     if (EX_PAGE === "exbank") return bankList();
     if (EX_PAGE === "exreg") return exRegList();
     if (EX_PAGE === "exstudents") return studentsList();
-    if (EX_PAGE === "excodes") return codesList();
     if (EX_PAGE === "exsched") return scheduleList();
     if (EX_PAGE === "exup") return upList();
     if (EX_PAGE === "exresults") return resultsList();
   }
   /* legacy aliases — older actions call exTab / renderExTab with old keys */
-  var EX_KEY_MAP = { exams: "exams", bank: "exbank", exreg: "exreg", students: "exstudents", codes: "excodes", schedule: "exsched", up: "exup", results: "exresults" };
+  var EX_KEY_MAP = { exams: "exams", bank: "exbank", exreg: "exreg", students: "exstudents", codes: "exstudents", schedule: "exsched", up: "exup", results: "exresults" };
   window.exTab = function (t) { showPage(EX_KEY_MAP[t] || t); };
   window.showExPage = window.exTab;
   window.renderExTab = renderExPage;
@@ -845,7 +840,7 @@ tr:last-child td{border-bottom:none}
       var rows = list.map(function (x) {
         var st = x.status === "published" ? '<span class="pill ok">Published</span>' : x.status === "completed" ? '<span class="pill gray">Completed</span>' : '<span class="pill warn">Draft</span>';
         var acts = '<button class="btn sm ghost" onclick="examPreview(\'' + x.id + '\')">👁 Preview</button> ' +
-          '<button class="btn sm ghost" onclick="openCodesFor(\'' + x.id + '\')">🔑 Codes</button> ' +
+          '<button class="btn sm ghost" onclick="window.__cdPending=\'' + x.id + '\';exTab(\'students\')">🔑 Codes</button> ' +
           '<button class="btn sm ghost" onclick="examResultsView(\'' + x.id + '\',\'' + esc(x.title).replace(/'/g, "") + '\')">📊 Results</button> ' +
           (x.status === "published"
             ? '<button class="btn sm ghost" onclick="toggleSxPublish(\'' + x.id + '\',false)">Unpublish</button>'
@@ -1019,7 +1014,7 @@ tr:last-child td{border-bottom:none}
           '👥 ' + d.students_assigned + ' students assigned<br/>🔑 ' + d.access_codes_created + ' access codes generated' +
           (publish ? '<br/>🟢 <strong>Published</strong> — students can log in now' : '<br/>🟡 Saved as draft — publish when ready') + '</div>' +
           '<p class="mhint" style="margin-top:10px">Students log in at <strong>your-school-link/exam</strong> with their Registration Number + Access Code (see the 🔑 Access Codes & Reg Numbers tab).</p>',
-          '<button class="btn" onclick="closeModal();exTab(\'codes\')">View access codes</button>', true);
+          '<button class="btn" onclick="closeModal();exTab(\'students\')">View access codes</button>', true);
         showPage("exams");
       }).catch(function (e) { busy($("exSave"), false, "Create Examination"); mErr(errText(e)); });
     });
@@ -1141,24 +1136,38 @@ tr:last-child td{border-bottom:none}
   function studentsList() {
     cbtApi("/exams").then(function (d) {
       var exams = d.exams || [];
-      if (!exams.length) { $("exBody").innerHTML = '<div class="panel"><div class="empty">Create an examination first — then assign students to it.</div></div>'; return; }
-      $("exBody").innerHTML = '<div class="panel"><h3>Exam Students</h3><p class="mhint" style="margin-bottom:14px">Students assigned to each examination. Generate their Registration Numbers and Access Codes on the <strong>🔑 Access Codes & Reg Numbers</strong> tab.</p><div class="form-grid"><div><select class="f-in" id="cdExam" onchange="studentsForExam(this.value)">' +
-        exams.map(function (x) { return '<option value="' + x.id + '">' + esc(x.title) + " — " + esc(x.class_name) + '</option>'; }).join("") + '</select></div><div>' +
-        '<button class="btn" onclick="assignStudentsModal()">➕ Assign Students</button> ' +
-        '<button class="btn ghost" onclick="openCodesFor($(\'cdExam\').value)">🔑 Access Codes</button></div></div><div id="cdTbl"><div class="empty">Loading…</div></div></div>';
-      studentsForExam(exams[0].id);
+      if (!exams.length) { $("exBody").innerHTML = '<div class="panel"><div class="empty">Create an examination first — then register students for it.</div></div>'; return; }
+      $("exBody").innerHTML = '<div class="panel"><h3>Exam Students</h3><p class="mhint" style="margin-bottom:14px">Every registered student with their Registration Number and Access Code — exactly the columns on the reference dashboard. Register more students on the <strong>Register Student</strong> tab; codes are issued automatically.</p><div class="form-grid"><div><label class="f-label">Examination</label><select class="f-in" id="cdExam" onchange="studentsForExam(this.value)">' +
+        exams.map(function (x) { return '<option value="' + x.id + '">' + esc(x.title) + " — " + esc(x.class_name) + '</option>'; }).join("") + '</select></div><div><label class="f-label">&nbsp;</label><div class="radio-row">' +
+        '<button class="btn" onclick="assignStudentsModal()">➕ Register Students</button> ' +
+        '<button class="btn ghost" onclick="printCodeSlips()">🖨️ Print Slips</button> ' +
+        '<button class="btn ghost" onclick="regenCodes()">🔄 Regenerate all</button></div></div></div>' +
+        '<div class="stat-mini" id="cdStats"></div><div id="cdTbl"><div class="empty">Loading…</div></div></div>';
+      var startExam = window.__cdPending || exams[0].id;
+      window.__cdPending = null;
+      studentsForExam(startExam);
     }).catch(function (e) { $("exBody").innerHTML = '<div class="panel"><div class="empty">' + esc(errText(e)) + '</div></div>'; });
   }
   window.studentsForExam = function (examId) {
     if (!examId) return;
-    cbtApi("/exams/" + examId).then(function (d) {
-      var rows = (d.assigned || []).map(function (s, i) {
-        return '<tr><td>' + (i + 1) + '</td><td><strong>' + esc(s.full_name) + '</strong></td><td><span class="pill violet">' + esc(s.class_name || "—") + '</span></td><td><span class="pill blue">' + esc(d.subject) + '</span></td><td><code>' + esc(s.reg_number || "—") + '</code></td><td>' + (s.code_used ? '<span class="pill ok">Took exam</span>' : '<span class="pill gray">Not taken</span>') + '</td><td style="white-space:nowrap"><button class="btn sm ghost" onclick="removeExamStudent(\'' + s.student_id + '\',\'' + esc(s.full_name).replace(/'/g, "") + '\')">Remove</button></td></tr>';
+    window.__cdExam = examId;
+    cbtApi("/exams/" + examId + "/codes").then(function (d) {
+      var list = d.codes || [];
+      var used = list.filter(function (c) { return c.is_used; }).length;
+      var locked = list.filter(function (c) { return c.locked; }).length;
+      var stats = $("cdStats");
+      if (stats) stats.innerHTML = '<span class="chip">Codes issued: ' + list.length + '</span><span class="chip g">Exam taken: ' + used + '</span><span class="chip r">Locked: ' + locked + '</span>';
+      var rows = list.map(function (s, i) {
+        var st = s.is_used ? '<span class="pill ok">Used</span>' : s.locked ? '<span class="pill bad">Locked</span>' : '<span class="pill gray">Not used</span>';
+        return '<tr><td>' + (i + 1) + '</td><td><code>' + esc(s.reg_number) + '</code></td><td><strong>' + esc(s.full_name) + '</strong></td><td><span class="pill violet">' + esc(s.class_name || "—") + '</span></td><td><code>' + esc(s.access_code) + '</code></td><td>' + st + '</td>' +
+          '<td style="white-space:nowrap"><button class="btn sm ghost" onclick="resetCode(\'' + s.student_id + '\',\'' + esc(s.full_name).replace(/'/g, "") + '\')">↻ New code</button> ' +
+          '<button class="btn sm red" onclick="revokeCode(\'' + s.student_id + '\',\'' + esc(s.full_name).replace(/'/g, "") + '\')">Revoke</button></td></tr>';
       });
       var box = $("cdTbl");
-      if (box) box.innerHTML = rows.length ? tbl(["S/N", "Full Name", "Class", "Subject", "Reg Number", "Exam Taken", ""], rows) : '<div class="empty">No students assigned to this exam yet — use Assign Students.</div>';
+      if (box) box.innerHTML = rows.length ? tbl(["S/N", "Reg Number", "Full Name", "Class", "Access Code", "Status", "Actions"], rows)
+        : '<div class="empty">No registered students yet — use the Register Student tab or ➕ Register Students.</div>';
       var sel = $("cdExam");
-      if (sel) { Array.prototype.forEach.call(sel.options, function (o) { if (o.value === examId) sel.value = examId; }); }
+      if (sel) { Array.prototype.forEach.call(sel.options, function (o) { if (o.value === window.__cdExam) sel.value = window.__cdExam; }); }
     }).catch(function (e) { var box = $("cdTbl"); if (box) box.innerHTML = '<div class="empty">' + esc(errText(e)) + '</div>'; });
   };
   window.removeExamStudent = function (studentId, name) {
@@ -1207,82 +1216,12 @@ tr:last-child td{border-bottom:none}
     }).join("") : '<div class="empty">No students match.</div>';
   };
 
-  /* — Access Codes & Reg Numbers tab (own tab, reference: Reg Number | Full Name | Class | Subject | Access Code | Status) — */
-  function codesList() {
-    cbtApi("/exams").then(function (d) {
-      var exams = d.exams || [];
-      if (!exams.length) { $("exBody").innerHTML = '<div class="panel"><div class="empty">Create an examination first — access codes are generated per exam.</div></div>'; return; }
-      $("exBody").innerHTML = '<div class="panel"><h3>🔑 Access Codes & Registration Numbers</h3>' +
-        '<p class="mhint" style="margin-bottom:14px">Students log in at <strong>your-school-link/exam</strong> with their Registration Number + Access Code. Generate, print slips, reset a forgotten code or issue a new one after a lock-out.</p>' +
-        '<div class="form-grid cd-ctl"><div><label class="f-label">Examination</label><select class="f-in" id="cdExam" onchange="codesForExam(this.value);loadCodeStats()">' +
-        exams.map(function (x) { return '<option value="' + x.id + '">' + esc(x.title) + " — " + esc(x.class_name) + '</option>'; }).join("") + '</select></div>' +
-        '<div><label class="f-label">&nbsp;</label><div class="radio-row">' +
-        '<button class="btn" onclick="genCodesFor()">⚡ Generate Codes</button>' +
-        '<button class="btn ghost" onclick="printCodeSlips()">🖨️ Print Slips</button>' +
-        '<button class="btn ghost" onclick="regenCodes()">🔄 Regenerate all</button></div></div></div>' +
-        '<div class="stat-mini" id="cdStats"></div><div id="cdTbl"><div class="empty">Loading…</div></div></div>';
-      var startExam = window.__cdPending || exams[0].id;
-      window.__cdPending = null;
-      codesForExam(startExam);
-    }).catch(function (e) { $("exBody").innerHTML = '<div class="panel"><div class="empty">' + esc(errText(e)) + '</div></div>'; });
-  }
-  window.loadCodeStats = function () {
-    var sel = $("cdExam"); if (!sel || !sel.value) return;
-    cbtApi("/exams/" + sel.value + "/codes").then(function (d) {
-      var list = d.codes || [];
-      var used = list.filter(function (c) { return c.is_used; }).length;
-      var locked = list.filter(function (c) { return c.locked; }).length;
-      var box = $("cdStats");
-      if (box) box.innerHTML = '<span class="chip">Codes issued: ' + list.length + '</span><span class="chip g">Exam taken: ' + used + '</span><span class="chip r">Locked: ' + locked + '</span>';
-    }).catch(function () {});
-  };
-  function codesRows(list, examSubject) {
-    return list.map(function (s, i) {
-      var st = s.is_used ? '<span class="pill ok">Used</span>' : s.locked ? '<span class="pill bad">Locked</span>' : '<span class="pill gray">Not used</span>';
-      return '<tr><td>' + (i + 1) + '</td><td><code>' + esc(s.reg_number) + '</code></td><td><strong>' + esc(s.full_name) + '</strong></td><td><span class="pill violet">' + esc(s.class_name || "—") + '</span></td><td><span class="pill blue">' + esc(examSubject || "—") + '</span></td><td><code>' + esc(s.access_code) + '</code></td><td>' + st + '</td>' +
-        '<td style="white-space:nowrap"><button class="btn sm ghost" onclick="resetCode(\'' + s.student_id + '\',\'' + esc(s.full_name).replace(/'/g, "") + '\')">↻ New code</button> ' +
-        '<button class="btn sm red" onclick="revokeCode(\'' + s.student_id + '\',\'' + esc(s.full_name).replace(/'/g, "") + '\')">Revoke</button></td></tr>';
-    });
-  }
-  function renderCodesTable(d, subject) {
-    var rows = codesRows(d.codes || [], subject);
-    $("cdTbl").innerHTML = rows.length ? tbl(["S/N", "Reg Number", "Full Name", "Class", "Subject", "Access Code", "Status", "Actions"], rows)
-      : '<div class="empty">No codes yet for this exam — use ⚡ Generate Codes.</div>';
-    var sel = $("cdExam");
-    if (sel) { Array.prototype.forEach.call(sel.options, function (o) { if (o.value === window.__cdExam) sel.value = window.__cdExam; }); }
-  }
-  window.codesForExam = function (examId) {
-    if (!examId) return;
-    window.__cdExam = examId;
-    cbtApi("/exams/" + examId + "/codes").then(function (d) {
-      return cbtApi("/exams/" + examId).then(function (ex) { renderCodesTable(d, ex.subject); loadCodeStats(); });
-    }).catch(function (e) { var b = $("cdTbl"); if (b) b.innerHTML = '<div class="empty">' + esc(errText(e)) + '</div>'; });
-  };
-  window.openCodesFor = function (examId) {
-    if (EX_PAGE === "excodes") { codesForExam(examId); return; }
-    window.__cdPending = examId;
-    exTab("codes");
-  };
-  window.genCodesFor = function () {
-    var sel = $("cdExam"); if (!sel || !sel.value) return;
-    openModal("Generate codes — " + esc(sel.options[sel.selectedIndex].text),
-      '<p class="mhint" style="margin-bottom:10px">Generate Registration Numbers + Access Codes. Assign students on the <strong>Exam Students</strong> tab, or add a class below.</p>' +
-      '<div class="form-grid"><div><label class="f-label">Whole class (optional)</label><input class="f-in" id="gcClass" placeholder="e.g. SS2" /></div>' +
-      '<div><label class="f-label">Regenerate existing?</label><select class="f-in" id="gcRegen"><option value="no">No — keep current codes</option><option value="yes">Yes — issue NEW codes (old ones stop working)</option></select></div></div><div class="merr"></div>',
-      '<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="gcGo">Generate</button>');
-    $("gcGo").addEventListener("click", function () {
-      busy($("gcGo"), true);
-      cbtApi("/exams/" + sel.value + "/access-codes", { method: "POST", body: { class_names: ($("gcClass").value || "").trim() ? [$("gcClass").value.trim()] : [], regenerate: $("gcRegen").value === "yes" } })
-        .then(function (d) { closeModal(); toast("✓ " + d.new_codes + " code(s) generated"); codesForExam(sel.value); loadCodeStats(); })
-        .catch(function (e) { busy($("gcGo"), false, "Generate"); mErr(errText(e)); });
-    });
-  };
   window.regenCodes = function () {
     var sel = $("cdExam"); if (!sel || !sel.value) return;
     confirmModal("Regenerate all codes", 'Issue <strong>new access codes</strong> to every student on <strong>' + esc(sel.options[sel.selectedIndex].text) + '</strong>? Codes already printed stop working.', function (btn) {
       busy(btn, true);
       cbtApi("/exams/" + sel.value + "/access-codes", { method: "POST", body: { regenerate: true } }).then(function (d) {
-        closeModal(); toast(d.new_codes + " new code(s) generated"); codesForExam(sel.value); loadCodeStats();
+        closeModal(); toast(d.new_codes + " new code(s) generated"); studentsForExam(sel.value);
       }).catch(function (e) { busy(btn, false, "Confirm"); mErr(errText(e)); });
     }, "Regenerate", true);
   };
@@ -1291,7 +1230,7 @@ tr:last-child td{border-bottom:none}
     confirmModal("Issue new code", 'Give <strong>' + esc(name) + '</strong> a fresh access code for this exam? Their old code and any lock-out stop immediately.', function (btn) {
       busy(btn, true);
       cbtApi("/exams/" + sel.value + "/codes/" + studentId + "/reset", { method: "POST" }).then(function () {
-        closeModal(); toast("New code issued"); codesForExam(sel.value); loadCodeStats();
+        closeModal(); toast("New code issued"); studentsForExam(sel.value);
       }).catch(function (e) { busy(btn, false, "Confirm"); mErr(errText(e)); });
     }, "Issue new code");
   };
@@ -1300,7 +1239,7 @@ tr:last-child td{border-bottom:none}
     confirmModal("Revoke access", 'Revoke <strong>' + esc(name) + "</strong>'s access code for this exam? They can no longer log in.", function (btn) {
       busy(btn, true);
       cbtApi("/exams/" + sel.value + "/codes/" + studentId, { method: "DELETE" }).then(function () {
-        closeModal(); toast("Access revoked"); codesForExam(sel.value); loadCodeStats();
+        closeModal(); toast("Access revoked"); studentsForExam(sel.value);
       }).catch(function (e) { busy(btn, false, "Confirm"); mErr(errText(e)); });
     }, "Revoke", true);
   };
