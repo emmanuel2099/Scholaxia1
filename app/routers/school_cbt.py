@@ -1158,25 +1158,7 @@ async def register_exam_student(
     if payload.subject.strip().upper() != "ALL":
         q = q.where(func.lower(SchoolExam.subject) == payload.subject.strip().lower())
     exams = (await db.execute(q)).scalars().all()
-    if not exams:
-        raise HTTPException(
-            status_code=400,
-            detail=f"No examination found for {cls} / {payload.subject} — prepare it under Exam Settings first",
-        )
-    have = {
-        str(r)
-        for r in (
-            await db.execute(
-                select(SchoolExamAssignment.exam_id).where(
-                    SchoolExamAssignment.student_id == user.id,
-                    SchoolExamAssignment.exam_id.in_([e.id for e in exams]),
-                )
-            )
-        ).scalars().all()
-    }
     for e in exams:
-        if str(e.id) in have:
-            continue
         db.add(
             SchoolExamAssignment(
                 school_id=sid, exam_id=e.id, student_id=user.id,
@@ -1192,13 +1174,20 @@ async def register_exam_student(
             .order_by(SchoolExamAccessCode.created_at.desc())
         )
     ).scalars().first()
+    if not code:
+        # Subject not scheduled yet — mint the reg number now so the slip
+        # exists; the access code is issued at Save Schedule (reference flow:
+        # register now, schedule later).
+        reg = await _reg_number_for(db, sid, user.id)
+    else:
+        reg = code.reg_number
     return {
         "student_id": str(user.id),
         "full_name": user.full_name,
         "class_name": cls,
         "exams_assigned": len(exams),
         "subjects": sorted({e.subject for e in exams}),
-        "reg_number": code.reg_number if code else None,
+        "reg_number": reg,
         "access_code": code.access_code if code else None,
     }
 
@@ -1426,6 +1415,36 @@ async def save_schedule(
                         position=i,
                     )
                 )
+            # Reference flow — every student REGISTERED for this class gets
+            # assigned + their access code the moment the subject is scheduled.
+            class_students = (
+                await db.execute(
+                    select(User.id)
+                    .join(StudentProfile, StudentProfile.user_id == User.id)
+                    .where(
+                        User.school_id == sid,
+                        User.role == UserRole.student,
+                        func.upper(StudentProfile.education_level) == cls,
+                    )
+                )
+            ).scalars().all()
+            have_assign = {
+                str(r)
+                for r in (
+                    await db.execute(
+                        select(SchoolExamAssignment.student_id).where(SchoolExamAssignment.exam_id == exam.id)
+                    )
+                ).scalars().all()
+            }
+            for suid in class_students:
+                if str(suid) not in have_assign:
+                    db.add(
+                        SchoolExamAssignment(
+                            school_id=sid, exam_id=exam.id, student_id=suid,
+                            class_name=cls, subject=exam.subject,
+                        )
+                    )
+            await _ensure_access_codes(db, exam)
             made += 1
     # Subjects no longer scheduled → their exams are removed (class schedule
     # is rewritten, exactly like the reference overwrites its doc).

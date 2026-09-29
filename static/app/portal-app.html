@@ -800,17 +800,15 @@ tr:last-child td{border-bottom:none}
   /* — Register Student page — reference form: First/Middle/Surname,
      Class Category → Class → Subject, Reg Number + Access Code auto-
      generated on register — */
+  /* Reference Register Student: the Subject dropdown is the static national
+     curriculum list — never dependent on the class, never empty. */
+  var SX_SUBJECTS = ["English Language", "Mathematics", "Biology", "Chemistry", "Physics", "Agricultural Science", "Geography", "Economics", "Commerce", "Financial Accounting", "Government", "Nigerian History", "Christian Religious Studies", "Islamic Studies", "French", "Civic Education", "Further Mathematics", "Literature in English", "Marketing", "Food & Nutrition", "Livestock Farming", "Computer Hardware & GSM Repairs", "Digital Technologies", "Intermediate Science", "Basic Technology", "Social Studies", "Physical and Health Education", "Social and Citizenship Studies", "Business Studies", "Home Economics", "Music", "Cultural & Creative Arts", "Religious Studies", "Igbo", "Hausa", "Yoruba", "Ibibio"];
   function exRegList() {
     cbtApi("/students/register").then(function (d) {
       var cats = d.categories || [];
       window.__regMeta = d;
       var catOpts = cats.map(function (c) { return '<option value="' + c.id + '">' + esc(c.name) + '</option>'; }).join("");
-      var subjOpts = [];
-      Object.keys(d.class_subjects || {}).forEach(function (cls) {
-        (d.class_subjects[cls] || []).forEach(function (s) { if (subjOpts.indexOf(s) < 0) subjOpts.push(s); });
-      });
-      subjOpts.sort();
-      var allSubj = '<option value="ALL">All subjects (register for every exam in this class)</option>' + subjOpts.map(function (s) { return '<option>' + esc(s) + '</option>'; }).join("");
+      var allSubj = '<option value="ALL">All subjects</option>' + SX_SUBJECTS.map(function (s) { return '<option>' + esc(s) + '</option>'; }).join("");
       $("exBody").innerHTML = '<div class="panel"><h3>👤 Register Student for Exam</h3>' +
         '<p class="mhint" style="margin-bottom:16px">Fill the student\'s details — their <strong>Registration Number</strong> and <strong>Access Code</strong> are generated automatically when you register. The student then logs in at your-school-link/exam.</p>' +
         '<div class="form-grid rg3"><div><label class="f-label">👤 First Name *</label><input class="f-in" id="rgFirst" placeholder="First name" /></div>' +
@@ -838,11 +836,12 @@ tr:last-child td{border-bottom:none}
     subjSel.disabled = true;
   };
   window.regClassPicked = function () {
-    var meta = window.__regMeta || { class_subjects: {} };
     var cls = $("rgClass").value;
     var subjSel = $("rgSubject");
-    var subs = (meta.class_subjects || {})[cls] || [];
-    subjSel.innerHTML = '<option value="ALL">All subjects</option>' + subs.map(function (s) { return '<option>' + esc(s) + '</option>'; }).join("");
+    if (!subjSel.dataset.ready) {
+      subjSel.innerHTML = '<option value="ALL">All subjects</option>' + SX_SUBJECTS.map(function (s) { return '<option>' + esc(s) + '</option>'; }).join("");
+      subjSel.dataset.ready = "1";
+    }
     subjSel.disabled = !cls;
   };
   window.regSubmit = function () {
@@ -855,10 +854,12 @@ tr:last-child td{border-bottom:none}
       first_name: first, middle_name: $("rgMiddle").value.trim() || null, surname: sur,
       class_name: cls, subject: subj,
     } }).then(function (d) {
-      $("rgRegOut").value = d.reg_number || "";
-      $("rgCodeOut").value = d.access_code || "";
-      $("rgDone").innerHTML = '<div class="mnote" style="margin-top:14px">✅ <strong>' + esc(d.full_name) + '</strong> registered for ' + d.exams_assigned + ' exam(s) — ' + (d.subjects || []).map(function (s) { return esc(s); }).join(", ") +
-        '.<br/>🔢 Registration Number: <code>' + esc(d.reg_number || "—") + '</code> &nbsp; 🔑 Access Code: <code>' + esc(d.access_code || "—") + '</code></div>';
+      $("rgRegOut").value = d.reg_number || "(issues when the subject is scheduled)";
+      $("rgCodeOut").value = d.access_code || "(issues when the subject is scheduled)";
+      var codeLine = d.reg_number
+        ? '<br/>🔢 Registration Number: <code>' + esc(d.reg_number) + '</code> &nbsp; 🔑 Access Code: <code>' + esc(d.access_code) + '</code>'
+        : '<br/>🔑 Registration Number + Access Code will be issued automatically when <strong>' + esc(subj === "ALL" ? "any subject" : subj) + '</strong> is scheduled for ' + esc(cls) + ' (Exam Schedule → Save Schedule).';
+      $("rgDone").innerHTML = '<div class="mnote" style="margin-top:14px">✅ <strong>' + esc(d.full_name) + '</strong> registered' + (d.exams_assigned ? ' for ' + d.exams_assigned + ' exam(s) — ' + (d.subjects || []).map(function (s) { return esc(s); }).join(", ") : '') + '.' + codeLine + '</div>';
       $("rgFirst").value = ""; $("rgMiddle").value = ""; $("rgSur").value = "";
       regRecent();
       toast("Student registered — details ready to print");
