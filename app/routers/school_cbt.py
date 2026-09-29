@@ -22,7 +22,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import select, delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -347,6 +347,132 @@ async def create_bank(
     db.add(bank)
     await db.flush()
     return {"id": str(bank.id), "name": bank.name, "question_count": 0}
+
+
+class BankImportIn(BaseModel):
+    """Reference pattern — questions are UPLOADED per class. Defaults applied
+    to every question in the file; class/subject feed the bank's identity."""
+    class_name: str
+    subject: str
+    name: Optional[str] = None      # bank name; defaults to "<Subject> <Class> Bank"
+    topic: Optional[str] = None
+    marks: int = 1
+
+
+@router.post("/banks/import", status_code=201)
+async def import_bank_questions(
+    file: UploadFile = File(...),
+    class_name: str = Form(...),
+    subject: str = Form(...),
+    name: Optional[str] = Form(None),
+    topic: Optional[str] = Form(None),
+    marks: int = Form(1),
+    school_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload a question file (.csv / .json / .pdf) into the school's question
+    bank for ONE class + subject — exactly like the reference dashboard's
+    "Upload New Questions" flow (bank per class, e.g. JS1/JS2/.../SS3).
+
+    Creates the bank if the school has none for that class+subject; appends to
+    the existing one otherwise. Returns per-question parse issues, if any."""
+    from app.services.cbt_import import parse_cbt_file
+
+    sid = _staff_school_id(current_user, school_id)
+    cls = (class_name or "").strip().upper()
+    subj = (subject or "").strip()
+    if not cls or not subj:
+        raise HTTPException(status_code=400, detail="class_name and subject are required")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="The uploaded file is empty")
+    stem = (file.filename or "questions").rsplit(".", 1)[0].replace("_", " ").replace("-", " ").strip() or subj
+    defaults = {
+        "title": (name or "").strip() or f"{subj} {cls}",
+        "subject": subj,
+        "duration_minutes": 60,
+        "exam_type": "SCHOOL",
+        "is_published": True,
+    }
+    try:
+        parsed = parse_cbt_file(file.filename or "", content, defaults)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    qs = []
+    for item in parsed:
+        for q in item.get("questions") or []:
+            if not str(q.get("question_text") or "").strip():
+                continue
+            opt = str(q.get("correct_option") or "A").upper()[:1]
+            qs.append(
+                {
+                    "question_text": str(q.get("question_text"))[:4000],
+                    "option_a": str(q.get("option_a") or "")[:1000],
+                    "option_b": str(q.get("option_b") or "")[:1000],
+                    "option_c": str(q.get("option_c") or "")[:1000],
+                    "option_d": str(q.get("option_d") or "")[:1000],
+                    "correct_option": opt if opt in ("A", "B", "C", "D") else "A",
+                    "topic": (str(q.get("topic") or topic or "").strip() or None),
+                    "marks": int(q.get("marks") or marks or 1),
+                }
+            )
+    if not qs:
+        raise HTTPException(status_code=400, detail="No usable questions found in the file")
+
+    # One bank per class+subject — reuse it, or create it on first upload.
+    bank = (
+        await db.execute(
+            select(SchoolExQuestionBank).where(
+                SchoolExQuestionBank.school_id == sid,
+                func.upper(SchoolExQuestionBank.class_name) == cls,
+                func.lower(SchoolExQuestionBank.subject) == subj.lower(),
+            )
+        )
+    ).scalars().first()
+    if not bank:
+        bank = SchoolExQuestionBank(
+            school_id=sid,
+            name=(name or "").strip() or f"{subj} {cls} Bank",
+            subject=subj,
+            class_name=cls,
+            created_by=current_user["sub"],
+        )
+        db.add(bank)
+        await db.flush()
+
+    for q in qs:
+        db.add(
+            SchoolExQuestion(
+                school_id=sid,
+                bank_id=bank.id,
+                question_text=q["question_text"],
+                option_a=q["option_a"],
+                option_b=q["option_b"],
+                option_c=q["option_c"],
+                option_d=q["option_d"],
+                correct_option=q["correct_option"],
+                question_type="mcq",
+                topic=q["topic"],
+                marks=max(1, min(int(q["marks"]), 100)),
+            )
+        )
+    await db.flush()
+    bank_total = (
+        await db.execute(
+            select(func.count(SchoolExQuestion.id)).where(SchoolExQuestion.bank_id == bank.id)
+        )
+    ).scalar_one()
+    return {
+        "ok": True,
+        "bank_id": str(bank.id),
+        "bank_name": bank.name,
+        "class_name": bank.class_name,
+        "added": len(qs),
+        "bank_total": int(bank_total or 0),
+    }
 
 
 @router.delete("/banks/{bank_id}")
@@ -772,6 +898,97 @@ class ExamPatchIn(BaseModel):
     is_published: Optional[bool] = None
     status: Optional[str] = None
     results_published: Optional[bool] = None
+
+
+class ScheduleIn(BaseModel):
+    """Reference pattern — scheduling is a SEPARATE step from question upload.
+    Pick the class, set the date/time + duration, save."""
+    exam_date: Optional[datetime] = None
+    scheduled_start: Optional[datetime] = None
+    scheduled_end: Optional[datetime] = None
+    duration_minutes: Optional[int] = Field(default=None, ge=5, le=300)
+    venue: Optional[str] = Field(default=None, max_length=120)
+
+
+@router.get("/schedule")
+async def schedule_overview(
+    school_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Exam Schedule Management (reference layout): per class — Subjects,
+    Date & Time, Duration, Venue/Class — plus the exams sitting in that class.
+    Scheduling is fully decoupled from question upload."""
+    sid = _staff_school_id(current_user, school_id)
+    exams = (
+        await db.execute(select(SchoolExam).where(SchoolExam.school_id == sid).order_by(SchoolExam.created_at.desc()))
+    ).scalars().all()
+    qcounts: dict[str, int] = {}
+    if exams:
+        qcounts = dict(
+            (str(exam_id), int(c))
+            for exam_id, c in (
+                await db.execute(
+                    select(SchoolExamQuestion.exam_id, func.count(SchoolExamQuestion.id))
+                    .where(SchoolExamQuestion.exam_id.in_([e.id for e in exams]))
+                    .group_by(SchoolExamQuestion.exam_id)
+                )
+            ).all()
+        )
+    now = naive_utc_now()
+    out = []
+    for e in exams:
+        cls = (e.class_name or "—").upper()
+        out.append(
+            {
+                "exam_id": str(e.id),
+                "class_name": cls,
+                "subjects": e.subject,
+                "exam_date": e.exam_date.isoformat() if e.exam_date else None,
+                "scheduled_start": e.scheduled_start.isoformat() if e.scheduled_start else (e.exam_date.isoformat() if e.exam_date else None),
+                "scheduled_end": e.scheduled_end.isoformat() if e.scheduled_end else None,
+                "duration_minutes": e.duration_minutes,
+                "venue": cls,
+                "questions": qcounts.get(str(e.id), 0),
+                "status": e.status,
+                "is_published": bool(e.is_published),
+                "window_open": bool(
+                    e.is_published
+                    and (not e.scheduled_start or e.scheduled_start <= now)
+                    and (not e.scheduled_end or e.scheduled_end >= now)
+                ),
+            }
+        )
+    return {"schedule": out}
+
+
+@router.patch("/exams/{exam_id}/schedule")
+async def reschedule_exam(
+    exam_id: str,
+    payload: ScheduleIn,
+    school_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reschedule ONE exam (reference: pick class → set date/time + duration →
+    save). Once the window opens, students of that class see the exam on login
+    and can write it. Duration edits apply to future attempts only."""
+    sid = _staff_school_id(current_user, school_id)
+    exam = await _get_school_exam(db, exam_id, sid)
+    if payload.exam_date is not None:
+        exam.exam_date = payload.exam_date
+    if payload.scheduled_start is not None:
+        start = payload.scheduled_start
+        exam.scheduled_start = start
+        if payload.scheduled_end is None:
+            dur = payload.duration_minutes or exam.duration_minutes
+            exam.scheduled_end = start + timedelta(minutes=int(dur))
+    if payload.scheduled_end is not None:
+        exam.scheduled_end = payload.scheduled_end
+    if payload.duration_minutes is not None:
+        exam.duration_minutes = int(payload.duration_minutes)
+    await db.flush()
+    return {"ok": True, "status": exam.status, "duration_minutes": exam.duration_minutes}
 
 
 @router.patch("/exams/{exam_id}")

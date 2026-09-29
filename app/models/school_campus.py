@@ -41,6 +41,11 @@ class SchoolCampus(Base):
     portal_classes: Mapped[list | None] = mapped_column(JSON, nullable=True)
     portal_attendance: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # date -> {student_id: status}
     portal_fees: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Owner addition — uploaded result sheets, same self-contained JSON
+    # pattern as portal_fees: [{id, class_name, subject, term, session,
+    # max_score, uploaded_at, rows: [{student_name, reg_number, ca, exam,
+    # total, percentage, grade}]}]
+    portal_results: Mapped[list | None] = mapped_column(JSON, nullable=True)
     subscription_active: Mapped[bool] = mapped_column(Boolean, default=False)
     subscription_plan: Mapped[str | None] = mapped_column(String(80), nullable=True)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True)

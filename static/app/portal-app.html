@@ -203,6 +203,10 @@ tr:last-child td{border-bottom:none}
 .mnote{background:var(--okbg);border:1px solid #bfe8cf;color:#116a35;border-radius:10px;padding:12px 14px;font-size:14px;line-height:1.6}
 .mnote code{background:#fff;border:1px solid #bfe8cf;border-radius:6px;padding:2px 7px;font-size:13px;font-weight:700}
 .qrow{border:1.5px solid var(--line);border-radius:12px;padding:13px;margin-bottom:12px;background:#fbfcff}
+/* Upload Results: one flex row per student (wraps on small screens) */
+.up-row{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+.up-row .f-in{flex:1;min-width:150px}
+.up-row input[type=number]{flex:0 0 90px;min-width:90px}
 .qrow .qtop{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
 .qrow .qtop b{font-size:13px;color:var(--blue)}
 .qrow .opts{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:9px}
@@ -714,8 +718,8 @@ tr:last-child td{border-bottom:none}
   }
   var EX_TAB = "exams";
   R.exams = function () {
-    var tabs = [["exams", "📋 Exams"], ["bank", "🏦 Exam Bank"], ["students", "👥 Exam Students"], ["codes", "🔑 Access Codes & Reg Numbers"], ["schedule", "🗓️ Exam Schedule"], ["results", "🏆 Results"]];
-    $("pages").innerHTML = head("Exams & CBT", "Build your question bank, create exams, assign students, print access codes, view results and grant retakes.",
+    var tabs = [["exams", "📋 Exams"], ["bank", "🏦 Exam Bank"], ["students", "👥 Exam Students"], ["codes", "🔑 Access Codes & Reg Numbers"], ["schedule", "🗓️ Exam Schedule"], ["up", "📤 Upload Results"], ["results", "🏆 Results"]];
+    $("pages").innerHTML = head("Exams & CBT", "Upload questions per class, schedule exams separately, generate access codes, upload result sheets and grant retakes.",
         '<button class="btn" onclick="createExamModal()">+ Create Examination</button>') +
       '<div class="tabs" id="exTabs">' + tabs.map(function (t) {
         return '<button data-t="' + t[0] + '" class="' + (EX_TAB === t[0] ? "on" : "") + '" onclick="exTab(\'' + t[0] + '\')">' + t[1] + '</button>';
@@ -733,6 +737,7 @@ tr:last-child td{border-bottom:none}
     if (EX_TAB === "students") return studentsList();
     if (EX_TAB === "codes") return codesList();
     if (EX_TAB === "schedule") return scheduleList();
+    if (EX_TAB === "up") return upList();
     if (EX_TAB === "results") return resultsList();
   }
 
@@ -926,7 +931,7 @@ tr:last-child td{border-bottom:none}
           '<div class="mnote">📝 <strong>' + esc(d.title) + '</strong> — ' + d.question_count + ' questions<br/>' +
           '👥 ' + d.students_assigned + ' students assigned<br/>🔑 ' + d.access_codes_created + ' access codes generated' +
           (publish ? '<br/>🟢 <strong>Published</strong> — students can log in now' : '<br/>🟡 Saved as draft — publish when ready') + '</div>' +
-          '<p class="mhint" style="margin-top:10px">Students log in at <strong>your-school-link/exam</strong> with their Registration Number + Access Code (see the Exam Students & Codes tab).</p>',
+          '<p class="mhint" style="margin-top:10px">Students log in at <strong>your-school-link/exam</strong> with their Registration Number + Access Code (see the 🔑 Access Codes & Reg Numbers tab).</p>',
           '<button class="btn" onclick="closeModal();exTab(\'codes\')">View access codes</button>', true);
         showPage("exams");
       }).catch(function (e) { busy($("exSave"), false, "Create Examination"); mErr(errText(e)); });
@@ -937,14 +942,53 @@ tr:last-child td{border-bottom:none}
     cbtApi("/banks").then(function (d) {
       var banks = d.banks || [];
       window.__banks = banks;
+      var classes = [];
+      banks.forEach(function (b) { if (b.class_name && classes.indexOf(b.class_name) < 0) classes.push(b.class_name); });
+      classes.sort();
+      var show = window.__bankCls ? banks.filter(function (b) { return b.class_name === window.__bankCls; }) : banks;
+      var chipRow = '<div class="radio-row" style="margin-bottom:14px">' +
+        '<label class="' + (!window.__bankCls ? "on" : "") + '" onclick="bankClsFilter(\'\')" style="cursor:pointer' + (!window.__bankCls ? ";border-color:var(--blue);color:var(--blue)" : "") + '">All classes</label>' +
+        classes.map(function (c) {
+          return '<label onclick="bankClsFilter(\'' + esc(c) + '\')" style="cursor:pointer' + (window.__bankCls === c ? ";border-color:var(--blue);color:var(--blue);background:var(--sky)" : "") + '">' + esc(c) + '</label>';
+        }).join("") + '</div>';
       $("exBody").innerHTML =
-        '<div class="stat-mini"><span class="chip">Banks: ' + banks.length + '</span><span class="chip g">Questions: ' + banks.reduce(function (a, b) { return a + (b.question_count || 0); }, 0) + '</span><button class="btn sm" onclick="addBank()">+ New Question Bank</button></div>' +
-        '<div class="panel">' + tbl(["Bank", "Subject", "Class", "Questions", "Status", ""], banks.map(function (b) {
+        '<div class="stat-mini"><span class="chip">Banks: ' + banks.length + '</span><span class="chip g">Questions: ' + banks.reduce(function (a, b) { return a + (b.question_count || 0); }, 0) + '</span>' +
+        '<button class="btn sm" onclick="uploadQuestionsModal()">⬆ Upload Questions</button>' +
+        '<button class="btn sm ghost" onclick="addBank()">+ New Question Bank</button></div>' +
+        (classes.length ? '<div class="panel"><h3>Question Bank by Class</h3><p class="mhint" style="margin-bottom:10px">Questions are uploaded per class. Pick a class to see its banks.</p>' + chipRow + '</div>' : '') +
+        '<div class="panel">' + tbl(["Bank", "Subject", "Class", "Questions", "Status", ""], show.map(function (b) {
           return '<tr><td><strong>' + esc(b.name) + '</strong></td><td><span class="pill blue">' + esc(b.subject) + '</span></td><td><span class="pill violet">' + esc(b.class_name) + '</span></td><td>' + b.question_count + '</td><td><span class="pill ' + (b.status === "active" ? "ok" : "gray") + '">' + esc(b.status) + '</span></td>' +
             '<td style="white-space:nowrap"><button class="btn sm ghost" onclick="openBank(\'' + b.id + '\')">📂 Questions</button> <button class="btn sm ghost" onclick="addBankQ(\'' + b.id + '\',\'' + esc(b.name).replace(/'/g, "") + '\')">➕ Add</button> <button class="btn sm red" onclick="delBank(\'' + b.id + '\',\'' + esc(b.name).replace(/'/g, "") + '\')">Delete</button></td></tr>';
         })) + '</div>';
     }).catch(function (e) { $("exBody").innerHTML = '<div class="panel"><div class="empty">' + esc(errText(e)) + '</div></div>'; });
   }
+  window.bankClsFilter = function (c) { window.__bankCls = c || null; bankList(); };
+  window.uploadQuestionsModal = function () {
+    var clsOpts = (window.__banks || []).map(function (b) { return b.class_name; }).filter(function (v, i, a) { return a.indexOf(v) === i; });
+    openModal("Upload Questions",
+      '<p class="mhint" style="margin-bottom:12px">Upload a <strong>.csv</strong>, <strong>.json</strong> or <strong>.pdf</strong> question file into the question bank for one class + subject — like the reference dashboard. Questions land in a bank per class (JS1…SS3) and are reused when creating exams.</p>' +
+      '<div class="form-grid"><div><label class="f-label">Class *</label><input class="f-in" id="uqClass" list="uqClsList" placeholder="e.g. SS2" /><datalist id="uqClsList">' +
+        clsOpts.map(function (c) { return '<option value="' + esc(c) + '">'; }).join("") + '</datalist></div>' +
+      '<div><label class="f-label">Subject *</label><input class="f-in" id="uqSubject" placeholder="e.g. Mathematics" /></div></div>' +
+      '<div class="mrow"><label class="f-label">Question file (.csv / .json / .pdf) *</label><input class="f-in" id="uqFile" type="file" accept=".csv,.json,.pdf" /></div>' +
+      '<p class="mhint">CSV header: <code>question_text,option_a,option_b,option_c,option_d,correct_option,topic,marks</code></p>' +
+      '<div class="merr"></div>',
+      '<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="uqGo">⬆ Upload</button>');
+    $("uqGo").addEventListener("click", function () {
+      var cls = $("uqClass").value.trim(), subj = $("uqSubject").value.trim(), f = $("uqFile").files[0];
+      if (!cls) return mErr("Enter the class (e.g. SS2).");
+      if (!subj) return mErr("Enter the subject.");
+      if (!f) return mErr("Choose a question file.");
+      var fd = new FormData();
+      fd.append("file", f); fd.append("class_name", cls); fd.append("subject", subj);
+      busy($("uqGo"), true);
+      cbtApi("/banks/import", { method: "POST", form: fd }).then(function (d) {
+        closeModal(); toast("✓ " + d.added + " questions uploaded to " + d.bank_name);
+        window.__bankCls = d.class_name;
+        renderExTab();
+      }).catch(function (e) { busy($("uqGo"), false, "⬆ Upload"); mErr(errText(e)); });
+    });
+  };
   window.addBank = function () {
     openModal("New Question Bank",
       '<div class="mrow"><label class="f-label">Bank name *</label><input class="f-in" id="bkName" placeholder="e.g. Mathematics SS2 Question Bank" /></div>' +
@@ -1197,32 +1241,60 @@ tr:last-child td{border-bottom:none}
     }).catch(toastErr);
   };
 
-  /* — Exam Schedule tab (reference: Subjects | Date & Time | Duration | Venue/Class) — */
+  /* — Exam Schedule tab (reference layout: Subjects | Date & Time | Duration | Venue/Class,
+        with class picker + Current Class Schedule — scheduling is a separate step from upload) — */
   function scheduleList() {
-    cbtApi("/exams").then(function (d) {
-      var exams = d.exams || [];
-      var rows = exams.map(function (x) {
-        var when = x.exam_date ? dOnly(x.exam_date) : (x.scheduled_start ? dOnly(x.scheduled_start) : "—");
-        var win = (x.scheduled_start ? dt(x.scheduled_start) : "—") + " → " + (x.scheduled_end ? dt(x.scheduled_end) : "open");
-        return '<tr><td><strong>' + esc(x.title) + '</strong></td><td><span class="pill blue">' + esc(x.subject) + '</span></td><td><span class="pill violet">' + esc(x.class_name) + '</span></td><td>' + when + '</td><td>' + win + '</td><td>' + fmtDurM(x.duration_minutes) + '</td><td>' + modePill(x.exam_mode) + '</td><td>' + (x.submission_count || 0) + ' submitted</td>' +
-          '<td style="white-space:nowrap"><button class="btn sm ghost" onclick="editSchedule(\'' + x.id + '\',\'' + esc(x.title).replace(/'/g, "") + '\',' + JSON.stringify(JSON.stringify({ s: x.scheduled_start, e: x.scheduled_end })) + ')">🗓 Reschedule</button></td></tr>';
+    cbtApi("/schedule").then(function (d) {
+      var rows = d.schedule || [];
+      var classes = [];
+      rows.forEach(function (r) { if (classes.indexOf(r.class_name) < 0) classes.push(r.class_name); });
+      var cls = window.__schCls;
+      if (cls && classes.indexOf(cls) < 0) cls = null;
+      if (!cls && classes.length) cls = classes[0];
+      window.__schCls = cls;
+      var classRow = '<div class="radio-row" style="margin-bottom:14px">' +
+        classes.map(function (c) {
+          return '<label onclick="schCls(\'' + esc(c) + '\')" style="cursor:pointer' + (cls === c ? ";border-color:var(--blue);color:var(--blue);background:var(--sky)" : "") + '">' + esc(c) + '</label>';
+        }).join("") + '</div>';
+      var mine = rows.filter(function (r) { return r.class_name === cls; });
+      var srows = mine.map(function (r) {
+        var when = r.exam_date ? dOnly(r.exam_date) : (r.scheduled_start ? dOnly(r.scheduled_start) : "—");
+        var st = r.window_open ? '<span class="pill ok">Open now</span>' : r.is_published ? '<span class="pill blue">Scheduled</span>' : '<span class="pill warn">Draft</span>';
+        return '<tr><td><strong>' + esc(r.subjects) + '</strong></td><td>' + when + '</td><td>' + (r.scheduled_start ? dt(r.scheduled_start) : "—") + '</td><td>' + fmtDurM(r.duration_minutes) + '</td><td><span class="pill violet">' + esc(r.venue || r.class_name) + '</span></td><td>' + r.questions + ' qs</td><td>' + st + '</td>' +
+          '<td style="white-space:nowrap"><button class="btn sm ghost" onclick="editSchedule(\'' + r.exam_id + '\',\'' + esc(r.class_name) + " · " + esc(r.subjects) + '\')">🗓 Reschedule</button></td></tr>';
       });
-      $("exBody").innerHTML = '<div class="panel">' + tbl(["Exam", "Subject", "Class", "Date", "Window", "Duration", "Mode", "Progress", ""], rows) + '</div>';
+      $("exBody").innerHTML =
+        '<div class="panel"><h3>Exam Schedule Management</h3><p class="mhint" style="margin-bottom:12px">Pick a class, then set the date, time and duration. Once the window opens, students of that class see the exam when they log in — question upload stays a separate step on the Exam Bank tab.</p>' +
+        (classes.length ? classRow : '<div class="empty">No exams yet — upload questions to the Exam Bank, then create an exam.</div>') +
+        (cls ? '<h3 style="margin-top:6px">Current Class Schedule — ' + esc(cls) + '</h3>' +
+          (srows.length ? tbl(["Subjects", "Date", "Start Time", "Duration", "Venue/Class", "Questions", "Status", ""], srows) : '<div class="empty">Nothing scheduled for ' + esc(cls) + ' yet — create an exam for this class first.</div>') : '') +
+        '</div>';
     }).catch(function (e) { $("exBody").innerHTML = '<div class="panel"><div class="empty">' + esc(errText(e)) + '</div></div>'; });
   }
-  window.editSchedule = function (id, title, whenJson) {
-    var w = {}; try { w = JSON.parse(JSON.parse(whenJson)); } catch (e) {}
-    var toLocal = function (iso) { try { return iso ? new Date(iso).toISOString().slice(0, 16) : ""; } catch (e) { return ""; } };
-    openModal("Reschedule — " + esc(title),
-      '<div class="form-grid"><div><label class="f-label">Exam date & time</label><input class="f-in" id="scDate" type="datetime-local" value="' + toLocal(w.s) + '" /></div>' +
-      '<div><label class="f-label">Window closes</label><input class="f-in" id="scEnd" type="datetime-local" value="' + toLocal(w.e) + '" /></div></div><div class="merr"></div>',
-      '<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="scSave">Save schedule</button>');
-    $("scSave").addEventListener("click", function () {
-      busy($("scSave"), true);
-      cbtApi("/exams/" + id, { method: "PATCH", body: { exam_date: isoOrNull($("scDate").value), scheduled_start: isoOrNull($("scDate").value), scheduled_end: isoOrNull($("scEnd").value) } })
-        .then(function () { closeModal(); toast("Schedule saved"); renderExTab(); })
-        .catch(function (e) { busy($("scSave"), false, "Save schedule"); mErr(errText(e)); });
-    });
+  window.schCls = function (c) { window.__schCls = c; scheduleList(); };
+  window.editSchedule = function (id, title) {
+    cbtApi("/schedule").then(function (d) {
+      var r = (d.schedule || []).filter(function (x) { return x.exam_id === id; })[0] || {};
+      var toLocal = function (iso) { try { return iso ? new Date(iso).toISOString().slice(0, 16) : ""; } catch (e) { return ""; } };
+      openModal("Reschedule — " + esc(title),
+        '<div class="form-grid"><div><label class="f-label">Exam date & time</label><input class="f-in" id="scDate" type="datetime-local" value="' + toLocal(r.scheduled_start) + '" /></div>' +
+        '<div><label class="f-label">Duration (minutes)</label><input class="f-in" id="scDur" type="number" min="5" max="300" value="' + (r.duration_minutes || 60) + '" /></div></div>' +
+        '<div class="form-grid"><div><label class="f-label">Window closes (optional)</label><input class="f-in" id="scEnd" type="datetime-local" value="' + toLocal(r.scheduled_end) + '" /></div>' +
+        '<div><label class="f-label">Venue / Class</label><input class="f-in" value="' + esc(r.class_name || "") + '" disabled /></div></div>' +
+        '<p class="mhint">Leave “Window closes” empty and the window closes automatically after the duration. Duration changes apply to future attempts.</p><div class="merr"></div>',
+        '<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="scSave">Save schedule</button>');
+      $("scSave").addEventListener("click", function () {
+        if (!$("scDate").value) return mErr("Pick the exam date and time.");
+        busy($("scSave"), true);
+        cbtApi("/exams/" + id + "/schedule", { method: "PATCH", body: {
+          scheduled_start: isoOrNull($("scDate").value),
+          scheduled_end: isoOrNull($("scEnd").value),
+          exam_date: isoOrNull($("scDate").value),
+          duration_minutes: parseInt($("scDur").value, 10) || null,
+        } }).then(function () { closeModal(); toast("Schedule saved — students of this class will see the exam in their window"); renderExTab(); })
+          .catch(function (e) { busy($("scSave"), false, "Save schedule"); mErr(errText(e)); });
+      });
+    }).catch(toastErr);
   };
 
   /* — Results tab (reference: Student | Reg Number | Correct | Score | Percentage | Grade | Date | Actions) — */
@@ -1270,6 +1342,104 @@ tr:last-child td{border-bottom:none}
         closeModal(); toast("Retake granted — student can start again"); examResultsView(examId);
       }).catch(function (e) { busy(btn, false, "Confirm"); mErr(errText(e)); });
     }, "Grant retake");
+  };
+
+  /* — Upload Results tab (owner addition; same per-class pattern as fees) —
+     Pick class + subject + term, enter CA/exam scores per student, save.
+     Totals, percentages and grades are computed server-side. — */
+  function upList() {
+    cbtApi("/exams").then(function (d) {
+      var classes = [];
+      (d.exams || []).forEach(function (x) { if (x.class_name && classes.indexOf(x.class_name) < 0) classes.push(x.class_name); });
+      var clsOpts = classes.map(function (c) { return '<option value="' + esc(c) + '">'; }).join("");
+      $("exBody").innerHTML = '<div class="panel"><h3>Upload Results</h3>' +
+        '<p class="mhint" style="margin-bottom:14px">Upload result sheets per class — like the fees records, each sheet stays in that class\'s custody. Choose the class and subject, add each student\'s CA and exam score, and save. Grades are computed automatically.</p>' +
+        '<div class="form-grid"><div><label class="f-label">Class *</label><input class="f-in" id="upCls" list="upClsList" placeholder="e.g. SS2" /><datalist id="upClsList">' + clsOpts + '</datalist></div>' +
+        '<div><label class="f-label">Subject *</label><input class="f-in" id="upSubj" placeholder="e.g. Mathematics" /></div></div>' +
+        '<div class="form-grid"><div><label class="f-label">Term</label><select class="f-in" id="upTerm"><option value="">—</option><option>First Term</option><option>Second Term</option><option>Third Term</option></select></div>' +
+        '<div><label class="f-label">Session</label><input class="f-in" id="upSession" placeholder="e.g. 2026/2027" /></div></div>' +
+        '<div class="form-grid"><div><label class="f-label">Total obtainable marks</label><input class="f-in" id="upMax" type="number" min="1" value="100" /></div><div></div></div>' +
+        '<div id="upRows"></div>' +
+        '<div class="radio-row" style="margin:10px 0 16px"><button class="btn sm ghost" onclick="upAddRow()">+ Add student</button><button class="btn ghost" onclick="upLoadSheet()">📂 Load existing sheet</button></div>' +
+        '<button class="btn" onclick="upSave()">💾 Save result sheet</button></div>' +
+        '<div class="panel"><h3>Uploaded sheets</h3><div id="upSheets"><div class="empty">Loading…</div></div></div>';
+      upAddRow(); upAddRow();
+      upSheets();
+    }).catch(function (e) { $("exBody").innerHTML = '<div class="panel"><div class="empty">' + esc(errText(e)) + '</div></div>'; });
+  }
+  window.upAddRow = function (name, reg, ca, ex) {
+    var box = $("upRows"); if (!box) return;
+    var div = document.createElement("div");
+    div.className = "up-row";
+    div.innerHTML = '<input class="f-in up-name" placeholder="Student full name" value="' + esc(name || "") + '" />' +
+      '<input class="f-in up-reg" placeholder="Reg number (optional)" value="' + esc(reg || "") + '" style="max-width:150px" />' +
+      '<input class="f-in up-ca" type="number" min="0" step="0.5" placeholder="CA" value="' + (ca != null ? ca : "") + '" style="max-width:90px" />' +
+      '<input class="f-in up-ex" type="number" min="0" step="0.5" placeholder="Exam" value="' + (ex != null ? ex : "") + '" style="max-width:90px" />' +
+      '<button class="mb-x" onclick="this.parentNode.remove()" title="Remove" style="width:30px;height:30px;flex:none">✕</button>';
+    box.appendChild(div);
+  };
+  window.upLoadSheet = function () {
+    var cls = ($("upCls").value || "").trim().toUpperCase(), subj = ($("upSubj").value || "").trim();
+    if (!cls || !subj) return toastErr("Enter class and subject first, then load the sheet.");
+    api("/" + slug + "/results/upload?class_name=" + encodeURIComponent(cls)).then(function (d) {
+      var sheet = (d.sheets || []).filter(function (s) { return (s.subject || "").toLowerCase() === subj.toLowerCase(); })[0];
+      $("upRows").innerHTML = "";
+      if (sheet) {
+        $("upTerm").value = sheet.term || ""; $("upSession").value = sheet.session || ""; $("upMax").value = sheet.max_score || 100;
+        (sheet.rows || []).forEach(function (r) { upAddRow(r.student_name, r.reg_number, r.ca, r.exam); });
+        toast("Loaded existing sheet — saving replaces it");
+      } else { toast("No existing sheet — filling a new one"); }
+      if (!$("upRows").children.length) upAddRow();
+    }).catch(toastErr);
+  };
+  window.upSave = function () {
+    var cls = ($("upCls").value || "").trim(), subj = ($("upSubj").value || "").trim();
+    if (!cls) return toastErr("Enter the class.");
+    if (!subj) return toastErr("Enter the subject.");
+    var rows = [];
+    document.querySelectorAll("#upRows .up-row").forEach(function (row) {
+      var nm = row.querySelector(".up-name").value.trim();
+      if (!nm) return;
+      rows.push({ student_name: nm, reg_number: row.querySelector(".up-reg").value.trim() || null,
+        ca: parseFloat(row.querySelector(".up-ca").value) || 0, exam: parseFloat(row.querySelector(".up-ex").value) || 0 });
+    });
+    if (!rows.length) return toastErr("Add at least one student with a name.");
+    api("/" + slug + "/results/upload", { method: "POST", body: {
+      class_name: cls, subject: subj, term: $("upTerm").value, session: $("upSession").value.trim(),
+      max_score: parseFloat($("upMax").value) || 100, rows: rows,
+    } }).then(function (d) {
+      toast("✓ Result sheet saved — " + d.sheet.count + " students, grades computed");
+      upSheets();
+    }).catch(toastErr);
+  };
+  function upSheets() {
+    api("/" + slug + "/results/upload").then(function (d) {
+      var sheets = d.sheets || [];
+      var box = $("upSheets"); if (!box) return;
+      if (!sheets.length) { box.innerHTML = '<div class="empty">No sheets uploaded yet.</div>'; return; }
+      box.innerHTML = tbl(["Class", "Subject", "Term", "Session", "Students", "Uploaded", ""], sheets.map(function (s) {
+        return '<tr><td><span class="pill violet">' + esc(s.class_name) + '</span></td><td><span class="pill blue">' + esc(s.subject) + '</span></td><td>' + esc(s.term || "—") + '</td><td>' + esc(s.session || "—") + '</td><td>' + s.count + '</td><td>' + dOnly(s.uploaded_at) + '</td>' +
+          '<td style="white-space:nowrap"><button class="btn sm ghost" onclick="upView(\'' + s.id + '\')">👁 View</button> <button class="btn sm red" onclick="upDel(\'' + s.id + '\')">Delete</button></td></tr>';
+      }));
+    }).catch(function (e) { var b = $("upSheets"); if (b) b.innerHTML = '<div class="empty">' + esc(errText(e)) + '</div>'; });
+  }
+  window.upView = function (id) {
+    api("/" + slug + "/results/upload").then(function (d) {
+      var s = (d.sheets || []).filter(function (x) { return x.id === id; })[0];
+      if (!s) return;
+      openModal("Result sheet — " + esc(s.class_name) + " · " + esc(s.subject),
+        tbl(["Student", "Reg Number", "CA", "Exam", "Total", "%", "Grade"], (s.rows || []).map(function (r) {
+          return '<tr><td><strong>' + esc(r.student_name) + '</strong></td><td>' + esc(r.reg_number || "—") + '</td><td>' + r.ca + '</td><td>' + r.exam + '</td><td><strong>' + r.total + '</strong></td><td>' + r.percentage + '%</td><td><span class="pill ' + (r.percentage >= 50 ? "ok" : "bad") + '">' + esc(r.grade) + '</span></td></tr>';
+        })), '<button class="btn ghost" onclick="closeModal()">Close</button>', true);
+    }).catch(toastErr);
+  };
+  window.upDel = function (id) {
+    confirmModal("Delete sheet", "Delete this uploaded result sheet?", function (btn) {
+      busy(btn, true);
+      api("/" + slug + "/results/upload/" + id, { method: "DELETE" }).then(function () {
+        closeModal(); toast("Sheet deleted"); upSheets();
+      }).catch(function (e) { busy(btn, false, "Confirm"); mErr(errText(e)); });
+    }, "Delete", true);
   };
 
   /* ═══ RESULTS (legacy CBT practice results) ═══ */

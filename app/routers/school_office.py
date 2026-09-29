@@ -1408,3 +1408,163 @@ async def portal_update_fee(
     flag_modified(campus, "portal_fees")
     await db.commit()
     return {"ok": True, "fees": rows}
+
+
+# ── Result upload (owner addition) ───────────────────────────────────────
+# Same self-contained JSON pattern as portal_fees: each school's uploaded
+# result sheets live on the campus row, keyed by class + subject + term.
+# Reference flow: pick class → pick subject → upload/edit scores → save.
+
+class ResultRowIn(BaseModel):
+    student_name: str = Field(min_length=2, max_length=255)
+    reg_number: str | None = Field(default=None, max_length=60)
+    ca: float = Field(default=0, ge=0)          # continuous assessment
+    exam: float = Field(default=0, ge=0)        # exam score
+
+
+class ResultUploadIn(BaseModel):
+    class_name: str = Field(min_length=1, max_length=60)
+    subject: str = Field(min_length=1, max_length=120)
+    term: str = Field(default="", max_length=40)
+    session: str = Field(default="", max_length=40)
+    max_score: float = Field(default=100, gt=0)
+    rows: list[ResultRowIn] = []
+
+
+def _grade_for(pct: float) -> str:
+    try:
+        from app.models.school_cbt import grade_from_percentage
+
+        return grade_from_percentage(float(pct))
+    except Exception:
+        if pct >= 75:
+            return "A1"
+        if pct >= 70:
+            return "B2"
+        if pct >= 65:
+            return "B3"
+        if pct >= 60:
+            return "C4"
+        if pct >= 55:
+            return "C5"
+        if pct >= 50:
+            return "C6"
+        if pct >= 45:
+            return "D7"
+        if pct >= 40:
+            return "E8"
+        return "F9"
+
+
+def _result_sheet_dict(sheet: dict) -> dict:
+    """Public shape of one uploaded sheet."""
+    return {
+        "id": sheet.get("id"),
+        "class_name": sheet.get("class_name"),
+        "subject": sheet.get("subject"),
+        "term": sheet.get("term") or "",
+        "session": sheet.get("session") or "",
+        "max_score": sheet.get("max_score") or 100,
+        "uploaded_at": sheet.get("uploaded_at"),
+        "count": len(sheet.get("rows") or []),
+        "rows": sheet.get("rows") or [],
+    }
+
+
+@portal_router.get("/{slug}/results/upload")
+async def portal_result_uploads(
+    slug: str,
+    class_name: Optional[str] = None,
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Uploaded result sheets, optionally filtered to one class."""
+    info = await portal_public_info(slug, db)
+    campus = await _campus(db, current_user, info["school_id"])
+    sheets = list(getattr(campus, "portal_results", None) or [])
+    if class_name:
+        want = class_name.strip().upper()
+        sheets = [s for s in sheets if str(s.get("class_name") or "").upper() == want]
+    classes = sorted({str(s.get("class_name") or "").upper() for s in sheets if s.get("class_name")})
+    return {"sheets": [_result_sheet_dict(s) for s in sheets], "classes": classes}
+
+
+@portal_router.post("/{slug}/results/upload", status_code=201)
+async def portal_upload_results(
+    slug: str,
+    payload: ResultUploadIn,
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload (or replace) one class+subject+term result sheet. Rows carry
+    CA + exam scores; totals, percentages and WAEC grades are computed
+    server-side. Re-uploading the same class+subject+term+session replaces
+    the previous sheet (results stay in the class's custody)."""
+    info = await portal_public_info(slug, db)
+    campus = await _campus(db, current_user, info["school_id"])
+    if not payload.rows:
+        raise HTTPException(status_code=400, detail="Add at least one student score")
+
+    max_total = float(payload.max_score or 100)
+    rows = []
+    for r in payload.rows[:300]:
+        total = round(float(r.ca or 0) + float(r.exam or 0), 2)
+        pct = round(100 * total / max_total, 1) if max_total else 0
+        rows.append(
+            {
+                "student_name": r.student_name.strip(),
+                "reg_number": (r.reg_number or "").strip() or None,
+                "ca": round(float(r.ca or 0), 2),
+                "exam": round(float(r.exam or 0), 2),
+                "total": total,
+                "percentage": pct,
+                "grade": _grade_for(pct),
+            }
+        )
+
+    sheets = list(getattr(campus, "portal_results", None) or [])
+    key = (
+        payload.class_name.strip().upper(),
+        payload.subject.strip().lower(),
+        (payload.term or "").strip().lower(),
+        (payload.session or "").strip().lower(),
+    )
+    sheets = [s for s in sheets if (
+        str(s.get("class_name") or "").upper(),
+        str(s.get("subject") or "").lower(),
+        str(s.get("term") or "").lower(),
+        str(s.get("session") or "").lower(),
+    ) != key]
+    sheets.insert(
+        0,
+        {
+            "id": secrets.token_hex(6),
+            "class_name": payload.class_name.strip(),
+            "subject": payload.subject.strip(),
+            "term": (payload.term or "").strip(),
+            "session": (payload.session or "").strip(),
+            "max_score": max_total,
+            "uploaded_at": naive_utc_now().date().isoformat(),
+            "rows": rows,
+        },
+    )
+    campus.portal_results = sheets[:200]
+    flag_modified(campus, "portal_results")
+    await db.commit()
+    return {"ok": True, "sheet": _result_sheet_dict(sheets[0]), "sheets": [_result_sheet_dict(s) for s in sheets[:200]]}
+
+
+@portal_router.delete("/{slug}/results/upload/{sheet_id}")
+async def portal_delete_result_sheet(
+    slug: str,
+    sheet_id: str,
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    info = await portal_public_info(slug, db)
+    campus = await _campus(db, current_user, info["school_id"])
+    sheets = [s for s in (getattr(campus, "portal_results", None) or []) if s.get("id") != sheet_id]
+    campus.portal_results = sheets
+    flag_modified(campus, "portal_results")
+    await db.commit()
+    return {"ok": True}
