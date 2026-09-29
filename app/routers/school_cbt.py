@@ -30,7 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.core.deps import require_school_staff
 from app.core.datetime_utils import naive_utc_now
-from app.core.security import decode_token
+from app.core.security import decode_token, hash_password
 from app.models.school_cbt import (
     EXAM_MODES,
     SchoolExQuestionBank,
@@ -1003,6 +1003,231 @@ async def class_roster(
     }
 
 
+@router.get("/students/register")
+async def register_form_options(
+    school_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Dropdown data for the Register Student form: class categories
+    (Junior/Senior), classes and the subjects prepared per class."""
+    sid = _staff_school_id(current_user, school_id)
+    exams = (
+        await db.execute(select(SchoolExam).where(SchoolExam.school_id == sid))
+    ).scalars().all()
+    classes: dict[str, set[str]] = {}
+    for e in exams:
+        cls = (e.class_name or "").strip().upper()
+        if cls:
+            classes.setdefault(cls, set()).add(e.subject)
+    cats: dict[str, list[str]] = {"junior": [], "senior": [], "other": []}
+    for cls in sorted(classes):
+        if cls.startswith("JS"):
+            cats["junior"].append(cls)
+        elif cls.startswith("SS"):
+            cats["senior"].append(cls)
+        else:
+            cats["other"].append(cls)
+    return {
+        "categories": [
+            {"id": "junior", "name": "Junior Secondary", "classes": cats["junior"]},
+            {"id": "senior", "name": "Senior Secondary", "classes": cats["senior"]},
+            {"id": "other", "name": "Other Classes", "classes": cats["other"]},
+        ],
+        "class_subjects": {cls: sorted(subs) for cls, subs in classes.items()},
+    }
+
+
+class RegisterStudentIn(BaseModel):
+    """Reference 'Register Student for Exam' form — names, class, subject.
+    Registration Number + Access Code are ALWAYS generated server-side."""
+    first_name: str = Field(min_length=1, max_length=80)
+    middle_name: Optional[str] = Field(default=None, max_length=80)
+    surname: str = Field(min_length=1, max_length=80)
+    class_name: str = Field(min_length=1, max_length=40)
+    subject: str = Field(min_length=1, max_length=120)  # subject name or "ALL"
+
+
+@router.post("/students/register", status_code=201)
+async def register_exam_student(
+    payload: RegisterStudentIn,
+    school_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Register a student for exams (reference flow): creates the student,
+    assigns them to the class+subject exam(s) and issues their Registration
+    Number + Access Code immediately."""
+    sid = _staff_school_id(current_user, school_id)
+    full = " ".join(
+        x for x in [payload.first_name.strip(), (payload.middle_name or "").strip(), payload.surname.strip()] if x
+    )
+    cls = payload.class_name.strip().upper()
+    # Exam-scoped students never log into the main app; email is a unique
+    # placeholder (they sign in with REG NUMBER + ACCESS CODE, §14).
+    while True:
+        email = f"exam.{secrets.token_hex(6).lower()}@students.scholaxia.local"
+        if (await db.execute(select(User.id).where(User.email == email))).scalar_one_or_none() is None:
+            break
+    user = User(
+        email=email,
+        hashed_password=hash_password(secrets.token_urlsafe(12)),
+        full_name=full[:120],
+        role=UserRole.student,
+        is_verified=True,
+        is_active=True,
+        school_id=sid,
+    )
+    db.add(user)
+    await db.flush()
+    db.add(StudentProfile(user_id=user.id, education_level=cls))
+    await db.flush()
+
+    q = select(SchoolExam).where(
+        SchoolExam.school_id == sid,
+        func.upper(SchoolExam.class_name) == cls,
+    )
+    if payload.subject.strip().upper() != "ALL":
+        q = q.where(func.lower(SchoolExam.subject) == payload.subject.strip().lower())
+    exams = (await db.execute(q)).scalars().all()
+    if not exams:
+        raise HTTPException(
+            status_code=400,
+            detail=f"No examination found for {cls} / {payload.subject} — prepare it under Exam Settings first",
+        )
+    have = {
+        str(r)
+        for r in (
+            await db.execute(
+                select(SchoolExamAssignment.exam_id).where(
+                    SchoolExamAssignment.student_id == user.id,
+                    SchoolExamAssignment.exam_id.in_([e.id for e in exams]),
+                )
+            )
+        ).scalars().all()
+    }
+    for e in exams:
+        if str(e.id) in have:
+            continue
+        db.add(
+            SchoolExamAssignment(
+                school_id=sid, exam_id=e.id, student_id=user.id,
+                class_name=cls, subject=e.subject,
+            )
+        )
+        await _ensure_access_codes(db, e)
+    await db.flush()
+    code = (
+        await db.execute(
+            select(SchoolExamAccessCode)
+            .where(SchoolExamAccessCode.student_id == user.id)
+            .order_by(SchoolExamAccessCode.created_at.desc())
+        )
+    ).scalars().first()
+    return {
+        "student_id": str(user.id),
+        "full_name": user.full_name,
+        "class_name": cls,
+        "exams_assigned": len(exams),
+        "subjects": sorted({e.subject for e in exams}),
+        "reg_number": code.reg_number if code else None,
+        "access_code": code.access_code if code else None,
+    }
+
+
+@router.get("/exam-students")
+async def exam_students_aggregate(
+    class_name: Optional[str] = None,
+    subject: Optional[str] = None,
+    school_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reference 'Manage Exam Students' table across ALL exams: Reg Number,
+    Full Name, Class, Subject, Access Code, Status — filterable."""
+    sid = _staff_school_id(current_user, school_id)
+    q = (
+        select(SchoolExamAccessCode, SchoolExam, User)
+        .join(SchoolExam, SchoolExam.id == SchoolExamAccessCode.exam_id)
+        .join(User, User.id == SchoolExamAccessCode.student_id)
+        .where(SchoolExam.school_id == sid)
+        .order_by(SchoolExamAccessCode.reg_number)
+    )
+    if class_name and str(class_name).strip().upper() != "ALL":
+        q = q.where(func.upper(SchoolExam.class_name) == str(class_name).strip().upper())
+    if subject and str(subject).strip().upper() != "ALL":
+        q = q.where(func.lower(SchoolExam.subject) == str(subject).strip().lower())
+    rows = (await db.execute(q)).all()
+    now = naive_utc_now()
+    out = []
+    for code, exam, user in rows:
+        out.append(
+            {
+                "student_id": str(user.id),
+                "exam_id": str(exam.id),
+                "full_name": user.full_name,
+                "class_name": (exam.class_name or "").upper(),
+                "subject": exam.subject,
+                "reg_number": code.reg_number,
+                "access_code": code.access_code,
+                "exam_taken": bool(code.is_used),
+                "locked": bool(code.locked_until and code.locked_until > now),
+                "status": "used" if code.is_used else ("locked" if code.locked_until and code.locked_until > now else "pending"),
+            }
+        )
+    return {"students": out}
+
+
+@router.get("/retake-lookup/{reg_number}")
+async def retake_lookup(
+    reg_number: str,
+    school_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reference 'Grant Exam Retake': type a registration number → fetch the
+    student's exams + scores → grant the retake on any of them."""
+    sid = _staff_school_id(current_user, school_id)
+    reg = (reg_number or "").strip().upper()
+    rows = (
+        await db.execute(
+            select(SchoolExamAccessCode, SchoolExam, User)
+            .join(SchoolExam, SchoolExam.id == SchoolExamAccessCode.exam_id)
+            .join(User, User.id == SchoolExamAccessCode.student_id)
+            .where(
+                SchoolExam.school_id == sid,
+                func.upper(func.trim(SchoolExamAccessCode.reg_number)) == reg,
+            )
+            .order_by(SchoolExam.created_at.desc())
+        )
+    ).all()
+    out = []
+    for code, exam, user in rows:
+        res = (
+            await db.execute(
+                select(SchoolExamResult).where(
+                    SchoolExamResult.exam_id == exam.id,
+                    SchoolExamResult.student_id == user.id,
+                )
+            )
+        ).scalar_one_or_none()
+        out.append(
+            {
+                "student_id": str(user.id),
+                "exam_id": str(exam.id),
+                "student_name": user.full_name,
+                "class_name": (exam.class_name or "").upper(),
+                "subject": exam.subject,
+                "submitted": bool(code.is_used),
+                "score": (res.final_score if res else None),
+                "total_mark": (res.total_mark if res else None),
+                "percentage": (res.percentage if res else None),
+                "grade": (res.grade if res else None),
+            }
+        )
+    return {"matches": out}
+
+
 @router.get("/schedule")
 async def schedule_overview(
     school_id: Optional[str] = Query(None),
@@ -1043,6 +1268,7 @@ async def schedule_overview(
                 "duration_minutes": e.duration_minutes,
                 "venue": cls,
                 "questions": qcounts.get(str(e.id), 0),
+                "questions_to_display": e.questions_to_display or qcounts.get(str(e.id), 0),
                 "status": e.status,
                 "is_published": bool(e.is_published),
                 "window_open": bool(

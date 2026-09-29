@@ -402,6 +402,27 @@ async def main():
         check("roster has class exams", roster["exams"] and roster["exams"][0]["subject"] == "Mathematics",
               str(roster["exams"])[:150])
 
+        print("\n── 9f. Register Student + Exam Students + Retake lookup (reference flow) ──")
+        opts = await scbt.register_form_options(school_id=staff_school, current_user=admin_user, db=db)
+        check("register options expose SS2 + subject",
+              "SS2" in opts["class_subjects"] and "Mathematics" in opts["class_subjects"]["SS2"],
+              str(opts)[:200])
+        regd = await scbt.register_exam_student(scbt.RegisterStudentIn(
+            first_name="Ada", middle_name="Z", surname="Obi", class_name="SS2", subject="Mathematics"),
+            staff_school, admin_user, db)
+        check("register issues reg number + code",
+              bool(regd["reg_number"]) and bool(regd["access_code"]) and regd["exams_assigned"] == 1, str(regd))
+        login_ada = await scbt.student_exam_login(
+            scbt.StudentLoginIn(reg_number=regd["reg_number"], access_code=regd["access_code"]), db)
+        check("registered student can log in", bool(login_ada["access_token"]))
+        agg = await scbt.exam_students_aggregate(class_name="SS2", subject="ALL",
+                                                 school_id=staff_school, current_user=admin_user, db=db)
+        ada_row = next((s for s in agg["students"] if s["full_name"] == "Ada Z Obi"), None)
+        check("exam-students aggregate finds Ada", ada_row is not None and ada_row["status"] == "pending", str(ada_row))
+        look = await scbt.retake_lookup(regd["reg_number"], staff_school, admin_user, db)
+        check("retake lookup by reg number", len(look["matches"]) == 1 and look["matches"][0]["subject"] == "Mathematics",
+              str(look)[:200])
+
         print("\n── 10. Result hidden until publish (§22) ──")
         mine2 = await scbt.student_my_exams(credentials=tok, db=db)
         check("student sees no result before publish", mine2["exams"][0]["result"] is None)
