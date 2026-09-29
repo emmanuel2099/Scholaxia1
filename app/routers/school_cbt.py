@@ -910,6 +910,99 @@ class ScheduleIn(BaseModel):
     venue: Optional[str] = Field(default=None, max_length=120)
 
 
+@router.get("/roster/{class_name}")
+async def class_roster(
+    class_name: str,
+    school_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Registered Students in Selected Class (reference Schedule tab):
+    every student in the class, which of the class's exams they are assigned
+    to, their reg number + code status, and their submission counts."""
+    sid = _staff_school_id(current_user, school_id)
+    cls = (class_name or "").strip().upper()
+    students = (
+        await db.execute(
+            select(User)
+            .join(StudentProfile, StudentProfile.user_id == User.id)
+            .where(
+                User.school_id == sid,
+                User.role == UserRole.student,
+                func.upper(StudentProfile.education_level) == cls,
+            )
+            .order_by(User.full_name)
+        )
+    ).scalars().all()
+    class_exams = (
+        await db.execute(
+            select(SchoolExam)
+            .where(
+                SchoolExam.school_id == sid,
+                func.upper(SchoolExam.class_name) == cls,
+            )
+            .order_by(SchoolExam.created_at.desc())
+        )
+    ).scalars().all()
+    exam_ids = [e.id for e in class_exams]
+    assigns: dict[str, set[str]] = {str(su.id): set() for su in students}
+    codes: dict[str, SchoolExamAccessCode] = {}
+    subs: dict[str, int] = {}
+    if exam_ids:
+        for a in (
+            await db.execute(
+                select(SchoolExamAssignment).where(
+                    SchoolExamAssignment.exam_id.in_(exam_ids)
+                )
+            )
+        ).scalars().all():
+            key = str(a.student_id)
+            if key in assigns:
+                assigns[key].add(str(a.exam_id))
+        for c in (
+            await db.execute(
+                select(SchoolExamAccessCode).where(SchoolExamAccessCode.exam_id.in_(exam_ids))
+            )
+        ).scalars().all():
+            codes.setdefault(str(c.student_id), c)  # first code wins (per exam)
+        for exam_id, cnt in (
+            await db.execute(
+                select(SchoolExamAttempt.student_id, func.count(SchoolExamAttempt.id))
+                .where(
+                    SchoolExamAttempt.exam_id.in_(exam_ids),
+                    SchoolExamAttempt.submitted_at != None,  # noqa: E711
+                )
+                .group_by(SchoolExamAttempt.student_id)
+            )
+        ).all():
+            subs[str(exam_id)] = int(cnt)
+    subjects_by_student: dict[str, list[str]] = {}
+    for su in students:
+        subjects_by_student[str(su.id)] = sorted(
+            {e.subject for e in class_exams if str(e.id) in assigns[str(su.id)]}
+        )
+    return {
+        "class_name": cls,
+        "exams": [
+            {"id": str(e.id), "subject": e.subject, "title": e.title, "is_published": bool(e.is_published)}
+            for e in class_exams
+        ],
+        "students": [
+            {
+                "student_id": str(su.id),
+                "full_name": su.full_name,
+                "class_name": cls,
+                "subjects_registered": subjects_by_student[str(su.id)],
+                "exam_count": len(assigns[str(su.id)]),
+                "exams_taken": int(subs.get(str(su.id), 0)),
+                "reg_number": (codes.get(str(su.id)).reg_number if codes.get(str(su.id)) else None),
+                "has_code": bool(codes.get(str(su.id))),
+            }
+            for su in students
+        ],
+    }
+
+
 @router.get("/schedule")
 async def schedule_overview(
     school_id: Optional[str] = Query(None),

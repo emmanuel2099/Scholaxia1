@@ -44,6 +44,19 @@ async def _stub_db():
 # endpoints are called directly in this test, so a stub generator is enough.
 database.get_db = _stub_db
 
+# The school-portal endpoints run a boot-only migration through the app's
+# (stubbed) engine — make it a no-op so tests never leave this file.
+import app.core.startup_db as startup_db  # noqa: E402
+import app.routers.school_office as soffice  # noqa: E402
+
+
+async def _noop_schema() -> None:
+    return None
+
+
+startup_db.ensure_school_campus_schema = _noop_schema
+soffice.ensure_school_campus_schema = _noop_schema
+
 import app.models  # noqa: E402,F401  — register every model
 from app.models.school_campus import SchoolCampus  # noqa: E402
 from app.models.user import User, UserRole, StudentProfile  # noqa: E402
@@ -112,7 +125,7 @@ TABLES = [
 
 async def seed():
     async with TestingSession() as db:
-        campus = SchoolCampus(name="Test College", code="TST", city="Lagos", state="LA", is_active=True)
+        campus = SchoolCampus(name="Test College", code="TST", slug="test-slug", city="Lagos", state="LA", is_active=True)
         db.add(campus)
         await db.flush()
         admin = User(email="admin@test.sch", hashed_password=hash_password("password123"),
@@ -337,6 +350,58 @@ async def main():
               {s["id"] for s in dir_all["students"]} == {str(su.id) for su in students},
               str(dir_all)[:150])
 
+        print("\n── 9c. Schedule endpoints (decoupled from upload) ──")
+        sched = await scbt.schedule_overview(school_id=staff_school, current_user=admin_user, db=db)
+        check("schedule lists the class exam", len(sched["schedule"]) == 1, str(sched)[:200])
+        s0 = sched["schedule"][0]
+        check("schedule row fields", s0["class_name"] == "SS2" and s0["subjects"] == "Mathematics"
+              and s0["duration_minutes"] == 90, str(s0)[:200])
+        from datetime import timedelta as _td
+
+        new_start = datetime.utcnow() + _td(days=1)
+        await scbt.reschedule_exam(exam_id, scbt.ScheduleIn(
+            scheduled_start=new_start, scheduled_end=new_start + _td(minutes=90), duration_minutes=90),
+            staff_school, admin_user, db)
+        sched2 = await scbt.schedule_overview(school_id=staff_school, current_user=admin_user, db=db)
+        check("reschedule closes the window", sched2["schedule"][0]["window_open"] is False,
+              str(sched2["schedule"][0]))
+        await scbt.reschedule_exam(exam_id, scbt.ScheduleIn(scheduled_start=datetime.utcnow()),
+                                   staff_school, admin_user, db)
+        sched3 = await scbt.schedule_overview(school_id=staff_school, current_user=admin_user, db=db)
+        check("window reopens when scheduled now", sched3["schedule"][0]["window_open"] is True,
+              str(sched3["schedule"][0]))
+
+        print("\n── 9d. Bank question upload per class+subject (CSV) ──")
+        csv_content = (
+            "question_text,option_a,option_b,option_c,option_d,correct_option,topic,marks\n"
+            "What is 7 + 5?,10,11,12,13,C,Arithmetic,1\n"
+            "Largest planet?,Earth,Jupiter,Mars,Venus,B,Astronomy,2\n"
+        ).encode("utf-8")
+
+        class _Up:
+            filename = "ss2-agric.csv"
+
+            async def read(self):
+                return csv_content
+
+        imp = await scbt.import_bank_questions(
+            _Up(), class_name="AGRIC", subject="Agricultural Science", name=None,
+            topic=None, marks=1, school_id=staff_school, current_user=admin_user, db=db)
+        check("upload creates class bank", imp["added"] == 2 and imp["bank_total"] == 2, str(imp))
+        up2 = await scbt.import_bank_questions(
+            _Up(), class_name="AGRIC", subject="Agricultural Science", name=None,
+            topic="Soil", marks=1, school_id=staff_school, current_user=admin_user, db=db)
+        check("second upload appends to same bank", up2["bank_id"] == imp["bank_id"] and up2["bank_total"] == 4, str(up2))
+
+        print("\n── 9e. Class roster (Registered Students in Selected Class) ──")
+        roster = await scbt.class_roster("SS2", staff_school, admin_user, db)
+        check("roster lists both students", len(roster["students"]) == 2, str(roster)[:200])
+        rs0 = roster["students"][0]
+        check("roster shows subjects + reg number",
+              rs0["subjects_registered"] == ["Mathematics"] and rs0["reg_number"], str(rs0)[:200])
+        check("roster has class exams", roster["exams"] and roster["exams"][0]["subject"] == "Mathematics",
+              str(roster["exams"])[:150])
+
         print("\n── 10. Result hidden until publish (§22) ──")
         mine2 = await scbt.student_my_exams(credentials=tok, db=db)
         check("student sees no result before publish", mine2["exams"][0]["result"] is None)
@@ -383,6 +448,38 @@ async def main():
             check("unknown exam 404", False, "no exception")
         except HTTPException as e:
             check("unknown exam 404", e.status_code == 404, str(e.status_code))
+
+        print("\n── 14. Result upload per class (portal JSON pattern) ──")
+        admin_user_slug = {"sub": admin.id, "role": "school_admin", "school_id": str(campus.id)}
+        up = await soffice.portal_upload_results(
+            "test-slug",
+            soffice.ResultUploadIn(
+                class_name="SS2", subject="Mathematics", term="First Term", session="2026/2027",
+                max_score=100,
+                rows=[
+                    soffice.ResultRowIn(student_name="Student 1", reg_number=reg1, ca=20, exam=65),
+                    soffice.ResultRowIn(student_name="Student 2", reg_number=reg2, ca=15, exam=40),
+                ],
+            ),
+            current_user=admin_user_slug, db=db)
+        check("sheet saved", up["sheet"]["count"] == 2 and up["sheet"]["class_name"] == "SS2", str(up)[:200])
+        r1 = up["sheet"]["rows"][0]
+        check("server computes total/percent/grade", r1["total"] == 85 and r1["percentage"] == 85.0 and r1["grade"] == "A1", str(r1))
+        r2 = up["sheet"]["rows"][1]
+        check("failing grade computed", r2["total"] == 55 and r2["grade"] in ("C4", "C5", "C6"), str(r2))
+        # Re-upload the same class+subject+term+session → replaces, not duplicates.
+        up2 = await soffice.portal_upload_results(
+            "test-slug",
+            soffice.ResultUploadIn(class_name="SS2", subject="Mathematics", term="First Term",
+                                   session="2026/2027", max_score=100,
+                                   rows=[soffice.ResultRowIn(student_name="Student 1", ca=25, exam=70)]),
+            current_user=admin_user_slug, db=db)
+        check("re-upload replaces sheet", len(up2["sheets"]) == 1 and up2["sheets"][0]["count"] == 1, str(up2)[:200])
+        listed = await soffice.portal_result_uploads("test-slug", class_name="SS2", current_user=admin_user_slug, db=db)
+        check("class filter finds sheet", len(listed["sheets"]) == 1 and listed["classes"] == ["SS2"], str(listed)[:200])
+        await soffice.portal_delete_result_sheet("test-slug", up2["sheet"]["id"], current_user=admin_user_slug, db=db)
+        listed2 = await soffice.portal_result_uploads("test-slug", current_user=admin_user_slug, db=db)
+        check("delete removes sheet", len(listed2["sheets"]) == 0, str(listed2)[:200])
 
     print(f"\n════ RESULT: {len(PASS)} passed, {len(FAIL)} failed ════")
     if FAIL:

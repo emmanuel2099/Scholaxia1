@@ -203,6 +203,22 @@ tr:last-child td{border-bottom:none}
 .mnote{background:var(--okbg);border:1px solid #bfe8cf;color:#116a35;border-radius:10px;padding:12px 14px;font-size:14px;line-height:1.6}
 .mnote code{background:#fff;border:1px solid #bfe8cf;border-radius:6px;padding:2px 7px;font-size:13px;font-weight:700}
 .qrow{border:1.5px solid var(--line);border-radius:12px;padding:13px;margin-bottom:12px;background:#fbfcff}
+/* Exams & CBT — local sidebar (each function its own tab, reference UI) */
+.exside-wrap{display:grid;grid-template-columns:220px 1fr;gap:20px;align-items:start}
+.exside{background:var(--card);border-radius:var(--rad);box-shadow:var(--sh);padding:12px;position:sticky;top:86px}
+.exside button{display:flex;align-items:center;gap:9px;width:100%;text-align:left;background:none;border:none;padding:10px 12px;border-radius:10px;font-size:14px;font-weight:500;color:var(--ink)}
+.exside button:hover{background:var(--sky)}
+.exside button.on{background:var(--blue);color:#fff;font-weight:600}
+.exside-label{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--mut);padding:6px 12px 4px}
+.exmain{min-width:0}
+@media(max-width:900px){
+  .exside-wrap{grid-template-columns:1fr;gap:12px}
+  .exside{position:static;display:flex;gap:4px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:8px;scrollbar-width:none}
+  .exside::-webkit-scrollbar{display:none}
+  .exside button{white-space:nowrap;width:auto;flex:none;border:1.5px solid var(--line);background:#fff}
+  .exside button.on{border-color:var(--blue);background:var(--blue)}
+  .exside-label{display:none}
+}
 /* Upload Results: one flex row per student (wraps on small screens) */
 .up-row{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
 .up-row .f-in{flex:1;min-width:150px}
@@ -716,30 +732,112 @@ tr:last-child td{border-bottom:none}
       body: opts.form ? opts.form : (opts.body ? JSON.stringify(opts.body) : undefined),
     }).then(_handle);
   }
-  var EX_TAB = "exams";
-  R.exams = function () {
-    var tabs = [["exams", "📋 Exams"], ["bank", "🏦 Exam Bank"], ["students", "👥 Exam Students"], ["codes", "🔑 Access Codes & Reg Numbers"], ["schedule", "🗓️ Exam Schedule"], ["up", "📤 Upload Results"], ["results", "🏆 Results"]];
-    $("pages").innerHTML = head("Exams & CBT", "Upload questions per class, schedule exams separately, generate access codes, upload result sheets and grant retakes.",
-        '<button class="btn" onclick="createExamModal()">+ Create Examination</button>') +
-      '<div class="tabs" id="exTabs">' + tabs.map(function (t) {
-        return '<button data-t="' + t[0] + '" class="' + (EX_TAB === t[0] ? "on" : "") + '" onclick="exTab(\'' + t[0] + '\')">' + t[1] + '</button>';
-      }).join("") + '</div><div id="exBody"><div class="empty">Loading…</div></div>';
-    renderExTab();
+  /* ═══ EXAMS & CBT — each function is its OWN tab in the sidebar,
+     exactly like the reference dashboard (Register Student, Exam Students,
+     Access Subjects, Exam Schedule, Exam Results…). ═══ */
+  var EX_PAGE = "exams";
+  var EX_PAGES = [
+    ["exams", "📋", "Exam Settings", "Create exams, configure marks/duration/mode"],
+    ["bank", "🏦", "Access Subjects", "Question bank per class — JS1 to SS3 — upload questions"],
+    ["exreg", "🧾", "Register Student", "Register students for exams — reg number + access code"],
+    ["students", "👥", "Exam Students", "Assigned students, exam taken status"],
+    ["codes", "🔑", "Access Codes", "Generate, print, reset access codes"],
+    ["schedule", "🗓️", "Exam Schedule", "Pick a class — set date, time and duration"],
+    ["up", "📤", "Upload Results", "Result sheets per class, term and subject"],
+    ["results", "🏆", "Exam Results", "Scores, grades, publish and Grant Retake"],
+  ];
+  R.exams = function () { showExPage("exams"); };
+  window.showExPage = function (key) {
+    EX_PAGE = key;
+    var meta = EX_PAGES.filter(function (p) { return p[0] === key; })[0] || EX_PAGES[0];
+    var nav = EX_PAGES.map(function (p) {
+      return '<button class="' + (p[0] === key ? "on" : "") + '" onclick="showExPage(\'' + p[0] + '\')">' +
+        '<span style="width:22px;display:inline-block">' + p[1] + '</span>' + p[2] + '</button>';
+    }).join("");
+    var actions = key === "exams" ? '<button class="btn" onclick="createExamModal()">+ Create Examination</button>'
+      : key === "bank" ? '<button class="btn" onclick="uploadQuestionsModal()">⬆ Upload Questions</button>'
+      : key === "codes" ? '<button class="btn ghost" onclick="printCodeSlips()">🖨️ Print Slips</button>'
+      : "";
+    $("pages").innerHTML =
+      '<div class="exside-wrap"><aside class="exside">' +
+      '<div class="exside-label">Examination</div>' + nav +
+      '<div class="exside-label" style="margin-top:14px">General</div>' +
+      '<button onclick="showPage(\'results\')"><span style="width:22px;display:inline-block">📊</span>Portal Results</button>' +
+      '<button onclick="showPage(\'fees\')"><span style="width:22px;display:inline-block">💳</span>Fees & Finance</button>' +
+      '</aside><div class="exmain">' +
+      head(meta[2], meta[3], actions) +
+      '<div id="exBody"><div class="empty">Loading…</div></div></div></div>';
+    renderExPage();
   };
-  window.exTab = function (t) {
-    EX_TAB = t;
-    document.querySelectorAll("#exTabs button").forEach(function (b) { b.classList.toggle("on", b.dataset.t === t); });
-    renderExTab();
-  };
-  function renderExTab() {
-    if (EX_TAB === "exams") return exList();
-    if (EX_TAB === "bank") return bankList();
-    if (EX_TAB === "students") return studentsList();
-    if (EX_TAB === "codes") return codesList();
-    if (EX_TAB === "schedule") return scheduleList();
-    if (EX_TAB === "up") return upList();
-    if (EX_TAB === "results") return resultsList();
+  function renderExPage() {
+    if (EX_PAGE === "exams") return exList();
+    if (EX_PAGE === "bank") return bankList();
+    if (EX_PAGE === "exreg") return exRegList();
+    if (EX_PAGE === "students") return studentsList();
+    if (EX_PAGE === "codes") return codesList();
+    if (EX_PAGE === "schedule") return scheduleList();
+    if (EX_PAGE === "up") return upList();
+    if (EX_PAGE === "results") return resultsList();
   }
+  /* legacy aliases — older actions call exTab / renderExTab */
+  window.exTab = showExPage;
+  window.renderExTab = renderExPage;
+
+  /* — Register Student page (reference: pick class → Registered Students in
+     Selected Class → register for exams, reg number + code issued) — */
+  function exRegList() {
+    cbtApi("/exams").then(function (d) {
+      var classes = [];
+      (d.exams || []).forEach(function (x) { if (x.class_name && classes.indexOf(x.class_name) < 0) classes.push(x.class_name); });
+      classes.sort();
+      var cls = window.__regCls;
+      if (cls && classes.indexOf(cls) < 0) cls = null;
+      if (!cls && classes.length) cls = classes[0];
+      window.__regCls = cls;
+      var chips = classes.length ? classes.map(function (c) {
+        return '<label onclick="regCls(\'' + esc(c) + '\')" style="cursor:pointer' + (cls === c ? ";border-color:var(--blue);color:var(--blue);background:var(--sky)" : "") + '">' + esc(c) + '</label>';
+      }).join("") : '<span class="muted">No exams yet — create one under Exam Settings first.</span>';
+      $("exBody").innerHTML = '<div class="panel"><h3>Register Students for Exams</h3>' +
+        '<p class="mhint" style="margin-bottom:12px">Pick a class to see its registered students. Register them for an exam and their Registration Number + Access Code are issued straight away.</p>' +
+        '<div class="radio-row" style="margin-bottom:14px">' + chips + '</div>' +
+        (cls ? '<div class="form-grid"><div><label class="f-label">Register whole class for exam</label><select class="f-in" id="rgExam">' +
+          (d.exams || []).filter(function (x) { return (x.class_name || "").toUpperCase() === cls; }).map(function (x) {
+            return '<option value="' + x.id + '">' + esc(x.subject) + " — " + esc(x.class_name) + (x.status === "published" ? "" : " (draft)") + '</option>';
+          }).join("") + '</select></div>' +
+          '<div><label class="f-label">&nbsp;</label><button class="btn" onclick="regClassForExam()">➕ Register class & issue codes</button></div></div>' +
+          '<div id="rgTbl"><div class="empty">Loading students…</div></div>' : '') +
+        '</div>';
+      if (cls) regLoadRoster(cls);
+    }).catch(function (e) { $("exBody").innerHTML = '<div class="panel"><div class="empty">' + esc(errText(e)) + '</div></div>'; });
+  }
+  window.regCls = function (c) { window.__regCls = c; exRegList(); };
+  function regLoadRoster(cls) {
+    cbtApi("/roster/" + encodeURIComponent(cls)).then(function (d) {
+      var st = d.students || [];
+      var rows = st.map(function (s, i) {
+        var stt = s.exam_count > 0 ? '<span class="pill ok">Registered</span>' : '<span class="pill warn">Pending</span>';
+        return '<tr><td>' + (i + 1) + '</td><td><code>' + esc(s.reg_number || "—") + '</code></td><td><strong>' + esc(s.full_name) + '</strong></td><td>' + stt + '</td><td>' + (s.subjects_registered || []).map(function (x) { return '<span class="pill blue">' + esc(x) + '</span>'; }).join(" ") + '</td>' +
+          '<td style="white-space:nowrap"><button class="btn sm ghost" onclick="regOneStudent(\'' + s.student_id + '\',\'' + esc(s.full_name).replace(/'/g, "") + '\')">➕ Register</button></td></tr>';
+      });
+      var box = $("rgTbl");
+      if (box) box.innerHTML = '<div class="stat-mini"><span class="chip">In class: ' + st.length + '</span><span class="chip g">Registered: ' + st.filter(function (s) { return s.exam_count > 0; }).length + '</span><span class="chip w">Pending: ' + st.filter(function (s) { return !s.exam_count; }).length + '</span></div>' +
+        (rows.length ? tbl(["S/N", "Reg Number", "Student Name", "Status", "Subjects Registered", ""], rows) : '<div class="empty">No students in ' + esc(cls) + ' yet — add students under the Students tab.</div>');
+    }).catch(function (e) { var b = $("rgTbl"); if (b) b.innerHTML = '<div class="empty">' + esc(errText(e)) + '</div>'; });
+  }
+  window.regClassForExam = function () {
+    var cls = window.__regCls, sel = $("rgExam");
+    if (!cls || !sel || !sel.value) return toastErr("Create an exam for this class first (Exam Settings).");
+    cbtApi("/exams/" + sel.value + "/access-codes", { method: "POST", body: { class_names: [cls] } })
+      .then(function (dd) { toast("✓ Class registered — " + dd.new_codes + " code(s) issued"); regLoadRoster(cls); })
+      .catch(toastErr);
+  };
+  window.regOneStudent = function (sid, name) {
+    var cls = window.__regCls, sel = $("rgExam");
+    if (!sel || !sel.value) return toastErr("Create an exam for this class first (Exam Settings).");
+    cbtApi("/exams/" + sel.value + "/access-codes", { method: "POST", body: { student_ids: [sid] } })
+      .then(function (dd) { toast(dd.new_codes ? "✓ " + name + " registered — code issued" : name + " was already registered"); regLoadRoster(cls); })
+      .catch(toastErr);
+  };
 
   /* — Exams list (reference: Exam | Class | Subject | Questions | Duration | Mode | Status) — */
   function modePill(m) {
