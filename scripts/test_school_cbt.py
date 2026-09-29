@@ -18,7 +18,7 @@ os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sqlalchemy import select  # noqa: E402
+from sqlalchemy import func, select  # noqa: E402
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
@@ -60,7 +60,7 @@ soffice.ensure_school_campus_schema = _noop_schema
 import app.models  # noqa: E402,F401  — register every model
 from app.models.school_campus import SchoolCampus  # noqa: E402
 from app.models.user import User, UserRole, StudentProfile  # noqa: E402
-from app.models.school_cbt import SchoolExamAccessCode, SchoolExamQuestion  # noqa: E402
+from app.models.school_cbt import SchoolExam, SchoolExamAccessCode, SchoolExamQuestion  # noqa: E402
 from app.core.security import hash_password  # noqa: E402
 
 # SQLite test shims: PG ARRAY → JSON, PG UUID → CHAR(36) that accepts both
@@ -422,6 +422,26 @@ async def main():
         look = await scbt.retake_lookup(regd["reg_number"], staff_school, admin_user, db)
         check("retake lookup by reg number", len(look["matches"]) == 1 and look["matches"][0]["subject"] == "Mathematics",
               str(look)[:200])
+
+        print("\n── 9g. Schedule/save (reference: schedule IS the exam setup) ──")
+        sv = await scbt.save_schedule(scbt.ScheduleSaveIn(
+            class_name="SS2", subjects=["Mathematics"], question_count=2,
+            duration_minutes=45, starts_at=datetime.utcnow(), total_mark=50),
+            staff_school, admin_user, db)
+        check("schedule save updates existing exam", sv["updated"] == 1 and sv["created"] == 0, str(sv))
+        sv2 = await scbt.save_schedule(scbt.ScheduleSaveIn(
+            class_name="SS2", subjects=["Mathematics", "Biology"], question_count=2,
+            duration_minutes=45, starts_at=datetime.utcnow()),
+            staff_school, admin_user, db)
+        check("subject without bank is reported", sv2["missing_questions"] == ["Biology"], str(sv2))
+        ex_now = (await db.execute(select(SchoolExam).where(
+            SchoolExam.school_id == campus.id, func.upper(SchoolExam.class_name) == "SS2"))).scalars().all()
+        maths = next(e for e in ex_now if e.subject == "Mathematics")
+        check("save applied duration + display count",
+              maths.duration_minutes == 45 and maths.questions_to_display == 2 and maths.is_published,
+              f"dur={maths.duration_minutes} disp={maths.questions_to_display}")
+        cl = await scbt.clear_schedule("SS2", staff_school, admin_user, db)
+        check("clear keeps exams with submissions", cl["removed"] == 0, str(cl))
 
         print("\n── 10. Result hidden until publish (§22) ──")
         mine2 = await scbt.student_my_exams(credentials=tok, db=db)

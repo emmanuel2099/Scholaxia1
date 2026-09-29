@@ -1296,6 +1296,198 @@ async def retake_lookup(
     return {"matches": out}
 
 
+class ScheduleSaveIn(BaseModel):
+    """Reference 'Exam Schedule Management' — the schedule IS the exam setup.
+    One slot per class+subject: subjects, question count, duration, start."""
+    class_category: Optional[str] = None
+    class_name: str = Field(min_length=1, max_length=40)
+    subjects: list[str] = Field(min_length=1)
+    question_count: int = Field(ge=1, le=200)
+    duration_minutes: int = Field(ge=1, le=300)
+    starts_at: datetime
+    total_mark: int = Field(default=100, ge=1)
+
+
+@router.post("/schedule/save")
+async def save_schedule(
+    payload: ScheduleSaveIn,
+    school_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Save the exam schedule for a class (reference semantics).
+
+    Creates (or updates) one published exam PER SUBJECT with the given
+    question count / duration / start time. Subjects that were scheduled
+    before but left out now are removed (like the reference's clear+rewrite
+    of the class schedule document). Students of the class see the exams
+    from their window; questions must exist in the per-class bank.
+    """
+    sid = _staff_school_id(current_user, school_id)
+    cls = payload.class_name.strip().upper()
+    want = {s.strip() for s in payload.subjects if s.strip()}
+    if not want:
+        raise HTTPException(status_code=400, detail="Select at least one subject")
+    start = payload.starts_at
+    now = naive_utc_now()
+
+    exams = (
+        await db.execute(
+            select(SchoolExam).where(
+                SchoolExam.school_id == sid,
+                func.upper(SchoolExam.class_name) == cls,
+            )
+        )
+    ).scalars().all()
+    by_subject: dict[str, SchoolExam] = {}
+    for e in exams:
+        by_subject.setdefault((e.subject or "").strip().lower(), e)
+
+    async def bank_count(subject: str) -> int:
+        rows = (
+            await db.execute(
+                select(func.count(SchoolExQuestion.id))
+                .join(SchoolExQuestionBank, SchoolExQuestionBank.id == SchoolExQuestion.bank_id)
+                .where(
+                    SchoolExQuestionBank.school_id == sid,
+                    func.upper(SchoolExQuestionBank.class_name) == cls,
+                    func.lower(SchoolExQuestionBank.subject) == subject.strip().lower(),
+                )
+            )
+        ).scalar_one()
+        return int(rows or 0)
+
+    made, updated, missing = 0, 0, []
+    for subject in sorted(want, key=str.lower):
+        avail = await bank_count(subject)
+        if avail == 0:
+            missing.append(subject)
+            continue
+        exam = by_subject.get(subject.strip().lower())
+        if exam:
+            exam.duration_minutes = int(payload.duration_minutes)
+            exam.questions_to_display = min(int(payload.question_count), avail)
+            exam.total_mark = int(payload.total_mark)
+            exam.exam_date = start
+            exam.scheduled_start = start
+            exam.scheduled_end = start + timedelta(minutes=int(payload.duration_minutes))
+            exam.is_published = start <= now or exam.is_published
+            exam.status = "published" if (start <= now or exam.is_published) else "draft"
+            updated += 1
+        else:
+            exam = SchoolExam(
+                school_id=sid,
+                title=f"{subject} — {cls}",
+                subject=subject.strip(),
+                class_name=cls,
+                exam_type="SCHOOL",
+                exam_mode="ONLINE",
+                total_mark=int(payload.total_mark),
+                duration_minutes=int(payload.duration_minutes),
+                questions_to_display=min(int(payload.question_count), avail),
+                assigned_class_names=[cls],
+                exam_date=start,
+                scheduled_start=start,
+                scheduled_end=start + timedelta(minutes=int(payload.duration_minutes)),
+                is_published=start <= now,
+                status="published" if start <= now else "draft",
+            )
+            db.add(exam)
+            await db.flush()
+            # §8 — fill exam questions from the class bank (all of them; the
+            # engine shows questions_to_display of them per attempt).
+            bank_qs = (
+                await db.execute(
+                    select(SchoolExQuestion)
+                    .join(SchoolExQuestionBank, SchoolExQuestionBank.id == SchoolExQuestion.bank_id)
+                    .where(
+                        SchoolExQuestionBank.school_id == sid,
+                        func.upper(SchoolExQuestionBank.class_name) == cls,
+                        func.lower(SchoolExQuestionBank.subject) == subject.strip().lower(),
+                        SchoolExQuestion.status == "active",
+                    )
+                )
+            ).scalars().all()
+            for i, q in enumerate(bank_qs):
+                db.add(
+                    SchoolExamQuestion(
+                        exam_id=exam.id,
+                        school_id=sid,
+                        bank_question_id=q.id,
+                        question_text=q.question_text,
+                        option_a=q.option_a,
+                        option_b=q.option_b,
+                        option_c=q.option_c,
+                        option_d=q.option_d,
+                        correct_option=q.correct_option,
+                        question_type=q.question_type if q.question_type in ("mcq", "true_false", "multi_select", "theory") else "mcq",
+                        topic=q.topic,
+                        marks=q.marks,
+                        position=i,
+                    )
+                )
+            made += 1
+    # Subjects no longer scheduled → their exams are removed (class schedule
+    # is rewritten, exactly like the reference overwrites its doc).
+    removed = 0
+    for subject, exam in list(by_subject.items()):
+        if subject in {w.strip().lower() for w in want}:
+            continue
+        if any(str(a) for a in (
+            await db.execute(
+                select(SchoolExamAttempt.id).where(SchoolExamAttempt.exam_id == exam.id)
+            )
+        ).scalars().all()[:1]):
+            continue  # keep exams with submissions
+        for rel in (SchoolExamQuestion, SchoolExamAssignment, SchoolExamAccessCode, SchoolExamResult):
+            await db.execute(delete(rel).where(rel.exam_id == exam.id))
+        await db.delete(exam)
+        removed += 1
+    await db.flush()
+    return {
+        "ok": True,
+        "class_name": cls,
+        "created": made,
+        "updated": updated,
+        "removed": removed,
+        "missing_questions": missing,
+    }
+
+
+@router.delete("/schedule/{class_name}")
+async def clear_schedule(
+    class_name: str,
+    school_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Clear the class's schedule (reference 'Clear'): removes scheduled
+    exams that have no submissions yet."""
+    sid = _staff_school_id(current_user, school_id)
+    cls = (class_name or "").strip().upper()
+    exams = (
+        await db.execute(
+            select(SchoolExam).where(
+                SchoolExam.school_id == sid,
+                func.upper(SchoolExam.class_name) == cls,
+            )
+        )
+    ).scalars().all()
+    removed = 0
+    for exam in exams:
+        attempts = (
+            await db.execute(select(SchoolExamAttempt.id).where(SchoolExamAttempt.exam_id == exam.id))
+        ).scalars().all()
+        if attempts:
+            continue
+        for rel in (SchoolExamQuestion, SchoolExamAssignment, SchoolExamAccessCode, SchoolExamResult):
+            await db.execute(delete(rel).where(rel.exam_id == exam.id))
+        await db.delete(exam)
+        removed += 1
+    await db.flush()
+    return {"ok": True, "removed": removed}
+
+
 @router.get("/schedule")
 async def schedule_overview(
     school_id: Optional[str] = Query(None),

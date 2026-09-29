@@ -59,6 +59,10 @@ textarea.f-in{resize:vertical;min-height:60px}
 .nav button.on{background:var(--blue);color:#fff;font-weight:600}
 .nav .ico{width:20px;text-align:center;flex:none}
 .side-foot{padding-top:14px;border-top:1px solid rgba(255,255,255,.09);font-size:12px;color:#8fa3c8;line-height:1.6}
+/* Quick Stats (reference sidebar) */
+.qstats{margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.09);display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.qstats .qs{color:#8fa3c8;font-size:11px;line-height:1.3}
+.qstats .qs b{display:block;color:#fff;font-size:17px;font-weight:800;margin-top:2px}
 .main{display:flex;flex-direction:column;min-width:0}
 .topbar{background:#fff;border-bottom:1px solid var(--line);padding:12px 26px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:30}
 .topbar .search{flex:1;max-width:520px;display:flex;align-items:center;gap:9px;background:var(--bg);border:1px solid var(--line);border-radius:11px;padding:9px 14px;color:var(--mut)}
@@ -268,6 +272,7 @@ tr:last-child td{border-bottom:none}
         <div><h3 id="sbSchool">School</h3><small id="sbTag">Scholaxia School Platform</small></div>
       </div>
       <nav class="nav" id="nav"></nav>
+      <div class="qstats" id="quickStats" style="display:none"></div>
       <div class="side-foot">Better learning today,<br/>brighter futures tomorrow.<br/><span id="sbUser" style="color:#c2cee6"></span></div>
     </aside>
     <div class="main">
@@ -448,14 +453,15 @@ tr:last-child td{border-bottom:none}
     logout();
   }
 
-  /* ── APP SHELL ── */
-  var PAGES = [
-    ["dashboard", "🏠", "Dashboard"], ["students", "👥", "Students"], ["teachers", "👨‍🏫", "Teachers"],
+  /* ── APP SHELL ── */  var PAGES = [
+    ["dashboard", "🏠", "Dashboard"], ["exreg", "🧾", "Register Student"],
+    ["exstudents", "👨‍🎓", "Exam Students"], ["exconfirm", "✅", "Confirm Registration"],
+    ["exsched", "🗓️", "Exam Schedule"],
+    ["students", "👥", "Students"], ["teachers", "👨‍🏫", "Teachers"],
     ["classes", "🎓", "Classes"], ["subjects", "📚", "Subjects"],
-    ["exams", "📋", "Exam Settings"], ["exbank", "🏦", "Access Subjects"], ["exreg", "🧾", "Register Student"],
-    ["exstudents", "👨‍🎓", "Exam Students"],    ["exsched", "🗓️", "Exam Schedule"],
-    ["exretake", "🔄", "Grant Retake"],
-    ["exup", "📤", "Upload Results"], ["exresults", "🏆", "Exam Results"],
+    ["exresults", "🏆", "Exam Results"],
+    ["exbank", "🏦", "Access Subjects"], ["exretake", "🔄", "Grant Retake"],
+    ["exup", "📤", "Upload Results"],
     ["results", "📊", "Results"], ["attendance", "🗓️", "Attendance"], ["fees", "💳", "Fees & Finance"],
     ["reports", "📈", "Reports"], ["settings", "⚙️", "Settings"],
   ];
@@ -473,8 +479,27 @@ tr:last-child td{border-bottom:none}
     $("gSearch").addEventListener("keydown", function (e) {
       if (e.key === "Enter" && this.value.trim()) { showPage("students"); setTimeout(function () { var q = $("stQ"); if (q) { q.value = $("gSearch").value.trim(); loadStudents(); } }, 60); }
     });
+    loadQuickStats();
     showPage("dashboard");
   }
+  function loadQuickStats() {
+    var box = $("quickStats");
+    if (!box) return;
+    cbtApi("/exam-students").then(function (d) {
+      var list = d.students || [];
+      var regs = list.length;
+      var taken = list.filter(function (s) { return s.exam_taken; }).length;
+      var regsByStudent = {};
+      list.forEach(function (s) { regsByStudent[s.reg_number] = 1; });
+      box.style.display = "grid";
+      box.innerHTML =
+        '<div class="qs">Active Students<b>' + Object.keys(regsByStudent).length + '</b></div>' +
+        '<div class="qs">Exam Registrations<b>' + regs + '</b></div>' +
+        '<div class="qs">Pending Approvals<b>' + (regs - taken) + '</b></div>' +
+        '<div class="qs">Results Available<b>' + taken + '</b></div>';
+    }).catch(function () {});
+  }
+  window.loadQuickStats = loadQuickStats;
   window.showPage = function (p) {
     document.querySelectorAll(".nav button").forEach(function (b) { b.classList.toggle("on", b.dataset.p === p); });
     closeModal();
@@ -738,13 +763,13 @@ tr:last-child td{border-bottom:none}
   /* ═══ EXAMS & CBT — each function is its OWN tab in the MAIN sidebar,
      exactly like the reference dashboard (Register Student, Exam Students,
      Access Subjects, Exam Schedule, Exam Results…). ═══ */
-  var EX_PAGE = "exams";
+  var EX_PAGE = "exsched";
   var EX_PAGES = [
-    ["exams", "Exam Settings", "Create exams, configure marks/duration/mode", "<button class=\"btn\" onclick=\"createExamModal()\">+ Create Examination</button>"],
     ["exbank", "Access Subjects", "Question bank per class — JS1 to SS3 — upload questions", "<button class=\"btn\" onclick=\"uploadQuestionsModal()\">⬆ Upload Questions</button>"],
     ["exreg", "Register Student", "Register students for exams — reg number + access code", ""],
     ["exstudents", "Exam Students", "Reg numbers, access codes, exam-taken status — manage per exam", ""],
-    ["exsched", "Exam Schedule", "Pick a class — set date, time and duration", ""],
+    ["exconfirm", "Confirm Registration", "Confirm a student's registration details", ""],
+    ["exsched", "Exam Schedule", "Schedule the class exams — subjects, questions, duration, date", ""],
     ["exretake", "Grant Retake", "Fetch a student by reg number and grant their retake", ""],
     ["exup", "Upload Results", "Result sheets per class, term and subject", ""],
     ["exresults", "Exam Results", "Scores, grades, publish and Grant Retake", ""],
@@ -757,17 +782,17 @@ tr:last-child td{border-bottom:none}
   }
   EX_PAGES.forEach(function (p) { R[p[0]] = function () { exShell(p); }; });
   function renderExPage() {
-    if (EX_PAGE === "exams") return exList();
     if (EX_PAGE === "exbank") return bankList();
     if (EX_PAGE === "exreg") return exRegList();
     if (EX_PAGE === "exstudents") return studentsList();
+    if (EX_PAGE === "exconfirm") return exConfirmList();
     if (EX_PAGE === "exsched") return scheduleList();
     if (EX_PAGE === "exretake") return retakeList();
     if (EX_PAGE === "exup") return upList();
     if (EX_PAGE === "exresults") return resultsList();
   }
   /* legacy aliases — older actions call exTab / renderExTab with old keys */
-  var EX_KEY_MAP = { exams: "exams", bank: "exbank", exreg: "exreg", students: "exstudents", codes: "exstudents", schedule: "exsched", up: "exup", results: "exresults" };
+  var EX_KEY_MAP = { exams: "exsched", bank: "exbank", exreg: "exreg", students: "exstudents", codes: "exstudents", schedule: "exsched", up: "exup", results: "exresults" };
   window.exTab = function (t) { showPage(EX_KEY_MAP[t] || t); };
   window.showExPage = window.exTab;
   window.renderExTab = renderExPage;
@@ -855,65 +880,6 @@ tr:last-child td{border-bottom:none}
     return '<span class="pill ' + (mm === "ONLINE" ? "ok" : mm === "OFFLINE" ? "warn" : "blue") + '">' + mm + '</span>';
   }
   function fmtDurM(mins) { var h = Math.floor((mins || 0) / 60), m = (mins || 0) % 60; return (h ? h + "h" + (m ? " " + m + "m" : "") : m + "m") || "—"; }
-  function exList() {
-    Promise.all([cbtApi("/exams"), cbtApi("/students/register")]).then(function (all) {
-      var list = all[0].exams || [];
-      var meta = all[1] || { categories: [], class_subjects: {} };
-      window.__sxexams = list;
-      var classes = Object.keys(meta.class_subjects || {}).sort();
-      var subjects = [];
-      classes.forEach(function (c) { (meta.class_subjects[c] || []).forEach(function (s) { if (subjects.indexOf(s) < 0) subjects.push(s); }); });
-      subjects.sort();
-      var clsOpts = classes.map(function (c) { return '<option value="' + esc(c) + '">' + esc(c) + '</option>'; }).join("");
-      var subjOpts = subjects.map(function (s) { return '<option value="' + esc(s) + '">' + esc(s) + '</option>'; }).join("");
-      var draft = list.filter(function (x) { return x.status === "draft"; }).length;
-      var sched = list.filter(function (x) { return x.status === "published" && x.scheduled_start; }).length;
-      var active = list.filter(function (x) { return x.status === "published"; }).length;
-      var done = list.filter(function (x) { return x.status === "completed"; }).length;
-      var rows = list.map(function (x) {
-        var st = x.status === "published" ? '<span class="pill ok">Published</span>' : x.status === "completed" ? '<span class="pill gray">Completed</span>' : '<span class="pill warn">Draft</span>';
-        var acts = '<button class="btn sm ghost" onclick="examPreview(\'' + x.id + '\')">👁 Preview</button> ' +
-          '<button class="btn sm ghost" onclick="exTab(\'students\')">🔑 Codes</button> ' +
-          '<button class="btn sm ghost" onclick="examResultsView(\'' + x.id + '\',\'' + esc(x.title).replace(/'/g, "") + '\')">📊 Results</button> ' +
-          (x.status === "published"
-            ? '<button class="btn sm ghost" onclick="toggleSxPublish(\'' + x.id + '\',false)">Unpublish</button>'
-            : '<button class="btn sm green" onclick="toggleSxPublish(\'' + x.id + '\',true)">Publish</button> ') +
-          '<button class="btn sm red" onclick="delSxExam(\'' + x.id + '\',\'' + esc(x.title).replace(/'/g, "") + '\')">Delete</button>';
-        return '<tr><td><strong>' + esc(x.title) + '</strong></td><td><span class="pill violet">' + esc(x.class_name || "—") + '</span></td><td><span class="pill blue">' + esc(x.subject || "—") + '</span></td><td>' + (x.question_count || 0) + '</td><td>' + fmtDurM(x.duration_minutes) + '</td><td>' + modePill(x.exam_mode) + '</td><td>' + x.total_mark + '</td><td>' + (x.submission_count || 0) + '</td><td>' + st + '</td><td style="white-space:nowrap">' + acts + '</td></tr>';
-      });
-      $("exBody").innerHTML =
-        '<div class="panel"><h3>⚙️ Examination Settings</h3>' +
-        '<p class="mhint" style="margin-bottom:14px">Set up an examination: pick the class and subject, configure duration, total mark and how the questions behave — then create it. Questions themselves are uploaded under <strong>Access Subjects</strong>.</p>' +
-        '<div class="form-grid rg3"><div><label class="f-label">Examination Name *</label><input class="f-in" id="exTitle" placeholder="e.g. First Term Mathematics Examination" /></div>' +
-        '<div><label class="f-label">Subject *</label><input class="f-in" id="exSubject" list="exSubjList" placeholder="e.g. Mathematics" /><datalist id="exSubjList">' + subjOpts + '</datalist></div>' +
-        '<div><label class="f-label">Class *</label><select class="f-in" id="exClass">' + (clsOpts ? '<option value="">-- Select class --</option>' + clsOpts : '<option value="">-- No classes yet: add them under Classes --</option>') + '</select></div></div>' +
-        '<div class="form-grid rg3"><div><label class="f-label">Exam Type</label><select class="f-in" id="exType"><option>SCHOOL</option><option>JAMB</option><option>WAEC</option><option>NECO</option><option>COMMON_ENTRANCE</option></select></div>' +
-        '<div><label class="f-label">Duration (minutes) *</label><input class="f-in" id="exDur" type="number" min="5" max="300" value="60" /></div>' +
-        '<div><label class="f-label">Total Mark</label><input class="f-in" id="exMark" type="number" min="1" value="100" /></div></div>' +
-        '<div class="radio-row" style="margin-bottom:14px"><button class="btn green" onclick="exQuickCreate()">➕ Create Examination</button><button class="btn ghost" onclick="createExamModal()">🛠 Full wizard (questions, mode, randomization…)</button></div>' +
-        '<div class="merr" id="exQErr"></div></div>' +
-        '<div class="stat-mini"><span class="chip">Total: ' + list.length + '</span><span class="chip w">Draft: ' + draft + '</span><span class="chip g">Published: ' + active + '</span><span class="chip">Scheduled: ' + sched + '</span><span class="chip gray">Completed: ' + done + '</span></div>' +
-        '<div class="panel">' + (rows.length ? tbl(["Exam", "Class", "Subject", "Questions", "Duration", "Mode", "Total Mark", "Submissions", "Status", "Actions"], rows) : '<div class="empty">No examinations yet — set one up above.</div>') + '</div>';
-    }).catch(function (e) { $("exBody").innerHTML = '<div class="panel"><div class="empty">' + esc(errText(e)) + '</div></div>'; });
-  }
-  window.exQuickCreate = function () {
-    var title = $("exTitle").value.trim(), subj = $("exSubject").value.trim(), cls = $("exClass").value;
-    var err = $("exQErr");
-    err.style.display = "none";
-    if (!title) { err.textContent = "Enter the examination name."; err.style.display = "block"; return; }
-    if (!subj) { err.textContent = "Enter the subject."; err.style.display = "block"; return; }
-    if (!cls) { err.textContent = "Select the class."; err.style.display = "block"; return; }
-    cbtApi("/exams", { method: "POST", body: {
-      title: title, subject: subj, class_name: cls, exam_type: $("exType").value,
-      duration_minutes: parseInt($("exDur").value, 10) || 60,
-      total_mark: parseInt($("exMark").value, 10) || 100,
-      assigned_class_names: [cls],
-      generate_codes: true, publish: false,
-    } }).then(function (d) {
-      toast("✓ " + d.title + " created — now upload questions under Access Subjects, then schedule it");
-      exList();
-    }).catch(function (e) { err.textContent = errText(e); err.style.display = "block"; });
-  };
   window.toggleSxPublish = function (id, pub) {
     cbtApi("/exams/" + id, { method: "PATCH", body: { is_published: pub } })
       .then(function () { toast(pub ? "Exam published — students can now see it" : "Exam unpublished"); renderExTab(); })
@@ -1076,7 +1042,7 @@ tr:last-child td{border-bottom:none}
           (publish ? '<br/>🟢 <strong>Published</strong> — students can log in now' : '<br/>🟡 Saved as draft — publish when ready') + '</div>' +
           '<p class="mhint" style="margin-top:10px">Students log in at <strong>your-school-link/exam</strong> with their Registration Number + Access Code (see the 🔑 Access Codes & Reg Numbers tab).</p>',
           '<button class="btn" onclick="closeModal();exTab(\'students\')">View access codes</button>', true);
-        showPage("exams");
+        showPage("exsched");
       }).catch(function (e) { busy($("exSave"), false, "Create Examination"); mErr(errText(e)); });
     });
   };
@@ -1312,6 +1278,32 @@ tr:last-child td{border-bottom:none}
     setTimeout(function () { try { w.focus(); w.print(); } catch (e) {} }, 350);
   };
 
+  /* — Confirm Registration page (reference): enter reg number + category →
+     Confirm Details → the student's registration record — */
+  function exConfirmList() {
+    $("exBody").innerHTML = '<div class="panel"><h3>✅ Confirm Registration</h3>' +
+      '<p class="mhint" style="margin-bottom:14px">Enter the student\'s Registration Number, pick the category, and confirm their registration details.</p>' +
+      '<div class="form-grid rg3"><div><label class="f-label">🔢 Registration Number *</label><input class="f-in" id="cfReg" placeholder="e.g. SCHX/26/544560" onkeydown="if(event.key===\'Enter\')confirmRegFetch()" /></div>' +
+      '<div><label class="f-label">🎓 Category</label><select class="f-in" id="cfCat"><option value="exam">Exam Student</option></select></div>' +
+      '<div><label class="f-label">&nbsp;</label><button class="btn" onclick="confirmRegFetch()">🔍 Confirm Details</button></div></div>' +
+      '<div id="cfOut"><div class="empty">Enter a registration number and click “Confirm Details”.</div></div></div>';
+    setTimeout(function () { var el = $("cfReg"); if (el) el.focus(); }, 50);
+  }
+  window.confirmRegFetch = function () {
+    var reg = ($("cfReg").value || "").trim();
+    if (!reg) return toastErr("Enter the registration number.");
+    var box = $("cfOut");
+    box.innerHTML = '<div class="empty">Searching…</div>';
+    cbtApi("/retake-lookup/" + encodeURIComponent(reg)).then(function (d) {
+      var ms = d.matches || [];
+      if (!ms.length) { box.innerHTML = '<div class="empty">No registration found for <code>' + esc(reg.toUpperCase()) + '</code>.</div>'; return; }
+      box.innerHTML = '<div class="mnote" style="margin:12px 0">✅ Registration Record — <strong>' + esc(ms[0].student_name) + '</strong> (' + esc(ms[0].class_name) + ')</div>' +
+        tbl(["Subject", "Reg Number", "Access Code", "Status", "Score"], ms.map(function (m) {
+          return '<tr><td><span class="pill blue">' + esc(m.subject) + '</span></td><td><code>' + esc(reg.toUpperCase()) + '</code></td><td>••••••</td><td>' + (m.submitted ? '<span class="pill ok">Confirmed — exam taken</span>' : '<span class="pill warn">Confirmed — pending</span>') + '</td><td>' + (m.score != null ? m.score + ' / ' + m.total_mark : '—') + '</td></tr>';
+        }));
+    }).catch(function (e) { box.innerHTML = '<div class="empty">' + esc(errText(e)) + '</div>'; });
+  };
+
   /* — Exam Schedule page — reference form: pick class → subjects,
      number of questions, duration, start date & time → Save Schedule;
      below: Current Class Schedule + Registered Students in Selected Class — */
@@ -1330,7 +1322,7 @@ tr:last-child td{border-bottom:none}
         '<div class="form-grid rg3"><div><label class="f-label">🔢 Number of Questions *</label><input class="f-in" id="scQCount" type="number" min="1" value="40" /></div>' +
         '<div><label class="f-label">⏱️ Exam Duration (Minutes) *</label><input class="f-in" id="scDur" type="number" min="5" max="300" value="60" /></div>' +
         '<div><label class="f-label">🕐 Start Date & Time *</label><input class="f-in" id="scDate" type="datetime-local" /></div></div>' +
-        '<div class="radio-row"><button class="btn green" onclick="schSave()">💾 Save Schedule</button><button class="btn ghost" onclick="scheduleList()">🔄 Clear</button></div>' +
+        '<div class="radio-row"><button class="btn green" onclick="schSave()">💾 Save Schedule</button><button class="btn ghost" onclick="schClear()">🔄 Clear Schedule</button></div>' +
         '<div class="merr" id="scErr"></div></div>' +
         '<div class="panel"><h3>🔔 Current Class Schedule</h3><p class="mhint">Select a class to view its schedule.</p><div id="scCurrent"><div class="empty">Select a class above</div></div></div>' +
         '<div class="panel"><h3>👨‍🎓 Registered Students in Selected Class</h3><div id="scRoster"><div class="empty">Select a class above</div></div></div>';
@@ -1378,29 +1370,40 @@ tr:last-child td{border-bottom:none}
   window.schSave = function () {
     var cls = $("scClass").value;
     var subs = Array.prototype.slice.call($("scSubjects").selectedOptions || []).map(function (o) { return o.value; }).filter(Boolean);
+    var qn = parseInt($("scQCount").value, 10) || 0;
     var dur = parseInt($("scDur").value, 10) || 0;
     var when = $("scDate").value;
     var err = $("scErr");
     err.style.display = "none";
     if (!cls) { err.textContent = "Select the class category and class."; err.style.display = "block"; return; }
     if (!subs.length) { err.textContent = "Select at least one subject."; err.style.display = "block"; return; }
+    if (!qn) { err.textContent = "Enter the number of questions."; err.style.display = "block"; return; }
+    if (!dur) { err.textContent = "Enter the exam duration in minutes."; err.style.display = "block"; return; }
     if (!when) { err.textContent = "Pick the start date and time."; err.style.display = "block"; return; }
-    cbtApi("/schedule").then(function (d) {
-      var targets = (d.schedule || []).filter(function (r) { return r.class_name === cls && subs.indexOf(r.subjects) >= 0; });
-      if (!targets.length) { err.textContent = "No exams found for " + cls + " / " + subs.join(", ") + " — create them under Exam Settings first."; err.style.display = "block"; return; }
-      var done = 0;
-      targets.forEach(function (t) {
-        cbtApi("/exams/" + t.exam_id + "/schedule", { method: "PATCH", body: {
-          scheduled_start: isoOrNull(when), exam_date: isoOrNull(when),
-          duration_minutes: dur || null,
-        } }).then(function () {
-          if (++done === targets.length) { toast("✓ Schedule saved — " + cls + " students will see their exam at the set time"); schLoadCurrent(cls); }
-        }).catch(function (e) {
-          if (++done === targets.length) schLoadCurrent(cls);
-          toastErr(e);
-        });
-      });
-    }).catch(toastErr);
+    busy(null, true);
+    cbtApi("/schedule/save", { method: "POST", body: {
+      class_name: cls, subjects: subs, question_count: qn, duration_minutes: dur,
+      starts_at: isoOrNull(when), total_mark: 100,
+    } }).then(function (d) {
+      var parts = [];
+      if (d.created) parts.push(d.created + " created");
+      if (d.updated) parts.push(d.updated + " updated");
+      if (d.removed) parts.push(d.removed + " removed");
+      var msg = "✓ Schedule saved — " + (parts.join(", ") || "no changes");
+      if ((d.missing_questions || []).length) msg += " · no questions in bank for: " + d.missing_questions.join(", ") + " (upload them under Access Subjects)";
+      toast(msg);
+      schLoadCurrent(cls);
+    }).catch(function (e) { toastErr(e); }).finally(function () {});
+  };
+  window.schClear = function () {
+    var cls = $("scClass").value;
+    if (!cls) return toastErr("Select the class first.");
+    confirmModal("Clear schedule", 'Clear the whole schedule for <strong>' + esc(cls) + '</strong>? Exams without submissions are removed.', function (btn) {
+      busy(btn, true);
+      cbtApi("/schedule/" + encodeURIComponent(cls), { method: "DELETE" }).then(function (d) {
+        closeModal(); toast(d.removed + " scheduled exam(s) cleared"); schLoadCurrent(cls);
+      }).catch(function (e) { busy(btn, false, "Confirm"); mErr(errText(e)); });
+    }, "Clear", true);
   };
   /* — Grant Exam Retake page — reference: type reg number → Fetch Student →
      see their exams + scores → grant the retake — */
