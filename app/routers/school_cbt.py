@@ -29,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.deps import require_school_staff
-from app.core.datetime_utils import naive_utc_now
+from app.core.datetime_utils import naive_utc_now, to_naive_utc
 from app.core.security import decode_token, hash_password
 from app.models.school_cbt import (
     EXAM_MODES,
@@ -2904,7 +2904,9 @@ async def submit_attempt(
 
 class OfflineBatchIn(BaseModel):
     """§23 — encrypted-at-rest local queue flushed when internet returns."""
-    attempt_id: str
+    attempt_id: Optional[str] = None
+    exam_id: Optional[str] = None      # required when starting offline (start_offline)
+    start_offline: bool = False        # no attempt exists yet — create one on sync
     answers: list[dict] = []   # [{question_id, answer, is_flagged}]
     submit: bool = False
     is_auto_submit: bool = False
@@ -2920,15 +2922,85 @@ async def offline_sync(
     db: AsyncSession = Depends(get_db),
 ):
     """Batch sync of offline answers, then optional submit. Each answer is
-    validated against the server's own attempt/question mapping (§30)."""
-    user, _code = await _exam_student(db, credentials)
-    try:
-        aid = UUID(payload.attempt_id)
-    except ValueError:
-        raise HTTPException(status_code=404, detail="Attempt not found")
-    attempt = (await db.execute(select(SchoolExamAttempt).where(SchoolExamAttempt.id == aid))).scalar_one_or_none()
-    if not attempt or str(attempt.student_id) != str(user.id):
-        raise HTTPException(status_code=404, detail="Attempt not found")
+    validated against the server's own attempt/question mapping (§30).
+
+    True-offline start: with start_offline=True and no attempt_id, the device
+    took the exam entirely offline (downloaded package) — create the attempt
+    NOW, reusing the downloaded question mapping so the marking key agrees.
+    """
+    user, code = await _exam_student(db, credentials)
+    attempt = None
+    if payload.attempt_id:
+        try:
+            aid = UUID(payload.attempt_id)
+        except ValueError:
+            raise HTTPException(status_code=404, detail="Attempt not found")
+        attempt = (await db.execute(select(SchoolExamAttempt).where(SchoolExamAttempt.id == aid))).scalar_one_or_none()
+        if not attempt or str(attempt.student_id) != str(user.id):
+            raise HTTPException(status_code=404, detail="Attempt not found")
+
+    if attempt is None:
+        if not payload.start_offline:
+            raise HTTPException(status_code=404, detail="Attempt not found")
+        if not payload.exam_id:
+            raise HTTPException(status_code=400, detail="exam_id is required to start offline")
+        exam = await _get_school_exam(db, payload.exam_id, user.school_id)
+        await _student_for_exam(db, exam, user.id)
+        if not exam.is_published:
+            raise HTTPException(status_code=403, detail="This examination is not available")
+        # Reuse an in-progress attempt if the device already started server-side.
+        attempt = (
+            await db.execute(
+                select(SchoolExamAttempt).where(
+                    SchoolExamAttempt.exam_id == exam.id,
+                    SchoolExamAttempt.student_id == user.id,
+                    SchoolExamAttempt.status == "in_progress",
+                )
+            )
+        ).scalar_one_or_none()
+        if attempt is None:
+            past = (
+                await db.execute(
+                    select(func.count(SchoolExamAttempt.id)).where(
+                        SchoolExamAttempt.exam_id == exam.id, SchoolExamAttempt.student_id == user.id
+                    )
+                )
+            ).scalar_one()
+            allowed = int(exam.max_attempts or 1) + (1 if str(user.id) in {str(x) for x in (exam.retake_student_ids or [])} else 0)
+            if int(past or 0) >= allowed:
+                raise HTTPException(status_code=403, detail="You have already taken this examination")
+            dl_rec = (
+                await db.execute(
+                    select(SchoolExamDownload).where(
+                        SchoolExamDownload.exam_id == exam.id, SchoolExamDownload.student_id == user.id
+                    )
+                )
+            ).scalar_one_or_none()
+            qs_off = (
+                await db.execute(
+                    select(SchoolExamQuestion).where(SchoolExamQuestion.exam_id == exam.id).order_by(SchoolExamQuestion.position)
+                )
+            ).scalars().all()
+            # Device clocks send tz-aware ISO strings; normalize to naive UTC
+            # so deadline comparisons never mix naive and aware datetimes.
+            started = to_naive_utc(payload.started_at) if payload.started_at else naive_utc_now()
+            attempt = SchoolExamAttempt(
+                school_id=exam.school_id,
+                exam_id=exam.id,
+                student_id=user.id,
+                started_at=started,
+                deadline_at=started + timedelta(minutes=int(exam.duration_minutes or 60)),
+            )
+            # Offline copy ≡ marking key: reuse the downloaded mapping.
+            attempt.question_order = list(dl_rec.question_order or [str(q.id) for q in qs_off])
+            attempt.option_order = dict(dl_rec.option_order or _make_option_order(list(qs_off), exam.randomize_options))
+            db.add(attempt)
+            await db.flush()
+            if code and not code.is_used:
+                code.is_used = True
+                code.used_at = started
+            await _sync_log(db, exam, user.id, "attempt_started", attempt_id=attempt.id, channel="offline_sync")
+
     exam = (await db.execute(select(SchoolExam).where(SchoolExam.id == attempt.exam_id))).scalar_one_or_none()
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
@@ -2977,8 +3049,8 @@ async def offline_sync(
                 attempt_id=str(attempt.id),
                 is_auto_submit=payload.is_auto_submit,
                 offline_sync=True,
-                started_at=payload.started_at,
-                submitted_at=payload.submitted_at,
+                started_at=to_naive_utc(payload.started_at) if payload.started_at else None,
+                submitted_at=to_naive_utc(payload.submitted_at) if payload.submitted_at else None,
                 client=payload.client,
             ),
             credentials,

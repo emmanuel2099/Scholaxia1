@@ -118,7 +118,7 @@ def _seed_demo_school():
             await db.flush()
             db.add(
                 User(
-                    email="admin@divine-light.test",
+                    email="admin@divine-light.example.com",
                     hashed_password=hash_password("Admin1234!"),
                     full_name="Divine Light Admin",
                     role=UserRole.school_admin,
@@ -129,7 +129,7 @@ def _seed_demo_school():
             )
             for i, lvl in ((1, "JSS1"), (2, "JSS2"), (3, "SS2")):
                 u = User(
-                    email=f"stu{i}@divine-light.test",
+                    email=f"stu{i}@divine-light.example.com",
                     hashed_password=hash_password("Student123!"),
                     full_name=f"Test Student {i}",
                     role=UserRole.student,
@@ -182,6 +182,9 @@ from sqlalchemy import select as _select  # noqa: E402
 
 
 async def _sqlite_user_lookup(db, email):
+    # Duck-typed copy of auth.py's SqlUser with STRING ids: the login path
+    # binds user.id/school_id into raw text() SQL, and sqlite3 cannot bind
+    # UUID objects (asyncpg on prod can). ORM lookups only — no writes here.
     from app.models.user import User as _User
 
     try:
@@ -194,19 +197,20 @@ async def _sqlite_user_lookup(db, email):
     if not u:
         return None
 
-    class _W:  # same duck-type as auth.py's SqlUser
+    class _W:
         pass
 
     w = _W()
-    w.id = u.id
+    w.id = str(u.id)
     w.email = u.email
     w.full_name = u.full_name
     w.hashed_password = u.hashed_password
     w.role = str(getattr(u, "role", "student") or "student").replace("UserRole.", "").lower()
     w.is_active = bool(u.is_active)
-    w.school_id = u.school_id
+    w.school_id = str(u.school_id) if u.school_id else None
     w.phone = u.phone
     w.profile_picture = u.profile_picture
+    w.sub_admin_permissions = getattr(u, "sub_admin_permissions", None)
     w.token_version = int(getattr(u, "token_version", 0) or 0)
     return w
 

@@ -100,7 +100,13 @@
     }
     setVisible($("kindFields"), role === "kind" && mode === "signup");
     setVisible($("teacherFields"), role === "teacher" && mode === "signup");
-    setVisible($("vendorFields"), role === "vendor" && mode === "signup");
+    // Vendor signup lives in the Marketplace only — hidden on the normal page.
+    var vendorBtn = document.querySelector(".role-btn[data-role='vendor']");
+    if (vendorBtn) {
+      vendorBtn.hidden = !marketMode;
+      vendorBtn.style.display = marketMode ? "" : "none";
+    }
+    if ($("vendorFields")) setVisible($("vendorFields"), role === "vendor" && mode === "signup");
     setVisible($("teacherHint"), role === "teacher");
     setVisible($("vendorHint"), role === "vendor");
     $("btnSignup").disabled = false;
@@ -225,10 +231,9 @@
   function roleMismatch(selected, actual) {
     if (selected === "teacher") return "This account is not a teacher. Pick the correct role.";
     if (selected === "kind") return "This is not a Kid account. Choose Student or create a Kid account.";
-    if (selected === "vendor") return "This is not a vendor account. Choose Vendor to sell on Market.";
     if (actual === "teacher") return "This is a teacher account. Select Teacher above.";
     if (actual === "kind") return "This is a Kid account. Select Kid above.";
-    if (actual === "vendor") return "This is a vendor account. Select Vendor above.";
+    if (actual === "vendor") return "This is a vendor account. Vendors register through the Marketplace.";
     return "Account type does not match the role you selected.";
   }
 
@@ -459,10 +464,10 @@
           throw new Error("Add at least one subject");
         }
       } else if (role === "vendor") {
-        body.business_name = $("signupBusiness").value.trim();
-        body.phone = $("signupVendorPhone").value.trim();
-        body.location = $("signupVendorLocation").value.trim();
-        body.address = $("signupVendorAddress").value.trim();
+        body.business_name = $("signupBusiness") ? $("signupBusiness").value.trim() : "";
+        body.phone = $("signupVendorPhone") ? $("signupVendorPhone").value.trim() : "";
+        body.location = $("signupVendorLocation") ? $("signupVendorLocation").value.trim() : "";
+        body.address = $("signupVendorAddress") ? $("signupVendorAddress").value.trim() : "";
         if (!body.business_name) throw new Error("Business name is required");
         if (!body.phone || body.phone.length < 7) {
           throw new Error("WhatsApp number is required");
@@ -688,6 +693,7 @@
     });
 
     var roleParam = params.get("role");
+    if (roleParam === "vendor" && !marketMode) roleParam = null; // vendor signup is Marketplace-only
     if (roleParam && (ROLE_META[roleParam] || MARKET_ROLE_META[roleParam])) {
       setRole(roleParam);
     } else if (marketMode) {

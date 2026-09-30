@@ -293,6 +293,19 @@ async def app_home_redirect():
     return RedirectResponse(url="/app/", status_code=307)
 
 
+@app.get("/exam")
+async def exam_home_redirect():
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/exam/", status_code=307)
+
+
+@app.get("/exam/")
+async def exam_home():
+    """Internal Examination portal (reg number + access code login).
+    Same app school subdomains serve at <slug>.scholaxia.com/exam."""
+    return _static_file("exam-app.html")
+
+
 @app.get("/app/")
 async def app_home():
     if not WEBSITE_STATIC_DIR.is_dir():

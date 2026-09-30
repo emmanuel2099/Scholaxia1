@@ -238,7 +238,7 @@ async def _user_from_sql(db: AsyncSession, email: str):
             await db.execute(
                 text(
                     """
-                    SELECT id, email, full_name, hashed_password, role::text AS role,
+                    SELECT id, email, full_name, hashed_password, CAST(role AS VARCHAR) AS role,
                            COALESCE(is_active, true) AS is_active, school_id, phone,
                            profile_picture, COALESCE(token_version, 0) AS token_version
                     FROM users
@@ -900,7 +900,7 @@ async def _login_user(payload: LoginRequest, db: AsyncSession):
                     """
                     SELECT education_level, school_student_id,
                            COALESCE(has_active_subscription, false) AS has_active_subscription,
-                           exam_type::text AS exam_type
+                           CAST(exam_type AS VARCHAR) AS exam_type
                     FROM student_profiles WHERE user_id = :id LIMIT 1
                     """
                 ),
