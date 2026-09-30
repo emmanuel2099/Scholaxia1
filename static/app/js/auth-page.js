@@ -470,11 +470,22 @@
         if (!body.location) throw new Error("Location is required");
         if (!body.address) throw new Error("Business address is required");
       }
-      await api.api("/api/v1/auth/signup/start", {
+      var startRes = await api.api("/api/v1/auth/signup/start", {
         method: "POST",
         noAuth: true,
         body: body,
       });
+      // Dev convenience: when the server runs with DEBUG=1 it returns the OTP in
+      // the response so signup can be tested without an email provider.
+      var devOtp = startRes && (startRes.debug_otp || (startRes.message && /code:\s*(\d{6})/.test(startRes.message) && RegExp.$1));
+      if (devOtp && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
+        var hint = $("devOtpHint");
+        if (hint) {
+          hint.style.display = "";
+          hint.hidden = false;
+          hint.textContent = "Dev mode OTP: " + devOtp;
+        }
+      }
       pendingEmail = email;
       setVisible($("signupStepDetails"), false);
       setVisible($("signupStepOtp"), true);

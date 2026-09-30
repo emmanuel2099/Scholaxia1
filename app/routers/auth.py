@@ -437,7 +437,11 @@ async def send_otp_email(payload: SendOtpRequest, db: AsyncSession = Depends(get
         print(f"[OTP] email send failed for {email}: {e}")
         raise HTTPException(
             status_code=502,
-            detail="Could not send email. Check the address and try again.",
+            detail=(
+                "Could not send email right now (email service error: "
+                + str(e)[:120].replace("\n", " ")
+                + "). The Scholaxia email provider needs attention — try again later."
+            ),
         )
     out = {
         "ok": True,
@@ -527,7 +531,11 @@ async def signup_start(payload: SignupStartRequest, db: AsyncSession = Depends(g
         print(f"[OTP] email send failed for {email}: {e}")
         raise HTTPException(
             status_code=502,
-            detail="Could not send verification email. Check the address and try again.",
+            detail=(
+                "Could not send the verification email right now (email service error: "
+                + str(e)[:120].replace("\n", " ")
+                + "). The Scholaxia email provider needs attention — try again later."
+            ),
         )
     out = {
         "ok": True,

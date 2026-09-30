@@ -12,8 +12,15 @@
       if (/\.scholaxia\.com$/i.test(host) && host.toLowerCase() !== "scholaxia.com" && host.toLowerCase() !== "www.scholaxia.com") {
         return String(location.origin || "").replace(/\/$/, "");
       }
-      // Local dev server (e.g. 127.0.0.1:8000) has no reachable database —
-      // call the production API directly (CORS allows all origins).
+      // Local FastAPI dev server (scripts/run_local.py) serves the site AND
+      // the API on the same origin — use it.
+      if (
+        (host === "localhost" || host === "127.0.0.1") &&
+        (location.port === "8000" || location.port === "")
+      ) {
+        return String(location.origin || "").replace(/\/$/, "");
+      }
+      // Any other local/static port (Live Server etc.) has no API — prod fallback.
       if (host === "localhost" || host === "127.0.0.1") {
         return "https://scholaxia1.onrender.com";
       }

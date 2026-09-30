@@ -24,6 +24,11 @@ firebase-render-env.txt
 .DS_Store
 Thumbs.db
 
+# Local dev launcher artifacts (scripts/run_local.py)
+/local_dev.db
+local_dev.db
+local-dev.log
+
 # Logs
 *.log
 

@@ -119,16 +119,36 @@ async def _send_email(
     html_body: str,
     text_body: str,
 ) -> None:
-    """Send transactional email via the configured provider."""
-    provider = (settings.EMAIL_PROVIDER or "gmail").strip().lower()
-    if provider == "gmail":
-        await _send_via_gmail(to_email, to_name, subject, html_body, text_body)
-    elif provider == "brevo":
-        await _send_via_brevo(to_email, to_name, subject, html_body)
-    elif provider == "mailgun":
-        await _send_via_mailgun(to_email, to_name, subject, html_body, text_body)
-    else:
-        await _send_via_sendgrid(to_email, to_name, subject, html_body, text_body)
+    """Send transactional email via the configured provider.
+
+    Resilience: if the primary provider fails (dead key, credits exhausted,
+    network error), automatically try the remaining configured providers.
+    Unconfigured providers (missing keys) are skipped silently.
+    """
+    primary = (settings.EMAIL_PROVIDER or "gmail").strip().lower()
+    order = [primary] + [p for p in ("gmail", "sendgrid", "mailgun", "brevo") if p != primary]
+    last_exc: Optional[Exception] = None
+    for provider in order:
+        try:
+            if provider == "gmail":
+                await _send_via_gmail(to_email, to_name, subject, html_body, text_body)
+            elif provider == "brevo":
+                await _send_via_brevo(to_email, to_name, subject, html_body)
+            elif provider == "mailgun":
+                await _send_via_mailgun(to_email, to_name, subject, html_body, text_body)
+            else:
+                await _send_via_sendgrid(to_email, to_name, subject, html_body, text_body)
+            if provider != primary:
+                print(f"[OTP] primary email provider {primary!r} failed — sent via fallback {provider!r}")
+            return
+        except RuntimeError:
+            # Not configured (missing keys) — skip to the next provider.
+            continue
+        except Exception as e:
+            print(f"[OTP] email provider {provider!r} failed: {e}")
+            last_exc = e
+            continue
+    raise last_exc or RuntimeError("No email provider is configured")
 
 
 def _smtp_send_gmail(
