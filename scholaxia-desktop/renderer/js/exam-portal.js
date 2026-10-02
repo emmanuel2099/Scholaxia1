@@ -1,296 +1,40 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Scholaxia — Examination Portal</title>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-<style>
-:root{
-  --navy:#1e1b4b; --blue:#7c3aed; --blue2:#6d28d9; --sky:#ede9fe; --ink:#0f172a;
-  --mut:#64748b; --line:#e8e5f4; --bg:#f6f5fc; --ok:#16a34a; --okbg:#e7f8ee;
-  --warn:#d97706; --warnbg:#fdf3e3; --bad:#dc2626; --badbg:#fdeaea; --rad:16px;
-}
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Outfit',system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:15px}
-button{font-family:inherit;cursor:pointer}
-input{font-family:inherit;font-size:15px}
-#toast{position:fixed;bottom:22px;right:22px;background:var(--navy);color:#fff;padding:12px 18px;border-radius:12px;font-size:14px;display:none;z-index:999;box-shadow:0 10px 30px rgba(76,29,149,.3);max-width:420px}
-
-/* ═══ LOGIN (mockup 1) ═══ */
-#login{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#f5f3ff 0%,#ede9fe 45%,#ddd6fe 100%);position:relative;overflow:hidden;padding:24px}
-.blob{position:absolute;border-radius:50%;filter:blur(10px);opacity:.55;pointer-events:none}
-.blob.b1{width:520px;height:520px;background:radial-gradient(circle,#ddd6fe,#ede9fe 70%);top:-160px;right:-120px}
-.blob.b2{width:420px;height:420px;background:radial-gradient(circle,#e9d5ff,#f3e8ff 70%);bottom:-140px;left:-100px}
-.edu{position:absolute;font-size:120px;opacity:.13;color:var(--blue)}
-.edu.e1{left:6%;top:16%;transform:rotate(-12deg)}
-.edu.e2{right:7%;bottom:14%}
-.hand{position:absolute;left:8%;top:18%;font-family:'Segoe Script','Comic Sans MS',cursive;color:var(--blue);font-size:24px;line-height:1.6;transform:rotate(-14deg);font-weight:600}
-@media(max-width:760px){.hand,.edu{display:none}}
-.exam-card{position:relative;z-index:2;background:#fff;border-radius:24px;box-shadow:0 30px 80px rgba(76,29,149,.22);padding:52px 56px;width:100%;max-width:560px}
-@media(max-width:560px){.exam-card{padding:36px 24px}}
-.exam-brand{display:flex;align-items:center;justify-content:center;gap:13px;margin-bottom:26px}
-.exam-brand img{height:58px}
-.exam-brand .fb{display:none;font-size:34px}
-.exam-card h1{font-size:34px;font-weight:800;color:var(--navy);text-align:center;letter-spacing:-.5px}
-.exam-card .sub{text-align:center;color:var(--mut);margin:8px 0 30px}
-.fgroup{display:flex;align-items:center;gap:10px;font-weight:700;font-size:13px;letter-spacing:.04em;color:var(--navy);margin:18px 0 8px;text-transform:uppercase}
-.fgroup .gico{width:30px;height:30px;border-radius:50%;background:var(--sky);color:var(--blue);display:flex;align-items:center;justify-content:center;font-size:15px}
-.inwrap{position:relative;display:flex;align-items:center}
-.inwrap .lico{position:absolute;left:14px;color:#a29bbd;font-size:17px}
-.f-in{width:100%;padding:14px 46px;border:1.5px solid var(--line);border-radius:12px;outline:none;background:#fbfaff;transition:border .15s}
-.f-in:focus{border-color:var(--blue);background:#fff}
-.eye{position:absolute;right:12px;background:none;border:none;color:var(--mut);font-size:18px;padding:4px}
-.btn-login{width:100%;margin-top:28px;padding:15px;border:none;border-radius:12px;background:var(--blue);color:#fff;font-size:16.5px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:10px;transition:background .15s}
-.btn-login:hover{background:var(--blue2)}
-.btn-login[disabled]{opacity:.65;cursor:wait}
-.login-err{display:none;margin-top:16px;padding:11px 14px;border-radius:10px;background:var(--badbg);color:var(--bad);font-size:13.5px}
-.login-foot{margin-top:22px;text-align:center;font-size:14px}
-.login-foot a{color:var(--blue);font-weight:600;text-decoration:none}
-.login-foot a:hover{text-decoration:underline}
-.spin{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:sp .7s linear infinite}
-@keyframes sp{to{transform:rotate(360deg)}}
-
-/* ═══ EXAM HOME (§15) ═══ */
-.hidden{display:none!important}
-.top{background:#fff;border-bottom:1px solid var(--line);padding:14px 26px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:40}
-.top .tb{display:flex;align-items:center;gap:11px}
-.top .tb img{height:34px}
-.top .tb b{color:var(--navy);font-size:19px;letter-spacing:-.3px}
-.top .who{display:flex;align-items:center;gap:10px;font-weight:600;color:var(--navy)}
-.top .ava{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--blue),#a855f7);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700}
-.wrap{max-width:1060px;margin:0 auto;padding:30px 20px}
-.wrap h2{font-size:24px;color:var(--navy);font-weight:800;margin-bottom:4px}
-.wrap .lead{color:var(--mut);margin-bottom:22px}
-.examgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:18px}
-.ecard{background:#fff;border-radius:var(--rad);box-shadow:0 2px 14px rgba(21,34,66,.07);padding:20px;display:flex;flex-direction:column;gap:8px}
-.ecard h3{font-size:18px;color:var(--navy)}
-.ecard .esub{color:var(--mut);font-size:13.5px}
-.emeta{display:flex;gap:14px;flex-wrap:wrap;color:var(--mut);font-size:13px;margin:8px 0}
-.emeta b{color:var(--ink)}
-.mode-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:999px;font-size:12px;font-weight:700}
-.mode-pill.online{background:var(--okbg);color:var(--ok)}
-.mode-pill.offline{background:var(--warnbg);color:var(--warn)}
-.mode-pill.hybrid{background:var(--sky);color:var(--blue)}
-.btn-go{margin-top:10px;padding:12px;border:none;border-radius:11px;background:var(--blue);color:#fff;font-weight:700;font-size:14.5px}
-.btn-go:hover{background:var(--blue2)}
-.btn-go[disabled]{opacity:.6;cursor:not-allowed}
-.okrow{display:flex;gap:8px;align-items:center;color:var(--ok);font-weight:600;font-size:13.5px}
-.dlbtn{background:var(--warn)}
-.scorecard{background:var(--okbg);border-radius:11px;padding:10px 14px;font-size:13.5px;color:var(--ok);font-weight:600}
-
-/* ═══ CBT INTERFACE (mockup 2) ═══ */
-#exam{display:grid;grid-template-columns:1fr 380px;gap:22px;max-width:1280px;margin:0 auto;padding:24px 20px 60px}
-@media(max-width:1000px){#exam{grid-template-columns:1fr}}
-.qcard{background:#fff;border-radius:var(--rad);box-shadow:0 2px 14px rgba(21,34,66,.07);padding:24px}
-.qhead{display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:20px}
-.qhead .qico{width:52px;height:52px;border-radius:13px;background:var(--sky);display:flex;align-items:center;justify-content:center;font-size:24px}
-.qhead h2{font-size:20px;color:var(--navy)}
-.qhead .qsub{color:var(--mut);font-size:13.5px;margin-top:2px}
-.qhead .pill-ok{margin-left:auto;display:flex;align-items:center;gap:7px;background:var(--okbg);color:var(--ok);padding:7px 14px;border-radius:999px;font-size:13px;font-weight:700}
-.dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}
-.qnum{color:var(--blue);font-weight:700;font-size:15.5px}
-.flagrow{display:flex;justify-content:flex-end;margin-bottom:8px}
-.flagbtn{background:none;border:none;color:var(--blue);font-weight:600;font-size:14px;display:flex;gap:7px;align-items:center}
-.flagbtn.on{color:var(--warn)}
-.qtext{font-size:19px;line-height:1.65;margin:14px 0 22px;color:var(--ink)}
-.opt{display:flex;align-items:center;gap:16px;border:1.5px solid var(--line);border-radius:12px;padding:17px 20px;margin-bottom:13px;cursor:pointer;transition:border .12s,background .12s;font-size:16px}
-.opt:hover{border-color:#c4b5fd}
-.opt.sel{border-color:var(--blue);background:#f5f3ff}
-.opt .radio{width:20px;height:20px;border:2px solid #b9b3cf;border-radius:50%;flex:none;position:relative}
-.opt.sel .radio{border-color:var(--blue)}
-.opt.sel .radio::after{content:"";position:absolute;inset:3px;background:var(--blue);border-radius:50%}
-.opt .ol{font-weight:800;color:var(--navy);width:16px}
-.qnav{display:flex;justify-content:space-between;border-top:1px solid var(--line);padding-top:18px;margin-top:16px}
-.btn-nav{padding:12px 26px;border-radius:11px;font-weight:600;font-size:14.5px;border:1.5px solid var(--line);background:#fff;color:var(--ink)}
-.btn-nav:hover{border-color:var(--blue);color:var(--blue)}
-.btn-nav.primary{background:var(--blue);border-color:var(--blue);color:#fff}
-.btn-nav.primary:hover{background:var(--blue2)}
-.side .tcard{background:linear-gradient(135deg,var(--blue) 0%,#a855f7 100%);border-radius:var(--rad);padding:18px 22px;color:#fff;display:flex;align-items:center;gap:16px;margin-bottom:18px}
-.tcard .clock{font-size:30px}
-.tcard .tlab{font-size:12.5px;opacity:.9}
-.tcard .tval{font-size:26px;font-weight:800;letter-spacing:1px;font-variant-numeric:tabular-nums}
-.side .pcard{background:#fff;border-radius:var(--rad);box-shadow:0 2px 14px rgba(21,34,66,.07);padding:20px}
-.pcard h3{font-size:16.5px;color:var(--navy);margin-bottom:10px}
-.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--mut);margin-bottom:14px}
-.legend span{display:flex;align-items:center;gap:6px}
-.ld{width:10px;height:10px;border-radius:50%}
-.ld.cur{background:var(--blue)}.ld.ans{background:var(--ok)}.ld.not{background:#ddd9ea;border:1px solid #b9b3cf}.ld.mk{background:var(--bad)}
-.palette{display:grid;grid-template-columns:repeat(8,1fr);gap:8px}
-@media(max-width:520px){.palette{grid-template-columns:repeat(6,1fr)}}
-.pal{height:38px;border-radius:9px;border:1px solid var(--line);background:#fff;font-weight:600;font-size:13.5px;color:var(--ink);display:flex;align-items:center;justify-content:center}
-.pal.ans{background:var(--ok);border-color:var(--ok);color:#fff}
-.pal.cur{background:var(--blue);border-color:var(--blue);color:#fff}
-.pal.mk{background:var(--bad);border-color:var(--bad);color:#fff}
-.pal.ans.mk{background:#8b1a1a;border-color:#8b1a1a}
-.pnote{margin-top:14px;background:var(--sky);border-radius:11px;padding:12px 14px;font-size:13px;color:var(--blue);display:flex;gap:9px;line-height:1.5}
-.submitbar{margin-top:16px}
-.btn-submit{width:100%;padding:13px;border:none;border-radius:11px;background:var(--ok);color:#fff;font-weight:700;font-size:15px}
-.btn-submit:hover{background:#128a3e}
-
-/* summary modal */
-.mback{position:fixed;inset:0;background:rgba(76,29,149,.5);display:flex;align-items:center;justify-content:center;z-index:500;padding:18px}
-.mmodal{background:#fff;border-radius:18px;max-width:480px;width:100%;padding:28px;box-shadow:0 30px 80px rgba(76,29,149,.35)}
-.mmodal h3{font-size:20px;color:var(--navy);margin-bottom:14px}
-.sumrow{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line);font-size:14.5px}
-.sumrow b{color:var(--navy)}
-.mnote{margin-top:14px;font-size:13px;color:var(--mut);line-height:1.55}
-.macts{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}
-.btn-m{padding:11px 20px;border-radius:10px;font-weight:600;border:1.5px solid var(--line);background:#fff}
-.btn-m.primary{background:var(--ok);border-color:var(--ok);color:#fff}
-.btn-m.danger{background:var(--blue);border-color:var(--blue);color:#fff}
-.syncbox{margin-top:14px;border-radius:12px;padding:14px 16px;font-size:13.5px;line-height:1.6}
-.syncbox.wait{background:var(--warnbg);color:var(--warn)}
-.syncbox.done{background:var(--okbg);color:var(--ok)}
-
-/* ═══ MOBILE (exam mockups: palette grid, timer card, stacked options) ═══ */
-@media(max-width:1000px){
-  #exam{grid-template-columns:1fr;gap:16px;padding:18px 14px 56px}
-  .top{padding:12px 16px}
-  .top .tb b{font-size:17px}
-  .top .who{font-size:13.5px}
-  .qcard{padding:18px 16px;border-radius:14px}
-  .qhead{gap:11px;padding-bottom:12px;margin-bottom:14px}
-  .qhead .qico{width:42px;height:42px;border-radius:11px;font-size:19px}
-  .qhead h2{font-size:17px}
-  .qhead .pill-ok{padding:6px 11px;font-size:12px}
-  .tcard{padding:14px 18px;margin-bottom:14px}
-  .tcard .clock{font-size:24px}
-  .tcard .tval{font-size:22px}
-  .pcard{padding:16px}
-}
-@media(max-width:600px){
-  .wrap{padding:20px 12px}
-  .wrap h2{font-size:20px}
-  .wrap .lead{margin-bottom:16px}
-  .examgrid{grid-template-columns:1fr}
-  .ecard{padding:16px}
-  .top .who .wname{display:none}
-  .qtext{font-size:16.5px;margin:10px 0 16px}
-  .opt{padding:14px 15px;font-size:15px;gap:12px;margin-bottom:10px}
-  .opt .radio{width:18px;height:18px}
-  .qnav{gap:10px}
-  .qnav .btn-nav{flex:1;padding:12px 10px;font-size:14px}
-  .legend{gap:10px;font-size:11.5px}
-  .mback{padding:12px}
-  .mmodal{padding:22px 18px}
-  .pnote{font-size:12.5px;padding:10px 12px}
-}
-@media(max-width:520px){
-  .palette{grid-template-columns:repeat(6,1fr);gap:6px}
-  .pal{height:34px;font-size:12.5px;border-radius:8px}
-}
-@media(max-width:400px){
-  .exam-card{padding:30px 18px}
-  .exam-card h1{font-size:26px}
-  .exam-brand img{height:48px}
-  .f-in{padding:13px 42px}
-  .btn-login{margin-top:22px;padding:14px;font-size:15.5px}
-}
-</style>
-</head>
-<body>
-<div id="toast"></div>
-
-<!-- ═══ LOGIN ═══ -->
-<div id="login">
-  <div class="blob b1"></div><div class="blob b2"></div>
-  <div class="hand">Your<br/>Future<br/>Matters</div>
-  <div class="edu e1">🎓</div><div class="edu e2">📘</div>
-  <form class="exam-card" id="loginForm" autocomplete="off">
-    <div class="exam-brand">
-      <img src="/media/logo-main.png" alt="Scholaxia" onerror="this.outerHTML='<span class=\'fb\'>🎓</span>'" />
-      <div>
-        <div style="font-size:27px;font-weight:800;color:var(--blue);letter-spacing:-.5px">Scholaxia</div>
-        <div style="font-size:11px;letter-spacing:.28em;color:var(--mut);font-weight:600">LEARN • PRACTICE • EXCEL</div>
-      </div>
-    </div>
-    <h1>Welcome Back!</h1>
-    <p class="sub">Examinations are ongoing — wishing you all good luck.</p>
-    <div class="fgroup"><span class="gico">👤</span> Registration Number</div>
-    <div class="inwrap"><span class="lico">👤</span>
-      <input class="f-in" id="lgReg" placeholder="SCHX/26/544560" required />
-    </div>
-    <div class="fgroup"><span class="gico">🔑</span> Access Code</div>
-    <div class="inwrap"><span class="lico">🔒</span>
-      <input class="f-in" id="lgCode" type="password" placeholder="••••••" required style="letter-spacing:2px" />
-      <button type="button" class="eye" onclick="toggleEye()" aria-label="Show access code">👁</button>
-    </div>
-    <button class="btn-login" id="lgBtn" type="submit">⮕&nbsp; Login to Examination</button>
-    <div class="login-err" id="lgErr"></div>
-    <div class="login-foot">🔍 Lost your details? <a href="#" onclick="retrieveDetails();return false">Retrieve Login Details</a></div>
-  </form>
-</div>
-
-<!-- ═══ APP ═══ -->
-<div id="app" class="hidden">
-  <div class="top">
-    <div class="tb" onclick="goHome()" style="cursor:pointer">
-      <img src="/media/logo-main.png" alt="" onerror="this.style.display='none'" />
-      <b>Scholaxia</b>
-    </div>
-    <div class="who" id="whoBox"></div>
-  </div>
-
-  <!-- exam home -->
-  <div class="wrap" id="home">
-    <h2 id="hello">Welcome!</h2>
-    <p class="lead">Your Examinations</p>
-    <div class="examgrid" id="examGrid"><div class="ecard">Loading…</div></div>
-  </div>
-
-  <!-- CBT interface -->
-  <div id="exam" class="hidden">
-    <div class="qcard">
-      <div class="qhead">
-        <div class="qico">📝</div>
-        <div>
-          <h2 id="qSubject">—</h2>
-          <div class="qsub" id="qSub">—</div>
-        </div>
-        <div class="pill-ok"><span class="dot"></span> Exam Loaded</div>
-      </div>
-      <div class="flagrow"><button class="flagbtn" id="flagBtn" onclick="toggleFlag()">⚑ Flag Question</button></div>
-      <div class="qnum" id="qNum">Question 1</div>
-      <div class="qtext" id="qText">—</div>
-      <div id="qOpts"></div>
-      <div class="qnav">
-        <button class="btn-nav" id="btnPrev" onclick="move(-1)">← Previous</button>
-        <button class="btn-nav primary" id="btnNext" onclick="move(1)">Next →</button>
-      </div>
-    </div>
-    <div class="side">
-      <div class="tcard">
-        <div class="clock">🕐</div>
-        <div>
-          <div class="tlab">Time Remaining</div>
-          <div class="tval" id="timer">--:--:--</div>
-        </div>
-      </div>
-      <div class="pcard">
-        <h3>Question Palette</h3>
-        <div class="legend">
-          <span><span class="ld cur"></span> Current</span>
-          <span><span class="ld ans"></span> Answered</span>
-          <span><span class="ld not"></span> Not Answered</span>
-          <span><span class="ld mk"></span> Marked</span>
-        </div>
-        <div class="palette" id="palette"></div>
-        <div class="pnote">ⓘ You can review your answers before submitting the exam.</div>
-        <div class="submitbar"><button class="btn-submit" onclick="openSummary()">Submit Examination</button></div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<script>
+/*
+ * Scholaxia Examination Portal — desktop port of static/app/exam-app.html.
+ * Same UI and same offline engine as the website (§13–§24):
+ *   reg number + access code login → exam cards → download package →
+ *   offline CBT runner → sealed submissions sync when back online.
+ * Desktop adaptations only:
+ *   - API base: desktop-server proxy (/api-proxy) on 127.0.0.1/localhost,
+ *     same-origin on prod domains (mirrors js/api.js).
+ *   - Session keys: sia_exam_token / sia_exam_user (desktop-wide exam session),
+ *     with one-time migration from the website keys (sx_exam_token / sx_exam_user).
+ */
 (function () {
-  var API = "https://scholaxia1.onrender.com/api/v1";
-  if (/scholaxia1\.onrender\.com$/.test(location.hostname) || /\.scholaxia\.com$/.test(location.hostname) || location.hostname === "localhost" || location.hostname === "127.0.0.1") {
-    API = location.origin + "/api/v1";
-  }
-  var TK = "sx_exam_token", TU = "sx_exam_user";
+  var API;
+  (function detectApi() {
+    var host = "";
+    try { host = String((window.location && window.location.hostname) || "").toLowerCase(); } catch (e) {}
+    if (host === "127.0.0.1" || host === "localhost") {
+      API = window.location.origin + "/api-proxy/api/v1";
+      return;
+    }
+    if (/scholaxia1\.onrender\.com$/.test(host) || /\.scholaxia\.com$/.test(host)) {
+      API = window.location.origin + "/api/v1";
+      return;
+    }
+    API = "https://scholaxia1.onrender.com/api/v1";
+  })();
+
+  var TK = "sia_exam_token", TU = "sia_exam_user";
+  // One-time migration from the website portal keys so a student who already
+  // downloaded exams on this device keeps their packages + session.
+  try {
+    var legacyTok = localStorage.getItem("sx_exam_token");
+    if (legacyTok && !localStorage.getItem(TK)) localStorage.setItem(TK, legacyTok);
+    var legacyUser = localStorage.getItem("sx_exam_user");
+    if (legacyUser && !localStorage.getItem(TU)) localStorage.setItem(TU, legacyUser);
+  } catch (e) { /* ignore */ }
+
   var S = { token: localStorage.getItem(TK) || null, me: null, exams: [], current: null, loginTyped: null };
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); };
@@ -314,34 +58,57 @@ input{font-family:inherit;font-size:15px}
       .then(function (r) {
         return r.text().then(function (txt) {
           var d = null; try { d = txt ? JSON.parse(txt) : null; } catch (_) {}
-          if (r.status === 401 && path !== "/school-cbt/student/login") { logout(); throw new Error(detailOf(d) || "Session expired — log in again."); }
-          if (!r.ok) throw new Error(detailOf(d) || ("Request failed (" + r.status + ")"));
+          if (r.status === 401 && path !== "/school-cbt/student/login") {
+            logout();
+            var ex401 = new Error(detailOf(d) || "Session expired — log in again."); ex401.status = 401; throw ex401;
+          }
+          if (!r.ok) { var exHttp = new Error(detailOf(d) || ("Request failed (" + r.status + ")")); exHttp.status = r.status; throw exHttp; }
           return d;
         });
       });
   }
 
   /* ── TRUE OFFLINE STORE (§16–§23) — one localStorage key per exam ──
-     sx_exam_pkg_<id>    : downloaded exam package (server-verified order)
-     sx_attempt_<examId> : { attemptId, exam, seconds, questions, answers, flags } — survives reload/offline
-     sx_offq_<examId>    : answers saved on the device while offline
-     sx_pending_<examId> : sealed FULL submission awaiting secure sync
+     sia_exam_pkg_<id>    : downloaded exam package (server-verified order)
+     sia_attempt_<examId> : { attemptId, exam, seconds, questions, answers, flags } — survives reload/offline
+     sia_offq_<examId>    : answers saved on the device while offline
+     sia_pending_<examId> : sealed FULL submission awaiting secure sync
   */
   var K = {
-    pkg: function (id) { return "sx_exam_pkg_" + id; },
-    att: function (id) { return "sx_attempt_" + id; },
-    pend: function (id) { return "sx_pending_" + id; },
+    pkg: function (id) { return "sia_exam_pkg_" + id; },
+    att: function (id) { return "sia_attempt_" + id; },
+    pend: function (id) { return "sia_pending_" + id; },
   };
+  var LEGACY_PREFIX = { pkg: "sx_exam_pkg_", att: "sx_attempt_", offq: "sx_offq_", pend: "sx_pending_", seal: "sx_sealed_" };
+  function migrateKey(k) {
+    // Website-portal data (sx_*) from a previous version keeps working under the new sia_* keys.
+    if (k.indexOf("sx_exam_pkg_") === 0) return K.pkg(k.slice(LEGACY_PREFIX.pkg.length));
+    if (k.indexOf("sx_attempt_") === 0) return K.att(k.slice(LEGACY_PREFIX.att.length));
+    if (k.indexOf("sx_offq_") === 0) return "sia_offq_" + k.slice(LEGACY_PREFIX.offq.length);
+    if (k.indexOf("sx_pending_") === 0) return K.pend(k.slice(LEGACY_PREFIX.pend.length));
+    if (k.indexOf("sx_sealed_") === 0) return "sia_sealed_" + k.slice(LEGACY_PREFIX.seal.length);
+    return k;
+  }
+  function lsKeys(prefix) {
+    var out = [];
+    try {
+      Object.keys(localStorage).forEach(function (k) {
+        if (k.indexOf(prefix) === 0) { var nk = migrateKey(k); if (nk !== k) { try { localStorage.setItem(nk, localStorage.getItem(k)); localStorage.removeItem(k); } catch (e) {} out.push(nk); } else out.push(k); }
+      });
+    } catch (e) {}
+    return out;
+  }
   function lsGet(k) { try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
   function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
   function lsDel(k) { try { localStorage.removeItem(k); } catch (e) {} }
 
   /* ── Durable offline identity ──
      The typed reg + access code are remembered across reloads, so a package
-     downloaded in a LATER session (when the in-memory login credentials are
-     gone) still carries the access code that sealed submissions need for
-     silent re-login when the internet returns. */
-  var SI_KEY = "sx_exam_identity";
+     downloaded in a LATER session (after the one-time login handoff was
+     consumed) still carries the access code that sealed submissions need for
+     silent re-login when the internet returns. Without this, a device that
+     downloaded an exam after a reload could never auto-sync. */
+  var SI_KEY = "sia_exam_identity";
   function rememberIdentity(reg, code) {
     try { localStorage.setItem(SI_KEY, JSON.stringify({ reg_number: String(reg || "").trim(), access_code: String(code || "").trim() })); } catch (e) {}
   }
@@ -355,7 +122,7 @@ input{font-family:inherit;font-size:15px}
   function backfillPkgIdentities() {
     // Devices that already downloaded packages before this fix: fill in the
     // access code from the remembered identity so their seals can sync.
-    Object.keys(localStorage).filter(function (k) { return k.indexOf("sx_exam_pkg_") === 0; }).forEach(function (k) {
+    lsKeys("sia_exam_pkg_").concat(lsKeys("sx_exam_pkg_")).forEach(function (k) {
       var pkg = lsGet(k);
       if (pkg && pkg.student && !pkg.student.access_code) {
         var id = knownIdentity(pkg.student.reg_number);
@@ -365,7 +132,7 @@ input{font-family:inherit;font-size:15px}
   }
 
   /* Offline answer queue (per exam) — saved locally, flushed when online. */
-  function offlineQueueKey(examId) { return "sx_offq_" + examId; }
+  function offlineQueueKey(examId) { return "sia_offq_" + examId; }
   function queueOffline(examId, entry) {
     var q = lsGet(offlineQueueKey(examId)) || [];
     for (var i = 0; i < q.length; i++) {
@@ -379,16 +146,22 @@ input{font-family:inherit;font-size:15px}
     if (!q.length || !S.token) return Promise.resolve(0);
     return api("/school-cbt/student/sync", {
       method: "POST",
-      body: { attempt_id: (lsGet(K.att(examId)) || {}).attemptId || null, exam_id: examId, answers: q, offline_sync: true, client: "web-portal-offline" },
+      body: { attempt_id: (lsGet(K.att(examId)) || {}).attemptId || null, exam_id: examId, answers: q, offline_sync: true, client: "desktop-offline" },
     }).then(function () { lsDel(offlineQueueKey(examId)); return q.length; });
   }
   function flushAllQueues() {
-    if (!S.token || !isOnline()) return;
-    Object.keys(localStorage).filter(function (k) { return k.indexOf("sx_offq_") === 0; }).forEach(function (k) {
-      drainOfflineQueue(k.replace("sx_offq_", "")).catch(function () {});
-    });
-    Object.keys(localStorage).filter(function (k) { return k.indexOf("sx_pending_") === 0; }).forEach(function (k) {
-      syncPendingExam(k.replace("sx_pending_", ""), null).catch(function () {});
+    if (!isOnline()) return;
+    if (S.token) {
+      lsKeys("sia_offq_").concat(lsKeys("sx_offq_")).forEach(function (k) {
+        drainOfflineQueue(k.replace(/^sia_offq_|^sx_offq_/, "")).catch(function () {});
+      });
+    }
+    // Sealed submissions sync even with no active session — they silently
+    // re-authenticate with the device identity (reg + access code), so a
+    // sealed exam uploads as soon as the internet returns, without waiting
+    // for the next student to log in.
+    lsKeys("sia_pending_").concat(lsKeys("sx_pending_")).forEach(function (k) {
+      syncPendingExam(k.replace(/^sia_pending_|^sx_pending_/, ""), null, { silent: true }).catch(function () {});
     });
   }
   window.addEventListener("online", function () { toast("🌐 Back online — syncing…"); flushAllQueues(); if (S.me) loadExams(); });
@@ -413,16 +186,16 @@ input{font-family:inherit;font-size:15px}
   function scheduledLogout(examId, seconds) {
     setTimeout(function () {
       lsDel(K.att(examId));
-      lsDel("sx_offq_" + examId);
+      lsDel(offlineQueueKey(examId));
       toast("✓ Submitted — logging out. Hand over to the next student.");
       setTimeout(function () { logout(); }, 800);
-      // sx_pending_<examId> + sx_sealed_<examId> stay on the device until the
+      // sia_pending_<examId> + sia_sealed_<examId> stay on the device until the
       // submission syncs; pendingSealOnBoot() clears them afterwards.
     }, Math.max(4000, (seconds || 12) * 1000));
   }
   function pendingSealOnBoot() {
-    Object.keys(localStorage).filter(function (k) { return k.indexOf("sx_sealed_") === 0; }).forEach(function (k) {
-      var examId = k.replace("sx_sealed_", "");
+    lsKeys("sia_sealed_").concat(lsKeys("sx_sealed_")).forEach(function (k) {
+      var examId = k.replace(/^sia_sealed_|^sx_sealed_/, "");
       if (!lsGet(K.pend(examId))) lsDel(k); // sync already finished — clear the seal
     });
   }
@@ -447,10 +220,11 @@ input{font-family:inherit;font-size:15px}
       .catch(function (ex) {
         btn.disabled = false; btn.innerHTML = "⮕&nbsp; Login to Examination";
         var dev = findOfflineIdentity(reg);
+        var networkish = !ex.status || ex.status >= 500 || /failed to fetch|networkerror|load failed|aborted/i.test(ex.message || "");
         if (dev && !isOnline()) {
           return offlineLogin(reg, code);
         }
-        if (dev) {
+        if (dev && networkish) {
           err.innerHTML = "Cannot reach the server — but this device holds an offline exam for <b>" + esc(reg) + "</b>. <a href='#' id='offGo' style='color:var(--blue);font-weight:700'>Continue offline →</a>";
           err.style.display = "block";
           $("offGo").onclick = function (ev) { ev.preventDefault(); offlineLogin(reg, code); };
@@ -465,11 +239,11 @@ input{font-family:inherit;font-size:15px}
         the student offline later. ── */
   function findOfflineIdentity(reg) {
     var found = null;
-    Object.keys(localStorage).forEach(function (k) {
-      if (found || k.indexOf("sx_exam_pkg_") !== 0) return;
+    lsKeys("sia_exam_pkg_").concat(lsKeys("sx_exam_pkg_")).forEach(function (k) {
+      if (found) return;
       var pkg = lsGet(k);
       if (pkg && pkg.student && String(pkg.student.reg_number || "").toUpperCase() === String(reg || "").toUpperCase()) {
-        found = { examId: k.replace("sx_exam_pkg_", ""), student: pkg.student };
+        found = { examId: k.replace(/^sia_exam_pkg_|^sx_exam_pkg_/, ""), student: pkg.student };
       }
     });
     return found;
@@ -559,9 +333,8 @@ input{font-family:inherit;font-size:15px}
   /* Offline home: everything downloaded on this device + pending syncs. */
   function renderOfflineExams() {
     var rows = [];
-    Object.keys(localStorage).forEach(function (k) {
-      if (k.indexOf("sx_exam_pkg_") !== 0) return;
-      var examId = k.replace("sx_exam_pkg_", "");
+    lsKeys("sia_exam_pkg_").concat(lsKeys("sx_exam_pkg_")).forEach(function (k) {
+      var examId = k.replace(/^sia_exam_pkg_|^sx_exam_pkg_/, "");
       var pkg = lsGet(k); if (!pkg || !pkg.exam) return;
       var pend = lsGet(K.pend(examId));
       var att = lsGet(K.att(examId));
@@ -761,7 +534,7 @@ input{font-family:inherit;font-size:15px}
     var payload = {
       attempt_id: R.attemptId,
       is_auto_submit: !!auto,
-      client: "web-portal",
+      client: "desktop-portal",
       started_at: R.startedAt || null,
       submitted_at: new Date().toISOString(),
       answers: allAnswers(),
@@ -772,7 +545,7 @@ input{font-family:inherit;font-size:15px}
       return api("/school-cbt/student/exams/" + R.exam.id + "/submit", { method: "POST", body: payload });
     }).then(function (d) {
       lsDel(K.att(examId));
-      lsDel("sx_offq_" + examId);
+      lsDel(offlineQueueKey(examId));
       showCompletion(d);
     }).catch(function () { showOfflineWait(payload); });
   }
@@ -781,7 +554,7 @@ input{font-family:inherit;font-size:15px}
     // automatically when the network returns, then the device logs out.
     var examId = R.pkgExamId;
     lsSet(K.pend(examId), payload);
-    lsSet("sx_sealed_" + examId, { at: payload.submitted_at });
+    lsSet("sia_sealed_" + examId, { at: payload.submitted_at });
     if (R && R._th) clearInterval(R._th);
     persistAttempt();
     var b = document.createElement("div"); b.className = "mback"; b.id = "pendModal";
@@ -806,8 +579,8 @@ input{font-family:inherit;font-size:15px}
       syncPendingExam(examId, payload).then(function () {
         clearInterval(h);
         lsDel(K.att(examId));
-        lsDel("sx_offq_" + examId);
-        lsDel("sx_sealed_" + examId);
+        lsDel(offlineQueueKey(examId));
+        lsDel("sia_sealed_" + examId);
         box.className = "syncbox done";
         box.textContent = "✓ Connecting… Verifying examination… Uploading answers… Submission Successful";
         setTimeout(function () { var m = $("pendModal"); if (m) m.remove(); scheduledLogout(examId, 8); }, 1600);
@@ -824,9 +597,10 @@ input{font-family:inherit;font-size:15px}
   }
   function clearSeal(examId) {
     lsDel(K.pend(examId));
-    lsDel("sx_sealed_" + examId);
+    lsDel("sia_sealed_" + examId);
   }
-  function syncPendingExam(examId, payloadOverride) {
+  function syncPendingExam(examId, payloadOverride, opts) {
+    opts = opts || {};
     var pend = payloadOverride || lsGet(K.pend(examId));
     if (!pend) return Promise.reject(new Error("nothing pending"));
     var body = {
@@ -838,12 +612,20 @@ input{font-family:inherit;font-size:15px}
       is_auto_submit: !!pend.is_auto_submit,
       started_at: pend.started_at || null,
       submitted_at: pend.submitted_at || null,
-      client: "web-portal-offline",
+      client: "desktop-offline",
     };
     if (!S.token) {
       // Offline session — log back in silently with the device identity, sync, logout.
       var ident = (S.me && S.me.reg_number) || (lsGet(TU) || {}).reg_number || "";
       var dev = findOfflineIdentity(ident);
+      if (!dev) {
+        // Session was cleared (e.g. post-submit auto-logout): the downloaded
+        // package for THIS exam carries the student's reg number + access code.
+        var ownPkg = lsGet(K.pkg(examId));
+        if (ownPkg && ownPkg.student && ownPkg.student.reg_number) {
+          dev = { examId: examId, student: ownPkg.student };
+        }
+      }
       if (dev && dev.student && !dev.student.access_code) {
         var kid = knownIdentity(dev.student.reg_number);
         if (kid) dev.student.access_code = kid.access_code;
@@ -855,7 +637,7 @@ input{font-family:inherit;font-size:15px}
           localStorage.setItem(TK, S.token);
           return api("/school-cbt/student/sync", { method: "POST", body: body });
         })
-        .then(function () { clearSeal(examId); logout(); })
+        .then(function () { clearSeal(examId); if (!opts.silent) logout(); })
         .catch(function (ex) { if (sealAlreadyCounted(ex)) { clearSeal(examId); return; } throw ex; });
     }
     return api("/school-cbt/student/sync", { method: "POST", body: body }).then(function () {
@@ -882,19 +664,30 @@ input{font-family:inherit;font-size:15px}
     $("doneGo").onclick = function () { b.remove(); logout(); };
   }
   function answeredCount() { return R ? R.questions.filter(function (q) { return R.answers[q.id]; }).length : 0; }
-  function goHome() {
+  window.goHome = function () {
     if (R) { clearInterval(R._th); persistAttempt(); }
     R = null;
     $("exam").classList.add("hidden");
     $("home").classList.remove("hidden");
     loadExams();
-  }
+  };
 
   /* boot */
+  // Consume the credentials typed on the auth page's Exam tab (index.html),
+  // so packages downloaded after that login still carry the offline identity
+  // (reg + access code) needed for offline re-login and silent sync.
+  try {
+    var handoff = localStorage.getItem("sia_exam_login_typed");
+    if (handoff) {
+      S.loginTyped = JSON.parse(handoff);
+      if (S.loginTyped && S.loginTyped.reg) rememberIdentity(S.loginTyped.reg, S.loginTyped.code);
+      if (!S.me) {
+        try { S.me = JSON.parse(localStorage.getItem(TU) || "null"); } catch (e2) {}
+      }
+      if (S.me) localStorage.removeItem("sia_exam_login_typed"); // consumed
+    }
+  } catch (e) {}
   tryResume();
   backfillPkgIdentities();
   flushAllQueues();
 })();
-</script>
-</body>
-</html>

@@ -2158,6 +2158,12 @@ async def admin_overview(
             LiveSessionRequest.status == LiveSessionRequestStatus.pending
         )
     )
+    # cardinality() is PostgreSQL-only; SQLite stores the column as JSON,
+    # so branch on the backend to keep the admin overview working locally.
+    if db.bind is not None and db.bind.dialect.name == "sqlite":
+        subjects_filter = func.coalesce(func.json_array_length(StudentProfile.selected_subjects), 0) > 0
+    else:
+        subjects_filter = func.cardinality(StudentProfile.selected_subjects) > 0
     setup_done = await db.execute(
         select(func.count())
         .select_from(StudentProfile)
@@ -2166,7 +2172,7 @@ async def admin_overview(
             User.role == UserRole.student,
             User.is_active == True,  # noqa: E712
             StudentProfile.exam_type.isnot(None),
-            func.cardinality(StudentProfile.selected_subjects) > 0,
+            subjects_filter,
         )
     )
     return {

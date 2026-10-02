@@ -455,7 +455,7 @@
           method: method,
           mode: "cors",
           headers: headers,
-          body: hasBody ? (isFormData ? options.body : JSON.stringify(options.body)) : undefined,
+          body: hasBody ? (isFormData ? options.body : (typeof options.body === "string" ? options.body : JSON.stringify(options.body))) : undefined, // pre-serialized bodies: do NOT double-encode
           credentials: "omit",
           cache: "no-store",
           signal: t.signal,

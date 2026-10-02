@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
 import uuid
+from collections import deque
 
 whiteboard_access: Dict[str, Set[str]] = {}
 mic_access: Dict[str, Set[str]] = {}
@@ -20,6 +21,10 @@ room_participants: Dict[str, Dict[str, dict]] = {}
 room_meta: Dict[str, dict] = {}
 # room_id -> ordered list of user_ids with hand raised
 room_raised_hands: Dict[str, List[str]] = {}
+# room_id -> recent chat messages (ring buffer) — replayed on reconnect so a
+# dropped socket never loses class chat for the student who rejoined.
+room_chat_history: Dict[str, deque] = {}
+CHAT_HISTORY_LIMIT = 100
 
 
 def _uid(user_id: str) -> str:
@@ -404,6 +409,16 @@ def set_room_meta(room_id: str, **kwargs: Any) -> dict:
     return meta
 
 
+def record_chat_message(room_id: str, message: dict) -> None:
+    """Store a chat broadcast for reconnect replay (bounded per room)."""
+    hist = room_chat_history.setdefault(room_id, deque(maxlen=CHAT_HISTORY_LIMIT))
+    hist.append(message)
+
+
+def chat_history(room_id: str) -> List[dict]:
+    return list(room_chat_history.get(room_id) or [])
+
+
 def get_room_snapshot(room_id: str) -> dict:
     """Full classroom state for a late joiner / reconnect."""
     meta = room_meta.get(room_id) or {}
@@ -422,6 +437,7 @@ def get_room_snapshot(room_id: str) -> dict:
         "raisedHands": raised_hand_queue(room_id),
         "boardOpen": bool(board.get("open")),
         "permissions": get_room_permissions(room_id),
+        "recentChat": chat_history(room_id),
     }
 
 
@@ -433,3 +449,4 @@ def cleanup_room(room_id: str) -> None:
     room_participants.pop(room_id, None)
     room_meta.pop(room_id, None)
     room_raised_hands.pop(room_id, None)
+    room_chat_history.pop(room_id, None)

@@ -52,11 +52,12 @@ async def _admins_for(db: AsyncSession, school_id) -> list[dict]:
                     """
                     SELECT id, email, full_name, COALESCE(is_active, true) AS is_active
                     FROM users
-                    WHERE school_id = :sid AND role::text = 'school_admin'
+                    WHERE school_id = :sid AND role = 'school_admin'
                     ORDER BY full_name
                     """
                 ),
-                {"sid": school_id},
+                # str() — raw SQLite drivers cannot bind UUID objects.
+                {"sid": str(school_id)},
             )
         ).mappings().all()
         return [
@@ -91,7 +92,12 @@ async def list_schools(
         return {"schools": []}
     out = []
     for row in rows:
-        out.append(_school_dict(row, await _admins_for(db, row.id)))
+        # Read the plain fields first: if the admins query fails and rolls
+        # back, the ORM rows become expired and any later attribute access
+        # would raise MissingGreenlet on async sessions.
+        base = _school_dict(row, [])
+        base["admins"] = await _admins_for(db, base["id"])
+        out.append(base)
     return {"schools": out}
 
 

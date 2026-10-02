@@ -5,7 +5,6 @@
   var pollTimer = null;
   var livePollTimer = null;
   var ringTimer = null;
-  var audioCtx = null;
   var notifications = [];
   var knownIds = {};
   var notificationsInitialized = false;
@@ -29,9 +28,8 @@
   }
 
   function stopRingWithSnooze() {
-    ringSnoozeUntil = Date.now() + RING_SNOOZE_MS;
-    stopRing(true);
-    scheduleSnoozeWake();
+    // Ring sound removed — kept as a no-op so existing call sites keep working.
+    stopRing();
   }
 
   function getBell() {
@@ -89,59 +87,15 @@
   }
 
   function startRing() {
-    if (isRingSnoozed()) return;
-    var hasUnreadLive = notifications.some(function (n) { return isLiveNotif(n) && !n.is_read; });
-    if (!liveClassActive && !hasUnreadLive) return;
-    stopRing(false);
-    try {
-      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      if (audioCtx.state === "suspended") audioCtx.resume();
-
-      function playIphoneRingBurst() {
-        if (!liveClassActive && !notifications.some(function (n) { return isLiveNotif(n) && !n.is_read; })) {
-          stopRing();
-          return;
-        }
-        var t0 = audioCtx.currentTime;
-        var segments = [
-          { start: 0, dur: 0.55 },
-          { start: 0.75, dur: 0.55 },
-        ];
-        segments.forEach(function (seg) {
-          [698.46, 880.0].forEach(function (freq) {
-            var osc = audioCtx.createOscillator();
-            var gain = audioCtx.createGain();
-            osc.type = "sine";
-            osc.frequency.value = freq;
-            gain.gain.setValueAtTime(0, t0 + seg.start);
-            gain.gain.linearRampToValueAtTime(0.22, t0 + seg.start + 0.03);
-            gain.gain.setValueAtTime(0.22, t0 + seg.start + seg.dur - 0.04);
-            gain.gain.exponentialRampToValueAtTime(0.001, t0 + seg.start + seg.dur);
-            osc.connect(gain);
-            gain.connect(audioCtx.destination);
-            osc.start(t0 + seg.start);
-            osc.stop(t0 + seg.start + seg.dur + 0.02);
-          });
-        });
-      }
-
-      playIphoneRingBurst();
-      ringTimer = setInterval(playIphoneRingBurst, 3200);
-      var bar = document.getElementById("notif-ring-bar");
-      if (bar) bar.classList.remove("hidden");
-    } catch (e) {
-      console.warn("Notification ring failed", e);
-    }
+    // Live-class ring sound removed (user request): new live classes are
+    // surfaced through the notification badge, toast and the notifications
+    // list only — nothing plays and no ring bar is shown.
   }
 
-  function stopRing(hideBar) {
+  function stopRing() {
     if (ringTimer) {
       clearInterval(ringTimer);
       ringTimer = null;
-    }
-    if (hideBar !== false) {
-      var bar = document.getElementById("notif-ring-bar");
-      if (bar) bar.classList.add("hidden");
     }
   }
 
@@ -356,9 +310,6 @@
   function init() {
     bindBell();
     checkStopRingFlag();
-    document.addEventListener("click", function unlockRingAudio() {
-      if (audioCtx && audioCtx.state === "suspended") audioCtx.resume();
-    }, { once: true });
     if (typeof isStudentLoggedIn === "function" && !isStudentLoggedIn()) return;
     try {
       var raw = localStorage.getItem("sia_known_notif_ids");

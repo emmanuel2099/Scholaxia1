@@ -10,7 +10,10 @@ const { URL } = require("url");
 
 const PORT = 17890;
 const DISCORD_PORT = 3001;
-const REMOTE_API = "https://scholaxia1.onrender.com";
+// Default API is prod; SCHOLAXIA_API overrides per-run (e.g. local dev server).
+const REMOTE_API = (process.env.SCHOLAXIA_API || "https://scholaxia1.onrender.com").replace(/\/$/, "");
+const REMOTE_USE_HTTP = REMOTE_API.indexOf("http://") === 0;
+const REMOTE_HTTP_MODULE = REMOTE_USE_HTTP ? require("http") : https;
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -58,7 +61,7 @@ function proxyApi(req, res) {
     if (req.headers["content-type"]) headers["Content-Type"] = req.headers["content-type"];
     if (req.headers.authorization) headers.Authorization = req.headers.authorization;
 
-    const proxyReq = https.request(
+    const proxyReq = REMOTE_HTTP_MODULE.request(
       REMOTE_API + remotePath,
       { method: req.method, headers },
       (proxyRes) => {
@@ -197,6 +200,15 @@ function startDesktopServer() {
       if (url.pathname === "/api-proxy/health") {
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end('{"ok":true}');
+        return;
+      }
+
+      // Tells the renderer where the real backend lives, so the classroom chat
+      // WebSocket dials the SAME server the REST proxy targets. desktop-server
+      // cannot proxy WebSocket upgrades itself, so the renderer needs the origin.
+      if (url.pathname === "/backend-origin") {
+        res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+        res.end(JSON.stringify({ api: REMOTE_API, ws: REMOTE_API.replace(/^http/i, "ws") }));
         return;
       }
 

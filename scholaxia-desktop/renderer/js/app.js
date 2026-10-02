@@ -3,7 +3,7 @@ const PAGE_TITLES = {
   live: "Live Class",
   "access-code": "Access Code",
   school: "Scholaxia Exam",
-  "school-portal": "External School Exam",
+  "school-portal": "Scholaxia Exam",
   marketplace: "Scholaxia Marketplace",
   assignments: "Assignments",
   "cbt-packages": "CBT Packages",
@@ -246,7 +246,12 @@ function goToSubject(index) {
 }
 
 window.onload = async () => {
-  if (localStorage.getItem("sia_role") === "kind" && isStudentLoggedIn()) {
+  // Kind users bounce home EXCEPT when they arrive with a live-class join link
+  // (kindJoinLive → app.html?join=…) — bouncing here would silently discard
+  // the class id and kids could never join a live class from the Kids app.
+  var bootParams = new URLSearchParams(window.location.search);
+  var bootJoinId = bootParams.get("join") || bootParams.get("class");
+  if (localStorage.getItem("sia_role") === "kind" && isStudentLoggedIn() && !bootJoinId) {
     window.location.href = "kind.html";
     return;
   }
@@ -315,6 +320,26 @@ window.onload = async () => {
       if (typeof flushPendingInternalSubmits === "function") {
         flushPendingInternalSubmits();
       }
+      // Queued offline practice-attempt submissions (see submitExam).
+      try {
+        const queued = JSON.parse(localStorage.getItem("sia_cbt_pending_practice") || "[]");
+        if (queued.length) {
+          const remaining = [];
+          let chain = Promise.resolve();
+          queued.forEach((item) => {
+            chain = chain.then(() =>
+              api("/api/v1/cbt/practice/attempts/" + item.practice_attempt_id + "/submit", {
+                method: "POST",
+                body: JSON.stringify({ answers: item.answers }),
+              }).catch(() => remaining.push(item))
+            );
+          });
+          chain.then(() => {
+            localStorage.setItem("sia_cbt_pending_practice", JSON.stringify(remaining));
+            if (remaining.length < queued.length && typeof refreshPage === "function") refreshPage();
+          });
+        }
+      } catch (eFlush) { /* ignore */ }
     });
   }
 
@@ -789,7 +814,7 @@ async function loadDashboard(force) {
   const subEl = document.getElementById("dash-greeting-sub");
   if (!isStudentLoggedIn()) {
     if (titleEl) titleEl.textContent = getGreeting() + ", welcome";
-    if (subEl) subEl.textContent = "Browse External School Exam and Marketplace — sign in for CBT, Live Class, Community, and more.";
+    if (subEl) subEl.textContent = "Browse Scholaxia Exam and Marketplace — sign in for CBT, Live Class, Community, and more.";
     const statSubs = document.getElementById("dash-stat-subjects");
     const liveEl = document.getElementById("dash-stat-live");
     const examsEl = document.getElementById("dash-stat-exams");
@@ -1379,7 +1404,7 @@ async function submitSessionRequest() {
   }
 }
 
-/* ── External School Exam ── */
+/* ── Scholaxia Exam ── */
 
 async function loadSchoolExams() {
   document.getElementById("school-grid").innerHTML = `<div class="loading">Loading…</div>`;
@@ -1425,7 +1450,7 @@ function openSchoolExam(examId, needsCamera) {
       cameraStream = stream;
       document.getElementById("camera-preview").srcObject = stream;
     })
-    .catch(() => alert("Camera access is required for external school exams."));
+    .catch(() => alert("Camera access is required for Scholaxia Exams."));
 }
 
 function closeCameraModal() {
@@ -1871,17 +1896,39 @@ async function submitExam(force) {
   });
 
   if (currentSession && currentSession.practice_attempt_id) {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      // OFFLINE: queue the attempt locally instead of losing the answers.
+      try {
+        const queued = JSON.parse(localStorage.getItem("sia_cbt_pending_practice") || "[]");
+        queued.push({ practice_attempt_id: currentSession.practice_attempt_id, answers: answerMap, queued_at: new Date().toISOString() });
+        localStorage.setItem("sia_cbt_pending_practice", JSON.stringify(queued));
+      } catch (eQueue) { /* ignore */ }
+      let localCorrect = 0;
+      (currentExam.questions || []).forEach((q, i) => { if (q && q.correct_option && answers[i] === q.correct_option) localCorrect++; });
+      const total = (currentExam.questions || []).length || 1;
+      showResult({ percentage: Math.round((localCorrect / total) * 100), correct: localCorrect, total: total, score: localCorrect, max_score: total });
+      alert("You are offline — your answers were saved on this device and will upload automatically when internet returns.");
+      closeExam();
+      return;
+    }
     try {
       const result = await api("/api/v1/cbt/practice/attempts/" + currentSession.practice_attempt_id + "/submit", {
         method: "POST",
         body: JSON.stringify({ answers: answerMap }),
       });
+      window._lastPracticeReview = result.full_review || null;
+      window._lastPracticeAttemptId = currentSession.practice_attempt_id;
+      window._lastPracticeBoard = currentSession.exam_type || (currentExam && currentExam.exam_type) || "";
       showResult({
         percentage: result.percent != null ? result.percent : result.percentage,
         correct: result.score,
         total: result.max_score,
         score: result.score,
         max_score: result.max_score,
+        score_display: result.score_display,
+        rating: result.rating,
+        rating_message: result.rating_message,
+        per_subject_scores: result.per_subject_scores,
       });
     } catch (e) {
       alert(e.message || "Submit failed.");
@@ -1896,19 +1943,35 @@ async function submitExam(force) {
   }
 
   if (currentSession && currentSession.is_internal) {
+    // OFFLINE SECURITY: the pack was started via startInternalExam, which
+    // records the exact start time; the duration is enforced from it.
+    const ieStart = (window.__ieStart && window.__ieStart.exam_id === currentSession.exam_id)
+      ? window.__ieStart
+      : { exam_id: currentSession.exam_id, started_at: null, duration_minutes: (currentExam && currentExam.duration_minutes) || 60 };
+    if (ieStart.duration_minutes && secondsLeft > ieStart.duration_minutes * 60) {
+      secondsLeft = ieStart.duration_minutes * 60;
+    }
+    const submittedAt = new Date().toISOString();
     try {
       const result = await api("/api/v1/cbt/external-exams/" + currentSession.exam_id + "/submit", {
         method: "POST",
         body: JSON.stringify({
           answers: answerMap,
           is_auto_submit: secondsLeft <= 0,
+          started_at: ieStart.started_at,
+          submitted_at: submittedAt,
+          client: "desktop",
         }),
       });
       showResult(result);
     } catch (e) {
       const offline = typeof navigator !== "undefined" && !navigator.onLine;
       if (offline && typeof queueInternalSubmit === "function") {
-        queueInternalSubmit(currentSession.exam_id, answerMap);
+        await queueInternalSubmit(currentSession.exam_id, answerMap, {
+          started_at: ieStart.started_at,
+          submitted_at: submittedAt,
+          client: "desktop",
+        });
         // Local preview score so students see how they did; admin still gets the real score on sync.
         let localCorrect = 0;
         let localWrong = 0;
@@ -1928,7 +1991,7 @@ async function submitExam(force) {
         });
         document.getElementById("result-detail").innerHTML =
           localCorrect + " correct · " + localWrong + " wrong · " + localTotal + " total<br>" +
-          "<strong>Offline:</strong> Your answers are saved. When you reconnect they sync to admin — your official score will appear on External School Exam.";
+          "<strong>Offline:</strong> Your answers are saved. When you reconnect they sync to admin — your official score will appear on Scholaxia Exam.";
       } else {
         alert(e.message || "Submit failed.");
         closeExam();
@@ -1996,7 +2059,7 @@ function showResult(result) {
   const closeBtn = document.getElementById("exam-result-close-btn");
   if (closeBtn) {
     closeBtn.textContent = currentSession && currentSession.is_internal
-      ? "Back to External School Exam"
+      ? "Back to Scholaxia Exam"
       : currentSession && currentSession.is_school_exam
       ? "Back to Scholaxia Exam"
       : "Back to Exams";
@@ -2009,6 +2072,14 @@ function showResult(result) {
   const wrong = result.wrong ?? result.total_wrong ?? 0;
   const total = result.total ?? (correct + wrong);
   const lines = [`${correct} correct · ${wrong} wrong · ${total} total`];
+  if (result.score_display) lines.unshift("Score: " + escHtml(result.score_display));
+  if (result.rating) lines.push("Rating: " + escHtml(result.rating) + (result.rating_message ? " — " + escHtml(result.rating_message) : ""));
+  if (result.per_subject_scores && typeof result.per_subject_scores === "object") {
+    var ps = Object.keys(result.per_subject_scores).map(function (k) {
+      return escHtml(k) + ": " + result.per_subject_scores[k];
+    });
+    if (ps.length) lines.push(ps.join(" · "));
+  }
   if (result.by_subject) {
     const subs = Object.keys(result.by_subject).map((k) => {
       const s = result.by_subject[k];
@@ -2017,7 +2088,91 @@ function showResult(result) {
     lines.push(subs.join(" · "));
   }
   document.getElementById("result-detail").innerHTML = lines.join("<br>");
+  // Review Answers button for practice attempts (same review as the mobile app).
+  var oldReviewBtn = document.getElementById("practice-review-btn");
+  if (oldReviewBtn) oldReviewBtn.remove();
+  if (window._lastPracticeReview && window._lastPracticeReview.length) {
+    var reviewBtn = document.createElement("button");
+    reviewBtn.id = "practice-review-btn";
+    reviewBtn.className = "btn-primary";
+    reviewBtn.style.marginTop = "12px";
+    reviewBtn.textContent = "Review Answers";
+    reviewBtn.onclick = function () {
+      showPracticeReviewModal(window._lastPracticeReview, window._lastPracticeBoard || "CBT");
+    };
+    document.getElementById("result-detail").appendChild(document.createElement("br"));
+    document.getElementById("result-detail").appendChild(reviewBtn);
+  }
   stopCamera();
+}
+
+/* Answer review for board practice attempts — every question with the
+   student's pick, the correct option and the explanation (top-down list). */
+function showPracticeReviewModal(review, boardLabel) {
+  var items = (review || []).map(function (q, i) {
+    var opts = (q.options || []).map(function (o) {
+      return { key: String(o.key || "").toUpperCase(), text: o.text || "" };
+    });
+    function textOf(key) {
+      for (var j = 0; j < opts.length; j++) if (opts[j].key === String(key || "").toUpperCase()) return opts[j].text;
+      return "";
+    }
+    var your = textOf(q.your_answer);
+    var correct = textOf(q.correct_key);
+    var ok = !!q.is_correct;
+    var skipped = !q.your_answer;
+    var color = ok ? "#22c55e" : "#ef4444";
+    var html =
+      '<div class="pr-item" style="border:1px solid ' + color + '55;border-radius:12px;padding:14px;margin-bottom:12px;">' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">' +
+      '<span style="display:inline-flex;width:24px;height:24px;border-radius:50%;align-items:center;justify-content:center;background:' + color + '22;color:' + color + ';font-weight:800;font-size:13px;">' + (ok ? "✓" : "✗") + "</span>" +
+      '<strong style="color:#94a3b8;font-size:12px;">Q' + (i + 1) + (q.subject ? " · " + escHtml(q.subject) : "") + "</strong>" +
+      (skipped ? '<span style="margin-left:auto;color:#94a3b8;font-size:11px;font-style:italic;">Skipped</span>' : "") +
+      "</div>" +
+      '<div style="font-size:14px;line-height:1.5;margin-bottom:10px;">' + escHtml(q.question_text || "") + "</div>";
+    opts.forEach(function (o) {
+      var isCorrect = o.key === String(q.correct_key || "").toUpperCase();
+      var isYours = o.key === String(q.your_answer || "").toUpperCase() && q.your_answer;
+      var c = isCorrect ? "#22c55e" : isYours ? "#ef4444" : "#94a3b8";
+      var bg = isCorrect ? "#22c55e14" : isYours ? "#ef444414" : "transparent";
+      html +=
+        '<div style="background:' + bg + ";border-radius:8px;padding:8px 12px;margin-bottom:6px;color:" + c + ';font-size:13px;">' +
+        "<strong>" + escHtml(o.key) + ".</strong> " + escHtml(o.text) +
+        (isCorrect ? ' <span style="font-size:12px;">✔ correct</span>' : "") +
+        (isYours && !isCorrect ? ' <span style="font-size:12px;">✘ your answer</span>' : "") +
+        "</div>";
+    });
+    if (q.explanation) {
+      html +=
+        '<div style="background:#f59e0b10;border:1px solid #f59e0b33;border-radius:8px;padding:10px 12px;margin-top:8px;font-size:13px;color:#eab308;">💡 ' +
+        escHtml(q.explanation) +
+        "</div>";
+    }
+    html += "</div>";
+    return html;
+  }).join("");
+
+  var overlay = document.createElement("div");
+  overlay.id = "practice-review-overlay";
+  overlay.style.cssText =
+    "position:fixed;inset:0;background:rgba(2,6,23,.82);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:36px 18px;overflow-y:auto;";
+  var box = document.createElement("div");
+  box.style.cssText =
+    "background:#0f172a;color:#e2e8f0;border-radius:16px;max-width:760px;width:100%;padding:22px;box-shadow:0 24px 80px rgba(0,0,0,.6);";
+  box.innerHTML =
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">' +
+    '<h3 style="margin:0;font-size:18px;">Answer Review — ' + escHtml(boardLabel) + "</h3>" +
+    '<button id="pr-close" style="background:#1e293b;color:#e2e8f0;border:0;border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13px;">Close</button>' +
+    "</div>" +
+    '<div style="font-size:12px;color:#94a3b8;margin-bottom:14px;">Green = correct · Red = your wrong pick · Yellow box = explanation</div>' +
+    items;
+  overlay.appendChild(box);
+  overlay.addEventListener("click", function (e) {
+    if (e.target === overlay) overlay.remove();
+  });
+  document.body.appendChild(overlay);
+  var closeBtn = box.querySelector("#pr-close");
+  if (closeBtn) closeBtn.onclick = function () { overlay.remove(); };
 }
 
 function closeExam() {

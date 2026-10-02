@@ -1,7 +1,7 @@
 {
   "name": "scholaxia-desktop",
-  "version": "1.0.1",
-  "description": "Scholaxia Student Portal — Windows Desktop App",
+  "version": "1.0.2",
+  "description": "Scholaxia Portal — Windows Desktop App",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -18,7 +18,7 @@
   },
   "build": {
     "appId": "com.scholaxia.desktop",
-    "productName": "Scholaxia Student",
+    "productName": "Scholaxia",
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -48,7 +48,7 @@
       "allowElevation": true,
       "createDesktopShortcut": false,
       "createStartMenuShortcut": false,
-      "shortcutName": "Scholaxia Student",
+      "shortcutName": "Scholaxia",
       "runAfterFinish": false,
       "artifactName": "Scholaxia-Student-Setup-${version}.${ext}",
       "installerIcon": "build/icon.ico",
@@ -78,8 +78,8 @@
     ],
     "extraFiles": [
       {
-        "from": "launch/Scholaxia Student.bat",
-        "to": "Scholaxia Student.bat"
+        "from": "launch/Scholaxia.bat",
+        "to": "Scholaxia.bat"
       }
     ],
     "extraResources": [

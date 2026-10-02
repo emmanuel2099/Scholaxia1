@@ -584,6 +584,61 @@ function _cbtSectionForIndex(index) {
   }) || null;
 }
 
+/* ---- OFFLINE PACK: cache the running attempt + downloaded question rows so
+   the hub can resume an exam with no network (questions never change). ---- */
+function _cbtRowFromQuestion(q) {
+  var row = {
+    id: q.id,
+    question_text: q.question_text || "",
+    topic: q.topic,
+    image_url: q.image_url,
+  };
+  (q.options || []).forEach(function (opt) {
+    var k = String(opt.key || "").toUpperCase();
+    if (k) row["option_" + k.toLowerCase()] = opt.text || "";
+  });
+  return row;
+}
+
+function _cbtOfflinePackSave() {
+  try {
+    if (!window.__cbtOfflineAttempt || !currentExam) return;
+    localStorage.setItem("sia_cbt_attempt_last", JSON.stringify(window.__cbtOfflineAttempt));
+    localStorage.setItem(
+      "sia_cbt_rows_" + window.__cbtOfflineAttempt.attempt_id,
+      JSON.stringify(currentExam.questions || [])
+    );
+  } catch (eQuota) {}
+}
+
+function _cbtOfflinePackLoad() {
+  try {
+    var attempt = JSON.parse(localStorage.getItem("sia_cbt_attempt_last") || "null");
+    if (!attempt || !attempt.attempt_id) return null;
+    var rows = JSON.parse(localStorage.getItem("sia_cbt_rows_" + attempt.attempt_id) || "null");
+    if (!rows || !rows.length || !rows.some(function (r) { return !!r; })) return null;
+    return { attempt: attempt, rows: rows };
+  } catch (e) {
+    return null;
+  }
+}
+
+function _cbtApplySectionRows(qs, start, questionIndex, fresh) {
+  qs.forEach(function (q, i) {
+    var row = _cbtRowFromQuestion(q);
+    currentExam.questions[start + i] = row;
+    var saved = (currentExam.answers || {})[row.id];
+    if (saved && !answers[start + i]) answers[start + i] = saved;
+  });
+  fresh.count = qs.length; // real question count (bank may be smaller than the stub)
+  fresh.questions_loaded = true;
+  _cbtOfflinePackSave();
+  currentQ = start + Math.min(Math.max(questionIndex - start, 0), qs.length - 1);
+  if (typeof buildSubjectTabs === "function") buildSubjectTabs();
+  if (typeof buildQNav === "function") buildQNav();
+  if (typeof renderQuestion === "function") renderQuestion();
+}
+
 async function maybeFetchPracticeSection(questionIndex) {
   if (!currentSession || !currentSession.practice_attempt_id) return;
   var sec = _cbtSectionForIndex(questionIndex);
@@ -611,29 +666,27 @@ async function maybeFetchPracticeSection(questionIndex) {
     // Fill rows IN PLACE — indices of every section stay stable, so already
     // loaded sections are never disturbed. Unused padding slots stay null and
     // are skipped by the question nav.
-    qs.forEach(function (q, i) {
-      var row = {
-        id: q.id,
-        question_text: q.question_text || "",
-        topic: q.topic,
-        image_url: q.image_url,
-      };
-      (q.options || []).forEach(function (opt) {
-        var k = String(opt.key || "").toUpperCase();
-        if (k) row["option_" + k.toLowerCase()] = opt.text || "";
-      });
-      currentExam.questions[start + i] = row;
-      var saved = (currentExam.answers || {})[row.id];
-      if (saved && !answers[start + i]) answers[start + i] = saved;
-    });
-    fresh.count = qs.length; // real question count (bank may be smaller than the stub)
-    fresh.questions_loaded = true;
-    currentQ = start + Math.min(Math.max(questionIndex - start, 0), qs.length - 1);
-    if (typeof buildSubjectTabs === "function") buildSubjectTabs();
-    if (typeof buildQNav === "function") buildQNav();
-    if (typeof renderQuestion === "function") renderQuestion();
+    _cbtApplySectionRows(qs, start, questionIndex, fresh);
   } catch (e) {
     _cbtSectionsFetched[key] = false;
+    // OFFLINE: play the already-downloaded copy of this subject.
+    var offlineNow = typeof navigator !== "undefined" && !navigator.onLine;
+    var offlinePack = offlineNow ? _cbtOfflinePackLoad() : null;
+    if (offlinePack && offlinePack.rows) {
+      var fresh2 = _cbtSectionForIndex(questionIndex) || sec;
+      var slice = offlinePack.rows.slice(fresh2.start, fresh2.start + (fresh2.count || 0));
+      if (slice.some(function (r) { return !!r; })) {
+        for (var ri = 0; ri < slice.length; ri++) {
+          if (slice[ri]) currentExam.questions[fresh2.start + ri] = slice[ri];
+        }
+        fresh2.questions_loaded = true;
+        currentQ = fresh2.start;
+        if (typeof buildSubjectTabs === "function") buildSubjectTabs();
+        if (typeof buildQNav === "function") buildQNav();
+        if (typeof renderQuestion === "function") renderQuestion();
+        return;
+      }
+    }
     alert((e && e.message) || "Could not load this subject's questions.");
   } finally {
     _cbtSectionFetchBusy = false;
@@ -677,6 +730,16 @@ async function cbtHubStartPractice(examType, subjects) {
   // Starting a new practice needs the server — downloaded exams are the
   // offline path (hub shows them in "Ready offline").
   if (cbtHubState.offlineMode || (typeof navigator !== "undefined" && !navigator.onLine)) {
+    // OFFLINE RESUME: relaunch the cached attempt + downloaded questions.
+    var saved = _cbtOfflinePackLoad();
+    if (
+      saved &&
+      String((saved.attempt && saved.attempt.exam_type) || "").toUpperCase() ===
+        String(examType || "").toUpperCase()
+    ) {
+      launchPracticeAttempt(saved.attempt, saved.rows);
+      return;
+    }
     alert(
       "You are offline — starting a new CBT needs data.\n\n" +
       "Your downloaded exams still work: go back and tap one under \"Ready offline\"."
@@ -708,7 +771,7 @@ async function cbtHubStartPractice(examType, subjects) {
   }
 }
 
-function launchPracticeAttempt(attempt) {
+function launchPracticeAttempt(attempt, offlineRows) {
   var pack = cbtAttemptToPack(attempt);
   // Sections arrive as stubs (questions load per subject on demand). Only fail
   // when the attempt has no sections at all.
@@ -720,6 +783,14 @@ function launchPracticeAttempt(attempt) {
     return;
   }
   currentExam = pack;
+  if (offlineRows && offlineRows.length) {
+    currentExam.questions = offlineRows;
+    (pack.sections || []).forEach(function (s) {
+      var slice = offlineRows.slice(s.start, s.start + (s.count || 0));
+      if (slice.some(function (r) { return !!r; })) s.questions_loaded = true;
+    });
+  }
+  window.__cbtOfflineAttempt = attempt;
   currentSession = {
     session_id: null,
     practice_attempt_id: attempt.attempt_id,
@@ -740,6 +811,7 @@ function launchPracticeAttempt(attempt) {
   secondsLeft =
     typeof pack.seconds_left === "number" ? pack.seconds_left : (pack.duration_minutes || 60) * 60;
 
+  if (!offlineRows) _cbtOfflinePackSave();
   if (typeof showCbtExamView === "function") showCbtExamView();
   document.getElementById("exam-title").textContent = pack.title;
   document.getElementById("exam-meta").textContent =

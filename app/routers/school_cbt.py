@@ -2401,7 +2401,6 @@ async def download_exam(
     if exam.randomize_questions:
         secrets.SystemRandom().shuffle(dl_order)
     dl_options = _make_option_order(shown, exam.randomize_options)
-    checksum = hashlib.sha256(json.dumps(dl_order, sort_keys=True).encode()).hexdigest()[:32]
     # Correct answers NEVER leave the server (§30).
     package = {
         "exam": {
@@ -2440,21 +2439,7 @@ async def download_exam(
             )
         )
     ).scalar_one_or_none()
-    if not exists:
-        db.add(
-            SchoolExamDownload(
-                school_id=exam.school_id,
-                exam_id=exam.id,
-                student_id=user.id,
-                checksum=checksum,
-                verified=True,
-                question_order=dl_order,
-                option_order=dl_options,
-            )
-        )
-        await _sync_log(db, exam, user.id, "exam_downloaded", detail={"checksum": checksum})
-        await db.flush()
-    else:
+    if exists:
         # Re-download returns the SAME mapping as the first download.
         dl_order = exists.question_order or dl_order
         dl_options = exists.option_order or dl_options
@@ -2472,8 +2457,30 @@ async def download_exam(
         }
         for q in ordered
     ]
+    # The checksum we hand the device MUST be the one verify-download returns.
+    # It covers the full package (questions in the student's order + options),
+    # not just the question-id order the row used to store — devices were
+    # failing their §18 integrity self-check on every revalidation.
     body = json.dumps(package, sort_keys=True).encode()
-    package["checksum"] = hashlib.sha256(body).hexdigest()[:32]
+    final_checksum = hashlib.sha256(body).hexdigest()[:32]
+    package["checksum"] = final_checksum
+    if not exists:
+        db.add(
+            SchoolExamDownload(
+                school_id=exam.school_id,
+                exam_id=exam.id,
+                student_id=user.id,
+                checksum=final_checksum,
+                verified=True,
+                question_order=dl_order,
+                option_order=dl_options,
+            )
+        )
+        await _sync_log(db, exam, user.id, "exam_downloaded", detail={"checksum": final_checksum})
+    elif exists.checksum != final_checksum:
+        # Self-heal rows written by the older order-only hash.
+        exists.checksum = final_checksum
+    await db.flush()
     return package
 
 

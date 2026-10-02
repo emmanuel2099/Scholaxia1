@@ -75,6 +75,18 @@ html[data-app-theme="dark"] {
 .role-select-grid-three {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
+.role-select-grid-four {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.exam-tab-note {
+  font-size: 0.78rem;
+  color: var(--sx-grey, #6b6280);
+  background: var(--sx-bg-soft, #f5f3ff);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  line-height: 1.5;
+}
 .role-select-btn {
   display: flex;
   flex-direction: column;

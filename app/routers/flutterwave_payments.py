@@ -6,7 +6,7 @@ from typing import Optional
 import uuid
 
 from app.core.database import get_db
-from app.core.deps import require_student
+from app.core.deps import require_student, get_current_user
 from app.core.config import settings
 from app.core.live_class_plans import (
     all_plans_dict,
@@ -234,7 +234,7 @@ async def list_live_class_plans(
 @router.get("/live-class/{class_id}/access")
 async def live_class_access(
     class_id: str,
-    current_user: dict = Depends(require_student),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(LiveClass).where(LiveClass.id == class_id))

@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text, func
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, ValidationError
 from typing import Optional
 from app.core.database import get_db
 from app.core.security import hash_password, verify_password, create_access_token, create_refresh_token, issue_auth_tokens
@@ -729,7 +729,15 @@ async def _payload_from_request(request: Request) -> LoginRequest:
         raise HTTPException(status_code=422, detail="Send email and password")
     if not isinstance(data, dict):
         raise HTTPException(status_code=422, detail="Send email and password")
-    return LoginRequest(**data)
+    try:
+        return LoginRequest(**data)
+    except ValidationError as exc:
+        # Bad email/password shape etc. — surface as 422, not a raw 500.
+        first = exc.errors()[0] if exc.errors() else {}
+        msg = str(first.get("msg") or "Invalid email or password format")
+        if "valid email" in msg.lower():
+            msg = "That email address doesn't look right. Check it and try again."
+        raise HTTPException(status_code=422, detail=msg)
 
 
 @router.post("/login")

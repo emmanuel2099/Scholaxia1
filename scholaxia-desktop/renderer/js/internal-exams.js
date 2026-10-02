@@ -1,4 +1,11 @@
-/** External / Internal School Exams — download offline, submit when back online */
+/** External / Internal School Exams — download offline, submit when back online
+ *  Owner PRD — OFFLINE SECURITY (site + desktop):
+ *   • exam packs + pending submissions stored ENCRYPTED (secure-store.js, AES-GCM)
+ *   • exam start time + submission time recorded on the device and sent to the server
+ *   • exam duration enforced from the recorded start time
+ *   • one queue entry per exam — duplicates are merged, never submitted twice
+ *   • the server validates and re-scores every submission (device score is a preview only)
+ */
 
 var internalExamsList = [];
 var INTERNAL_CACHE_PREFIX = "sia_internal_exam_pack_";
@@ -10,41 +17,93 @@ function ieEsc(s) {
   return d.innerHTML;
 }
 
-function getInternalPack(examId) {
+/* ── Encrypted local storage (OFFLINE SECURITY) ──────────────────────────── */
+async function sxEncSet(key, value) {
+  if (typeof ssSet === "function") { await ssSet(key, value); return; }
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) { /* quota */ }
+}
+
+async function sxEncGet(key) {
+  if (typeof ssGet === "function") { return ssGet(key); }
+  try { return JSON.parse(localStorage.getItem(key) || "null"); } catch (e) { return null; }
+}
+
+/** Exam pack cache (download once → take offline). Encrypted at rest. */
+async function getInternalPack(examId) {
+  var pack = await sxEncGet(INTERNAL_CACHE_PREFIX + examId);
+  if (pack) return pack;
+  // Legacy plain-JSON value from an older build — migrate it into the
+  // encrypted store and remove the readable copy from localStorage.
   try {
     var raw = localStorage.getItem(INTERNAL_CACHE_PREFIX + examId);
-    return raw ? JSON.parse(raw) : null;
-  } catch (e) {
-    return null;
-  }
+    if (raw) {
+      var legacy = JSON.parse(raw);
+      await sxEncSet(INTERNAL_CACHE_PREFIX + examId, legacy);
+      localStorage.removeItem(INTERNAL_CACHE_PREFIX + examId);
+      return legacy;
+    }
+  } catch (e) { /* ignore */ }
+  return null;
 }
 
-function saveInternalPack(examId, pack) {
-  localStorage.setItem(INTERNAL_CACHE_PREFIX + examId, JSON.stringify(pack));
+async function saveInternalPack(examId, pack) {
+  await sxEncSet(INTERNAL_CACHE_PREFIX + examId, pack);
 }
 
-function getPendingSubmits() {
+function listCachedInternalExams() {
+  var out = [];
   try {
-    return JSON.parse(localStorage.getItem(INTERNAL_PENDING_KEY) || "[]");
-  } catch (e) {
-    return [];
-  }
+    // secure-store.js encrypts the VALUE under the same key name, so scanning
+    // key names finds both plain (legacy) and encrypted packs.
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.indexOf(INTERNAL_CACHE_PREFIX) === 0) out.push(k.replace(INTERNAL_CACHE_PREFIX, ""));
+    }
+  } catch (e) { /* ignore */ }
+  return out;
 }
 
-function savePendingSubmits(list) {
-  localStorage.setItem(INTERNAL_PENDING_KEY, JSON.stringify(list));
+/* ── Offline submission queue (answers saved locally → auto-sync on reconnect) ── */
+async function getPendingSubmits() {
+  var list = await sxEncGet(INTERNAL_PENDING_KEY);
+  try {
+    if (!list) {
+      var raw = localStorage.getItem(INTERNAL_PENDING_KEY);
+      if (raw) {
+        list = JSON.parse(raw) || [];
+        await sxEncSet(INTERNAL_PENDING_KEY, list); // migrate to encrypted
+        localStorage.removeItem(INTERNAL_PENDING_KEY);
+      }
+    }
+  } catch (e) { /* ignore */ }
+  return Array.isArray(list) ? list : [];
 }
 
-function queueInternalSubmit(examId, answers) {
-  var list = getPendingSubmits();
+async function savePendingSubmits(list) {
+  await sxEncSet(INTERNAL_PENDING_KEY, list || []);
+}
+
+async function queueInternalSubmit(examId, answers, meta) {
+  meta = meta || {};
+  var list = await getPendingSubmits();
+  // One entry per exam: a re-queued submission REPLACES the older draft for
+  // the same exam (duplicate submissions are impossible by construction).
   list = list.filter(function (x) { return x.exam_id !== examId; });
-  list.push({ exam_id: examId, answers: answers, queued_at: new Date().toISOString() });
-  savePendingSubmits(list);
+  list.push({
+    exam_id: examId,
+    answers: answers,
+    started_at: meta.started_at || null,
+    submitted_at: meta.submitted_at || new Date().toISOString(),
+    client: meta.client || "desktop",
+    queued_at: new Date().toISOString(),
+  });
+  await savePendingSubmits(list);
 }
 
 async function flushPendingInternalSubmits() {
-  if (!isStudentLoggedIn() || typeof navigator !== "undefined" && !navigator.onLine) return;
-  var list = getPendingSubmits();
+  if (typeof isStudentLoggedIn !== "function" || !isStudentLoggedIn()) return;
+  if (typeof navigator !== "undefined" && !navigator.onLine) return;
+  var list = await getPendingSubmits();
   if (!list.length) return;
   var remaining = [];
   for (var i = 0; i < list.length; i++) {
@@ -52,13 +111,20 @@ async function flushPendingInternalSubmits() {
     try {
       await api("/api/v1/cbt/external-exams/" + item.exam_id + "/submit", {
         method: "POST",
-        body: JSON.stringify({ answers: item.answers, is_auto_submit: false }),
+        body: JSON.stringify({
+          answers: item.answers,
+          is_auto_submit: false,
+          started_at: item.started_at || null,
+          submitted_at: item.submitted_at || null,
+          offline_sync: true,
+          client: "desktop",
+        }),
       });
     } catch (e) {
       remaining.push(item);
     }
   }
-  savePendingSubmits(remaining);
+  await savePendingSubmits(remaining);
   if (list.length > remaining.length && typeof loadInternalExamsPage === "function") {
     loadInternalExamsPage();
   }
@@ -69,14 +135,14 @@ async function loadInternalExamsPage() {
   var banner = document.getElementById("internal-pending-banner");
   if (!el) return;
 
-  if (!isStudentLoggedIn()) {
+  if (typeof isStudentLoggedIn !== "function" || !isStudentLoggedIn()) {
     el.innerHTML = '<div class="empty-state-premium"><h3>Sign in required</h3><p>Log in to see school exams uploaded by admin.</p></div>';
     return;
   }
 
   await flushPendingInternalSubmits();
 
-  var pending = getPendingSubmits();
+  var pending = await getPendingSubmits();
   if (banner) {
     if (pending.length) {
       banner.classList.remove("hidden");
@@ -101,18 +167,7 @@ async function loadInternalExamsPage() {
   }
 }
 
-function listCachedInternalExams() {
-  var out = [];
-  for (var i = 0; i < localStorage.length; i++) {
-    var k = localStorage.key(i);
-    if (k && k.indexOf(INTERNAL_CACHE_PREFIX) === 0) {
-      out.push(k.replace(INTERNAL_CACHE_PREFIX, ""));
-    }
-  }
-  return out;
-}
-
-function renderInternalExamsList() {
+async function renderInternalExamsListAsync() {
   var el = document.getElementById("internal-exams-list");
   if (!el) return;
 
@@ -121,16 +176,21 @@ function renderInternalExamsList() {
       '<div class="empty-state-premium">' +
       '<div class="empty-icon">&#127979;</div>' +
       "<h3>No school exams yet</h3>" +
-      "<p>When admin uploads an external school exam, it will appear here. Download it while online, take it offline, then submit your answers.</p></div>";
+      "<p>When admin uploads an Scholaxia Exam, it will appear here. Download it while online, take it offline, then submit your answers.</p></div>";
     return;
   }
 
-  el.innerHTML = internalExamsList.map(function (e) {
-    var cached = !!getInternalPack(e.id);
+  var pendingList = await getPendingSubmits();
+  var cachedIds = listCachedInternalExams();
+  el.innerHTML = "";
+  for (var idx = 0; idx < internalExamsList.length; idx++) {
+    var e = internalExamsList[idx];
+    var cached = cachedIds.indexOf(String(e.id)) !== -1;
     var taken = e.already_taken;
-    var pending = getPendingSubmits().some(function (p) { return p.exam_id === e.id; });
-    return (
-      '<div class="card sx-card">' +
+    var pending = pendingList.some(function (p) { return p.exam_id === e.id; });
+    var card = document.createElement("div");
+    card.className = "card sx-card";
+    card.innerHTML =
       '<div class="time-badge">' + (taken ? "Submitted" : "School exam") + "</div>" +
       "<h3>" + ieEsc(e.title) + "</h3>" +
       '<p class="meta">' + ieEsc(e.subject) + " · " + ieEsc(e.teacher_name || "Admin") + " · " + (e.total_questions || "?") + " questions · " + (e.duration_minutes || 60) + " min</p>" +
@@ -138,8 +198,8 @@ function renderInternalExamsList() {
       (pending ? '<p class="meta sx-meta-warn">&#128228; Answers saved — will submit when online</p>' : "") +
       (e.notes_url ? '<a href="' + ieEsc(e.notes_url) + '" target="_blank" rel="noopener" class="btn-secondary btn-sm">View notes / PDF</a> ' : "") +
       '<div class="card-actions-row">' +
-      (!taken && !cached ? '<button type="button" class="btn-action btn-sm" onclick="downloadInternalExam(\'' + ieEsc(String(e.id)) + '\')">Download for offline</button>' : "") +
-      (!taken && cached ? '<button type="button" class="btn-join" onclick="startInternalExam(\'' + ieEsc(String(e.id)) + '\')">Take exam</button>' : "") +
+      (!taken && !cached ? '<button type="button" class="btn-action btn-sm" data-ie-download="' + ieEsc(String(e.id)) + '">Download for offline</button>' : "") +
+      (!taken && cached ? '<button type="button" class="btn-join" data-ie-start="' + ieEsc(String(e.id)) + '">Take exam</button>' : "") +
       (taken
         ? '<span class="meta">Submitted' +
           (e.my_score_percent != null
@@ -147,9 +207,19 @@ function renderInternalExamsList() {
             : " — awaiting board publish") +
           "</span>"
         : "") +
-      "</div></div>"
-    );
-  }).join("");
+      "</div>";
+    el.appendChild(card);
+  }
+  el.querySelectorAll("[data-ie-download]").forEach(function (btn) {
+    btn.addEventListener("click", function () { downloadInternalExam(btn.getAttribute("data-ie-download")); });
+  });
+  el.querySelectorAll("[data-ie-start]").forEach(function (btn) {
+    btn.addEventListener("click", function () { startInternalExam(btn.getAttribute("data-ie-start")); });
+  });
+}
+
+function renderInternalExamsList() {
+  renderInternalExamsListAsync();
 }
 
 async function downloadInternalExam(examId) {
@@ -159,7 +229,7 @@ async function downloadInternalExam(examId) {
       alert("This exam has no questions yet.");
       return;
     }
-    saveInternalPack(examId, pack);
+    await saveInternalPack(examId, pack);
     alert("Downloaded! You can take this exam offline anytime.");
     renderInternalExamsList();
   } catch (e) {
@@ -167,15 +237,18 @@ async function downloadInternalExam(examId) {
   }
 }
 
+/** Start the exam from the encrypted local pack. Records the exact start time
+ *  (sent with the submission) and derives the remaining time from it, so the
+ *  duration stands even fully offline. */
 async function startInternalExam(examId) {
-  var pack = getInternalPack(examId);
+  var pack = await getInternalPack(examId);
   if (!pack) {
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       alert("Download this exam first while you have internet.");
       return;
     }
     await downloadInternalExam(examId);
-    pack = getInternalPack(examId);
+    pack = await getInternalPack(examId);
   }
   if (!pack || !pack.questions || !pack.questions.length) {
     alert("Exam pack not found. Download again.");
@@ -187,11 +260,15 @@ async function startInternalExam(examId) {
     return;
   }
 
+  var startedAt = new Date().toISOString();
+  var minutes = pack.duration_minutes || 60;
+  window.__ieStart = { exam_id: examId, started_at: startedAt, duration_minutes: minutes };
+
   currentExam = pack;
   currentSession = { is_internal: true, exam_id: examId, is_school_exam: true };
   answers = {};
   currentQ = 0;
-  secondsLeft = (pack.duration_minutes || 60) * 60;
+  secondsLeft = minutes * 60;
 
   showCbtExamView();
   document.getElementById("exam-title").textContent = pack.title || "School Exam";
@@ -210,4 +287,6 @@ if (typeof window !== "undefined") {
   window.startInternalExam = startInternalExam;
   window.flushPendingInternalSubmits = flushPendingInternalSubmits;
   window.queueInternalSubmit = queueInternalSubmit;
+  window.getPendingSubmits = getPendingSubmits;
+  window.getInternalPack = getInternalPack;
 }

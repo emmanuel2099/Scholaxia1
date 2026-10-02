@@ -1008,7 +1008,12 @@ async def create_class(
         except Exception:
             pass
 
-    background_tasks.add_task(asyncio.ensure_future, _post_create_tasks())
+    # BackgroundTasks supports coroutine functions natively — it awaits them
+    # on the event loop after the response. The previous
+    # add_task(asyncio.ensure_future, ...) ran in a worker thread with no
+    # event loop, so class notifications and parent email invites NEVER ran
+    # ("coroutine was never awaited" + RuntimeError on every create).
+    background_tasks.add_task(_post_create_tasks)
 
     return ClassResponse(
         id=str(live_class.id),
@@ -1199,11 +1204,12 @@ async def join_class(
                 except Exception:
                     pass
             try:
+                # NOW() is PostgreSQL-only; CURRENT_TIMESTAMP works on both.
                 await db.execute(
                     sql_text(
                         "UPDATE live_classes SET is_live = TRUE WHERE id = :cid "
                         "AND COALESCE(is_live, false) = false "
-                        "AND (end_time IS NULL OR end_time > NOW())"
+                        "AND (end_time IS NULL OR end_time > CURRENT_TIMESTAMP)"
                     ),
                     {"cid": str(class_uuid)},
                 )
@@ -1249,45 +1255,80 @@ async def join_class(
             await _safe_rollback()
         teacher_meta = {"teacher_id": teacher_id, "teacher_name": teacher_name}
 
-        # Best-effort attendance — never block the LiveKit token
+        # Best-effort attendance — never block the LiveKit token.
+        # Portable SQL (no CAST AS uuid / NOW() / NULLS LAST) so SQLite dev
+        # sandbox records attendance exactly like the Postgres deploy.
         att_id = str(uuid_lib.uuid4())
         try:
-            existing = (
-                await db.execute(
-                    sql_text(
-                        """
-                        SELECT id::text FROM class_attendances
-                        WHERE live_class_id = CAST(:cid AS uuid) AND student_id = CAST(:sid AS uuid)
-                        ORDER BY joined_at DESC NULLS LAST
-                        LIMIT 1
-                        """
-                    ),
-                    {"cid": str(class_uuid), "sid": sid},
-                )
-            ).first()
-            if existing:
-                await db.execute(
-                    sql_text(
-                        """
-                        UPDATE class_attendances
-                        SET left_at = NULL
-                        WHERE id = CAST(:aid AS uuid)
-                        """
-                    ),
-                    {"aid": str(existing[0])},
-                )
-                await db.flush()
+            is_sqlite = db.bind is not None and db.bind.dialect.name == "sqlite"
+            if is_sqlite:
+                existing = (
+                    await db.execute(
+                        sql_text(
+                            """
+                            SELECT CAST(id AS TEXT) FROM class_attendances
+                            WHERE live_class_id = :cid AND student_id = :sid
+                            ORDER BY joined_at DESC
+                            LIMIT 1
+                            """
+                        ),
+                        {"cid": str(class_uuid), "sid": sid},
+                    )
+                ).first()
+                if existing:
+                    await db.execute(
+                        sql_text("UPDATE class_attendances SET left_at = NULL WHERE id = :aid"),
+                        {"aid": str(existing[0])},
+                    )
+                    await db.flush()
+                else:
+                    await db.execute(
+                        sql_text(
+                            """
+                            INSERT INTO class_attendances (id, live_class_id, student_id, joined_at, is_muted, is_removed)
+                            VALUES (:aid, :cid, :sid, CURRENT_TIMESTAMP, 0, 0)
+                            """
+                        ),
+                        {"aid": att_id, "cid": str(class_uuid), "sid": sid},
+                    )
+                    await db.flush()
             else:
-                await db.execute(
-                    sql_text(
-                        """
-                        INSERT INTO class_attendances (id, live_class_id, student_id, joined_at, is_muted)
-                        VALUES (CAST(:aid AS uuid), CAST(:cid AS uuid), CAST(:sid AS uuid), NOW(), FALSE)
-                        """
-                    ),
-                    {"aid": att_id, "cid": str(class_uuid), "sid": sid},
-                )
-                await db.flush()
+                existing = (
+                    await db.execute(
+                        sql_text(
+                            """
+                            SELECT id::text FROM class_attendances
+                            WHERE live_class_id = CAST(:cid AS uuid) AND student_id = CAST(:sid AS uuid)
+                            ORDER BY joined_at DESC NULLS LAST
+                            LIMIT 1
+                            """
+                        ),
+                        {"cid": str(class_uuid), "sid": sid},
+                    )
+                ).first()
+                if existing:
+                    await db.execute(
+                        sql_text(
+                            """
+                            UPDATE class_attendances
+                            SET left_at = NULL
+                            WHERE id = CAST(:aid AS uuid)
+                            """
+                        ),
+                        {"aid": str(existing[0])},
+                    )
+                    await db.flush()
+                else:
+                    await db.execute(
+                        sql_text(
+                            """
+                            INSERT INTO class_attendances (id, live_class_id, student_id, joined_at, is_muted, is_removed)
+                            VALUES (CAST(:aid AS uuid), CAST(:cid AS uuid), CAST(:sid AS uuid), NOW(), FALSE, FALSE)
+                            """
+                        ),
+                        {"aid": att_id, "cid": str(class_uuid), "sid": sid},
+                    )
+                    await db.flush()
         except Exception as att_exc:
             log.warning("attendance write skipped: %s", att_exc)
             await _safe_rollback()
@@ -2303,14 +2344,15 @@ async def end_class(
         live_class.recording_url = recording_url
     await db.flush()
 
-    # Belt-and-suspenders SQL update (CAST so UUID bind never silently matches 0 rows).
+    # Belt-and-suspenders SQL update — portable SQL (SQLite ids are text, so
+    # no CAST AS uuid; CURRENT_TIMESTAMP-style binds work on both backends).
     try:
         upd = await db.execute(
             sql_text(
                 """
                 UPDATE live_classes
                 SET is_live = FALSE, end_time = :ended
-                WHERE id = CAST(:cid AS uuid)
+                WHERE id = :cid
                 """
             ),
             {"cid": str(cid), "ended": ended_at},
@@ -2327,7 +2369,7 @@ async def end_class(
                 """
                 UPDATE class_attendances
                 SET left_at = :ended
-                WHERE live_class_id = CAST(:cid AS uuid) AND left_at IS NULL
+                WHERE live_class_id = :cid AND left_at IS NULL
                 """
             ),
             {"cid": str(cid), "ended": ended_at},

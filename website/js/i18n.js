@@ -64,7 +64,7 @@
       cta_p: 'Join 10,000+ students across 20+ countries using Scholaxia for CBT practice, live classes and expert tutors.',
       cta_btn1: 'Explore Courses', cta_btn2: 'Download Desktop',
       dl_kicker: 'Windows app', dl_h2: 'Download Scholaxia Desktop',
-      dl_p: 'Install the Scholaxia Student app on your PC for live classes, CBT practice, and study tools — same account as the website.',
+      dl_p: 'Install the Scholaxia app on your PC for live classes, CBT practice, and study tools — same account as the website.',
       dl_btn: 'Download for Windows',
       footer_about: 'Scholaxia is a global learning platform helping students prepare for WAEC, NECO, JAMB, IGCSE, SAT, KCSE & BECE with CBT, live classes, AI tutoring and community support.',
       footer_links: 'Quick Links', footer_courses: 'Popular Courses',
@@ -674,10 +674,12 @@
     GHS: { symbol: 'GHS ', label: 'GHS', rate: 13.5   },
   };
 
-  let currentCurrency = localStorage.getItem('sx_currency') || 'USD';
+  /* NGN is the house currency — the shop & marketplace price in Naira and
+     Paystack charges NGN server-side, so Naira must be the default. */
+  let currentCurrency = localStorage.getItem('sx_currency') || 'NGN';
 
   function applyCurrency(code) {
-    if (!CURRENCIES[code]) code = 'USD';
+    if (!CURRENCIES[code]) code = 'NGN';
     currentCurrency = code;
     localStorage.setItem('sx_currency', code);
 
@@ -703,6 +705,9 @@
       });
       el.textContent = cur.symbol + converted;
     });
+
+    /* notify page scripts (shop, marketplace…) so they re-render prices */
+    document.dispatchEvent(new CustomEvent('sx:currencychange', { detail: { code } }));
   }
 
   /* currency dropdown (reuses .lang-wrap pattern) */

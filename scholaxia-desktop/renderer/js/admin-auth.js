@@ -173,6 +173,7 @@
     var name = ($("reg-name") && $("reg-name").value.trim()) || "";
     var email = ($("reg-email") && $("reg-email").value.trim()) || "";
     var password = ($("reg-password") && $("reg-password").value) || "";
+    var setupKey = ($("reg-setup-key") && $("reg-setup-key").value) || "";
     var err = $("register-error");
     var btn = $("btn-register");
     if (err) err.textContent = "";
@@ -186,7 +187,7 @@
       var res = await fetch(base + "/api/v1/admin/register", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ email: email, password: password, full_name: name }),
+        body: JSON.stringify({ email: email, password: password, full_name: name, setup_key: setupKey }),
       });
       var data = await res.json().catch(function () {
         return {};

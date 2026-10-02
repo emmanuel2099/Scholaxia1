@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; script-src-attr 'unsafe-inline'; connect-src https://scholaxia1.onrender.com http://127.0.0.1:* http://localhost:*; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https:" />
+<title>Scholaxia — Examination Portal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="css/exam.css" />
+</head>
+<body>
+<div id="toast"></div>
+
+<!-- ═══ LOGIN ═══ -->
+<div id="login">
+  <div class="blob b1"></div><div class="blob b2"></div>
+  <div class="hand">Your<br/>Future<br/>Matters</div>
+  <div class="edu e1">🎓</div><div class="edu e2">📘</div>
+  <form class="exam-card" id="loginForm" autocomplete="off">
+    <div class="exam-brand">
+      <img src="assets/logo.png" alt="Scholaxia" onerror="this.outerHTML='<span class=\'fb\'>🎓</span>'" />
+      <div>
+        <div style="font-size:27px;font-weight:800;color:var(--blue);letter-spacing:-.5px">Scholaxia</div>
+        <div style="font-size:11px;letter-spacing:.28em;color:var(--mut);font-weight:600">LEARN • PRACTICE • EXCEL</div>
+      </div>
+    </div>
+    <h1>Welcome Back!</h1>
+    <p class="sub">Examinations are ongoing — wishing you all good luck.</p>
+    <div class="fgroup"><span class="gico">👤</span> Registration Number</div>
+    <div class="inwrap"><span class="lico">👤</span>
+      <input class="f-in" id="lgReg" placeholder="SCHX/26/544560" required />
+    </div>
+    <div class="fgroup"><span class="gico">🔑</span> Access Code</div>
+    <div class="inwrap"><span class="lico">🔒</span>
+      <input class="f-in" id="lgCode" type="password" placeholder="••••••" required style="letter-spacing:2px" />
+      <button type="button" class="eye" onclick="toggleEye()" aria-label="Show access code">👁</button>
+    </div>
+    <button class="btn-login" id="lgBtn" type="submit">⮕&nbsp; Login to Examination</button>
+    <div class="login-err" id="lgErr"></div>
+    <div class="login-foot">🔍 Lost your details? <a href="#" onclick="retrieveDetails();return false">Retrieve Login Details</a> · <a href="index.html">← Portal</a></div>
+  </form>
+</div>
+
+<!-- ═══ APP ═══ -->
+<div id="app" class="hidden">
+  <div class="top">
+    <div class="tb" onclick="goHome()" style="cursor:pointer">
+      <img src="assets/logo.png" alt="" onerror="this.style.display='none'" />
+      <b>Scholaxia</b>
+    </div>
+    <div class="who" id="whoBox"></div>
+  </div>
+
+  <!-- exam home -->
+  <div class="wrap" id="home">
+    <h2 id="hello">Welcome!</h2>
+    <p class="lead">Your Examinations</p>
+    <div class="examgrid" id="examGrid"><div class="ecard">Loading…</div></div>
+  </div>
+
+  <!-- CBT interface -->
+  <div id="exam" class="hidden">
+    <div class="qcard">
+      <div class="qhead">
+        <div class="qico">📝</div>
+        <div>
+          <h2 id="qSubject">—</h2>
+          <div class="qsub" id="qSub">—</div>
+        </div>
+        <div class="pill-ok"><span class="dot"></span> Exam Loaded</div>
+      </div>
+      <div class="flagrow"><button class="flagbtn" id="flagBtn" onclick="toggleFlag()">⚑ Flag Question</button></div>
+      <div class="qnum" id="qNum">Question 1</div>
+      <div class="qtext" id="qText">—</div>
+      <div id="qOpts"></div>
+      <div class="qnav">
+        <button class="btn-nav" id="btnPrev" onclick="move(-1)">← Previous</button>
+        <button class="btn-nav primary" id="btnNext" onclick="move(1)">Next →</button>
+      </div>
+    </div>
+    <div class="side">
+      <div class="tcard">
+        <div class="clock">🕐</div>
+        <div>
+          <div class="tlab">Time Remaining</div>
+          <div class="tval" id="timer">--:--:--</div>
+        </div>
+      </div>
+      <div class="pcard">
+        <h3>Question Palette</h3>
+        <div class="legend">
+          <span><span class="ld cur"></span> Current</span>
+          <span><span class="ld ans"></span> Answered</span>
+          <span><span class="ld not"></span> Not Answered</span>
+          <span><span class="ld mk"></span> Marked</span>
+        </div>
+        <div class="palette" id="palette"></div>
+        <div class="pnote">ⓘ You can review your answers before submitting the exam.</div>
+        <div class="submitbar"><button class="btn-submit" onclick="openSummary()">Submit Examination</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="js/api.js"></script>
+<script src="js/exam-portal.js"></script>
+</body>
+</html>

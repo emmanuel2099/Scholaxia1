@@ -23,6 +23,7 @@ if not WEBSITE_STATIC_DIR.is_dir():
 
 from app.routers import auth, students, admin, live_class, cbt, community, ai_tutor, notifications, payments, paystack_payments
 from app.routers import developer_auth, developer_keys, public_ai_api, reviews_reports, teacher_ai, library, wallet, materials
+from app.routers import flutterwave_payments
 from app.routers import recommendations
 from app.routers import performance
 from app.routers import home
@@ -97,6 +98,7 @@ app.include_router(notifications.router, prefix="/api/v1")
 app.include_router(payments.router, prefix="/api/v1")
 app.include_router(paystack_payments.router, prefix="/api/v1")
 app.include_router(paystack_payments.payments_router, prefix="/api/v1")
+app.include_router(flutterwave_payments.router, prefix="/api/v1")
 app.include_router(reviews_reports.router, prefix="/api/v1")
 app.include_router(teacher_ai.router, prefix="/api/v1")
 app.include_router(library.router, prefix="/api/v1")
@@ -388,6 +390,10 @@ async def school_host_router(request: Request, full_path: str):
     }
     if host not in main_hosts:
         raise HTTPException(status_code=404, detail="Not found")
+    # Unknown API paths must be a JSON 404 — never the marketing page, or
+    # clients end up parsing HTML as JSON.
+    if full_path == "api" or full_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="API route not found")
     if not full_path or full_path.endswith("/"):
         return _static_file("index.html")
     safe = Path(full_path)

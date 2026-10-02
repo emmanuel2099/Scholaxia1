@@ -153,6 +153,8 @@ async function adminRegister(e) {
   var name = document.getElementById("reg-name").value.trim();
   var email = document.getElementById("reg-email").value.trim();
   var password = document.getElementById("reg-password").value;
+  var setupKeyEl = document.getElementById("reg-setup-key");
+  var setupKey = setupKeyEl ? setupKeyEl.value : "";
   var err = document.getElementById("register-error");
   var btn = document.getElementById("btn-register");
   err.textContent = "";
@@ -161,7 +163,7 @@ async function adminRegister(e) {
     var res = await fetch(API_BASE + "/api/v1/admin/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: email, password: password, full_name: name }),
+      body: JSON.stringify({ email: email, password: password, full_name: name, setup_key: setupKey }),
       signal: fetchTimeout(45000),
     });
     var data = await res.json();
@@ -188,6 +190,7 @@ function showAdminPage(page) {
   document.getElementById("page-" + page).classList.add("active");
   document.querySelector('[data-page="' + page + '"]').classList.add("active");
   if (page === "dashboard") loadDashboard();
+  else if (page === "sub-admins") loadSubAdmins();
   else if (page === "students") loadStudents();
   else if (page === "teachers") loadTeachers();
   else if (page === "vendors") loadVendors();
@@ -216,6 +219,167 @@ function showAdminPage(page) {
 }
 
 /* ── Dashboard ── */
+// ── Sub-admin management (main admin only) ────────────────────────────
+
+var SUB_PERM_LABELS = {
+  questions: "CBT questions & exams",
+  students: "Students",
+  teachers: "Teachers",
+  vendors: "Vendors",
+  kind: "Kids (Kind)",
+  library: "Library",
+  marketplace: "Marketplace",
+  plans: "Plans & pricing",
+  coupons: "CBT coupons",
+  community: "Community",
+  requests: "Live session requests",
+  reports: "Dashboard & reports",
+};
+
+function subAdminPermsCheckboxes(selected) {
+  selected = selected || [];
+  var keys = Object.keys(SUB_PERM_LABELS);
+  return keys
+    .map(function (k) {
+      var on = selected.indexOf(k) >= 0;
+      return (
+        '<label class="subadmin-perm"><input type="checkbox" value="' +
+        k +
+        '"' +
+        (on ? " checked" : "") +
+        " /> " +
+        escHtml(SUB_PERM_LABELS[k] || k) +
+        "</label>"
+      );
+    })
+    .join("");
+}
+
+async function loadSubAdmins() {
+  var box = document.getElementById("subadmins-list");
+  if (!box) return;
+  box.innerHTML = '<div class="loading">Loading…</div>';
+  var permBox = document.getElementById("subadmin-perms");
+  try {
+    var data = await adminApi("/api/v1/admin/sub-admins");
+    if (permBox) permBox.innerHTML = subAdminPermsCheckboxes([]);
+    var admins = data.admins || [];
+    if (!admins.length) {
+      box.innerHTML = '<div class="loading">No admin accounts.</div>';
+      return;
+    }
+    box.innerHTML = admins
+      .map(function (a) {
+        var badges = a.is_main
+          ? '<span class="subadmin-badge main">MAIN ADMIN</span>'
+          : '<span class="subadmin-badge sub">SUB-ADMIN</span>';
+        var state = a.is_active ? "" : '<span class="subadmin-badge off">DISABLED</span>';
+        var perms = a.is_main
+          ? "Full access — everything on the platform."
+          : (a.permissions || [])
+              .map(function (p) {
+                return escHtml(SUB_PERM_LABELS[p] || p);
+              })
+              .join(" · ") || "No permissions";
+        var actions = "";
+        if (!a.is_main) {
+          actions =
+            '<button class="btn-sm" onclick="toggleSubAdmin(\'' +
+            a.id +
+            "'," +
+            (!a.is_active) +
+            ')">' +
+            (a.is_active ? "Disable" : "Enable") +
+            '</button> <button class="btn-sm danger" onclick="removeSubAdmin(\'' +
+            a.id +
+            '\', \'' +
+            escHtml(a.email).replace(/'/g, "") +
+            '\')">Delete</button>';
+        }
+        return (
+          '<div class="panel subadmin-row" style="margin-bottom:12px">' +
+          '<div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">' +
+          "<div><strong>" +
+          escHtml(a.full_name) +
+          "</strong> <span style=\"opacity:.7\">" +
+          escHtml(a.email) +
+          "</span> " +
+          badges +
+          state +
+          "</div>" +
+          "<div>" +
+          actions +
+          "</div></div>" +
+          '<div style="opacity:.75;font-size:.85rem;margin-top:6px">' +
+          perms +
+          "</div></div>"
+        );
+      })
+      .join("");
+  } catch (e) {
+    box.innerHTML =
+      '<div class="loading">' + escHtml(e.message || "Could not load sub-admins.") + "</div>";
+    if (permBox) permBox.innerHTML = "";
+  }
+}
+
+async function createSubAdmin() {
+  var err = document.getElementById("subadmin-create-error");
+  var name = (document.getElementById("subadmin-name") || {}).value || "";
+  var email = (document.getElementById("subadmin-email") || {}).value || "";
+  var password = (document.getElementById("subadmin-password") || {}).value || "";
+  var permBox = document.getElementById("subadmin-perms");
+  var perms = permBox
+    ? Array.from(permBox.querySelectorAll("input:checked")).map(function (c) {
+        return c.value;
+      })
+    : [];
+  if (err) err.textContent = "";
+  if (!name.trim() || !email.trim() || password.length < 8) {
+    if (err) err.textContent = "Fill name, email, and a password of at least 8 characters.";
+    return;
+  }
+  if (!perms.length) {
+    if (err) err.textContent = "Tick at least one permission for this sub-admin.";
+    return;
+  }
+  try {
+    await adminApi("/api/v1/admin/sub-admins", {
+      method: "POST",
+      body: { full_name: name.trim(), email: email.trim(), password: password, permissions: perms },
+    });
+    document.getElementById("subadmin-name").value = "";
+    document.getElementById("subadmin-email").value = "";
+    document.getElementById("subadmin-password").value = "";
+    if (permBox) permBox.innerHTML = subAdminPermsCheckboxes([]);
+    loadSubAdmins();
+  } catch (e) {
+    if (err) err.textContent = formatApiError(e.message) || e.message || "Could not create sub-admin.";
+  }
+}
+
+async function toggleSubAdmin(id, activate) {
+  try {
+    await adminApi("/api/v1/admin/sub-admins/" + id, {
+      method: "PATCH",
+      body: { is_active: !!activate },
+    });
+    loadSubAdmins();
+  } catch (e) {
+    alert(formatApiError(e.message) || e.message || "Update failed.");
+  }
+}
+
+async function removeSubAdmin(id, email) {
+  if (!confirm("Remove sub-admin " + email + "? They will immediately lose all admin access.")) return;
+  try {
+    await adminApi("/api/v1/admin/sub-admins/" + id, { method: "DELETE" });
+    loadSubAdmins();
+  } catch (e) {
+    alert(formatApiError(e.message) || e.message || "Delete failed.");
+  }
+}
+
 async function loadDashboard() {
   var el = document.getElementById("stats-grid");
   el.innerHTML = '<div class="loading">Loading…</div>';
@@ -1468,10 +1632,13 @@ async function loadCbtSettings() {
     setNum("cbt-set-jamb-eng", s.jamb_english_questions);
     setNum("cbt-set-jamb-dur", s.jamb_duration_minutes);
     setNum("cbt-set-jamb-subj", s.jamb_subjects_required);
+    setNum("cbt-set-jamb-total", s.jamb_score_total != null ? s.jamb_score_total : 400);
     setNum("cbt-set-waec-q", s.waec_questions_per_subject);
     setNum("cbt-set-waec-dur", s.waec_duration_minutes);
+    setNum("cbt-set-waec-total", s.waec_score_per_subject != null ? s.waec_score_per_subject : 100);
     setNum("cbt-set-neco-q", s.neco_questions_per_subject);
     setNum("cbt-set-neco-dur", s.neco_duration_minutes);
+    setNum("cbt-set-neco-total", s.neco_score_per_subject != null ? s.neco_score_per_subject : 100);
     setNum("cbt-set-jw-q", s.jw_questions_per_subject);
     setNum("cbt-set-jw-dur", s.jw_duration_minutes);
     var bank = (data && data.question_bank) || [];
@@ -1514,10 +1681,13 @@ async function saveCbtSettings() {
         jamb_english_questions: numVal("cbt-set-jamb-eng"),
         jamb_duration_minutes: numVal("cbt-set-jamb-dur"),
         jamb_subjects_required: numVal("cbt-set-jamb-subj"),
+        jamb_score_total: numVal("cbt-set-jamb-total"),
         waec_questions_per_subject: numVal("cbt-set-waec-q"),
         waec_duration_minutes: numVal("cbt-set-waec-dur"),
+        waec_score_per_subject: numVal("cbt-set-waec-total"),
         neco_questions_per_subject: numVal("cbt-set-neco-q"),
         neco_duration_minutes: numVal("cbt-set-neco-dur"),
+        neco_score_per_subject: numVal("cbt-set-neco-total"),
         jw_questions_per_subject: numVal("cbt-set-jw-q"),
         jw_duration_minutes: numVal("cbt-set-jw-dur"),
       }),
@@ -3519,18 +3689,144 @@ function schoolOfficeQuery(extra) {
   return parts.length ? "?" + parts.join("&") : "";
 }
 
+/* ── Super-admin school approval (pending → approved/rejected/suspended) ── */
+var SX_APPROVAL_LABEL = { pending: "Pending review", approved: "Approved", rejected: "Rejected", suspended: "Suspended" };
+
+function _sxApprovalBadge(status) {
+  var st = String(status || "pending").toLowerCase();
+  var label = SX_APPROVAL_LABEL[st] || st;
+  var cls = st === "approved" ? "ok" : st === "pending" ? "school" : "live";
+  return '<span class="badge ' + cls + '">' + escHtml(label) + '</span>';
+}
+
+function _sxPrivateLink(s) {
+  if (!s || !(s.slug || s.private_link)) return "—";
+  var url = s.private_link || ("https://" + s.slug + ".scholaxia.com/");
+  var approved = String(s.approval_status || "approved").toLowerCase() === "approved";
+  return approved
+    ? '<a href="' + escHtml(url) + '" target="_blank" rel="noopener">' + escHtml(url) + "</a>"
+    : '<span class="muted">' + escHtml(url) + " (live after approval)</span>";
+}
+
+async function _sxSchoolAction(schoolId, action, body, confirmText) {
+  if (confirmText && !window.confirm(confirmText)) return;
+  try {
+    await adminApi("/api/v1/super-admin/schools/" + schoolId + "/" + action, {
+      method: "POST",
+      body: JSON.stringify(body || {}),
+    });
+    loadSchoolsAdmin();
+  } catch (e) {
+    window.alert(e.message || "Action failed");
+  }
+}
+
+function approveSchool(id) {
+  _sxSchoolAction(id, "approve", {}, "Approve this school? Its private link goes live.");
+}
+
+function rejectSchool(id) {
+  var reason = window.prompt("Reason for rejecting (optional):", "") || "";
+  _sxSchoolAction(id, "reject", { reason: reason }, reason === "" ? "Reject this school without a reason?" : null);
+}
+
+function suspendSchool(id) {
+  var reason = window.prompt("Reason for suspending (optional):", "") || "";
+  _sxSchoolAction(id, "suspend", { reason: reason }, "Suspend this school? Students and admins lose access until reactivated.");
+}
+
+function reactivateSchool(id) {
+  _sxSchoolAction(id, "reactivate", {});
+}
+
+async function editSchool(id) {
+  var rows = (window.__sxSchools || []);
+  var s = null;
+  for (var i = 0; i < rows.length; i++) { if (rows[i].school_id === id) { s = rows[i]; break; } }
+  if (!s) { window.alert("School data not loaded yet — refresh and try again."); return; }
+  var slug = window.prompt("Private link (letters/numbers/dashes). Link becomes <slug>.scholaxia.com:", s.slug || "");
+  if (slug === null) return;
+  var logo = window.prompt("Logo image URL (leave empty for none):", s.logo_url || "");
+  if (logo === null) logo = s.logo_url || "";
+  var type = window.prompt("School type: private or public:", (s.school_type || "private"));
+  if (type === null) type = s.school_type || "";
+  var cat = window.prompt("Category: mixed, boys or girls:", (s.category || "mixed"));
+  if (cat === null) cat = s.category || "";
+  try {
+    await adminApi("/api/v1/super-admin/schools/" + id, {
+      method: "PATCH",
+      body: JSON.stringify({ slug: slug, logo_url: logo, school_type: type, category: cat }),
+    });
+    loadSchoolsAdmin();
+  } catch (e) {
+    window.alert(e.message || "Could not save");
+  }
+}
+
+async function setSchoolPlan(id) {
+  var plan = window.prompt("Plan: basic (₦20,000), standard (₦35,000) or premium (₦60,000):", "basic");
+  if (!plan) return;
+  plan = plan.toLowerCase().trim();
+  if (plan !== "basic" && plan !== "standard" && plan !== "premium") {
+    window.alert("Plan must be basic, standard or premium.");
+    return;
+  }
+  var months = parseInt(window.prompt("How many months? (0 = no expiry)", "12"), 10) || 0;
+  try {
+    await adminApi("/api/v1/super-admin/schools/" + id + "/plan", {
+      method: "POST",
+      body: JSON.stringify({ plan: plan, months: months, term_label: months ? months + " month(s)" : "" }),
+    });
+    loadSchoolsAdmin();
+  } catch (e) {
+    window.alert(e.message || "Could not set plan");
+  }
+}
+
 async function loadSchoolsAdmin() {
   var el = document.getElementById("schools-table");
   if (!el) return;
   el.innerHTML = '<div class="loading">Loading…</div>';
   try {
-    var data = await adminApi("/api/v1/admin/schools");
-    var rows = (data && data.schools) || [];
+    var rows = [];
+    try {
+      var sup = await adminApi("/api/v1/super-admin/schools");
+      rows = (sup && sup.schools) || [];
+      window.__sxSchools = rows;
+    } catch (supErr) {
+      // Sub-admins (or older backends) fall back to the basic schools list.
+      var basic = await adminApi("/api/v1/admin/schools");
+      rows = (basic && basic.schools) || [];
+      rows = rows.map(function (r) {
+        return {
+          school_id: r.id, name: r.name, code: r.code, city: r.city,
+          admins: r.admins, approval_status: r.approval_status || "approved",
+          plan: null, subscription_active: false, slug: null,
+        };
+      });
+    }
     if (!rows.length) { el.innerHTML = '<div class="empty-state">No schools yet. Add the first school above.</div>'; return; }
-    el.innerHTML = '<table class="data-table"><thead><tr><th>School</th><th>Code</th><th>City</th><th>School admins</th></tr></thead><tbody>' +
+    el.innerHTML = '<table class="data-table"><thead><tr><th>School</th><th>Type</th><th>City</th><th>Status</th><th>Plan</th><th>Private link</th><th>School admins</th><th>Actions</th></tr></thead><tbody>' +
       rows.map(function (s) {
-        var ads = (s.admins || []).map(function (a) { return escHtml(a.full_name) + " (" + escHtml(a.email) + ")"; }).join("<br>");
-        return "<tr><td>" + escHtml(s.name) + "</td><td>" + escHtml(s.code || "—") + "</td><td>" + escHtml(s.city || "—") + "</td><td>" + (ads || "—") + "</td></tr>";
+        var ads = (s.admins && s.admins.length)
+          ? s.admins.map(function (a) { return escHtml(a.full_name) + " (" + escHtml(a.email) + ")"; }).join("<br>")
+          : (s.admin_email ? escHtml(s.admin_name || "") + " (" + escHtml(s.admin_email) + ")" : "—");
+        var status = String(s.approval_status || "approved").toLowerCase();
+        var planTxt = (s.plan ? escHtml(s.plan) : "—") + (s.subscription_active ? " ✓" : " (no sub)");
+        var acts = "";
+        if (status === "pending") {
+          acts = '<button class="btn-sm" onclick="approveSchool(\'' + s.school_id + '\')">Approve</button> ' +
+                 '<button class="btn-sm danger" onclick="rejectSchool(\'' + s.school_id + '\')">Reject</button> ';
+        } else if (status === "suspended") {
+          acts = '<button class="btn-sm" onclick="reactivateSchool(\'' + s.school_id + '\')">Reactivate</button> ';
+        } else {
+          acts = '<button class="btn-sm danger" onclick="suspendSchool(\'' + s.school_id + '\')">Suspend</button> ';
+        }
+        acts += '<button class="btn-sm" onclick="setSchoolPlan(\'' + s.school_id + '\')">' + (s.plan ? "Change plan" : "Set plan") + "</button> ";
+        acts += '<button class="btn-sm secondary" onclick="editSchool(\'' + s.school_id + '\')">Edit link/logo</button>';
+        var typeTxt = (s.school_type ? escHtml(s.school_type.charAt(0).toUpperCase() + s.school_type.slice(1)) : "—") +
+          (s.category && s.category !== "mixed" ? " · " + escHtml(s.category.charAt(0).toUpperCase() + s.category.slice(1)) + " only" : " · Mixed");
+        return "<tr><td><strong>" + escHtml(s.name) + "</strong></td><td>" + typeTxt + "</td><td>" + escHtml(s.city || "—") + "</td><td>" + _sxApprovalBadge(status) + "</td><td>" + planTxt + "</td><td>" + _sxPrivateLink(s) + "</td><td>" + ads + "</td><td>" + acts + "</td></tr>";
       }).join("") + "</tbody></table>";
   } catch (e) {
     el.innerHTML = '<div class="empty-state">' + escHtml(e.message) + "</div>";

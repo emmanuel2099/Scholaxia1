@@ -86,7 +86,7 @@ async def past_questions_catalog(
                 text(
                     """
                     SELECT
-                      id::text AS id,
+                      CAST(id AS TEXT) AS id,
                       title,
                       subject,
                       exam_type,
@@ -98,7 +98,7 @@ async def past_questions_catalog(
                     FROM books
                     WHERE COALESCE(is_active, true) = true
                       AND (
-                        category ILIKE '%past%'
+                        LOWER(category) LIKE '%past%'
                         OR category = :past_category
                       )
                     ORDER BY created_at DESC NULLS LAST

@@ -26,22 +26,12 @@
     return cur.symbol + formatted;
   }
 
-  // Re-render when currency changes (picks up SxCurr from i18n.js)
-  var _origApply = null;
-  function hookCurrencyChange() {
-    if (window.SxCurr && window.SxCurr._pqHooked) return;
-    if (!window.SxCurr) return;
-    _origApply = window.SxCurr.apply;
-    window.SxCurr.apply = function(code) {
-      _origApply(code);
-      render(); // re-render all prices
-    };
-    window.SxCurr._pqHooked = true;
-  }
-  // Try immediately + after DOM load (i18n.js may load after this)
-  hookCurrencyChange();
-  document.addEventListener("DOMContentLoaded", hookCurrencyChange);
-  setTimeout(hookCurrencyChange, 500);
+  // Re-render prices whenever the currency changes. i18n.js dispatches the
+  // 'sx:currencychange' event from inside applyCurrency, so this fires for the
+  // header dropdown, SxCurr.apply() calls and the initial load alike.
+  document.addEventListener("sx:currencychange", function () {
+    render();
+  });
 
   var state = {
     products: [],

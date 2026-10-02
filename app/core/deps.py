@@ -51,7 +51,11 @@ async def get_current_user(
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
-    if int(user.token_version or 0) != int(payload.get("sv") or -1):
+    # NOTE: `payload.get("sv") or -1` would turn a legitimate sv=0 (fresh
+    # account that has only ever logged in via the school portal, which does
+    # not bump token_version) into -1 and reject EVERY request. Use a
+    # missing-key default instead of a falsy-value default.
+    if int(user.token_version or 0) != int(payload.get("sv", -1)):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Logged in on another device. Please sign in again.",

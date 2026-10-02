@@ -87,8 +87,8 @@
           <div class="auth-panels">
             <form id="formLogin" class="auth-form" role="tabpanel" aria-labelledby="tabLogin">
               <label>
-                Email
-                <input id="loginEmail" type="email" autocomplete="email" required placeholder="you@email.com" />
+                Email or Student ID
+                <input id="loginEmail" type="text" autocomplete="username" required placeholder="you@email.com or STU-24-001" />
               </label>
               <label>
                 Password
@@ -96,6 +96,7 @@
               </label>
               <p class="auth-error" id="loginError" hidden></p>
               <button class="auth-submit" type="submit" id="btnLogin">Log in</button>
+              <p class="auth-hint">School student? Log in with the <strong>Student ID</strong> and password from your school office — no email needed.</p>
               <p class="auth-switch">
                 <button type="button" class="auth-forgot" id="gotoForgot">Forgot password?</button>
               </p>
@@ -240,7 +241,7 @@
     </main>
 
     <script src="js/i18n.js?v=31"></script>
-    <script src="js/api.js?v=20260917a"></script>
-    <script src="js/auth-page.js?v=20260917a"></script>
+    <script src="js/api.js?v=20260927a"></script>
+    <script src="js/auth-page.js?v=20260927a"></script>
   </body>
 </html>

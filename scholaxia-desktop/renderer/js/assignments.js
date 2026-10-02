@@ -30,6 +30,22 @@ async function loadAssignmentsPage() {
       mine = await api("/api/v1/community/assignments/mine");
       if (!Array.isArray(mine)) mine = (mine && mine.submissions) || [];
     } catch (e) { mine = []; }
+    // Submission target channel (same rule the mobile app uses).
+    try {
+      var channels = await api("/api/v1/community/channels");
+      if (!Array.isArray(channels)) channels = (channels && channels.channels) || [];
+      for (var ci = 0; ci < channels.length; ci++) {
+        var ch = channels[ci] || {};
+        var marker = ((ch.name || "") + " " + (ch.channel_type || "")).toLowerCase();
+        if (marker.indexOf("announcement") >= 0 || marker.indexOf("teacher") >= 0) {
+          window._assignmentsChannelId = ch.id || "";
+          break;
+        }
+      }
+      if (!window._assignmentsChannelId && channels.length && channels[0].id) {
+        window._assignmentsChannelId = channels[0].id;
+      }
+    } catch (e) { /* submit will surface the error */ }
 
     if (submitRoot) {
       var teacherOpts = teachers
@@ -82,10 +98,10 @@ async function loadAssignmentsPage() {
         '<label class="as-field"><span>Title / note</span>' +
         '<input type="text" id="as-caption" placeholder="e.g. Mathematics homework — week 3" /></label>' +
         '<label class="as-drop" for="as-file">' +
-        '<input type="file" id="as-file" accept="application/pdf,.pdf" hidden />' +
+        '<input type="file" id="as-file" hidden />' +
         '<span class="as-drop-icon">&#128228;</span>' +
-        '<strong id="as-file-label">Choose completed PDF</strong>' +
-        "<small>PDF only · private to you and your teacher</small>" +
+        '<strong id="as-file-label">Choose completed work</strong>' +
+        "<small>Any file: PDF, image, Word, Excel, PowerPoint… · private to you and your teacher</small>" +
         "</label>" +
         '<p id="as-error" class="error-msg"></p>' +
         '<button type="button" class="btn-action as-submit-btn" onclick="submitAssignmentDesktop()">Submit to teacher</button>' +
@@ -99,7 +115,7 @@ async function loadAssignmentsPage() {
             label.textContent =
               fileInput.files && fileInput.files[0]
                 ? fileInput.files[0].name
-                : "Choose completed PDF";
+                : "Choose completed work";
           }
         });
       }
@@ -165,23 +181,35 @@ async function submitAssignmentDesktop() {
     return;
   }
   if (!file) {
-    if (err) err.textContent = "Choose a completed PDF.";
+    if (err) err.textContent = "Choose your completed work (any file type).";
     return;
   }
   if (err) err.textContent = "";
   try {
-    var form = new FormData();
-    form.append("file", file);
-    form.append("tagged_teacher_id", teacherId);
-    if (caption) form.append("caption", caption);
     var token = getToken();
-    var res = await fetch(API_BASE + "/api/v1/community/assignments", {
+    // 1) Upload the file (any type) — same endpoint the mobile app uses.
+    var upForm = new FormData();
+    upForm.append("file", file);
+    var up = await fetch(API_BASE + "/api/v1/community/upload", {
       method: "POST",
       headers: token ? { Authorization: "Bearer " + token } : {},
-      body: form,
+      body: upForm,
     });
-    var data = await res.json().catch(function () { return {}; });
-    if (!res.ok) throw new Error(data.detail || data.message || "Submit failed");
+    var uploaded = await up.json().catch(function () { return {}; });
+    if (!up.ok) throw new Error(uploaded.detail || uploaded.message || "Upload failed");
+    var fileUrl = uploaded.file_url || uploaded.secure_url || uploaded.url;
+    if (!fileUrl) throw new Error("Could not store the file. Try again.");
+    // 2) Submit the assignment (JSON) with the uploaded file URL.
+    var res = await api("/api/v1/community/assignments", {
+      method: "POST",
+      body: JSON.stringify({
+        channel_id: (window._assignmentsChannelId || ""),
+        tagged_teacher_id: teacherId,
+        file_url: fileUrl,
+        file_type: uploaded.file_type || "doc",
+        caption: caption || null,
+      }),
+    });
     alert("Assignment submitted!");
     loadAssignmentsPage();
   } catch (e) {

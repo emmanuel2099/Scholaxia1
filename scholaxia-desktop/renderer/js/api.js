@@ -142,11 +142,16 @@
 
   async function loginApi(email, password) {
     var last = null;
+    // "email" may be a school Student ID / reg number (no-email login)
+    var identField = String(email || "").indexOf("@") >= 0 ? "email" : "email_or_id";
+    var identBody = {};
+    identBody[identField] = email;
+    identBody.password = password;
     try {
       return await api("/api/v1/auth/login", {
         method: "POST",
         noAuth: true,
-        body: { email: email, password: password },
+        body: identBody,
         timeout: 25000,
         retries: 0,
         preferXhr: true,
@@ -159,7 +164,7 @@
       }
     }
     try {
-      return await formPost("/api/v1/auth/login", { email: email, password: password }, 20000);
+      return await formPost("/api/v1/auth/login", identBody, 20000);
     } catch (formErr) {
       var e = last || formErr;
       var friendly = friendlyFetchError(e);
@@ -375,7 +380,7 @@
           method: method,
           mode: "cors",
           headers: headers,
-          body: hasBody ? (isFormData ? options.body : JSON.stringify(options.body)) : undefined,
+          body: hasBody ? (isFormData ? options.body : (typeof options.body === "string" ? options.body : JSON.stringify(options.body))) : undefined, // pre-serialized bodies: do NOT double-encode
           credentials: "omit",
           cache: "no-store",
           signal: t.signal,

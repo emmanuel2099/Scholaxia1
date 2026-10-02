@@ -34,11 +34,13 @@
       <button type="button" class="btn-primary" id="btn-login">LOG IN</button>
     </form>
     <form id="form-register" class="auth-form hidden">
+      <p class="hint" style="font-size:.8rem;opacity:.75;margin:0 0 10px">Only the <strong>first main admin</strong> can be registered here (setup key required). Afterwards, the main admin creates staff accounts from the <strong>Sub-admins</strong> tab.</p>
       <label><span>Full name</span><input type="text" id="reg-name" required /></label>
       <label><span>Email</span><input type="email" id="reg-email" required /></label>
       <label><span>Password</span><input type="password" id="reg-password" required minlength="8" /></label>
+      <label><span>Setup key</span><input type="password" id="reg-setup-key" placeholder="ADMIN_SETUP_KEY (Render env)" /></label>
       <p id="register-error" class="error-msg"></p>
-      <button type="submit" class="btn-primary" id="btn-register">CREATE ADMIN</button>
+      <button type="submit" class="btn-primary" id="btn-register">CREATE MAIN ADMIN</button>
     </form>
   </div>
 </div>
@@ -86,6 +88,8 @@
       <button class="nav-btn" data-page="student-groups" onclick="showAdminPage('student-groups')">Student Groups</button>
       <button class="nav-btn" data-page="community" onclick="showAdminPage('community')">Community</button>
       <button class="nav-btn" data-page="marketplace" onclick="showAdminPage('marketplace')">Marketplace</button>
+      <div class="nav-section">Access</div>
+      <button class="nav-btn main-admin-only" data-page="sub-admins" onclick="showAdminPage('sub-admins')">Sub-admins</button>
     </nav>
     <div class="sidebar-foot">
       <div class="admin-user" id="admin-user-label">Admin</div>
@@ -103,6 +107,26 @@
     <section id="page-dashboard" class="admin-page active">
       <div class="page-head"><h2>Dashboard</h2><button class="btn-sm" onclick="loadDashboard()">Refresh</button></div>
       <div id="stats-grid" class="stats-grid"><div class="loading">Loading…</div></div>
+    </section>
+
+    <section id="page-sub-admins" class="admin-page">
+      <div class="page-head">
+        <h2>Sub-admins</h2>
+        <button class="btn-sm" onclick="loadSubAdmins()">Refresh</button>
+      </div>
+      <p class="page-desc">Only the <strong>main admin</strong> (you) manages admin accounts here. Create sub-admins for staff and pick exactly what each one can see — nobody can register themselves as an admin, and main admins can never be deleted.</p>
+      <div class="panel" style="margin-bottom:16px">
+        <h3>Create sub-admin</h3>
+        <div class="form-grid">
+          <label><span>Full name</span><input type="text" id="subadmin-name" placeholder="e.g. Mrs. Ada" /></label>
+          <label><span>Email</span><input type="email" id="subadmin-email" placeholder="staff@scholaxia.com" /></label>
+          <label><span>Password</span><input type="password" id="subadmin-password" minlength="8" placeholder="min 8 characters" /></label>
+        </div>
+        <div id="subadmin-perms" class="subadmin-perms" style="margin:12px 0"></div>
+        <p class="error-msg" id="subadmin-create-error"></p>
+        <button class="btn-primary" style="width:auto;padding:12px 22px" onclick="createSubAdmin()">Create sub-admin</button>
+      </div>
+      <div id="subadmins-list"><div class="loading">Loading…</div></div>
     </section>
 
     <section id="page-schools" class="admin-page">
@@ -332,6 +356,7 @@
           <label><span>English questions</span><input id="cbt-set-jamb-eng" type="number" min="1" max="200" /></label>
           <label><span>Duration (minutes)</span><input id="cbt-set-jamb-dur" type="number" min="5" max="480" /></label>
           <label><span>Subjects required</span><input id="cbt-set-jamb-subj" type="number" min="1" max="6" /></label>
+          <label><span>Score over (e.g. 400)</span><input id="cbt-set-jamb-total" type="number" min="10" max="2000" /></label>
         </div>
       </div>
       <div class="panel" style="margin-bottom:16px">
@@ -339,6 +364,7 @@
         <div class="form-grid">
           <label><span>Questions per subject</span><input id="cbt-set-waec-q" type="number" min="1" max="200" /></label>
           <label><span>Duration (minutes)</span><input id="cbt-set-waec-dur" type="number" min="5" max="480" /></label>
+          <label><span>Each subject scored over</span><input id="cbt-set-waec-total" type="number" min="10" max="1000" /></label>
         </div>
       </div>
       <div class="panel" style="margin-bottom:16px">
@@ -346,6 +372,7 @@
         <div class="form-grid">
           <label><span>Questions per subject</span><input id="cbt-set-neco-q" type="number" min="1" max="200" /></label>
           <label><span>Duration (minutes)</span><input id="cbt-set-neco-dur" type="number" min="5" max="480" /></label>
+          <label><span>Each subject scored over</span><input id="cbt-set-neco-total" type="number" min="10" max="1000" /></label>
         </div>
       </div>
       <div class="panel" style="margin-bottom:16px">

@@ -40,7 +40,12 @@ var spotlightUserId = "";
 window.spotlightUserId = spotlightUserId;
 var API_WS = (typeof window !== "undefined" && window.API_WS)
   ? window.API_WS
-  : "wss://scholaxia1.onrender.com";
+  : (typeof window !== "undefined" && window.API_BASE
+      /* Derive ws://wss:// from the REST API base so the local sandbox and
+         same-origin deploys reach THEIR OWN WebSocket server instead of
+         always dialing production. */
+      ? window.API_BASE.replace(/^http/i, "ws")
+      : "wss://scholaxia1.onrender.com");
 var JOIN_TIMEOUT_MS = 45000;
 
 function escHtml(value) {
@@ -372,6 +377,19 @@ window.applySessionStatus = applySessionStatus;
 function applyRoomSnapshot(snapshot) {
   if (!snapshot) return;
   window.__roomSnapshot = snapshot;
+  // Replay chat history recorded while this socket was away — addChatMessage
+  // dedupes by eventId, so re-applying a snapshot never duplicates messages.
+  // The sender's own copies already rendered as "You" (they never carry an
+  // eventId locally), so skip those on replay to avoid a named duplicate.
+  if (Array.isArray(snapshot.recentChat) && snapshot.recentChat.length) {
+    snapshot.recentChat.forEach(function (m) {
+      if (!m || m.event !== "chat") return;
+      var mine = m.user_id && String(m.user_id).toLowerCase() === String(window.__myChatUserId || "").toLowerCase();
+      if (mine && (window.__ownRecentChat || []).indexOf(m.text) >= 0) return;
+      var who = m.name || (m.role === "teacher" ? "Teacher" : "Student");
+      addChatMessage(who, m.text || "", false, m.eventId);
+    });
+  }
   var parts = snapshot.participants || [];
   window.__participantNames = window.__participantNames || {};
   parts.forEach(function (p) {
@@ -2367,6 +2385,24 @@ function handleBoardMessage(msg) {
   return;
 }
 
+// Client→server heartbeat: NATs/proxies drop idle sockets and receive-only
+// relays stall, which reads as a dead chat link. The server ignores unknown
+// events, so a lightweight "ping" keeps the path alive without side effects.
+function startChatHeartbeat() {
+  stopChatHeartbeat();
+  window._sxChatPingTimer = setInterval(function () {
+    if (!liveSocket || liveSocket.readyState !== WebSocket.OPEN) return;
+    try { liveSocket.send(JSON.stringify({ event: "ping" })); } catch (ePing) { /* ignore */ }
+  }, 15000);
+}
+
+function stopChatHeartbeat() {
+  if (window._sxChatPingTimer) {
+    clearInterval(window._sxChatPingTimer);
+    window._sxChatPingTimer = null;
+  }
+}
+
 function connectChat(isReconnect) {
   if (!liveSession || !liveSession.room_id) {
     setStatus("No room id — rejoin the class");
@@ -2383,6 +2419,7 @@ function connectChat(isReconnect) {
   }
   var payload = parseJwt(getAuthToken());
   var userId = payload.sub || liveSession.user_id || liveSession.identity || "user";
+  window.__myChatUserId = userId;
   var role = isClassroomHost() ? "teacher" : "student";
   var displayName = localStorage.getItem("sia_name") || "";
   if (!displayName && liveSession && liveSession.student_name) {
@@ -2413,12 +2450,17 @@ function connectChat(isReconnect) {
   liveSocket.onopen = function () {
     window._sxChatReconnectAttempts = 0;
     showReconnectBanner(false);
+    startChatHeartbeat();
     var videoOk = window.LiveClassMedia && LiveClassMedia.isJoined && LiveClassMedia.isJoined();
     setStatus(videoOk ? "Connected — video + chat" : "Connected — chat ready");
     if (!isReconnect) {
       addChatMessage("", "You joined the class. Use the chat to talk with everyone.", true);
     } else {
-      addChatMessage("", "Reconnected to class chat.", true);
+      // Note the first reconnect only — a flapping link must not flood the log.
+      if (!window._sxChatReconnectNoted) {
+        window._sxChatReconnectNoted = true;
+        addChatMessage("", "Reconnected to class chat.", true);
+      }
       try {
         liveSocket.send(JSON.stringify({ event: "request_room_snapshot" }));
       } catch (eSnap) { /* ignore */ }
@@ -2699,6 +2741,7 @@ function connectChat(isReconnect) {
     } catch (e) { /* ignore */ }
   };
   liveSocket.onclose = function () {
+    stopChatHeartbeat();
     if (!window._sxChatReconnectAttempts) window._sxChatReconnectAttempts = 0;
     window._sxChatReconnectAttempts += 1;
     showReconnectBanner(true, "Connection lost. Reconnecting…");
@@ -2733,6 +2776,8 @@ function sendChatMessage(e) {
   collapseMeetChatPanel(false);
   switchMeetTab("chat");
   try {
+    (window.__ownRecentChat = window.__ownRecentChat || []).push(text);
+    if (window.__ownRecentChat.length > 50) window.__ownRecentChat.shift();
     liveSocket.send(JSON.stringify({ event: "chat", text: text }));
     addChatMessage("You", text);
     input.value = "";

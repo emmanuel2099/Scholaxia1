@@ -23,6 +23,7 @@ from app.services.live_class_room import (
     upsert_participant,
     mark_participant_disconnected,
     get_room_snapshot,
+    record_chat_message,
     raise_hand,
     lower_hand,
     lower_all_hands,
@@ -58,16 +59,21 @@ async def connect(room_id: str, websocket: WebSocket, user_id: str, role: str, d
 
     # Drop prior sockets for the same user (reconnect upsert — no duplicate peers)
     uid = _uid(user_id)
-    stale = [c for c in rooms[room_id] if _uid(c.get("user_id")) == uid and c["ws"] is not websocket]
+    lst = rooms.get(room_id)
+    stale = [c for c in (lst or []) if _uid(c.get("user_id")) == uid and c["ws"] is not websocket]
     for c in stale:
         try:
             await c["ws"].close()
         except Exception:
             pass
-        try:
-            rooms[room_id].remove(c)
-        except ValueError:
-            pass
+        # close() awaits, letting other coroutines run — the room registry
+        # may have been deleted meanwhile; never assume rooms[room_id].
+        cur = rooms.get(room_id)
+        if cur is not None:
+            try:
+                cur.remove(c)
+            except ValueError:
+                pass
 
     rooms[room_id].append({
         "ws": websocket,
@@ -95,21 +101,29 @@ def disconnect(room_id: str, websocket: WebSocket):
 
 
 async def broadcast(room_id: str, message: dict, exclude: WebSocket = None):
-    if room_id not in rooms:
+    # Snapshot the connection list: a client can disconnect mid-broadcast,
+    # and disconnect() may then delete rooms[room_id] entirely. Iterating a
+    # dead registry entry here used to raise KeyError and kill the SENDER's
+    # websocket handler (every later event silently never delivered).
+    conns = list(rooms.get(room_id) or [])
+    if not conns:
         return
     dead = []
-    for conn in rooms[room_id]:
+    for conn in conns:
         if conn["ws"] == exclude:
             continue
         try:
             await conn["ws"].send_text(json.dumps(message))
         except Exception:
             dead.append(conn)
-    for conn in dead:
-        try:
-            rooms[room_id].remove(conn)
-        except ValueError:
-            pass
+    if dead:
+        remaining = rooms.get(room_id)
+        if remaining is not None:
+            for conn in dead:
+                try:
+                    remaining.remove(conn)
+                except ValueError:
+                    pass
 
 
 async def replay_board_to_websocket(room_id: str, websocket: WebSocket) -> None:
@@ -122,10 +136,11 @@ async def replay_board_to_websocket(room_id: str, websocket: WebSocket) -> None:
 
 async def send_to_user(room_id: str, target_user_id: str, message: dict):
     """Send a message to a specific user in the room."""
-    if room_id not in rooms:
+    conns = list(rooms.get(room_id) or [])
+    if not conns:
         return
     target = _uid(target_user_id)
-    for conn in rooms[room_id]:
+    for conn in conns:
         if _uid(conn.get("user_id")) == target:
             try:
                 await conn["ws"].send_text(json.dumps(message))
@@ -273,14 +288,18 @@ async def live_class_endpoint(websocket: WebSocket, room_id: str, user_id: str, 
                     }))
                 else:
                     # Exclude sender — client already shows local "You" echo
-                    await broadcast(room_id, {
+                    chat_event = {
                         "event": "chat",
                         "eventId": new_event_id(),
                         "user_id": user_id,
                         "role": role,
                         "name": name,
                         "text": message.get("text", ""),
-                    }, exclude=websocket)
+                    }
+                    # Keep a bounded history so reconnecting students don't lose
+                    # messages that were sent while their socket was down.
+                    record_chat_message(room_id, chat_event)
+                    await broadcast(room_id, chat_event, exclude=websocket)
 
             elif event == "screen_share":
                 active = bool(message.get("active"))

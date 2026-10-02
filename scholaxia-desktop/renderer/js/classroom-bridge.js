@@ -25,10 +25,22 @@
     console.error("classroom-bridge: api() missing — load js/api.js first");
   }
 
-  // Desktop uses /api-proxy for HTTP; LiveKit WS always hits Render.
+  // Chat/classroom WS must dial the SAME server the REST proxy targets.
+  // Default stays production (as before); when the desktop is pointed at a
+  // different backend (SCHOLAXIA_API, e.g. the local sandbox), desktop-server's
+  // /backend-origin tells us the right ws:// origin and classroom.js awaits it.
   if (!window.API_WS) {
     window.API_WS = "wss://scholaxia1.onrender.com";
   }
+  window.__wsBaseReady = (typeof fetch === "function"
+    ? fetch("/backend-origin")
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) {
+          if (d && d.ws) window.API_WS = d.ws;
+          return window.API_WS;
+        })
+        .catch(function () { return window.API_WS; })
+    : Promise.resolve(window.API_WS));
 
   if (typeof window.parseUtcIso !== "function") {
     window.parseUtcIso = function (iso) {

@@ -25,6 +25,7 @@ if DB_FILE.exists():
 os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{DB_FILE.as_posix()}"
 os.environ.setdefault("SECRET_KEY", "local-dev-secret-key-not-for-prod")
 os.environ["DEBUG"] = "1"
+os.environ.setdefault("SEED_SAMPLE_CBT", "1")  # sample WAEC/NECO/JAMB papers so CBT is testable locally
 os.environ["REDIS_URL"] = "redis://localhost:6379/0"  # absent locally → OTP memory fallback
 
 sys.path.insert(0, str(ROOT))
@@ -151,6 +152,103 @@ def _seed_demo_school():
     asyncio.new_event_loop().run_until_complete(_seed())
 
 
+def _seed_demo_admin():
+    """Seed a platform admin so the /admin/ UI is testable immediately."""
+
+    async def _seed():
+        from sqlalchemy import select
+
+        from app.core.security import hash_password
+        from app.models.user import User, UserRole
+
+        async with database.AsyncSessionLocal() as db:
+            existing = (
+                await db.execute(select(User).where(User.email == "admin@scholaxiatest.com"))
+            ).scalar_one_or_none()
+            if existing:
+                return
+            db.add(
+                User(
+                    email="admin@scholaxiatest.com",
+                    hashed_password=hash_password("AdminPass123!"),
+                    full_name="Main Admin (Local)",
+                    role=UserRole.admin,
+                    is_verified=True,
+                    is_active=True,
+                )
+            )
+            await db.commit()
+
+    asyncio.new_event_loop().run_until_complete(_seed())
+
+
+def _seed_demo_market():
+    """Seed the marketplace so the Market page is not empty locally.
+
+    Prefers scripts/demo_market_products.json — a snapshot of the live site's
+    approved catalog (titles, prices, images). Falls back to a small built-in
+    demo list when the snapshot is missing.
+    """
+
+    async def _seed():
+        import json
+
+        from sqlalchemy import select
+
+        from app.models.marketplace import MarketplaceProduct
+
+        async with database.AsyncSessionLocal() as db:
+            existing = (await db.execute(select(MarketplaceProduct).limit(1))).first()
+            if existing:
+                return
+            snap_path = Path(__file__).resolve().parent / "demo_market_products.json"
+            demo = []
+            if snap_path.exists():
+                try:
+                    demo = json.loads(snap_path.read_text(encoding="utf-8"))
+                except Exception:
+                    demo = []
+            if not demo:
+                demo = [
+                    ("Essential Mathematics for SSCE", "Complete SSCE mathematics textbook with worked examples and past-paper practice.", "books", 3500, 12),
+                    ("New General Mathematics Workbook", "Exercise workbook for JSS–SSS, aligned with the Nigerian curriculum.", "educational_materials", 2800, 20),
+                    ("SanDisk 32GB Flash Drive", "Reliable USB 3.0 flash drive for school projects and CBT materials.", "flash_drive", 6500, 15),
+                    ("HP Laptop Charger", "Original 65W HP laptop charger — fits most HP Pavilion/ProBook models.", "charger", 9000, 8),
+                    ("Infinix Smart 8", "Budget smartphone with 6.6\" display, 5000mAh battery — great for online classes.", "phones", 128000, 5),
+                    ("School Backpack (Navy)", "Durable water-resistant backpack with laptop compartment.", "bags", 7500, 10),
+                    ("Whiteboard Marker Set (4)", "Assorted colours, low-odour dry-erase markers.", "educational_materials", 1200, 30),
+                    ("Microsoft Office Study Suite", "Word, Excel & PowerPoint — student licence, digital delivery.", "software", 15000, 25),
+                ]
+            for item in demo:
+                if isinstance(item, dict):
+                    title, desc = item["title"], item.get("description")
+                    category, price = item.get("category") or "other", float(item.get("price") or 0)
+                    stock, image = int(item.get("stock_qty") or 10), item.get("image_url")
+                    currency = item.get("currency") or "NGN"
+                else:
+                    title, desc, category, price, stock = item
+                    currency, image = "NGN", None
+                db.add(
+                    MarketplaceProduct(
+                        title=title,
+                        description=desc,
+                        category=category,
+                        price=price,
+                        currency=currency,
+                        image_url=image,
+                        is_available=True,
+                        is_free=False,
+                        is_active=True,
+                        approval_status="approved",
+                        source_role="admin",
+                        stock_qty=stock,
+                    )
+                )
+            await db.commit()
+
+    asyncio.new_event_loop().run_until_complete(_seed())
+
+
 async def _noop(*args, **kwargs):
     return None
 
@@ -172,6 +270,8 @@ for _name in (
 loop = asyncio.new_event_loop()
 loop.run_until_complete(_create_all())
 _seed_demo_school()
+_seed_demo_admin()
+_seed_demo_market()
 loop.close()
 
 
@@ -238,16 +338,19 @@ def main():
     import uvicorn
 
     print("\n" + "=" * 64)
-    print(" Scholaxia LOCAL DEV  —  http://127.0.0.1:8000")
-    print("   Main site:   http://127.0.0.1:8000/")
-    print("   Create acct: http://127.0.0.1:8000/app/auth.html")
-    print("   School link: http://127.0.0.1:8000/school/divine-light/")
-    print("   Admin UI:    http://127.0.0.1:8000/admin/")
+    port = int(os.environ.get("PORT", "8000"))
+    print(f" Scholaxia LOCAL DEV  —  http://127.0.0.1:{port}")
+    print(f"   Main site:   http://127.0.0.1:{port}/")
+    print(f"   Create acct: http://127.0.0.1:{port}/app/auth.html")
+    print(f"   School link: http://127.0.0.1:{port}/school/divine-light/")
+    print(f"   Admin UI:    http://127.0.0.1:{port}/admin/")
     print("   DEBUG OTP:   signup response carries debug_otp; the signup")
     print("                screen shows it automatically — no email needed.")
-    print("   Demo school admin: admin@divine-light.test / Admin1234!")
+    print("   Demo school admin: admin@divine-light.example.com / Admin1234!")
+    print("   Platform admin:    admin@scholaxiatest.com / AdminPass123!  (for /admin/)")
     print("=" * 64 + "\n")
-    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")
+    port = int(os.environ.get("PORT", "8000"))
+    uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
 
 
 if __name__ == "__main__":

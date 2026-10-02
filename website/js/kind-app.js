@@ -150,7 +150,7 @@
         setUserChip(me.full_name, me.age_group);
         localStorage.setItem("sia_name", me.full_name);
       }
-      var live = await api.api("/api/v1/live-classes?status=live").catch(function () {
+      var live = await api.api("/api/v1/live-classes/?status=live").catch(function () {
         return [];
       });
       if (!Array.isArray(live)) live = live.classes || live.items || [];
@@ -258,7 +258,7 @@
     if (!el) return;
     el.innerHTML = '<div class="loading">Loading live classes…</div>';
     try {
-      var rows = await api.api("/api/v1/live-classes?status=live");
+      var rows = await api.api("/api/v1/live-classes/?status=live");
       if (!Array.isArray(rows)) rows = rows.classes || rows.items || [];
       if (!rows.length) {
         el.innerHTML =

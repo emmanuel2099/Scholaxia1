@@ -550,6 +550,20 @@ async def activate_cbt_profile(
             detail="Your CBT profile is already activated and locked. Contact your school admin for subject changes."
         )
 
+    # A profile row can exist WITHOUT an exam type (e.g. created by school
+    # exam registration). Those students saw an empty CBT catalog forever —
+    # "setup_required" even after activating — because nothing ever set
+    # exam_type on the existing row. Derive it from the boards activated.
+    if not profile.exam_type:
+        from app.models.user import ExamType as _ExamType
+        _types = " ".join((request.exam_types or [])).upper()
+        if "JUNIOR" in _types or "BECE" in _types:
+            profile.exam_type = _ExamType.JUNIOR_WAEC
+        elif "POST_UTME" in _types or "JAMB" in _types:
+            profile.exam_type = _ExamType.JAMB
+        else:
+            profile.exam_type = _ExamType.WAEC
+
     valid_subjects = AVAILABLE_SUBJECTS
     valid_lower = {s.lower(): s for s in valid_subjects}
 

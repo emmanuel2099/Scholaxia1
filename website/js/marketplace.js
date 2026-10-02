@@ -34,18 +34,19 @@
     return cur.symbol + formatted;
   }
 
-  // Hook currency picker so re-renders marketplace prices when changed
+  // Hook currency picker so re-renders marketplace prices when changed.
+  // i18n.js dispatches 'sx:currencychange' from inside applyCurrency, so this
+  // works for the header dropdown and any SxCurr.apply() call alike.
   var _mktCurrHooked = false;
   function hookMktCurrency() {
-    if (_mktCurrHooked || !window.SxCurr) return;
-    var _orig = window.SxCurr.apply;
-    window.SxCurr.apply = function(code) {
-      _orig(code);
-      renderGrid(); // re-render all product cards with new currency
-      renderCart(); // re-render cart totals
-    };
+    if (_mktCurrHooked) return;
     _mktCurrHooked = true;
-    // Also wire the inline dropdown on this page
+    document.addEventListener("sx:currencychange", function () {
+      renderGrid(); // re-render all product cards with new currency
+      // (cart totals are re-rendered by renderCartBody() every time the cart opens)
+    });
+    // Also wire the inline dropdown on this page (marketplace.css has no
+    // .lang-wrap.open rules, so open/close uses inline display like before).
     var wrap = document.getElementById("currWrap");
     var btn  = document.getElementById("currBtn");
     var dd   = document.getElementById("currDropdown");
@@ -63,23 +64,24 @@
         var code = opt.dataset.currency;
         dd.querySelectorAll(".lang-option").forEach(function(o) { o.style.fontWeight = ""; });
         opt.style.fontWeight = "700";
-        // Update button label
-        var sym = { USD:"$", GBP:"£", NGN:"₦", KES:"KES ", GHS:"GHS " }[code] || "";
-        var symEl = document.getElementById("currSymbol");
-        var lblEl = document.getElementById("currLabel");
-        if (symEl) symEl.textContent = sym.trim();
-        if (lblEl) lblEl.textContent = code;
-        localStorage.setItem("sx_currency", code);
+        if (window.SxCurr) {
+          window.SxCurr.apply(code); // updates label + localStorage + fires event
+        } else {
+          var sym = { USD:"$", GBP:"£", NGN:"₦", KES:"KES ", GHS:"GHS " }[code] || "";
+          var symEl = document.getElementById("currSymbol");
+          var lblEl = document.getElementById("currLabel");
+          if (symEl) symEl.textContent = sym.trim();
+          if (lblEl) lblEl.textContent = code;
+          localStorage.setItem("sx_currency", code);
+          renderGrid();
+        }
         dd.style.display = "none";
-        renderGrid();
-        renderCart();
       });
       document.addEventListener("click", function() { dd.style.display = "none"; });
     }
   }
   hookMktCurrency();
   document.addEventListener("DOMContentLoaded", hookMktCurrency);
-  setTimeout(hookMktCurrency, 500);
 
   function toast(msg) {
     var el = $("mktToast");
@@ -264,7 +266,7 @@
             ? '<img src="' +
               img.replace(/"/g, "") +
               '" alt="" loading="lazy" />'
-            : "") +
+            : '<div class="mkt-media-ph" aria-hidden="true">🛍️</div>') +
           "</div>" +
           '<div class="mkt-item-body">' +
           '<p class="mkt-item-cat">' +

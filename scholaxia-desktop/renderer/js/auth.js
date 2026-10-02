@@ -33,6 +33,16 @@ var ROLE_CONFIG = {
     expectedRole: "kind",
     allowSignup: true,
   },
+  exam: {
+    portalTitle: { login: "EXAM PORTAL", signup: "EXAM PORTAL" },
+    portalSub: {
+      login: "Internal Examination — registration number + access code",
+      signup: "Internal Examination — registration number + access code",
+    },
+    signupBtn: "CREATE ACCOUNT",
+    expectedRole: "exam",
+    allowSignup: false,
+  },
 };
 
 document.addEventListener("DOMContentLoaded", function () {
@@ -49,7 +59,12 @@ function initAuthPage() {
     throw new Error("api.js did not load — check js/api.js file");
   }
 
-  if (getToken()) {
+  // Deep link from the exam portal's "← Portal" link: keep the exam-only view
+  // open even when a normal student/teacher session already exists.
+  var bootParams0 = new URLSearchParams(window.location.search);
+  var examDeepLink = bootParams0.get("exam") === "1" && !!document.getElementById("tab-exam");
+
+  if (!examDeepLink && getToken()) {
     redirectIfAlreadyLoggedIn();
     return;
   }
@@ -65,16 +80,26 @@ function initAuthPage() {
 
   document.getElementById("tab-login").addEventListener("click", function () { switchTab("login"); });
   document.getElementById("tab-signup").addEventListener("click", function () { switchTab("signup"); });
+  document.getElementById("tab-exam").addEventListener("click", function () { switchTab("exam"); });
   document.getElementById("go-signup").addEventListener("click", function () { switchTab("signup"); });
   document.getElementById("go-login").addEventListener("click", function () { switchTab("login"); });
   document.getElementById("form-login").addEventListener("submit", login);
   document.getElementById("form-signup").addEventListener("submit", signup);
+  var examForm = document.getElementById("form-exam");
+  if (examForm) examForm.addEventListener("submit", examLogin);
 
   document.querySelectorAll(".toggle-pw").forEach(function (btn) {
     btn.addEventListener("click", function () { togglePw(btn.dataset.target, btn); });
   });
 
   initIntroPage();
+
+  if (examDeepLink) {
+    // Exam deep link: the card shows ONLY registration number + access code.
+    setAccountRole("exam");
+    return;
+  }
+
   updatePortalCopy();
 
   var params = new URLSearchParams(window.location.search);
@@ -136,25 +161,45 @@ function initRoleSelector() {
   });
 }
 
+function markRoleGrid(role) {
+  var grid = document.getElementById("role-select-grid");
+  if (!grid) return;
+  grid.querySelectorAll(".role-select-btn").forEach(function (btn) {
+    btn.classList.toggle("active", btn.getAttribute("data-role") === role);
+  });
+}
+
 function setAccountRole(role) {
   if (!ROLE_CONFIG[role]) role = "student";
   selectedAccountRole = role;
-  var grid = document.getElementById("role-select-grid");
-  if (grid) {
-    grid.querySelectorAll(".role-select-btn").forEach(function (btn) {
-      btn.classList.toggle("active", btn.getAttribute("data-role") === role);
-    });
+  markRoleGrid(role);
+  var examTab = document.getElementById("tab-exam");
+  if (role === "exam") {
+    // The Exam role IS the exam-only view: registration number + access code.
+    if (examTab && !examTab.classList.contains("active")) switchTab("exam");
+    else updatePortalCopy();
+  } else if (examTab && examTab.classList.contains("active")) {
+    // Picking a normal role while the exam-only view is open returns to Log in.
+    switchTab("login");
+  } else {
+    updatePortalCopy();
   }
-  updatePortalCopy();
 }
 
 function updatePortalCopy() {
   var cfg = ROLE_CONFIG[selectedAccountRole] || ROLE_CONFIG.student;
+  var examTabEl = document.getElementById("tab-exam");
+  var examActive = examTabEl && examTabEl.classList.contains("active");
   var tabLogin = document.getElementById("tab-login").classList.contains("active");
   var mode = tabLogin ? "login" : "signup";
 
-  document.getElementById("portal-title").textContent = cfg.portalTitle[mode];
-  document.getElementById("portal-sub").textContent = cfg.portalSub[mode];
+  if (examActive) {
+    document.getElementById("portal-title").textContent = "EXAM PORTAL";
+    document.getElementById("portal-sub").textContent = "Internal Examination — registration number + access code";
+  } else {
+    document.getElementById("portal-title").textContent = cfg.portalTitle[mode];
+    document.getElementById("portal-sub").textContent = cfg.portalSub[mode];
+  }
   document.getElementById("btn-signup").textContent =
     selectedAccountRole === "kind" ? "SEND EMAIL CODE" : cfg.signupBtn === "CREATE ACCOUNT" ? "SEND EMAIL CODE" : cfg.signupBtn;
 
@@ -164,7 +209,7 @@ function updatePortalCopy() {
   }
 
   var signupTab = document.getElementById("tab-signup");
-  if (selectedAccountRole === "teacher" && signupTab) {
+  if ((selectedAccountRole === "teacher" || selectedAccountRole === "exam") && signupTab) {
     signupTab.style.opacity = "0.5";
   } else if (signupTab) {
     signupTab.style.opacity = "1";
@@ -226,22 +271,98 @@ function initIntroPage() {
 
 function switchTab(tab) {
   var isLogin = tab === "login";
+  var isExam = tab === "exam";
   var cfg = ROLE_CONFIG[selectedAccountRole] || ROLE_CONFIG.student;
 
-  if (!isLogin && selectedAccountRole === "teacher") {
+  if (!isLogin && !isExam && selectedAccountRole === "teacher") {
     alert("Teacher accounts are created by your school admin. Please use Log in.");
     return;
   }
 
   document.getElementById("tab-login").classList.toggle("active", isLogin);
-  document.getElementById("tab-signup").classList.toggle("active", !isLogin);
+  document.getElementById("tab-signup").classList.toggle("active", !isLogin && !isExam);
+  document.getElementById("tab-exam").classList.toggle("active", isExam);
+  // Exam view is exam-only: the email/Student-ID login tabs stay out of sight,
+  // so the card shows just the Registration Number + Access Code form.
+  document.getElementById("tab-login").classList.toggle("hidden", isExam);
+  document.getElementById("tab-signup").classList.toggle("hidden", isExam);
   document.getElementById("form-login").classList.toggle("hidden", !isLogin);
-  document.getElementById("form-signup").classList.toggle("hidden", isLogin);
+  document.getElementById("form-signup").classList.toggle("hidden", isLogin || isExam);
+  var examForm = document.getElementById("form-exam");
+  if (examForm) examForm.classList.toggle("hidden", !isExam);
   document.getElementById("login-error").textContent = "";
   document.getElementById("signup-error").textContent = "";
+  var examErr = document.getElementById("exam-error");
+  if (examErr) examErr.textContent = "";
   if (typeof backToSignupDetails === "function") backToSignupDetails();
+
+  // Role ↔ tab stay in sync: opening the Exam tab selects the Exam role, and
+  // leaving it returns any stale Exam selection to Student (the email/Student-ID
+  // login form is for normal accounts).
+  if (isExam) {
+    if (selectedAccountRole !== "exam") {
+      selectedAccountRole = "exam";
+      markRoleGrid("exam");
+    }
+  } else if (selectedAccountRole === "exam") {
+    selectedAccountRole = "student";
+    markRoleGrid("student");
+  }
   updatePortalCopy();
 }
+
+/* Exam tab: reg number + access code → the Internal Examination portal.
+   Separate session keys (sia_exam_token/user) so an exam session never mixes
+   with the student/teacher app session. The portal page (exam.html) keeps its
+   own offline engine — packages downloaded there work with no internet. */
+async function examLogin(e) {
+  if (e) e.preventDefault();
+  var reg = (document.getElementById("exam-reg").value || "").trim();
+  var code = (document.getElementById("exam-code").value || "").trim();
+  var err = document.getElementById("exam-error");
+  var btn = document.getElementById("btn-exam-login");
+  err.textContent = "";
+  if (!reg || !code) {
+    err.textContent = "Enter the registration number and access code from your exam slip.";
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = "LOGGING IN...";
+  try {
+    var res = await fetch(API_BASE + "/api/v1/school-cbt/student/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reg_number: reg, access_code: code }),
+      signal: fetchTimeout(45000),
+    });
+    var data = await res.json().catch(function () { return {}; });
+    if (!res.ok) {
+      err.textContent = typeof data.detail === "string" ? data.detail : "Login failed. Check your registration number and access code.";
+      return;
+    }
+    if (!data.access_token || !data.student) {
+      err.textContent = "Unexpected server response. Try again.";
+      return;
+    }
+    localStorage.setItem("sia_exam_token", data.access_token);
+    localStorage.setItem("sia_exam_user", JSON.stringify(data.student));
+    localStorage.setItem("sia_exam_login_typed", JSON.stringify({ reg: reg, code: code }));
+    // Durable offline identity — packages downloaded in any later session need
+    // the access code to silently re-login when a sealed submission syncs.
+    try { localStorage.setItem("sia_exam_identity", JSON.stringify({ reg_number: reg, access_code: code })); } catch (e) {}
+    window.location.href = "exam.html";
+  } catch (ex) {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      err.textContent = "You are offline. Open the Exam tab on a connection once to download your exam — after that it works offline inside the portal.";
+    } else {
+      err.textContent = "Network error. Check your connection and try again.";
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "LOGIN TO EXAMINATION";
+  }
+}
+window.examLogin = examLogin;
 
 function togglePw(id, btn) {
   var input = document.getElementById(id);
@@ -340,6 +461,8 @@ async function login(e) {
   e.preventDefault();
   var email = document.getElementById("login-email").value.trim();
   var password = document.getElementById("login-password").value;
+  // A value without "@" is a school Student ID / reg number, not an email
+  var isEmailId = email.indexOf("@") >= 0;
   var err = document.getElementById("login-error");
   var btn = document.getElementById("btn-login");
   var cfg = ROLE_CONFIG[selectedAccountRole] || ROLE_CONFIG.student;
@@ -354,10 +477,13 @@ async function login(e) {
   }
 
   try {
+    var loginBody = {};
+    if (isEmailId) { loginBody.email = email; } else { loginBody.email_or_id = email; }
+    loginBody.password = password;
     var res = await fetch(API_BASE + "/api/v1/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: email, password: password }),
+      body: JSON.stringify(loginBody),
       signal: fetchTimeout(45000),
     });
     var data = await res.json();
@@ -365,7 +491,7 @@ async function login(e) {
       err.textContent = typeof data.detail === "string" ? data.detail : "Login failed.";
       return;
     }
-    if (data.role !== cfg.expectedRole) {
+    if (selectedAccountRole !== "exam" && data.role !== cfg.expectedRole) {
       err.textContent = roleMismatchMessage(selectedAccountRole, data.role);
       return;
     }

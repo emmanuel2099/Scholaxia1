@@ -10,7 +10,7 @@
 
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://checkout.flutterwave.com; script-src-attr 'unsafe-inline'; connect-src https://scholaxia1.onrender.com https://api.flutterwave.com https://api.paystack.co https://*.paystack.co https://checkout.flutterwave.com https://*.flutterwave.com https://www.scholaxiacbtexam.blog https://scholaxiacbtexam.blog https://store.scholaxia.com http://127.0.0.1:*; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://checkout.flutterwave.com https://www.scholaxiacbtexam.blog https://scholaxiacbtexam.blog https://store.scholaxia.com; font-src https://fonts.gstatic.com https://www.scholaxiacbtexam.blog https://scholaxiacbtexam.blog https://store.scholaxia.com; img-src 'self' data: https:; media-src 'self' blob: https:; frame-src 'self' blob: http://127.0.0.1:* https://www.youtube.com https://www.youtube-nocookie.com https://www.scholaxiacbtexam.blog https://scholaxiacbtexam.blog https://store.scholaxia.com https://checkout.flutterwave.com https://*.flutterwave.com https://checkout.paystack.com https://*.paystack.co https://*.paystack.com; form-action https://checkout.flutterwave.com https://*.flutterwave.com https://checkout.paystack.com https://*.paystack.co https://*.paystack.com" />
 
-  <title>Scholaxia Student</title>
+  <title>Scholaxia</title>
   <meta name="scholaxia-app-mode" content="student" />
 
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
@@ -78,7 +78,7 @@
         </button>
         <button type="button" class="nav-item topnav-btn" data-page="school-portal" onclick="showPage('school-portal')">
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10l8-6 8 6v10"/><path d="M9 20v-6h6v6"/></svg></span>
-          <span class="nav-label">External School Exam</span>
+          <span class="nav-label">Scholaxia Exam</span>
         </button>
         <button type="button" class="nav-item topnav-btn" data-page="subscription" onclick="showPage('subscription')">
           <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg></span>
@@ -177,11 +177,7 @@
       </div>
     </header>
 
-    <div id="notif-ring-bar" class="notif-ring-bar hidden">
-      <span>&#128276; Live class ringing — open Access Code to join.</span>
-      <button type="button" class="btn-sm" onclick="stopNotificationRing()">Stop sound</button>
-      <button type="button" class="btn-sm primary" onclick="showPage('access-code'); if(typeof loadAccessCodes==='function') loadAccessCodes();">Open Access Code</button>
-    </div>
+    <!-- Live-class ring sound removed — new classes surface via the notification badge and toast. -->
 
     <main class="main-content main-content-sidebar">
 
@@ -355,7 +351,7 @@
         </button>
         <button type="button" class="dash-action-card" data-dash-page="school-portal" onclick="quickDashAction('school-portal')">
           <span class="dash-action-icon">&#127979;</span>
-          <strong>External School Exam</strong>
+          <strong>Scholaxia Exam</strong>
           <span>Download offline &amp; submit later</span>
         </button>
       </div>
@@ -458,12 +454,12 @@
 
 
 
-    <!-- External School Exam — admin upload, offline download & submit -->
+    <!-- Scholaxia Exam — admin upload, offline download & submit -->
 
     <section id="page-school-portal" class="page">
       <div class="sx-page-hero sx-page-hero-row">
         <div>
-          <h2>&#127979; External School Exam</h2>
+          <h2>&#127979; Scholaxia Exam</h2>
           <p>Admin uploads exams here. <strong>Download while online</strong>, take the test offline, then submit — even without internet. Answers sync when you reconnect.</p>
         </div>
         <button type="button" class="btn-secondary sx-hero-btn" onclick="loadInternalExamsPage()">Refresh &amp; sync</button>
@@ -632,7 +628,6 @@
       <div class="info-banner">&#128276; Alerts for live classes in your subjects, exams, and community updates.</div>
       <div class="notif-toolbar">
         <button type="button" class="btn-secondary" onclick="markAllNotificationsRead()">Mark all read</button>
-        <button type="button" class="btn-secondary" onclick="stopNotificationRing()">Stop sound</button>
       </div>
       <div id="notifications-list" class="notifications-list"><div class="loading">Loading notifications…</div></div>
     </section>
@@ -719,7 +714,7 @@
       <div class="about-blocks">
         <div class="about-block">
           <h3>Everything you need in one app</h3>
-          <p>Library materials, saved live recordings, the AI Teacher, Scholaxia Marketplace for books, and offline external school exams uploaded by admin.</p>
+          <p>Library materials, saved live recordings, the AI Teacher, Scholaxia Marketplace for books, and offline Scholaxia Exams uploaded by admin.</p>
         </div>
         <div class="about-block">
           <h3>Built for real students, real results</h3>
@@ -1016,7 +1011,7 @@
 
     <h3>&#128248; Camera Required</h3>
 
-    <p>This external school exam requires proctoring. Allow camera access to continue.</p>
+    <p>This Scholaxia Exam requires proctoring. Allow camera access to continue.</p>
 
     <video id="camera-preview" autoplay muted playsinline></video>
 
@@ -1135,6 +1130,7 @@
 <script src="js/class-packages.js"></script>
 <script src="js/assignments.js"></script>
 <script src="js/marketplace.js"></script>
+<script src="js/secure-store.js"></script>
 <script src="js/internal-exams.js"></script>
 <script src="js/games.js"></script>
 <script src="js/app.js"></script>

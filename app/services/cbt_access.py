@@ -23,6 +23,22 @@ ENTITLEMENT_TYPE = "cbt_package"
 _CUSTOM_FALLBACK_BOARDS = ("JAMB",)
 
 
+def _dialect_is_sqlite(db) -> bool:
+    try:
+        bind = db.get_bind()
+        return bool(bind is not None and getattr(bind.dialect, "name", "") == "sqlite")
+    except Exception:
+        return False
+
+
+def _u(db, param: str) -> str:
+    """Bind a UUID-ish param portably: plain on SQLite (dev sandbox),
+    CAST(param AS uuid) on Postgres. The CAST form is a no-op syntax error
+    on SQLite and silently matched zero rows, which made every paid CBT
+    package look expired in local testing."""
+    return param if _dialect_is_sqlite(db) else f"CAST({param} AS uuid)"
+
+
 def _as_uuid(value) -> uuid.UUID:
     if isinstance(value, uuid.UUID):
         return value
@@ -173,15 +189,16 @@ async def active_cbt_access(
 
     # Schema is ensured at app startup — never DDL on CBT Start hot path
     entitlements_raw: list[tuple] = []
+    _sid = _u(db, ":sid")
     try:
         async with db.begin_nested():
             # Raw SQL — ORM load was failing silently on some schema shapes and looked like "no access"
             res = await db.execute(
                 text(
-                    """
+                    f"""
                     SELECT entitlement_key, expires_at, details
                     FROM student_entitlements
-                    WHERE student_id = CAST(:sid AS uuid)
+                    WHERE student_id = {_sid}
                       AND entitlement_type = :etype
                       AND expires_at IS NOT NULL
                       AND expires_at > :now
@@ -208,10 +225,10 @@ async def active_cbt_access(
         try:
             res = await db.execute(
                 text(
-                    """
+                    f"""
                     SELECT entitlement_key, expires_at, details
                     FROM student_entitlements
-                    WHERE student_id = CAST(:sid AS uuid)
+                    WHERE student_id = {_sid}
                       AND entitlement_type = :etype
                       AND expires_at IS NOT NULL
                       AND expires_at > :now
@@ -316,15 +333,18 @@ async def grant_cbt_package(
     now = naive_utc_now()
     # Coupons / free grants: do not lock subjects (empty lock blocked access for everyone)
     details = None
+    _sid = _u(db, ":sid")
+    _id = _u(db, ":id")
+    _pid = _u(db, ":pid")
 
     start = now
     try:
         async with db.begin_nested():
             res = await db.execute(
                 text(
-                    """
+                    f"""
                     SELECT expires_at FROM student_entitlements
-                    WHERE student_id = CAST(:sid AS uuid)
+                    WHERE student_id = {_sid}
                       AND entitlement_type = :etype
                       AND entitlement_key = :ekey
                       AND expires_at IS NOT NULL
@@ -356,11 +376,11 @@ async def grant_cbt_package(
     for attempt, sql, params in (
         (
             "minimal",
-            """
+            f"""
             INSERT INTO student_entitlements (
                 id, student_id, entitlement_type, entitlement_key, granted_at, expires_at
             ) VALUES (
-                CAST(:id AS uuid), CAST(:sid AS uuid), :etype, :ekey, :gat, :exp
+                {_id}, {_sid}, :etype, :ekey, :gat, :exp
             )
             """,
             {
@@ -374,13 +394,13 @@ async def grant_cbt_package(
         ),
         (
             "with_payment",
-            """
+            f"""
             INSERT INTO student_entitlements (
                 id, student_id, entitlement_type, entitlement_key,
                 payment_id, granted_at, expires_at
             ) VALUES (
-                CAST(:id AS uuid), CAST(:sid AS uuid), :etype, :ekey,
-                CAST(:pid AS uuid), :gat, :exp
+                {_id}, {_sid}, :etype, :ekey,
+                {_pid}, :gat, :exp
             )
             """,
             {
@@ -446,14 +466,15 @@ async def has_board_access(
     try:
         student_uuid = _as_uuid(user_id)
         now = naive_utc_now()
+        _sid = _u(db, ":sid")
         # Schema is ensured at app startup — never DDL on the Start hot path
         async with db.begin_nested():
             res = await db.execute(
                 text(
-                    """
+                    f"""
                     SELECT entitlement_key
                     FROM student_entitlements
-                    WHERE student_id = CAST(:sid AS uuid)
+                    WHERE student_id = {_sid}
                       AND entitlement_type = :etype
                       AND expires_at IS NOT NULL
                       AND expires_at > :now

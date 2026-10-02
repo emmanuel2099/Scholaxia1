@@ -32,7 +32,7 @@ ASSET_FALLBACK = os.environ.get("SCHOLAXIA_ASSET_FALLBACK", r"D:\tmp")
 PORT = 17890
 DISCORD_PORT = 3001
 DISCORD_DIR = os.path.normpath(os.path.join(ROOT, "..", "discord-community"))
-REMOTE_API = "https://scholaxia1.onrender.com"
+REMOTE_API = (os.environ.get("SCHOLAXIA_API") or "https://scholaxia1.onrender.com").rstrip("/")
 STREAM_API_KEY = "7cu55d72xtjs"
 STREAM_CHAT_SECRET = ""
 

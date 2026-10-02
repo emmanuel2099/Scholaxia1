@@ -677,10 +677,12 @@
     GHS: { symbol: 'GHS ', label: 'GHS', rate: 13.5   },
   };
 
-  let currentCurrency = localStorage.getItem('sx_currency') || 'USD';
+  /* NGN is the house currency — the shop & marketplace price in Naira and
+     Paystack charges NGN server-side, so Naira must be the default. */
+  let currentCurrency = localStorage.getItem('sx_currency') || 'NGN';
 
   function applyCurrency(code) {
-    if (!CURRENCIES[code]) code = 'USD';
+    if (!CURRENCIES[code]) code = 'NGN';
     currentCurrency = code;
     localStorage.setItem('sx_currency', code);
 
@@ -706,6 +708,9 @@
       });
       el.textContent = cur.symbol + converted;
     });
+
+    /* notify page scripts (shop, marketplace…) so they re-render prices */
+    document.dispatchEvent(new CustomEvent('sx:currencychange', { detail: { code } }));
   }
 
   /* currency dropdown (reuses .lang-wrap pattern) */

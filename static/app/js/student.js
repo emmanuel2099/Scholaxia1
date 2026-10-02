@@ -1610,6 +1610,10 @@
       isExternal: !!opts.isExternal,
       isSchool: !!opts.isSchool,
       index: 0,
+      // OFFLINE SECURITY: record the exact start time on the device — it is
+      // sent with the submission and the duration is enforced from it.
+      startedAt: (opts.isExternal || opts.isSchool) ? new Date().toISOString() : null,
+      durationMinutes: examMinutes(pack),
       remainingSec: examMinutes(pack) * 60,
       timerId: null,
     };
@@ -1822,6 +1826,135 @@
     });
   }
 
+  /* ---------- OFFLINE SECURITY (owner PRD): encrypted pending-sync queue ----------
+   * "Encrypt sensitive locally stored exam data where practical." — the
+   * answer sheet of an offline-taken school exam is AES-GCM encrypted with a
+   * per-device key (WebCrypto) before it touches storage, then auto-synced
+   * (once, duplicates are merged) when the connection returns. */
+  var SX_ENC_PREFIX = "sxenc_v1:";
+  var SX_MASTER_KEY = "sx_ss_master_key_v1";
+  var SX_KEY_PROMISE = null;
+
+  function sxSubtle() {
+    return (window.crypto && window.crypto.subtle) || null;
+  }
+  function sxB64(bytes) {
+    var bin = "";
+    var arr = new Uint8Array(bytes);
+    for (var i = 0; i < arr.length; i++) bin += String.fromCharCode(arr[i]);
+    return btoa(bin);
+  }
+  function sxUnb64(text) {
+    var bin = atob(text);
+    var arr = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return arr;
+  }
+  function sxKey() {
+    if (SX_KEY_PROMISE) return SX_KEY_PROMISE;
+    var s = sxSubtle();
+    if (!s) return Promise.resolve(null);
+    SX_KEY_PROMISE = (async function () {
+      try {
+        var raw = localStorage.getItem(SX_MASTER_KEY);
+        if (raw) return await s.importKey("raw", sxUnb64(raw), "AES-GCM", false, ["encrypt", "decrypt"]);
+        var fresh = await s.generateKey({ name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
+        var exported = await s.exportKey("raw", fresh);
+        localStorage.setItem(SX_MASTER_KEY, sxB64(exported));
+        return fresh;
+      } catch (e) {
+        return null;
+      }
+    })();
+    return SX_KEY_PROMISE;
+  }
+  async function sxSecSet(key, value) {
+    var json = JSON.stringify(value == null ? null : value);
+    var s = sxSubtle();
+    var k = s ? await sxKey() : null;
+    if (!k) {
+      try { localStorage.setItem(key, json); } catch (e) { /* quota */ }
+      return;
+    }
+    try {
+      var iv = window.crypto.getRandomValues(new Uint8Array(12));
+      var cipher = await s.encrypt({ name: "AES-GCM", iv: iv }, k, new TextEncoder().encode(json));
+      localStorage.setItem(key, SX_ENC_PREFIX + sxB64(iv) + ":" + sxB64(cipher));
+    } catch (e) {
+      try { localStorage.setItem(key, json); } catch (e2) { /* quota */ }
+    }
+  }
+  async function sxSecGet(key) {
+    var raw = null;
+    try { raw = localStorage.getItem(key); } catch (e) { return null; }
+    if (raw == null) return null;
+    if (raw.indexOf(SX_ENC_PREFIX) !== 0) {
+      try { return JSON.parse(raw); } catch (e) { return null; }
+    }
+    var s = sxSubtle();
+    var k = s ? await sxKey() : null;
+    if (!k) return null;
+    try {
+      var parts = raw.slice(SX_ENC_PREFIX.length).split(":");
+      var plain = await s.decrypt({ name: "AES-GCM", iv: sxUnb64(parts[0]) }, k, sxUnb64(parts[1]));
+      return JSON.parse(new TextDecoder().decode(plain));
+    } catch (e) {
+      return null; // tampered value or wrong key
+    }
+  }
+
+  var SIA_EXT_QUEUED_KEY = "sia_ext_pending_submits";
+  async function readQueuedExams() {
+    var list = await sxSecGet(SIA_EXT_QUEUED_KEY);
+    return Array.isArray(list) ? list : [];
+  }
+  async function writeQueuedExams(list) {
+    await sxSecSet(SIA_EXT_QUEUED_KEY, list || []);
+  }
+  // One entry per exam: a re-queued submission replaces the older draft, so
+  // the same attempt can never be submitted twice.
+  async function queueExternalSubmit(st, answers, submittedAtIso) {
+    try {
+      var list = await readQueuedExams();
+      list = list.filter(function (x) { return x.exam_id !== st.examId; });
+      list.push({
+        exam_id: st.examId,
+        title: st.title || "",
+        answers: answers,
+        started_at: st.startedAt || null,
+        submitted_at: submittedAtIso || new Date().toISOString(),
+        client: "site",
+        queued_at: new Date().toISOString(),
+      });
+      await writeQueuedExams(list);
+    } catch (e) { /* never block a submission over queue errors */ }
+  }
+  async function flushQueuedExternalSubmits() {
+    if (typeof navigator !== "undefined" && !navigator.onLine) return;
+    var list = await readQueuedExams();
+    if (!list.length) return;
+    var remaining = [];
+    for (var i = 0; i < list.length; i++) {
+      var item = list[i];
+      try {
+        await api.api("/api/v1/cbt/external-exams/" + item.exam_id + "/submit", {
+          method: "POST",
+          body: {
+            answers: item.answers,
+            is_auto_submit: false,
+            started_at: item.started_at || null,
+            submitted_at: item.submitted_at || null,
+            offline_sync: true,
+            client: "site",
+          },
+        });
+      } catch (e) {
+        remaining.push(item);
+      }
+    }
+    await writeQueuedExams(remaining);
+  }
+
   function confirmSubmitExam() {
     if (!Exam.current) return;
     var st = Exam.current;
@@ -1894,16 +2027,29 @@
     }
 
     if (st.isExternal) {
+      var submittedAtIso = new Date().toISOString();
       api
         .api("/api/v1/cbt/external-exams/" + st.examId + "/submit", {
           method: "POST",
-          body: { answers: answersOut, is_auto_submit: !!isAuto },
+          body: {
+            answers: answersOut,
+            is_auto_submit: !!isAuto,
+            started_at: st.startedAt || null,
+            submitted_at: submittedAtIso,
+            client: "site",
+          },
         })
         .then(function (res) {
           showResult(res, st);
         })
         .catch(function () {
-          showResult(localScore(st), st);
+          // OFFLINE SECURITY: save the answer sheet ENCRYPTED on this device
+          // and auto-sync it when the connection returns. The server re-scores
+          // every submission, so the local score is only a preview.
+          queueExternalSubmit(st, answersOut, submittedAtIso);
+          var offlineRes = localScore(st);
+          offlineRes.queued_sync = true;
+          showResult(offlineRes, st);
         });
       return;
     }
@@ -2263,6 +2409,25 @@
       attempt_id: res.attempt_id || (st && st.practiceAttemptId),
     };
 
+    // Owner spec §22/§25: school-exam scores stay hidden until the school
+    // publishes — the student sees a confirmation instead of a score.
+    var schoolResultHidden =
+      (st && (st.isSchool || st.isExternal)) &&
+      (res.result_status === "hidden" || res.result_status == null) &&
+      !(res.already_submitted && res.result_status === "published");
+    if (schoolResultHidden) {
+      $("resultRing").textContent = "✓";
+      $("resultTitle").textContent = "Exam submitted successfully";
+      $("resultSub").textContent = st ? st.title : "";
+      $("resultStats").innerHTML =
+        '<div style="grid-column:1/-1;text-align:center;padding:8px 4px">' +
+        "Your examination has been submitted. Your result will be available " +
+        "when published by your school." +
+        (res && res.queued_sync
+          ? '<div style="margin-top:6px;font-size:0.85rem">📴 You were offline — your answers are saved securely and will sync automatically when you reconnect.</div>'
+          : "") +
+        "</div>";
+    } else {
     $("resultRing").textContent = pct != null ? pct + "%" : "—";
     $("resultTitle").textContent = res.unscored ? "Exam submitted" : "Exam completed";
     $("resultSub").textContent = st ? st.title : "";
@@ -2276,6 +2441,7 @@
       '<div><strong>' +
       (res.offline ? "Offline" : "Synced") +
       "</strong><span>Status</span></div>";
+    }
     var reviewBtn = $("resultReviewBtn");
     if (reviewBtn) {
       reviewBtn.hidden = !(st && st.isPractice);
@@ -3892,8 +4058,7 @@
     );
   }
 
-  /* Live class invitation ringtone (same sound as the mobile app) */
-  var liveRingAudio = null;
+  /* Live class invitations — ring sound removed (user request); timers kept for stop() cleanup. */
   var liveRingTimer = null;
   var liveRingLimitTimer = null;
   var knownUnreadCodes = {};
@@ -3938,12 +4103,6 @@
       clearTimeout(liveRingLimitTimer);
       liveRingLimitTimer = null;
     }
-    try {
-      if (liveRingAudio) {
-        liveRingAudio.pause();
-        liveRingAudio.currentTime = 0;
-      }
-    } catch (e) {}
     var bar = $("liveInviteRingBar");
     if (bar) bar.hidden = true;
   }
@@ -3972,28 +4131,9 @@
       .catch(function () {});
   }
 
-  function playLiveClassRingBurst() {
-    try {
-      if (!liveRingAudio) {
-        liveRingAudio = new Audio("media/sounds/live_class_ringtone.mp3");
-        liveRingAudio.preload = "auto";
-      }
-      liveRingAudio.currentTime = 0;
-      var p = liveRingAudio.play();
-      if (p && typeof p.catch === "function") p.catch(function () {});
-    } catch (e) {}
-  }
-
   function startLiveClassRing() {
-    if (liveRingTimer) return;
-    var bar = $("liveInviteRingBar");
-    if (bar) bar.hidden = false;
-    playLiveClassRingBurst();
-    liveRingTimer = setInterval(playLiveClassRingBurst, LIVE_RING_BURST_MS);
-    // Hard stop so ringtone is never endless while a class stays live.
-    liveRingLimitTimer = setTimeout(function () {
-      silenceLiveClassRing();
-    }, LIVE_RING_MAX_MS);
+    // Ring sound removed — invitations are surfaced on the Access Codes page
+    // and via notifications; nothing plays and no ring bar is shown.
   }
 
   function pollLiveInvitesForRing() {
@@ -5889,13 +6029,15 @@
   }
   // close handler already on side-link above
 
-  if ($("stopLiveRingBtn")) {
-    $("stopLiveRingBtn").addEventListener("click", function () {
-      silenceLiveClassRing();
-    });
-  }
   pollLiveInvitesForRing();
   setInterval(pollLiveInvitesForRing, 12000);
+
+  // OFFLINE SECURITY: auto-sync queued school-exam submissions when the
+  // connection returns (owner PRD — "auto-sync on reconnect" + audit trail).
+  if (typeof flushQueuedExternalSubmits === "function") {
+    flushQueuedExternalSubmits();
+    window.addEventListener("online", function () { flushQueuedExternalSubmits(); });
+  }
 
   // Wake Render before first dashboard load so Exam / Live / CBT screens do not flash network errors
   if (api.wakeServer) {

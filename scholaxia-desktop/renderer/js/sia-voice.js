@@ -1,6 +1,6 @@
 /** Sia voice — reads the AI Teacher's replies aloud. */
 
-var siaVoiceEnabled = true;
+var siaVoiceEnabled = false; // no auto-read — tap 🔊 on a reply (or "Voice on") to hear it
 var siaVoiceAudio = null;
 var siaVoiceObjectUrl = null;
 
@@ -106,7 +106,7 @@ function siaToggleVoice() {
 
 /* Init saved preference */
 try {
-  if (localStorage.getItem("sia_voice_on") === "0") siaVoiceEnabled = false;
+  if (localStorage.getItem("sia_voice_on") === "1") siaVoiceEnabled = true;
 } catch (e) { /* ignore */ }
 
 if (typeof window !== "undefined") {
