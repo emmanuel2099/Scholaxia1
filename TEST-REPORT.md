@@ -569,7 +569,18 @@ the device identity. Then the app was restarted OFFLINE (navigator.onLine=false
   PATCH https://www.Dove.com/ → stored "dove.com", shown in the table.
 - School goes live once approved + its domain is hosted.
 
-### 4. Desktop admin no longer registers students (user decision)
+### 4. Forgot-password link on the school portal fixed
+
+- The "Forgot password?" link on the school portal login
+  (/school/<slug>/) was dead (`onclick="return false"`). It now opens a
+  two-step modal: email → OTP code (sent by the platform email provider;
+  dev code shown in DEBUG) → new password, using the existing
+  /auth/otp/send + /auth/password/reset endpoints (which already target
+  the same User record the portal login checks).
+- E2E verified on Divine Light: reset → logged in with the NEW password,
+  second reset restored the original password → logged in again.
+
+### 5. Desktop admin no longer registers students (user decision)
 
 - The desktop admin's "Register student for exam" panel was REMOVED —
   schools register their own students in their school portal (the

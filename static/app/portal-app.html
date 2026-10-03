@@ -253,7 +253,7 @@ tr:last-child td{border-bottom:none}
       <input class="f-in" id="lgId" autocomplete="username" placeholder="admin@yourschool.com" required />
       <label class="f-label" for="lgPw">Password</label>
       <input class="f-in" id="lgPw" type="password" autocomplete="current-password" placeholder="Enter your password" required />
-      <div class="login-row"><label><input type="checkbox" checked style="accent-color:var(--blue)" /> Remember me</label><a href="#" onclick="return false" style="color:var(--blue);text-decoration:none">Forgot password?</a></div>
+      <div class="login-row"><label><input type="checkbox" checked style="accent-color:var(--blue)" /> Remember me</label><a href="#" onclick="return fpOpen()" style="color:var(--blue);text-decoration:none">Forgot password?</a></div>
       <button class="btn-login" id="lgBtn" type="submit">→&nbsp; Log In</button>
       <div class="login-err" id="lgErr"></div>
     </form>
@@ -441,6 +441,60 @@ tr:last-child td{border-bottom:none}
       btn.disabled = false; btn.innerHTML = "→&nbsp; Log In";
     });
   });
+  /* ── Forgot password (the link used to be dead): OTP reset via
+     /auth/otp/send (purpose=reset_password) + /auth/password/reset.
+     Works for the school admin account the portal logs in with. ── */
+  window.fpOpen = function () {
+    openModal("Reset your password",
+      '<p class="mhint">Enter the email this school was registered with. We email you a code, then you set a new password.</p>' +
+      '<div style="margin-top:12px"><label class="f-label">Email *</label><input class="f-in" id="fpEmail" type="email" placeholder="admin@yourschool.com" /></div>' +
+      '<div class="merr" style="display:none;margin-top:10px"></div>',
+      '<button class="btn green" id="fpSend">📧 Send code</button>');
+    $("fpSend").addEventListener("click", fpSend);
+    return false;
+  };
+  function fpSend() {
+    var email = ($("fpEmail").value || "").trim();
+    if (!email) return mErr("Enter the email the school was registered with.");
+    busy($("fpSend"), true, "Send code");
+    fetch(API + "/auth/otp/send", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email, purpose: "reset_password" }),
+    }).then(_handle).then(function (d) {
+      fpStep2(email, d && d.debug_otp ? String(d.debug_otp) : null);
+    }).catch(function (ex) {
+      busy($("fpSend"), false, "📧 Send code");
+      mErr(errText(ex) || "Could not send the code right now.");
+    });
+  }
+  function fpStep2(email, debugOtp) {
+    openModal("Reset your password",
+      '<p class="mhint">We sent a code to <strong>' + esc(email) + '</strong>.' +
+      (debugOtp ? ' (Dev code: <code>' + esc(debugOtp) + '</code>)' : ' Check the inbox (and spam).') + '</p>' +
+      '<div style="margin-top:12px"><label class="f-label">Code from email *</label><input class="f-in" id="fpOtp" inputmode="numeric" maxlength="10" placeholder="123456" /></div>' +
+      '<div style="margin-top:10px"><label class="f-label">New password *</label><input class="f-in" id="fpPw" type="password" minlength="8" placeholder="At least 8 characters" /></div>' +
+      '<div class="merr" style="display:none;margin-top:10px"></div>',
+      '<button class="btn green" id="fpGo">✅ Set new password</button>');
+    $("fpGo").addEventListener("click", function () {
+      var otp = ($("fpOtp").value || "").trim();
+      var pw = $("fpPw").value || "";
+      if (!otp) return mErr("Enter the code from the email.");
+      if (pw.length < 8) return mErr("New password must be at least 8 characters.");
+      busy($("fpGo"), true, "Set new password");
+      fetch(API + "/auth/password/reset", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email, otp: otp, new_password: pw }),
+      }).then(_handle).then(function () {
+        closeModal();
+        $("lgId").value = email;
+        $("lgPw").value = "";
+        toast("✅ Password updated — log in with your new password.");
+      }).catch(function (ex) {
+        busy($("fpGo"), false, "✅ Set new password");
+        mErr(errText(ex) || "Could not reset the password.");
+      });
+    });
+  }
   function logout() {
     localStorage.removeItem("sx_portal_token_" + slug);
     localStorage.removeItem("sx_portal_user_" + slug);
