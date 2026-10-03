@@ -443,7 +443,7 @@ async def portal_settings(slug: str, current_user: dict = Depends(require_school
             "contact_email": getattr(campus, "contact_email", None),
             "contact_phone": getattr(campus, "contact_phone", None),
         },
-        "private_link": f"https://{campus.slug}.scholaxia.com/" if campus.slug else None,
+        "custom_domain": getattr(campus, "custom_domain", None),  # Pass 8 — school's own hosted domain (e.g. dove.com); no scholaxia.com subdomain
     }
 
 
@@ -591,18 +591,80 @@ async def register_candidate(
     current_user: dict = Depends(require_school_staff),
     db: AsyncSession = Depends(get_db),
 ):
+    """Pass 7 — register an exam student whose printed credentials WORK.
+
+    Previously this minted a standalone REC-…/8-hex pair stored only in
+    school_exam_candidates, which the exam portal login (school_exam_access
+    _codes) never recognised — "the access code is not working". Now the same
+    registration creates the exam-scoped student account + a pending access
+    code row (exam attached when the subject is scheduled), and the candidate
+    record shows those exact credentials. Reg numbers use the new unique
+    school-prefixed pattern and are stable across every exam.
+    """
+    from app.models.school_cbt import SchoolExam, SchoolExamAssignment
+    from app.routers.school_cbt import _ensure_access_codes, _mint_pending_credential
+
     campus = await _campus(db, current_user, payload.school_id)
+    cls = payload.class_name.strip().upper()
+    full_name = payload.full_name.strip()
+
+    # Exam-scoped student account (never logs into the main app — credentials
+    # are REG NUMBER + ACCESS CODE, §14).
+    while True:
+        placeholder_email = f"exam.{secrets.token_hex(6).lower()}@students.scholaxia.local"
+        if (
+            await db.execute(select(User.id).where(User.email == placeholder_email))
+        ).scalar_one_or_none() is None:
+            break
+    user = User(
+        email=placeholder_email,
+        hashed_password=hash_password(secrets.token_urlsafe(12)),
+        full_name=full_name[:120],
+        role=UserRole.student,
+        is_verified=True,
+        is_active=True,
+        school_id=campus.id,
+    )
+    db.add(user)
+    await db.flush()
+    db.add(StudentProfile(user_id=user.id, education_level=cls))
+    await db.flush()
+
+    # Issue the reg number + access code NOW (slip is final), reusing the
+    # pending row at schedule time so these printed credentials keep working.
+    cred = await _mint_pending_credential(db, campus.id, user.id)
+
+    # Already-scheduled exams for this class (subject-filtered) get the
+    # student assigned immediately.
+    q = select(SchoolExam).where(
+        SchoolExam.school_id == campus.id,
+        func.upper(SchoolExam.class_name) == cls,
+    )
+    subjects = [s.strip() for s in payload.subjects if str(s).strip()]
+    if subjects and "ALL" not in {s.upper() for s in subjects}:
+        q = q.where(func.lower(SchoolExam.subject).in_([s.lower() for s in subjects]))
+    exams = (await db.execute(q)).scalars().all()
+    for e in exams:
+        db.add(
+            SchoolExamAssignment(
+                school_id=campus.id, exam_id=e.id, student_id=user.id,
+                class_name=cls, subject=e.subject,
+            )
+        )
+        await _ensure_access_codes(db, e)
+
     row = SchoolExamCandidate(
         school_id=campus.id,
         school_name=campus.name,
-        class_name=payload.class_name.strip().upper(),
-        full_name=payload.full_name.strip(),
+        class_name=cls,
+        full_name=full_name,
         email=str(payload.email).lower() if payload.email else None,
         phone=payload.phone,
-        rec_number=_gen_rec(),
-        candidate_id=_gen_candidate_id(),
-        access_code=_gen_access(),
-        subjects=[s.strip() for s in payload.subjects if str(s).strip()],
+        rec_number=cred.reg_number,
+        candidate_id=cred.reg_number,
+        access_code=cred.access_code,
+        subjects=subjects,
+        user_id=user.id,
         created_by=current_user["sub"],
     )
     db.add(row)

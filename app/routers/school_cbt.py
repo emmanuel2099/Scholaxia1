@@ -867,7 +867,12 @@ async def _materialize_assignments(db: AsyncSession, exam: SchoolExam, sid: UUID
 
 
 async def _ensure_access_codes(db: AsyncSession, exam: SchoolExam) -> int:
-    """§13 — one REG NUMBER + access code per assigned student."""
+    """§13 — one REG NUMBER + access code per assigned student.
+
+    Pass 7: a student registered BEFORE scheduling already holds an exam-less
+    credential row (the printed slip). That row is attached to this exam — the
+    slip keeps working — instead of minting new credentials.
+    """
     students = (
         await db.execute(select(SchoolExamAssignment.student_id).where(SchoolExamAssignment.exam_id == exam.id))
     ).scalars().all()
@@ -880,6 +885,24 @@ async def _ensure_access_codes(db: AsyncSession, exam: SchoolExam) -> int:
     for suid in students:
         if str(suid) in have:
             continue
+        # Reuse the credential issued at registration (exam-less row) so the
+        # printed slip's reg number + access code keep working.
+        pending = (
+            await db.execute(
+                select(SchoolExamAccessCode)
+                .where(
+                    SchoolExamAccessCode.student_id == suid,
+                    SchoolExamAccessCode.exam_id.is_(None),
+                )
+                .order_by(SchoolExamAccessCode.created_at.desc())
+                .limit(1)
+            )
+        ).scalars().first()
+        if pending is not None:
+            pending.exam_id = exam.id
+            pending.expires_at = exam.access_code_expires_at
+            made += 1
+            continue
         reg = await _reg_number_for(db, exam.school_id, suid)
         db.add(
             SchoolExamAccessCode(
@@ -887,7 +910,7 @@ async def _ensure_access_codes(db: AsyncSession, exam: SchoolExam) -> int:
                 exam_id=exam.id,
                 student_id=suid,
                 reg_number=reg,
-                access_code=_new_access_code(),
+                access_code=await _new_access_code_unique(db, exclude_student_id=suid),
                 expires_at=exam.access_code_expires_at,
             )
         )
@@ -896,21 +919,57 @@ async def _ensure_access_codes(db: AsyncSession, exam: SchoolExam) -> int:
 
 
 async def _reg_number_for(db: AsyncSession, school_id: UUID, student_id) -> str:
-    """Prefer the school's own student id; otherwise mint SCHX/26/544560."""
+    """One stable, globally-unique registration number per student (Pass 7).
+
+    Pattern: {CAMPUS-CODE}/{yy}/{NNNNNN} — e.g. DLC/26/482913 — school-prefixed
+    and year-scoped (visibly different from the old SCHX/26/… and from the
+    reference site). Falls back to SXA/{yy}/{NNNNNN} when the campus has no
+    short code. Uniqueness is checked across ALL schools, and the same student
+    always keeps the same number across every exam they are assigned to.
+    Schools that set their own admission number (school_student_id) keep it.
+    """
     profile = (
         await db.execute(select(StudentProfile).where(StudentProfile.user_id == student_id))
     ).scalar_one_or_none()
     if profile and getattr(profile, "school_student_id", None):
         return profile.school_student_id
+
+    # Same student already has a reg number (from a pending credential or an
+    # earlier exam) → reuse it so every slip shows the same number.
+    existing = (
+        await db.execute(
+            select(SchoolExamAccessCode.reg_number)
+            .where(SchoolExamAccessCode.student_id == student_id)
+            .order_by(SchoolExamAccessCode.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if existing:
+        return existing
+
+    campus = (
+        await db.execute(select(SchoolCampus).where(SchoolCampus.id == school_id))
+    ).scalar_one_or_none()
+    prefix = ""
+    if campus is not None:
+        code = (getattr(campus, "code", None) or "").strip().upper()
+        if not code:
+            # Derive a short prefix from the school name (letters only).
+            words = [w for w in "".join(ch for ch in (campus.name or "") if ch.isalpha() or ch.isspace()).split() if w]
+            if words:
+                code = "".join(w[0] for w in words[:4]).upper()
+        if code:
+            prefix = code[:6]
+    if not prefix:
+        prefix = "SXA"
+
     year = datetime.utcnow().strftime("%y")
     while True:
-        cand = f"SCHX/{year}/{secrets.randbelow(900000) + 100000}"
+        cand = f"{prefix}/{year}/{secrets.randbelow(900000) + 100000}"
+        # Global uniqueness — across every school (Pass 7).
         clash = (
             await db.execute(
-                select(SchoolExamAccessCode.id).where(
-                    SchoolExamAccessCode.reg_number == cand,
-                    SchoolExamAccessCode.school_id == school_id,
-                )
+                select(SchoolExamAccessCode.id).where(SchoolExamAccessCode.reg_number == cand)
             )
         ).scalar_one_or_none()
         if not clash:
@@ -922,6 +981,52 @@ def _new_access_code() -> str:
     p1 = "".join(secrets.choice(alphabet) for _ in range(4))
     p2 = "".join(secrets.choice(alphabet) for _ in range(4))
     return f"SCH-{p1}-{p2}"
+
+
+async def _new_access_code_unique(db: AsyncSession, exclude_student_id=None) -> str:
+    """Access code that no OTHER student already holds (Pass 7)."""
+    for _ in range(25):
+        cand = _new_access_code()
+        q = select(SchoolExamAccessCode.id).where(SchoolExamAccessCode.access_code == cand)
+        if exclude_student_id is not None:
+            q = q.where(SchoolExamAccessCode.student_id != exclude_student_id)
+        if (await db.execute(q)).scalar_one_or_none() is None:
+            return cand
+    return _new_access_code()
+
+
+async def _mint_pending_credential(db: AsyncSession, school_id: UUID, student_id) -> SchoolExamAccessCode:
+    """Issue the student's reg number + access code at REGISTRATION time.
+
+    The row starts exam-less (exam_id NULL) — the printed slip is final — and
+    _ensure_access_codes() attaches it to each scheduled exam, so the same
+    reg number + access code keep working for every exam of that class.
+    """
+    pending = (
+        await db.execute(
+            select(SchoolExamAccessCode)
+            .where(
+                SchoolExamAccessCode.student_id == student_id,
+                SchoolExamAccessCode.exam_id.is_(None),
+            )
+            .order_by(SchoolExamAccessCode.created_at.desc())
+            .limit(1)
+        )
+    ).scalars().first()
+    if pending is not None:
+        return pending
+    reg = await _reg_number_for(db, school_id, student_id)
+    code = await _new_access_code_unique(db, exclude_student_id=student_id)
+    row = SchoolExamAccessCode(
+        school_id=school_id,
+        exam_id=None,
+        student_id=student_id,
+        reg_number=reg,
+        access_code=code,
+    )
+    db.add(row)
+    await db.flush()
+    return row
 
 
 class ExamPatchIn(BaseModel):
@@ -1107,13 +1212,18 @@ async def register_form_options(
 
 
 class RegisterStudentIn(BaseModel):
-    """Reference 'Register Student for Exam' form — names, class, subject.
-    Registration Number + Access Code are ALWAYS generated server-side."""
+    """Reference 'Register Student for Exam' form — names, class, subjects.
+    Registration Number + Access Code are ALWAYS generated server-side.
+
+    Pass 8 — subjects is a MULTI-select: any number of subjects or ["ALL"].
+    The legacy single `subject` field is still accepted for compatibility.
+    """
     first_name: str = Field(min_length=1, max_length=80)
     middle_name: Optional[str] = Field(default=None, max_length=80)
     surname: str = Field(min_length=1, max_length=80)
     class_name: str = Field(min_length=1, max_length=40)
-    subject: str = Field(min_length=1, max_length=120)  # subject name or "ALL"
+    subject: Optional[str] = Field(default=None, max_length=120)  # legacy: one subject or "ALL"
+    subjects: Optional[list[str]] = Field(default=None, max_length=60)  # new: one, many or ["ALL"]
 
 
 @router.post("/students/register", status_code=201)
@@ -1151,12 +1261,27 @@ async def register_exam_student(
     db.add(StudentProfile(user_id=user.id, education_level=cls))
     await db.flush()
 
+    # Pass 7 — reference flow: the slip is FINAL at registration. Reg number
+    # (new unique pattern) + access code are issued NOW, even when the subject
+    # is not scheduled yet; scheduling attaches the same credential to the
+    # exam instead of minting a new one, so the printed credentials work.
+    cred = await _mint_pending_credential(db, sid, user.id)
+
+    # Pass 8 — multi-select subjects: any number, or ALL. Falls back to the
+    # legacy single `subject` field when `subjects` is not sent.
+    sel = [s.strip() for s in (payload.subjects or []) if s and s.strip()]
+    if not sel and payload.subject and payload.subject.strip():
+        sel = [payload.subject.strip()]
+    if not sel:
+        raise HTTPException(status_code=422, detail="Select at least one subject")
+    is_all = any(s.upper() == "ALL" for s in sel)
+
     q = select(SchoolExam).where(
         SchoolExam.school_id == sid,
         func.upper(SchoolExam.class_name) == cls,
     )
-    if payload.subject.strip().upper() != "ALL":
-        q = q.where(func.lower(SchoolExam.subject) == payload.subject.strip().lower())
+    if not is_all:
+        q = q.where(func.lower(SchoolExam.subject).in_([s.lower() for s in sel]))
     exams = (await db.execute(q)).scalars().all()
     for e in exams:
         db.add(
@@ -1174,21 +1299,17 @@ async def register_exam_student(
             .order_by(SchoolExamAccessCode.created_at.desc())
         )
     ).scalars().first()
-    if not code:
-        # Subject not scheduled yet — mint the reg number now so the slip
-        # exists; the access code is issued at Save Schedule (reference flow:
-        # register now, schedule later).
-        reg = await _reg_number_for(db, sid, user.id)
-    else:
-        reg = code.reg_number
     return {
         "student_id": str(user.id),
         "full_name": user.full_name,
         "class_name": cls,
         "exams_assigned": len(exams),
+        # `subjects` = subjects that actually have exams assigned (drives the
+        # slip). `requested_subjects` = what the school picked at registration.
         "subjects": sorted({e.subject for e in exams}),
-        "reg_number": reg,
-        "access_code": code.access_code if code else None,
+        "requested_subjects": ["ALL"] if is_all else sorted({s for s in sel}),
+        "reg_number": cred.reg_number,
+        "access_code": cred.access_code,
     }
 
 
@@ -1317,7 +1438,26 @@ async def save_schedule(
     want = {s.strip() for s in payload.subjects if s.strip()}
     if not want:
         raise HTTPException(status_code=400, detail="Select at least one subject")
-    start = payload.starts_at
+    # Pass 8 — "ALL" expands to every subject that has questions in the class
+    # bank (subjects with an empty bank are skipped by the loop below anyway,
+    # but expanding ALL here schedules the whole class curriculum in one
+    # click from the portal or the desktop's Host exam panel).
+    if "all" in {w.lower() for w in want}:
+        bank_subjects = (
+            await db.execute(
+                select(SchoolExQuestionBank.subject).where(
+                    SchoolExQuestionBank.school_id == sid,
+                    func.upper(SchoolExQuestionBank.class_name) == cls,
+                )
+            )
+        ).scalars().all()
+        want = {str(s).strip() for s in bank_subjects if s and str(s).strip()}
+        if not want:
+            raise HTTPException(status_code=400, detail="No question banks for this class yet — upload questions first")
+    # The web portal sends an ISO timestamp WITH timezone (…Z) from the
+    # datetime-local picker — normalize to naive UTC before any comparison
+    # with naive_utc_now() (Pass 7: hosting an exam via Save Schedule 500'd).
+    start = to_naive_utc(payload.starts_at)
     now = naive_utc_now()
 
     exams = (
@@ -1574,15 +1714,15 @@ async def reschedule_exam(
     sid = _staff_school_id(current_user, school_id)
     exam = await _get_school_exam(db, exam_id, sid)
     if payload.exam_date is not None:
-        exam.exam_date = payload.exam_date
+        exam.exam_date = to_naive_utc(payload.exam_date)
     if payload.scheduled_start is not None:
-        start = payload.scheduled_start
+        start = to_naive_utc(payload.scheduled_start)
         exam.scheduled_start = start
         if payload.scheduled_end is None:
             dur = payload.duration_minutes or exam.duration_minutes
             exam.scheduled_end = start + timedelta(minutes=int(dur))
     if payload.scheduled_end is not None:
-        exam.scheduled_end = payload.scheduled_end
+        exam.scheduled_end = to_naive_utc(payload.scheduled_end)
     if payload.duration_minutes is not None:
         exam.duration_minutes = int(payload.duration_minutes)
     await db.flush()
@@ -2253,6 +2393,7 @@ async def _exam_student(db: AsyncSession, credentials) -> tuple[User, SchoolExam
             select(SchoolExamAccessCode).where(
                 SchoolExamAccessCode.student_id == user.id,
                 SchoolExamAccessCode.is_used == False,  # noqa: E712
+                SchoolExamAccessCode.exam_id.is_not(None),  # Pass 7: skip pending (exam-less) credentials
             )
         )
     ).scalars().first()

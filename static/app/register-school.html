@@ -110,84 +110,6 @@
       .hero p { margin: 0 auto; }
     }
 
-    /* ================= Plans ================= */
-    .plans-section { max-width: 1240px; margin: 0 auto; padding: 20px 24px 10px; }
-    .plans { display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px; align-items: stretch; }
-
-    @media (max-width: 980px) { .plans { grid-template-columns: 1fr; max-width: 460px; margin: 0 auto; } }
-
-    .plan {
-      position: relative; background: var(--card); border-radius: 18px; padding: 30px 26px 26px;
-      border: 1.5px solid var(--line); box-shadow: var(--shadow-sm);
-      display: flex; flex-direction: column; cursor: pointer;
-      transition: transform .18s, box-shadow .18s, border-color .18s;
-    }
-    .plan:hover { transform: translateY(-4px); box-shadow: var(--shadow-md); }
-
-    .plan-head { display: flex; align-items: center; gap: 14px; margin-bottom: 18px; }
-    .plan-icon {
-      width: 52px; height: 52px; border-radius: 14px; flex: 0 0 auto;
-      display: flex; align-items: center; justify-content: center; font-size: 24px;
-    }
-    .plan.basic .plan-icon { background: var(--blue-soft); }
-    .plan.standard .plan-icon { background: #ede9fe; }
-    .plan.premium .plan-icon { background: var(--green-soft); }
-    .plan h3 { font-size: 21px; font-weight: 800; letter-spacing: -.3px; }
-    .plan .tagline { font-size: 13.5px; color: var(--muted); margin-top: 3px; }
-
-    .price { display: flex; align-items: baseline; gap: 8px; margin: 4px 0 18px; }
-    .price .amount { font-size: 34px; font-weight: 800; letter-spacing: -.8px; }
-    .plan.basic .amount { color: var(--blue); }
-    .plan.standard .amount { color: var(--purple); }
-    .plan.premium .amount { color: var(--green); }
-    .price .per { font-size: 14px; color: var(--muted); font-weight: 500; }
-
-    .plan ul { list-style: none; display: grid; gap: 12px; font-size: 14.5px; color: var(--ink-2); margin-bottom: 24px; }
-    .plan ul li { display: flex; align-items: flex-start; gap: 10px; line-height: 1.45; }
-    .check {
-      flex: 0 0 auto; width: 20px; height: 20px; margin-top: 1px; border-radius: 50%;
-      display: inline-flex; align-items: center; justify-content: center;
-      font-size: 11px; font-weight: 800; color: #fff;
-    }
-    .plan.basic .check { background: var(--blue); }
-    .plan.standard .check { background: var(--purple); }
-    .plan.premium .check { background: var(--green); }
-
-    .choose {
-      margin-top: auto; width: 100%; padding: 13px 18px; border-radius: 12px;
-      font: inherit; font-size: 15px; font-weight: 700; cursor: pointer;
-      background: #fff; transition: all .15s;
-    }
-    .plan.basic .choose { border: 1.5px solid var(--brand); color: var(--brand); }
-    .plan.basic .choose:hover { background: var(--brand-soft); }
-    .plan.premium .choose { border: 1.5px solid var(--brand); color: var(--brand); }
-    .plan.premium .choose:hover { background: var(--brand-soft); }
-    .plan.standard .choose {
-      border: none; color: #fff;
-      background: linear-gradient(92deg, var(--brand), var(--brand-bright));
-      box-shadow: 0 8px 20px rgba(124,58,237,.35);
-    }
-    .plan.standard .choose:hover { filter: brightness(1.07); }
-
-    .plan.selected { border-color: var(--brand); box-shadow: 0 0 0 3px rgba(124,58,237,.16), var(--shadow-md); }
-    .plan.selected .choose::after { content: " ✓"; }
-
-    /* Most popular ribbon on Standard */
-    .plan.standard { border: 2px solid var(--purple); box-shadow: var(--shadow-md); }
-    .plan.standard::before {
-      content: ""; position: absolute; top: 0; left: 0; right: 0; height: 46px;
-      background: linear-gradient(92deg, #6366f1, #3b82f6);
-      border-radius: 16px 16px 0 0;
-    }
-    .plan.standard { padding-top: 66px; }
-    .popular-badge {
-      position: absolute; top: 12px; right: 18px; z-index: 2;
-      background: #fff; color: var(--ink);
-      font-size: 12.5px; font-weight: 700; padding: 6px 14px; border-radius: 999px;
-      box-shadow: var(--shadow-sm); display: inline-flex; align-items: center; gap: 6px;
-    }
-    .popular-badge .star { color: var(--purple); }
-
     /* ================= Form ================= */
     .form-section { max-width: 1240px; margin: 30px auto 0; padding: 0 24px 80px; }
     .form-card {
@@ -195,7 +117,11 @@
       padding: 36px; box-shadow: var(--shadow-md);
     }
     .form-head { display: flex; align-items: center; gap: 16px; margin-bottom: 26px; }
-    .form-head .plan-icon { width: 56px; height: 56px; background: var(--brand-soft); }
+    .form-head .form-icon {
+      width: 56px; height: 56px; border-radius: 14px; flex: 0 0 auto;
+      display: flex; align-items: center; justify-content: center; font-size: 26px;
+      background: var(--brand-soft);
+    }
     .form-head h2 { font-size: 22px; font-weight: 800; letter-spacing: -.3px; }
     .form-head p { color: var(--muted); font-size: 14px; margin-top: 3px; }
 
@@ -225,6 +151,50 @@
       content: "▾"; position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
       color: #94a3b8; pointer-events: none; font-size: 13px;
     }
+
+    /* ================= Features dropdown ================= */
+    .features-field { margin-top: 18px; }
+    .features-field > label { font-size: 14px; }
+    .features-dropdown { position: relative; }
+    .features-toggle {
+      list-style: none; cursor: pointer; user-select: none;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      border: 1.5px solid var(--line); border-radius: 11px; background: #fff;
+      padding: 12px 14px; font-size: 15px; color: var(--ink);
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .features-toggle::-webkit-details-marker { display: none; }
+    .features-dropdown[open] .features-toggle, .features-toggle:focus {
+      outline: none; border-color: var(--brand);
+      box-shadow: 0 0 0 3px rgba(124,58,237,.16);
+    }
+    .features-toggle .caret { color: #94a3b8; font-size: 13px; }
+    .features-toggle.has-selection { color: var(--brand-dark); font-weight: 600; }
+    .features-menu {
+      position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 30;
+      background: #fff; border: 1.5px solid var(--line); border-radius: 14px;
+      box-shadow: var(--shadow-lg); padding: 8px; max-height: 340px; overflow: auto;
+    }
+    .feature-opt {
+      display: flex; align-items: flex-start; gap: 12px;
+      padding: 10px 12px; border-radius: 10px; cursor: pointer;
+      transition: background .12s;
+    }
+    .feature-opt:hover { background: var(--brand-soft); }
+    .feature-opt input { margin-top: 3px; width: 17px; height: 17px; accent-color: var(--brand); flex: 0 0 auto; }
+    .feature-opt .opt-txt { display: grid; gap: 1px; }
+    .feature-opt .opt-txt strong { font-size: 14px; font-weight: 600; color: var(--ink); }
+    .feature-opt .opt-txt small { font-size: 12.5px; color: var(--muted); }
+    .features-actions {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 12px 4px; border-top: 1px solid var(--line); margin-top: 6px;
+    }
+    .features-actions button {
+      font: inherit; font-size: 13px; font-weight: 700; border: none; background: none;
+      color: var(--brand); cursor: pointer; padding: 6px 4px;
+    }
+    .features-actions .count { font-size: 13px; color: var(--muted); }
+    .features-hint { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
 
     .email-note {
       display: none; font-size: 13px; line-height: 1.5; margin-top: 8px;
@@ -264,6 +234,11 @@
     }
     .link-pill strong { color: var(--brand-dark); font-size: 18px; word-break: break-all; }
     .success .note { margin-top: 12px; font-size: 14px; color: var(--muted); }
+    .success .feature-chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 14px; }
+    .success .feature-chips span {
+      background: var(--brand-soft); border: 1px solid #ddd6fe; color: var(--brand-dark);
+      font-size: 12.5px; font-weight: 600; padding: 6px 14px; border-radius: 999px;
+    }
   </style>
 </head>
 <body>
@@ -286,7 +261,6 @@
       <div class="nav-links">
         <a href="index.html">Home</a>
         <a href="index.html#product">Features</a>
-        <a href="#plans">Pricing</a>
         <a href="index.html#about">About Us</a>
         <a href="index.html#contact">Contact</a>
       </div>
@@ -300,28 +274,20 @@
   <!-- ================= Hero ================= -->
   <header class="hero">
     <div>
-      <span class="hero-pill">🏫 Choose Your Plan</span>
-      <h1>Powering Smarter Schools<br />with <span class="grad">Flexible Plans</span></h1>
-      <p>Get the right tools for your school. Choose a plan that fits your needs and pay only for the features you need. Set up in minutes, upgrade anytime.</p>
+      <span class="hero-pill">🏫 Register Your School</span>
+      <h1>Powering Smarter Schools<br />with <span class="grad">Smarter Management</span></h1>
+      <p>Tell us about your school and pick the features you want — students, results, CBT exams, attendance, fees and more. Set up in minutes, add more features anytime.</p>
     </div>
     <div class="hero-art">
       <img src="media/hero-dashboard.png" alt="Scholaxia school dashboard — better management, brighter future" />
     </div>
   </header>
 
-  <!-- ================= Plans ================= -->
-  <section class="plans-section" id="plans">
-    <p class="fine" style="text-align:center;margin-bottom:10px">Plans are optional — you can register now and choose a plan later.</p>
-    <div class="plans" id="plansGrid">
-      <p class="fine">Loading plans…</p>
-    </div>
-  </section>
-
   <!-- ================= Form ================= -->
   <section class="form-section" id="register">
     <div class="form-card">
       <div class="form-head">
-        <span class="plan-icon">🏫</span>
+        <span class="form-icon">🏫</span>
         <div>
           <h2>Tell Us About Your School</h2>
           <p>Fill in the details below to register your school and get your private link.</p>
@@ -412,29 +378,57 @@
           </div>
         </div>
 
-        <input type="hidden" name="plan" id="planField" value="" />
+        <!-- Pass 7: features dropdown replaces the old pricing-plan cards -->
+        <div class="field features-field" id="features">
+          <label>Features your school wants <span class="req">*</span></label>
+          <details class="features-dropdown" id="featuresDropdown">
+            <summary class="features-toggle" id="featuresToggle">
+              <span id="featuresLabel">Select the school-management features you need…</span>
+              <span class="caret">▾</span>
+            </summary>
+            <div class="features-menu" id="featuresMenu">
+              <label class="feature-opt"><input type="checkbox" name="requested_features" value="students" /><span class="opt-txt"><strong>Manage students by class</strong><small>Student records, class rosters and promotion</small></span></label>
+              <label class="feature-opt"><input type="checkbox" name="requested_features" value="subjects" /><span class="opt-txt"><strong>Give subjects to students</strong><small>Subject registration per class and student</small></span></label>
+              <label class="feature-opt"><input type="checkbox" name="requested_features" value="results" /><span class="opt-txt"><strong>Enter scores &amp; generate result sheets</strong><small>Score entry, report cards and result printing</small></span></label>
+              <label class="feature-opt"><input type="checkbox" name="requested_features" value="scratch_cards" /><span class="opt-txt"><strong>Scratch cards for result checking</strong><small>PINs students/parents use to check results</small></span></label>
+              <label class="feature-opt"><input type="checkbox" name="requested_features" value="cbt" /><span class="opt-txt"><strong>CBT exams</strong><small>Computer-based tests with reg number + access code, online or offline</small></span></label>
+              <label class="feature-opt"><input type="checkbox" name="requested_features" value="attendance" /><span class="opt-txt"><strong>Daily attendance</strong><small>Daily class attendance registers</small></span></label>
+              <label class="feature-opt"><input type="checkbox" name="requested_features" value="assignments" /><span class="opt-txt"><strong>Assignments / homework</strong><small>Assignments with submissions and grading</small></span></label>
+              <label class="feature-opt"><input type="checkbox" name="requested_features" value="timetable" /><span class="opt-txt"><strong>Class timetable</strong><small>Weekly class timetables</small></span></label>
+              <label class="feature-opt"><input type="checkbox" name="requested_features" value="fees" /><span class="opt-txt"><strong>School fees &amp; online payment</strong><small>Fee records and online payments</small></span></label>
+              <label class="feature-opt"><input type="checkbox" name="requested_features" value="communication" /><span class="opt-txt"><strong>SMS / WhatsApp / Email to parents</strong><small>Messages and notifications to parents</small></span></label>
+              <label class="feature-opt"><input type="checkbox" name="requested_features" value="staff_management" /><span class="opt-txt"><strong>Staff management</strong><small>Teacher records and subject allocation</small></span></label>
+              <div class="features-actions">
+                <span class="count" id="featuresCount">0 selected</span>
+                <button type="button" id="featuresDone">Done</button>
+              </div>
+            </div>
+          </details>
+          <p class="features-hint">Pick everything your school needs — the Scholaxia team sets you up with exactly these, and you can add more later.</p>
+        </div>
+
         <p class="error" id="err"></p>
         <div class="form-foot">
           <button class="btn-submit" type="submit" id="submitBtn">Register School</button>
-          <p class="fine">By registering you agree to our <a href="privacy.html">privacy policy</a>. Payment is only due when your term subscription starts.</p>
+          <p class="fine">By registering you agree to our <a href="privacy.html">privacy policy</a>. Domain hosting and subscription payment is settled directly between your school and the Scholaxia admin — not on this platform.</p>
         </div>
       </form>
 
       <div class="success" id="preview">
         <div class="big">🎉</div>
         <h2>Registration received!</h2>
-        <p class="muted">Your school is now <strong>pending review</strong> by the Scholaxia team. Once approved, your private link goes live:</p>
-        <div class="link-pill"><strong id="privLink"></strong></div>
+        <p class="muted">Your school is now <strong>pending review</strong> by the Scholaxia team.</p>
+        <div class="link-pill"><strong>🌐 Your own domain — e.g. dove.com for Dove School</strong></div>
+        <p class="note">The Scholaxia admin buys and hosts your school's <strong>own domain</strong> (e.g. <strong>dove.com</strong> for Dove School) on the school platform. Payment for the domain and hosting is settled <strong>directly between the admin and your school</strong> — it is not handled on this platform. Once the admin approves your school and the domain is hosted, your school management system goes live.</p>
         <p class="note" id="privNote"></p>
-        <p class="note" id="planNote" style="margin-top:6px"></p>
+        <div class="feature-chips" id="featureChips"></div>
       </div>
     </div>
   </section>
 
   <script src="js/api.js"></script>
   <script>
-    var selectedPlan = ""; // optional — "choose later" is the default (no payment gate)
-    var PLAN_FEATURE_LABELS = {
+    var FEATURE_LABELS = {
       students: "Manage students by class",
       subjects: "Give subjects to students",
       results: "Enter scores & generate result sheets",
@@ -445,58 +439,40 @@
       timetable: "Class timetable",
       fees: "School fees & online payment",
       communication: "SMS / WhatsApp / Email to parents",
-      staff_management: "Staff management",
-      announcements: "Announcements"
-    };
-    var PLAN_TAGLINES = {
-      basic: "Everything a small school needs",
-      standard: "Results + exams + attendance",
-      premium: "The full power package"
-    };
-    var PLAN_ICONS = { basic: "📘", standard: "📅", premium: "👑" };
-    var PLAN_EXTRA = {
-      standard: ["Everything in Basic"],
-      premium: ["Everything in Standard"]
+      staff_management: "Staff management"
     };
 
-    async function loadPlans() {
-      try {
-        var res = await fetch(API_BASE + "/api/v1/public/school-plans");
-        var data = await res.json();
-        renderPlans(data.plans || []);
-      } catch (e) {
-        document.getElementById("plansGrid").innerHTML =
-          '<p class="fine">Could not load plans — check your connection and refresh.</p>';
+    /* ---- features dropdown ---- */
+    (function () {
+      var dd = document.getElementById("featuresDropdown");
+      var toggle = document.getElementById("featuresToggle");
+      var label = document.getElementById("featuresLabel");
+      var count = document.getElementById("featuresCount");
+      var boxes = document.querySelectorAll('#featuresMenu input[name="requested_features"]');
+
+      function refresh() {
+        var picked = Array.prototype.filter.call(boxes, function (b) { return b.checked; });
+        if (!picked.length) {
+          label.textContent = "Select the school-management features you need…";
+          toggle.classList.remove("has-selection");
+        } else {
+          label.textContent = picked.length + " selected — " + picked.slice(0, 2).map(function (b) {
+            return FEATURE_LABELS[b.value] || b.value;
+          }).join(", ") + (picked.length > 2 ? "…" : "");
+          toggle.classList.add("has-selection");
+        }
+        count.textContent = picked.length + " selected";
       }
-    }
-
-    function renderPlans(plans) {
-      var order = { basic: 0, standard: 1, premium: 2 };
-      plans.sort(function (a, b) { return (a.id in order ? order[a.id] : 9) - (b.id in order ? order[b.id] : 9); });
-      document.getElementById("plansGrid").innerHTML = plans.map(function (p) {
-        var feats = (PLAN_EXTRA[p.id] || []).concat(p.features || []);
-        return '<div class="plan ' + p.id + (p.id === selectedPlan ? ' selected' : '') + '" data-plan="' + p.id + '">' +
-          (p.id === "standard" ? '<span class="popular-badge"><span class="star">★</span> Most Popular</span>' : '') +
-          '<div class="plan-head">' +
-            '<span class="plan-icon">' + (PLAN_ICONS[p.id] || "🏫") + '</span>' +
-            '<div><h3>' + p.id.charAt(0).toUpperCase() + p.id.slice(1) + ' Plan</h3>' +
-            '<div class="tagline">' + (PLAN_TAGLINES[p.id] || "") + '</div></div>' +
-          '</div>' +
-          '<div class="price"><span class="amount">₦' + Number(p.price_ngn).toLocaleString() + '</span><span class="per">per term</span></div>' +
-          '<ul>' + feats.map(function (f) { return '<li><span class="check">✓</span>' + (PLAN_FEATURE_LABELS[f] || f) + '</li>'; }).join('') + '</ul>' +
-          '<button class="choose" type="button">Choose ' + p.id.charAt(0).toUpperCase() + p.id.slice(1) + '</button>' +
-          '</div>';
-      }).join("");
-      Array.prototype.forEach.call(document.querySelectorAll(".plan"), function (el) {
-        el.addEventListener("click", function (ev) {
-          selectedPlan = el.getAttribute("data-plan");
-          document.getElementById("planField").value = selectedPlan;
-          Array.prototype.forEach.call(document.querySelectorAll(".plan"), function (x) { x.classList.remove("selected"); });
-          el.classList.add("selected");
-          document.getElementById("register").scrollIntoView({ behavior: "smooth", block: "start" });
-        });
+      Array.prototype.forEach.call(boxes, function (b) { b.addEventListener("change", refresh); });
+      document.getElementById("featuresDone").addEventListener("click", function () { dd.removeAttribute("open"); });
+      document.addEventListener("click", function (ev) {
+        if (dd.hasAttribute("open") && !dd.contains(ev.target)) dd.removeAttribute("open");
       });
-    }
+      window.getSelectedFeatures = function () {
+        return Array.prototype.filter.call(boxes, function (b) { return b.checked; }).map(function (b) { return b.value; });
+      };
+      window.refreshFeatures = refresh;
+    })();
 
     document.getElementById("regForm").addEventListener("submit", async function (ev) {
       ev.preventDefault();
@@ -509,15 +485,19 @@
         err.style.display = "block";
         return;
       }
+      var requested = window.getSelectedFeatures();
+      if (!requested.length) {
+        err.textContent = "Please select at least one feature your school wants.";
+        err.style.display = "block";
+        document.getElementById("featuresDropdown").scrollIntoView({ behavior: "smooth", block: "center" });
+        return;
+      }
       btn.disabled = true;
       var fd = new FormData(form);
       var body = {};
       fd.forEach(function (v, k) { body[k] = v; });
-      body.plan = selectedPlan || null; // plan optional — Super Admin sets it on approval
-      var planNote = document.getElementById("planNote");
-      if (planNote) planNote.textContent = selectedPlan
-        ? "" 
-        : "No plan selected — the Scholaxia team will help you choose a plan after your school is approved.";
+      body.requested_features = requested;
+      delete body.plan;
       try {
         var res = await fetch(API_BASE + "/api/v1/public/schools/register", {
           method: "POST",
@@ -526,19 +506,13 @@
         });
         var data = await res.json();
         if (!res.ok) throw new Error(data.detail || "Registration failed");
-        var linkEl = document.getElementById("privLink");
-        linkEl.textContent = data.private_link;
         var noteEl = document.getElementById("privNote");
         noteEl.textContent = data.message || "";
-        // Fallback link that works immediately on Render (no DNS wait):
-        if (data.private_link_fallback) {
-          var pill = linkEl.parentElement;
-          var fb = document.createElement("p");
-          fb.style.margin = "10px 0 0";
-          fb.style.fontSize = "13px";
-          fb.innerHTML = 'Works right now (no DNS wait): <a href="' + data.private_link_fallback + '"><strong>' + data.private_link_fallback + '</strong></a>';
-          pill.insertAdjacentElement("afterend", fb);
-        }
+        // Show the features the school requested (Pass 7)
+        var chips = document.getElementById("featureChips");
+        chips.innerHTML = (data.requested_features || requested).map(function (f) {
+          return "<span>" + (FEATURE_LABELS[f] || f) + "</span>";
+        }).join("");
         document.getElementById("preview").style.display = "block";
         form.style.display = "none";
         document.querySelector(".form-head").style.display = "none";
@@ -550,8 +524,6 @@
         btn.disabled = false;
       }
     });
-
-    loadPlans();
   </script>
 </body>
 </html>

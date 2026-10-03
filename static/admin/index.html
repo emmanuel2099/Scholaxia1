@@ -1201,7 +1201,7 @@
         <h2>School office</h2>
         <button class="btn-sm" onclick="loadSchoolOffice()">Refresh</button>
       </div>
-      <p class="page-desc">Register students for <strong>this school’s</strong> exams, print slips (access code + rec number), print results, grant retakes, add teachers, and host class-based live lessons.</p>
+      <p class="page-desc">Host this school's exams (Save Schedule), view registered students, print their slips (access code + reg number), print results, grant retakes, add teachers, and host class-based live lessons. <strong>Schools register their own students in their school portal.</strong></p>
       <div class="panel" id="so-school-pick" style="margin-bottom:1rem">
         <label><span>Working as school</span>
           <select id="so-school-id" onchange="loadSchoolOffice()"></select>
@@ -1210,24 +1210,28 @@
       </div>
 
       <div class="panel" style="margin-bottom:1rem">
-        <h3>Register student for exam</h3>
+        <h3>Host exam (Save Schedule)</h3>
+        <p class="cbt-hint small">Creates or updates one published exam per subject for the class — same as the school portal. Questions must already be in the class question bank (Access Subjects). Registered students of the class are attached automatically and their printed credentials keep working.</p>
         <div class="form-grid">
-          <label id="so-school-name-wrap" class="hidden"><span>School name</span><input id="so-school" /></label>
           <label><span>Class *</span>
-            <select id="so-class">
+            <select id="so-sch-class">
               <option>JSS1</option><option>JSS2</option><option>JSS3</option>
               <option>SS1</option><option>SS2</option><option>SS3</option>
             </select>
           </label>
-          <label><span>Full name *</span><input id="so-name" /></label>
-          <label><span>Email</span><input id="so-email" type="email" placeholder="needed to retake / match account" /></label>
-          <label><span>Phone</span><input id="so-phone" /></label>
-          <label><span>Subjects (comma)</span><input id="so-subjects" placeholder="English, Mathematics, Biology" /></label>
+          <label style="grid-column:1/-1"><span>Subjects * — one, many or ALL</span>
+            <div id="so-sch-subjects-wrap" style="position:relative;min-height:42px"></div>
+          </label>
+          <label><span>Questions per exam</span><input type="number" id="so-sch-qcount" min="1" max="200" value="40" /></label>
+          <label><span>Duration (minutes)</span><input type="number" id="so-sch-duration" min="1" max="300" value="60" /></label>
+          <label><span>Total mark</span><input type="number" id="so-sch-total" min="1" value="100" /></label>
+          <label><span>Starts at *</span><input type="datetime-local" id="so-sch-start" /></label>
         </div>
         <div class="form-row" style="margin-top:8px">
-          <button class="btn-primary" style="width:auto;padding:12px 22px" onclick="registerSchoolCandidate()">Register &amp; generate slip</button>
+          <button class="btn-primary" style="width:auto;padding:12px 22px" onclick="saveSchoolSchedule()">💾 Save Schedule</button>
+          <button class="btn-sm" onclick="loadSchoolExamCounts()">Refresh exam list</button>
         </div>
-        <p id="so-reg-msg" class="cbt-hint small"></p>
+        <p id="so-sch-msg" class="cbt-hint small"></p>
       </div>
 
       <div class="panel" style="margin-bottom:1rem">

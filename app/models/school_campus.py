@@ -48,5 +48,15 @@ class SchoolCampus(Base):
     portal_results: Mapped[list | None] = mapped_column(JSON, nullable=True)
     subscription_active: Mapped[bool] = mapped_column(Boolean, default=False)
     subscription_plan: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    # Pass 7 — features the school REQUESTED at registration (replaces the old
+    # pricing-plan cards): list of ids from the school-management feature
+    # catalog, e.g. ["results","cbt","attendance"]. The Super Admin uses this
+    # to pick the right plan when approving the school.
+    requested_features: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Pass 8 — the school's OWN domain (e.g. dove.com for Dove School). The
+    # Scholaxia admin buys and hosts this domain for the school and settles
+    # payment directly with the school — NOT on this platform. Empty until
+    # the admin sets it; the school system goes live once approved + hosted.
+    custom_domain: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

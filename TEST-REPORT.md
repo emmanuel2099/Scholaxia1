@@ -485,3 +485,130 @@ the device identity. Then the app was restarted OFFLINE (navigator.onLine=false
   secondary link. Verified served (HTTP 200) and rendered in the browser.
 - Large binaries stay uncommitted (GitHub 100 MB limit) — deploy
   website/downloads/ to the site host (Netlify) directly.
+
+## PASS 7 — School portal exam fixes (2026-10-03)
+
+### 1. Features dropdown replaces plan cards on school registration
+
+- The public registration page (website + static/app twins) no longer shows
+  pricing-plan cards. The school picks the FEATURES it wants from a
+  multi-select dropdown built from the new `SCHOOL_FEATURE_CATALOG`
+  (app/models/school_plans.py); the Super Admin picks the right plan when
+  approving the school.
+
+### 2. New registration-number pattern + credentials that work at exam login
+
+- Candidate reg numbers moved to the reference pattern `DLC/26/NNNNNN`
+  (school code / year / 6 digits) with a uniqueness retry loop.
+- Access codes are now issued AT REGISTRATION (SchoolExamAccessCode.exam_id
+  is nullable; NULL = pending credential printed on the slip). When the
+  subject is later scheduled, `_ensure_access_codes` attaches the pending
+  row to the real exam instead of minting new credentials — the printed
+  slip keeps working (verified: "CANDIDATE credentials work at exam login
+  (THE FIX)").
+- 🖨️ Print Registration Slip on the portal + slip reprint from the desktop
+  admin's "Find registered students" table.
+
+### 3. Save Schedule timezone fix
+
+- Hosting an exam via Save Schedule 500'd because the portal sends the
+  datetime-local value as ISO WITH timezone while the DB column is naive
+  UTC. All schedule paths now normalize through `to_naive_utc` before
+  comparing with `naive_utc_now()`.
+
+### Verification
+
+- scripts/_qa_pass7_test.py — 25/25 PASS (fresh DB).
+- scripts/_qa_deep_test.py — 61/61 PASS (>240 s, full regression).
+
+## PASS 8 — Multi-subject registration, desktop Host exam, school-domain model (2026-10-04)
+
+### 1. Multi-select subjects for student registration (junior + senior)
+
+- The portal's Register Student form replaces the single-subject dropdown
+  with a multi-select picker: the full 37-subject junior + senior catalog,
+  "Select all" / "Clear", individual checks and an "All subjects" shortcut
+  (static/app/portal-app.html — rgSubjectWrap/rgBuildSubjects/
+  rgSelectedSubjects).
+- Backend (app/routers/school_cbt.py): `RegisterStudentIn.subjects` list
+  (legacy `subject` still accepted), exam filtering across all picked
+  subjects, response returns `requested_subjects` (["ALL"] or the sorted
+  list) plus the `subjects` actually assigned. 422 when nothing picked.
+
+### 2. Desktop admin: Host exam (Save Schedule) panel
+
+- New panel (desktop + static admin twins) posting to
+  `/api/v1/school-cbt/schedule/save?school_id=…`: class, multi-subject
+  picker, questions per exam, duration, total mark, start time.
+- `save_schedule` expands "ALL" to every subject that has questions in the
+  class bank, creates/updates one published exam per subject, fills exam
+  questions from the bank, auto-attaches every registered student of the
+  class (reusing their pending access-code credentials) and reports
+  `missing_questions` for subjects without a bank.
+- Browser E2E (desktop admin @ :17890): Host exam for JSS1 with
+  Mathematics + English Language on Divine Light →
+  "✅ Schedule saved for JSS1 — 1 updated; no questions in bank: English
+  Language." (correct: fresh DB only has a JSS1 Mathematics bank; the
+  existing JSS1 Mathematics exam was UPDATED, not duplicated, and the
+  naive-UTC conversion of the local start time is exact in the DB).
+  Registered student Chidi Multi (DLC/26/971574) was auto-attached to the
+  Mathematics exam with access code SCH-722L-04N7.
+
+### 3. School-domain model (no scholaxia.com links)
+
+- Registration success panel (website + static twins) now says the admin
+  buys & hosts the school's OWN domain (Dove School → dove.com); payment
+  for the domain is settled OUTSIDE the platform (admin ↔ school).
+- School model + DB migration: `custom_domain` column (normalized input:
+  strips scheme/www/trailing slash, 422 on invalid, "" clears).
+- Register response ships `live_setup{model:"admin_hosted_domain",…}`
+  instead of a private scholaxia.com link; list_schools + approve_school
+  return `custom_domain`; the portal Settings page shows "School domain
+  (hosted by Scholaxia admin)"; the desktop admin Schools table has a
+  DOMAIN column (🌐 domain or muted "Domain pending…"). Verified live:
+  PATCH https://www.Dove.com/ → stored "dove.com", shown in the table.
+- School goes live once approved + its domain is hosted.
+
+### 4. Desktop admin no longer registers students (user decision)
+
+- The desktop admin's "Register student for exam" panel was REMOVED —
+  schools register their own students in their school portal (the
+  multi-subject backend API above is kept for the portal). The School
+  office now opens directly with "Host exam (Save Schedule)"; it keeps
+  Find registered students (with slip reprint), Results & retake, Add
+  teacher and School live class. Page description updated accordingly.
+  Verified after removal: panel gone, Host exam picker still builds (37
+  subjects), candidates table still lists registered students, and a
+  re-run of Save Schedule still succeeds ("1 updated").
+
+### Portal E2E (Register Student multi-select)
+
+- Picker builds after class select (37 subjects + All box); Select all →
+  37 checked, Clear → 0, individual picks labelled "3 selected — English
+  Language, Mathematics…", All-subjects shortcut toggles to "All subjects
+  (37)" and back.
+- Registered Amaka PortalTest (JSS1) with Biology + English Language +
+  Mathematics → "✅ … registered for 1 exam(s) — Biology, English Language,
+  Mathematics.", reg DLC/26/532471, code SCH-3MD2-3Y6G; the printed slip
+  (2,676 chars) shows name, class, reg number, access code and all three
+  subject chips.
+
+### Verification
+
+- scripts/_qa_pass7_test.py re-run after all Pass 8 edits: 25/25 PASS
+  (schedule save → created 1, student login with slip credentials,
+  candidate credentials at exam login, slip reprint).
+- Both admin.js twins pass `node --check`; both HTML twins load in the
+  browser with no console errors from the removed panel.
+
+### Files changed in Passes 7+8
+
+- app/routers/school_cbt.py, school_core.py, school_office.py;
+  app/models/school_cbt.py, school_campus.py, school_plans.py;
+  app/core/startup_db.py (custom_domain migration).
+- static/app/portal-app.html, static/app/register-school.html,
+  website/register-school.html.
+- scholaxia-desktop/renderer/admin.html + js/admin.js,
+  static/admin/index.html + js/admin.js (features dropdown, domain
+  column, multi-subject picker, Host exam panel, register panel removal).
+- scripts/_qa_pass7_test.py (25-check suite, new file).

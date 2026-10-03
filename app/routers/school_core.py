@@ -30,6 +30,7 @@ from app.models.school_plans import (
     ALL_FEATURES,
     ALL_PLANS,
     PLAN_PRICES_NGN,
+    SCHOOL_FEATURE_CATALOG,
     SchoolPlanAudit,
     SchoolSubscription,
     plan_has_feature,
@@ -90,25 +91,17 @@ async def _require_super_admin(current_user: dict = Depends(require_admin)) -> d
     return current_user
 
 
-# -------------------------------------------------- plan catalog (public) ----
+# -------------------------------------------------- feature catalog (public) ----
 
-class PlanOut(BaseModel):
-    id: str
-    price_ngn: float
-    features: list[str]
-
-
-@router.get("/public/school-plans")
-async def list_plans() -> dict:
-    """Public plan catalog for the registration page."""
+@router.get("/public/school-features")
+async def list_school_features() -> dict:
+    """Pass 7 — the school-management feature catalog for the registration
+    page. Replaces the old pricing-plan cards: schools pick the features they
+    want (multi-select) and the Super Admin chooses the right plan on approval."""
     return {
-        "plans": [
-            {
-                "id": p,
-                "price_ngn": PLAN_PRICES_NGN[p],
-                "features": sorted(ALL_FEATURES and [f for f in ALL_FEATURES if plan_has_feature(p, f)]),
-            }
-            for p in ALL_PLANS
+        "features": [
+            {"id": fid, "label": label, "description": desc}
+            for fid, label, desc in SCHOOL_FEATURE_CATALOG
         ]
     }
 
@@ -146,6 +139,10 @@ class SchoolRegisterIn(BaseModel):
     # Owner spec §2: no plan/payment gate — plan selection is optional
     # ("choose later"); registration only creates the school account.
     plan: str | None = None
+    # Pass 7 — school-management features the school WANTS (dropdown on the
+    # registration page replaces the pricing-plan cards). The Super Admin
+    # picks the right plan when approving.
+    requested_features: list[str] = Field(default_factory=list)
 
 
 @router.post("/public/schools/register", status_code=201)
@@ -158,6 +155,12 @@ async def register_school(payload: SchoolRegisterIn, db: AsyncSession = Depends(
     plan = (payload.plan or "").lower().strip() or None
     if plan is not None and plan not in ALL_PLANS:
         raise HTTPException(status_code=422, detail=f"plan must be one of {list(ALL_PLANS)} or left empty")
+
+    # Pass 7 — validate the requested feature ids against the catalog.
+    requested_features = sorted({f.strip() for f in (payload.requested_features or []) if f.strip()})
+    unknown = [f for f in requested_features if f not in ALL_FEATURES]
+    if unknown:
+        raise HTTPException(status_code=422, detail=f"unknown feature(s): {', '.join(unknown)}")
 
     email = payload.admin_email.lower().strip()
     existing_user = (
@@ -202,6 +205,7 @@ async def register_school(payload: SchoolRegisterIn, db: AsyncSession = Depends(
         approval_status="pending",
         subscription_active=False,  # flipped on when super admin confirms payment
         subscription_plan=plan,
+        requested_features=requested_features or None,
     )
     db.add(campus)
     await db.flush()
@@ -252,11 +256,25 @@ async def register_school(payload: SchoolRegisterIn, db: AsyncSession = Depends(
     return {
         "school_id": str(campus.id),
         "slug": campus.slug,
-        "private_link": f"https://{campus.slug}.{BASE_DOMAIN_DEFAULT}",
-        # Works immediately on Render — no DNS setup needed.
-        "private_link_fallback": f"https://scholaxia1.onrender.com/school/{campus.slug}/",
+        # Pass 8 — domain hosting model: the Scholaxia admin buys and hosts
+        # the school's OWN domain (e.g. dove.com for Dove School) and settles
+        # payment directly with the school — NOT on this platform. No
+        # <slug>.scholaxia.com link is issued anymore.
+        "custom_domain": campus.custom_domain,
+        "live_setup": {
+            "model": "admin_hosted_domain",
+            "status": "pending_review",
+            "note": (
+                "The Scholaxia team buys and hosts your school's own domain "
+                "(e.g. dove.com for Dove School). Payment for the domain and "
+                "hosting is settled directly between the admin and your "
+                "school — not on this platform. Once your school is approved "
+                "and the domain is live, your school management system goes live."
+            ),
+        },
         "plan": plan,
         "price_ngn": plan_price_ngn(plan) if plan else 0,
+        "requested_features": requested_features,
         "school_type": campus.school_type,
         "category": campus.category,
         "status": "pending_review",
@@ -448,6 +466,8 @@ async def list_schools(
                 "approved_at": r.approved_at.isoformat() if r.approved_at else None,
                 "rejection_reason": r.rejection_reason,
                 "feature_overrides": r.feature_overrides or {},
+                "requested_features": list(r.requested_features or []),
+                "custom_domain": r.custom_domain,
                 "contact_email": r.contact_email,
                 "contact_phone": r.contact_phone,
                 "logo_url": getattr(r, "logo_url", None),
@@ -530,11 +550,14 @@ class FeatureTogglesIn(BaseModel):
 
 
 class SchoolEditIn(BaseModel):
-    """Super-admin edits: private link (slug), logo, school type, category."""
+    """Super-admin edits: logo, school type, category and the school's OWN
+    hosted domain (Pass 8 — e.g. dove.com; payment settled outside the
+    platform). The slug stays internal (portal path /school/<slug>/)."""
     slug: str | None = Field(default=None, min_length=2, max_length=60)
     logo_url: str | None = Field(default=None, max_length=500)
     school_type: str | None = Field(default=None, max_length=20)  # private | public
     category: str | None = Field(default=None, max_length=20)  # mixed | boys | girls
+    custom_domain: str | None = Field(default=None, max_length=255)  # school's own hosted domain; "" clears
 
 
 async def _campus_or_404(db: AsyncSession, school_id: UUID) -> SchoolCampus:
@@ -563,9 +586,13 @@ async def approve_school(
     return {
         "school_id": str(campus.id),
         "approval_status": "approved",
-        "private_link": f"https://{campus.slug}.{BASE_DOMAIN_DEFAULT}",
-        # Works immediately on Render — no DNS setup needed.
-        "private_link_fallback": f"https://scholaxia1.onrender.com/school/{campus.slug}/",
+        # Pass 8 — live when the admin hosts the school's own domain (e.g.
+        # dove.com); payment is settled directly with the school.
+        "custom_domain": campus.custom_domain,
+        "live_setup_note": (
+            "School approved. Once its own domain (e.g. dove.com) is bought "
+            "and hosted by the admin, the school management system goes live."
+        ),
     }
 
 
@@ -621,11 +648,13 @@ async def edit_school(
     current_user: dict = Depends(_require_super_admin),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Super-admin edits a school's private link, logo and type/category.
+    """Super-admin edits a school's logo, type/category and hosted domain.
 
-    Only provided fields are changed. Changing the slug changes the school's
-    link (<slug>.scholaxia.com and /school/<slug>/) immediately — must stay
-    unique and URL-safe.
+    Only provided fields are changed. Pass 8: `custom_domain` is the domain
+    the admin bought for the school (e.g. dove.com) — scheme/www/trailing
+    slash are stripped, empty string clears it. The slug stays as the
+    internal portal path (/school/<slug>/) — no scholaxia.com subdomain is
+    advertised anymore.
     """
     campus = await _campus_or_404(db, school_id)
 
@@ -640,6 +669,15 @@ async def edit_school(
             if clash:
                 raise HTTPException(status_code=409, detail=f"The link '{new_slug}' is already taken by another school")
             campus.slug = new_slug
+
+    if payload.custom_domain is not None:
+        raw = (payload.custom_domain or "").strip().lower()
+        # Accept pasted URLs too: https://www.dove.com/ → dove.com
+        raw = raw.removeprefix("https://").removeprefix("http://")
+        raw = raw.removeprefix("www.").rstrip("/").strip()
+        if raw and (" " in raw or "/" in raw or ".." in raw or len(raw) < 4):
+            raise HTTPException(status_code=422, detail="Domain must look like dove.com or school.dove.com")
+        campus.custom_domain = raw or None
 
     if payload.logo_url is not None:
         campus.logo_url = payload.logo_url.strip() or None
@@ -658,8 +696,7 @@ async def edit_school(
     return {
         "school_id": str(campus.id),
         "slug": campus.slug,
-        "private_link": f"https://{campus.slug}.{BASE_DOMAIN_DEFAULT}" if campus.slug else None,
-        "private_link_fallback": f"https://scholaxia1.onrender.com/school/{campus.slug}/" if campus.slug else None,
+        "custom_domain": campus.custom_domain,
         "logo_url": campus.logo_url,
         "school_type": campus.school_type,
         "category": campus.category,

@@ -231,8 +231,12 @@ class SchoolExamAccessCode(Base):
     school_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("school_campuses.id"), nullable=False, index=True
     )
-    exam_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("school_exams.id"), nullable=False, index=True
+    # Pass 7: NULL = credential issued at REGISTRATION (reference flow — the
+    # slip prints immediately), attached to a real exam when the subject is
+    # scheduled (_ensure_access_codes reuses the pending row instead of
+    # minting new credentials, so the printed slip stays valid).
+    exam_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("school_exams.id"), nullable=True, index=True
     )
     student_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True

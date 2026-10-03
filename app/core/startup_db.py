@@ -68,6 +68,14 @@ _SCHEMA_STATEMENTS = (
     "ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS media_url VARCHAR(500) NULL",
     "ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS media_type VARCHAR(50) NULL",
     "ALTER TABLE community_posts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NULL",
+    # school_campuses — Pass 7: features the school requested at registration
+    "ALTER TABLE school_campuses ADD COLUMN IF NOT EXISTS requested_features JSON NULL",
+    # school_campuses — Pass 8: the school's own hosted domain (admin buys +
+    # hosts it, e.g. dove.com; payment settled outside the platform)
+    "ALTER TABLE school_campuses ADD COLUMN IF NOT EXISTS custom_domain VARCHAR(255) NULL",
+    # school_exam_access_codes — Pass 7: exam_id NULL = credential issued at
+    # registration (printed on the slip), attached to an exam when scheduled
+    "ALTER TABLE school_exam_access_codes ALTER COLUMN exam_id DROP NOT NULL",
     # student_profiles
     "ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS jamb_subjects VARCHAR[] NULL",
     "ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS ssce_subjects VARCHAR[] NULL",

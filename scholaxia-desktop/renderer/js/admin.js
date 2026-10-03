@@ -3700,12 +3700,15 @@ function _sxApprovalBadge(status) {
 }
 
 function _sxPrivateLink(s) {
-  if (!s || !(s.slug || s.private_link)) return "—";
-  var url = s.private_link || ("https://" + s.slug + ".scholaxia.com/");
-  var approved = String(s.approval_status || "approved").toLowerCase() === "approved";
-  return approved
-    ? '<a href="' + escHtml(url) + '" target="_blank" rel="noopener">' + escHtml(url) + "</a>"
-    : '<span class="muted">' + escHtml(url) + " (live after approval)</span>";
+  /* Pass 8 — schools get their OWN domain (e.g. dove.com), bought & hosted
+     by the admin; payment is settled directly with the school. No more
+     <slug>.scholaxia.com links. */
+  if (!s) return "—";
+  if (s.custom_domain) return "🌐 " + escHtml(s.custom_domain);
+  var st = String(s.approval_status || "approved").toLowerCase();
+  return st === "approved"
+    ? '<span class="muted">Domain pending — set it via Edit (e.g. dove.com)</span>'
+    : '<span class="muted">Domain pending (live after approval + hosting)</span>';
 }
 
 async function _sxSchoolAction(schoolId, action, body, confirmText) {
@@ -3722,7 +3725,7 @@ async function _sxSchoolAction(schoolId, action, body, confirmText) {
 }
 
 function approveSchool(id) {
-  _sxSchoolAction(id, "approve", {}, "Approve this school? Its private link goes live.");
+  _sxSchoolAction(id, "approve", {}, "Approve this school? Once its own domain is bought & hosted by the admin (payment settled directly with the school), the school management system goes live.");
 }
 
 function rejectSchool(id) {
@@ -3744,8 +3747,10 @@ async function editSchool(id) {
   var s = null;
   for (var i = 0; i < rows.length; i++) { if (rows[i].school_id === id) { s = rows[i]; break; } }
   if (!s) { window.alert("School data not loaded yet — refresh and try again."); return; }
-  var slug = window.prompt("Private link (letters/numbers/dashes). Link becomes <slug>.scholaxia.com:", s.slug || "");
+  var slug = window.prompt("Portal path slug (internal — the school portal is served at /school/<slug>/):", s.slug || "");
   if (slug === null) return;
+  var dom = window.prompt("School's OWN domain (e.g. dove.com — the admin buys & hosts it; payment is settled directly with the school). Leave empty to clear:", s.custom_domain || "");
+  if (dom === null) dom = s.custom_domain || "";
   var logo = window.prompt("Logo image URL (leave empty for none):", s.logo_url || "");
   if (logo === null) logo = s.logo_url || "";
   var type = window.prompt("School type: private or public:", (s.school_type || "private"));
@@ -3755,7 +3760,7 @@ async function editSchool(id) {
   try {
     await adminApi("/api/v1/super-admin/schools/" + id, {
       method: "PATCH",
-      body: JSON.stringify({ slug: slug, logo_url: logo, school_type: type, category: cat }),
+      body: JSON.stringify({ slug: slug, custom_domain: dom, logo_url: logo, school_type: type, category: cat }),
     });
     loadSchoolsAdmin();
   } catch (e) {
@@ -3806,7 +3811,7 @@ async function loadSchoolsAdmin() {
       });
     }
     if (!rows.length) { el.innerHTML = '<div class="empty-state">No schools yet. Add the first school above.</div>'; return; }
-    el.innerHTML = '<table class="data-table"><thead><tr><th>School</th><th>Type</th><th>City</th><th>Status</th><th>Plan</th><th>Private link</th><th>School admins</th><th>Actions</th></tr></thead><tbody>' +
+    el.innerHTML = '<table class="data-table"><thead><tr><th>School</th><th>Type</th><th>City</th><th>Status</th><th>Plan</th><th>Domain</th><th>School admins</th><th>Actions</th></tr></thead><tbody>' +
       rows.map(function (s) {
         var ads = (s.admins && s.admins.length)
           ? s.admins.map(function (a) { return escHtml(a.full_name) + " (" + escHtml(a.email) + ")"; }).join("<br>")
@@ -3883,23 +3888,118 @@ async function loadSchoolOffice() {
   loadSchoolExamCounts();
 }
 
-async function registerSchoolCandidate() {
-  var msg = document.getElementById("so-reg-msg");
-  var subjects = (document.getElementById("so-subjects").value || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+/* ═══ Pass 8 — multi-select subject picker (School office) ═══
+   Host exam uses the full junior & senior curriculum list: pick one, many
+   (Select all) or the "All subjects" shortcut. Student registration itself
+   lives in the school portal — the desktop admin hosts exams and views
+   registered students only. */
+var SX_SUBJECTS = ["English Language", "Mathematics", "Biology", "Chemistry", "Physics", "Agricultural Science", "Geography", "Economics", "Commerce", "Financial Accounting", "Government", "Nigerian History", "Christian Religious Studies", "Islamic Studies", "French", "Civic Education", "Further Mathematics", "Literature in English", "Marketing", "Food & Nutrition", "Livestock Farming", "Computer Hardware & GSM Repairs", "Digital Technologies", "Intermediate Science", "Basic Technology", "Social Studies", "Physical and Health Education", "Social and Citizenship Studies", "Business Studies", "Home Economics", "Music", "Cultural & Creative Arts", "Religious Studies", "Igbo", "Hausa", "Yoruba", "Ibibio"];
+
+function soEscAttr(s) { return String(s).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;"); }
+
+function soBuildSubjectPicker(wrapId) {
+  var wrap = document.getElementById(wrapId);
+  if (!wrap || wrap.dataset.built) return;
+  wrap.dataset.built = "1";
+  wrap.innerHTML =
+    '<button type="button" class="so-sub-btn" style="width:100%;text-align:left;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 12px;border:1px solid #d1d5db;border-radius:10px;background:#fff;font:inherit;color:#111" onclick="soSubjectMenuToggle(\'' + wrapId + '\')">' +
+    '<span class="so-sub-label">Select subjects…</span><span>▾</span></button>' +
+    '<div class="so-sub-menu" style="display:none;position:absolute;z-index:40;top:calc(100% + 4px);left:0;right:0;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 16px 40px rgba(15,23,42,.16);padding:10px;max-height:300px;overflow:auto">' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+    '<strong style="font-size:13px">📚 Junior &amp; Senior subjects</strong>' +
+    '<span style="display:flex;gap:6px"><button type="button" class="btn-sm" onclick="soSubjectSetAll(\'' + wrapId + '\',true)">Select all</button>' +
+    '<button type="button" class="btn-sm" onclick="soSubjectSetAll(\'' + wrapId + '\',false)">Clear</button></span></div>' +
+    '<label style="display:flex;gap:8px;align-items:center;padding:7px 8px;border-radius:8px;background:#f0fdf4;border:1px solid #bbf7d0;margin-bottom:6px;cursor:pointer">' +
+    '<input type="checkbox" class="so-sub-all" onchange="soSubjectSync(\'' + wrapId + '\')" /><strong>All subjects</strong></label>' +
+    SX_SUBJECTS.map(function (s) {
+      return '<label style="display:flex;gap:8px;align-items:center;padding:5px 8px;border-radius:8px;cursor:pointer"><input type="checkbox" class="so-sub-chk" value="' + soEscAttr(s) + '" onchange="soSubjectSync(\'' + wrapId + '\')" /><span style="font-size:14px">' + soEscAttr(s) + '</span></label>';
+    }).join("") +
+    '</div>';
+  soSubjectSync(wrapId);
+}
+
+function soSubjectMenuToggle(wrapId) {
+  var wrap = document.getElementById(wrapId); if (!wrap) return;
+  var menu = wrap.querySelector(".so-sub-menu");
+  if (menu) menu.style.display = menu.style.display === "none" ? "block" : "none";
+}
+
+function soSubjectSync(wrapId) {
+  var wrap = document.getElementById(wrapId); if (!wrap) return;
+  var all = wrap.querySelector(".so-sub-all");
+  var n = 0, first2 = [];
+  wrap.querySelectorAll(".so-sub-chk").forEach(function (c) { if (c.checked) { n++; if (first2.length < 2) first2.push(c.value); } });
+  var lab = wrap.querySelector(".so-sub-label");
+  if (!lab) return;
+  if (all && all.checked) lab.textContent = "All subjects (" + SX_SUBJECTS.length + ")";
+  else if (!n) lab.textContent = "Select subjects…";
+  else lab.textContent = n + " selected — " + first2.join(", ") + (n > 2 ? "…" : "");
+}
+
+function soSubjectSetAll(wrapId, on) {
+  var wrap = document.getElementById(wrapId); if (!wrap) return;
+  var all = wrap.querySelector(".so-sub-all"); if (all) all.checked = false;
+  wrap.querySelectorAll(".so-sub-chk").forEach(function (c) { c.checked = !!on; });
+  soSubjectSync(wrapId);
+}
+
+function soSelectedSubjects(wrapId) {
+  var wrap = document.getElementById(wrapId); if (!wrap) return [];
+  var all = wrap.querySelector(".so-sub-all");
+  if (all && all.checked) return ["ALL"];
+  var out = [];
+  wrap.querySelectorAll(".so-sub-chk").forEach(function (c) { if (c.checked) out.push(c.value); });
+  return out;
+}
+
+document.addEventListener("click", function (ev) {
+  document.querySelectorAll(".so-sub-menu").forEach(function (menu) {
+    if (menu.style.display && menu.style.display !== "none") {
+      var wrap = menu.parentElement;
+      if (wrap && !wrap.contains(ev.target)) menu.style.display = "none";
+    }
+  });
+});
+
+function soInitSubjectPickers() {
+  soBuildSubjectPicker("so-sch-subjects-wrap");
+}
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", soInitSubjectPickers);
+else soInitSubjectPickers();
+
+/* ═══ Pass 8 — Host exam (Save Schedule) on the desktop ═══
+   Same endpoint + semantics as the school portal: one published exam per
+   subject for the class; students + credentials attach automatically. */
+async function saveSchoolSchedule() {
+  var msg = document.getElementById("so-sch-msg");
+  var sid = selectedSchoolId();
+  if (!sid) { if (msg) msg.textContent = "Select a school first (Working as school above)."; return; }
+  var cls = (document.getElementById("so-sch-class") || {}).value || "";
+  var subjects = soSelectedSubjects("so-sch-subjects-wrap");
+  var startEl = document.getElementById("so-sch-start");
+  if (!cls) { if (msg) msg.textContent = "Select the class."; return; }
+  if (!subjects.length) { if (msg) msg.textContent = "Select at least one subject (or All subjects)."; return; }
+  if (!startEl || !startEl.value) { if (msg) msg.textContent = "Pick the start date/time."; return; }
   try {
-    var row = await adminApi("/api/v1/admin/school-office/candidates", {
+    var data = await adminApi("/api/v1/school-cbt/schedule/save?school_id=" + encodeURIComponent(sid), {
       method: "POST",
       body: JSON.stringify({
-        school_id: selectedSchoolId() || null,
-        class_name: document.getElementById("so-class").value,
-        full_name: document.getElementById("so-name").value.trim(),
-        email: document.getElementById("so-email").value.trim() || null,
-        phone: document.getElementById("so-phone").value.trim() || null,
+        class_name: cls,
         subjects: subjects,
+        question_count: parseInt((document.getElementById("so-sch-qcount") || {}).value, 10) || 40,
+        duration_minutes: parseInt((document.getElementById("so-sch-duration") || {}).value, 10) || 60,
+        total_mark: parseInt((document.getElementById("so-sch-total") || {}).value, 10) || 100,
+        starts_at: new Date(startEl.value).toISOString(),
       }),
     });
-    if (msg) msg.textContent = "Registered. Rec: " + row.rec_number + " · Access: " + row.access_code;
-    printSchoolSlip(row);
+    var bits = [];
+    if (data.created) bits.push(data.created + " exam(s) created");
+    if (data.updated) bits.push(data.updated + " updated");
+    if (data.removed) bits.push(data.removed + " removed");
+    var missing = data.missing_questions || [];
+    if (missing.length) bits.push("no questions in bank: " + missing.slice(0, 5).join(", ") + (missing.length > 5 ? "…" : ""));
+    if (msg) msg.textContent = "✅ Schedule saved for " + cls + (bits.length ? " — " + bits.join("; ") : "") + ".";
+    loadSchoolExamCounts();
     loadSchoolCandidates();
   } catch (e) {
     if (msg) msg.textContent = e.message;
@@ -3914,7 +4014,7 @@ async function loadSchoolCandidates() {
     var data = await adminApi("/api/v1/admin/school-office/candidates" + schoolOfficeQuery(q ? "q=" + encodeURIComponent(q) : ""));
     var rows = (data && data.candidates) || [];
     if (!rows.length) { el.innerHTML = '<div class="empty-state">No registered exam students yet.</div>'; return; }
-    el.innerHTML = '<table class="data-table"><thead><tr><th>Name</th><th>Class</th><th>Email</th><th>Rec</th><th>Access</th><th></th></tr></thead><tbody>' +
+    el.innerHTML = '<table class="data-table"><thead><tr><th>Name</th><th>Class</th><th>Email</th><th>Reg Number</th><th>Access Code</th><th></th></tr></thead><tbody>' +
       rows.map(function (r) {
         return '<tr><td>' + escHtml(r.full_name) + '</td><td>' + escHtml(r.class_name) + '</td><td>' + escHtml(r.email || "—") +
           '</td><td>' + escHtml(r.rec_number) + '</td><td>' + escHtml(r.access_code) +
@@ -3928,9 +4028,39 @@ async function loadSchoolCandidates() {
 function printSchoolSlip(row) {
   var w = window.open("", "_blank");
   if (!w) { alert("Allow pop-ups to print the slip."); return; }
-  w.document.write("<html><head><title>Registration slip</title><style>body{font-family:Georgia,serif;padding:32px}h1{font-size:20px}table{border-collapse:collapse;width:100%}td{padding:8px;border-bottom:1px solid #ddd}</style></head><body>");
-  w.document.write("<h1>" + (row.print_title || (row.school_name || "Scholaxia") + " — Exam registration slip") + "</h1>");
-  w.document.write("<table><tr><td>Name</td><td>" + (row.full_name || "") + "</td></tr><tr><td>Class</td><td>" + (row.class_name || "") + "</td></tr><tr><td>Rec number</td><td><strong>" + (row.rec_number || "") + "</strong></td></tr><tr><td>Access code</td><td><strong>" + (row.access_code || "") + "</strong></td></tr><tr><td>Subjects</td><td>" + ((row.subjects || []).join(", ")) + "</td></tr></table><p>Keep this slip. You need the access code and rec number on exam day.</p><script>window.print()<\/script></body></html>");
+  var school = row.school_name || "Scholaxia";
+  var subjects = row.subjects || [];
+  var subjHtml = subjects.length
+    ? subjects.map(function (s) { return '<span style="background:#f0fdf4;color:#15803d;padding:6px 14px;border-radius:8px;font-size:14px;font-weight:600;border:1px solid #bbf7d0;display:inline-block;margin:0 6px 6px 0;">' + escHtml(s) + '</span>'; }).join("")
+    : '<span style="color:#64748b;">(assigned at scheduling)</span>';
+  w.document.write("<html><head><title>Registration slip</title><style>" +
+    "body{font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff;margin:0;padding:24px}" +
+    ".slip{max-width:700px;margin:0 auto;border:1.5px solid #e2e8f0;border-radius:14px;overflow:hidden}" +
+    ".hd{background:linear-gradient(135deg,#15803d,#16a34a);padding:24px;text-align:center;color:#fff}" +
+    ".hd h2{margin:0;font-size:23px}.hd p{margin:5px 0 0;opacity:.92;font-size:14px}" +
+    ".bd{padding:24px}.sec{margin-bottom:20px}.sec h4{color:#15803d;margin:0 0 10px;font-size:15px}" +
+    ".bd p{margin:4px 0;font-weight:bold;font-size:14px}" +
+    ".cred{background:#f0fdf4;border:2px solid #bbf7d0;border-radius:12px;padding:14px 16px}" +
+    ".cred code{font-family:Consolas,monospace;font-size:16px;font-weight:800;color:#111;letter-spacing:.5px}" +
+    ".notes{font-size:12px;color:#64748b;line-height:1.6}.notes .warn{color:#b91c1c;font-weight:bold}" +
+    ".ft{text-align:center;padding:14px;border-top:2px solid #e2e8f0;font-weight:700;color:#15803d;font-size:13px}" +
+    "</style></head><body><div class=\"slip\">");
+  w.document.write('<div class="hd"><h2>' + escHtml(school) + '</h2><p>Official Examination Registration Slip</p></div>');
+  w.document.write('<div class="bd">' +
+    '<div class="sec"><h4>📋 Student Information</h4>' +
+    '<p><strong>Full Name:</strong> ' + escHtml(row.full_name || "") + '</p>' +
+    '<p><strong>School:</strong> ' + escHtml(school) + '</p>' +
+    '<p><strong>Class:</strong> ' + escHtml((row.class_name || "").toUpperCase()) + '</p>' +
+    '<p><strong>Date:</strong> ' + new Date().toLocaleString() + '</p></div>' +
+    '<div class="sec"><div class="cred"><h4 style="color:#15803d;margin:0 0 10px">🔑 Examination Credentials</h4>' +
+    '<p><strong>Registration Number:</strong> <code>' + escHtml(row.rec_number || "") + '</code></p>' +
+    '<p><strong>Access Code:</strong> <code>' + escHtml(row.access_code || "") + '</code></p></div></div>' +
+    '<div class="sec"><h4>📚 Registered Subjects</h4>' + subjHtml + '</div>' +
+    '<div class="notes"><p>✓ Keep this slip safe — the student needs the registration number and access code to log in.</p>' +
+    '<p>✓ The access code works for every exam of this class scheduled by the school.</p>' +
+    '<p class="warn">✓ When logging in, ensure CAPS LOCK is ON and type both credentials in CAPITAL LETTERS.</p></div>' +
+    '</div><div class="ft">Scholaxia CBT Platform © ' + new Date().getFullYear() + '</div></div>');
+  w.document.write("<script>window.print()<\/script></body></html>");
   w.document.close();
 }
 

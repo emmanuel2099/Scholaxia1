@@ -800,66 +800,121 @@ tr:last-child td{border-bottom:none}
   /* — Register Student page — reference form: First/Middle/Surname,
      Class Category → Class → Subject, Reg Number + Access Code auto-
      generated on register — */
-  /* Reference Register Student: the Subject dropdown is the static national
-     curriculum list — never dependent on the class, never empty. */
+  /* Reference Register Student: the Subjects picker is the static national
+     curriculum list (junior + senior) — multi-select, never dependent on the
+     class, never empty. */
   var SX_SUBJECTS = ["English Language", "Mathematics", "Biology", "Chemistry", "Physics", "Agricultural Science", "Geography", "Economics", "Commerce", "Financial Accounting", "Government", "Nigerian History", "Christian Religious Studies", "Islamic Studies", "French", "Civic Education", "Further Mathematics", "Literature in English", "Marketing", "Food & Nutrition", "Livestock Farming", "Computer Hardware & GSM Repairs", "Digital Technologies", "Intermediate Science", "Basic Technology", "Social Studies", "Physical and Health Education", "Social and Citizenship Studies", "Business Studies", "Home Economics", "Music", "Cultural & Creative Arts", "Religious Studies", "Igbo", "Hausa", "Yoruba", "Ibibio"];
   function exRegList() {
     cbtApi("/students/register").then(function (d) {
       var cats = d.categories || [];
       window.__regMeta = d;
       var catOpts = cats.map(function (c) { return '<option value="' + c.id + '">' + esc(c.name) + '</option>'; }).join("");
-      var allSubj = '<option value="ALL">All subjects</option>' + SX_SUBJECTS.map(function (s) { return '<option>' + esc(s) + '</option>'; }).join("");
       $("exBody").innerHTML = '<div class="panel"><h3>👤 Register Student for Exam</h3>' +
-        '<p class="mhint" style="margin-bottom:16px">Fill the student\'s details — their <strong>Registration Number</strong> and <strong>Access Code</strong> are generated automatically when you register. The student then logs in at your-school-link/exam.</p>' +
+        '<p class="mhint" style="margin-bottom:16px">Fill the student\'s details and pick their subjects — <strong>one, many or All subjects</strong>. Their <strong>Registration Number</strong> and <strong>Access Code</strong> are generated automatically when you register. The student then logs in at your-school-link/exam.</p>' +
         '<div class="form-grid rg3"><div><label class="f-label">👤 First Name *</label><input class="f-in" id="rgFirst" placeholder="First name" /></div>' +
         '<div><label class="f-label">👤 Middle Name</label><input class="f-in" id="rgMiddle" placeholder="Middle name (optional)" /></div>' +
         '<div><label class="f-label">👤 Surname *</label><input class="f-in" id="rgSur" placeholder="Surname" /></div></div>' +
         '<div class="form-grid rg3"><div><label class="f-label">🎓 Class Category *</label><select class="f-in" id="rgCat" onchange="regCatChanged()"><option value="">-- Select --</option>' + catOpts + '</select></div>' +
         '<div><label class="f-label">🎓 Class *</label><select class="f-in" id="rgClass" onchange="regClassPicked()" disabled><option value="">-- Select class category first --</option></select></div>' +
-        '<div><label class="f-label">📚 Subject *</label><select class="f-in" id="rgSubject" disabled><option value="">-- Select class first --</option></select></div></div>' +
+        '<div><label class="f-label">📚 Subjects <span class="muted">(one, many or all)</span></label><div id="rgSubjectWrap" style="position:relative;min-height:44px"><div class="f-in" style="color:#94a3b8">— Select class first —</div></div></div></div>' +
         '<div class="form-grid rg2"><div><label class="f-label">🔢 Registration Number</label><div style="display:flex;gap:8px"><input class="f-in" id="rgRegOut" placeholder="Auto-generated on register" disabled /><button class="btn sm ghost" onclick="toast(\'Generated automatically when you register\')" title="Auto-generated">🔄</button></div></div>' +
         '<div><label class="f-label">🔑 Access Code</label><input class="f-in" id="rgCodeOut" placeholder="Auto-generated on register" disabled /></div></div>' +
         '<div class="radio-row" style="margin-top:6px"><button class="btn green" onclick="regSubmit()">👤 Register Student</button><button class="btn ghost" onclick="exRegList()">🔄 Clear Form</button></div>' +
         '<div id="rgDone"></div></div>' +
         '<div class="panel"><h3>Recently registered</h3><div id="rgRecent"><div class="empty">Loading…</div></div></div>';
-      window.__regAllSubjects = allSubj;
       regRecent();
     }).catch(function (e) { $("exBody").innerHTML = '<div class="panel"><div class="empty">' + esc(errText(e)) + '</div></div>'; });
   }
   window.regCatChanged = function () {
     var meta = window.__regMeta || { categories: [], class_subjects: {} };
     var cat = (meta.categories || []).filter(function (c) { return c.id === $("rgCat").value; })[0];
-    var clsSel = $("rgClass"), subjSel = $("rgSubject");
+    var clsSel = $("rgClass");
     clsSel.innerHTML = '<option value="">-- Select class --</option>' + (cat ? cat.classes.map(function (c) { return '<option>' + esc(c) + '</option>'; }).join("") : "");
     clsSel.disabled = !cat;
-    subjSel.innerHTML = '<option value="">-- Select class first --</option>';
-    subjSel.disabled = true;
+    var wrap = $("rgSubjectWrap");
+    if (wrap) wrap.innerHTML = '<div class="f-in" style="color:#94a3b8">— Select class first —</div>';
   };
+  /* Pass 8 — Subjects is a MULTI-select: the full junior + senior curriculum
+     list, pick one, many (Select all) or the "All subjects" shortcut. */
   window.regClassPicked = function () {
-    var cls = $("rgClass").value;
-    var subjSel = $("rgSubject");
-    if (!subjSel.dataset.ready) {
-      subjSel.innerHTML = '<option value="ALL">All subjects</option>' + SX_SUBJECTS.map(function (s) { return '<option>' + esc(s) + '</option>'; }).join("");
-      subjSel.dataset.ready = "1";
-    }
-    subjSel.disabled = !cls;
+    if (!$("rgClass").value) return;
+    rgBuildSubjects();
   };
+  window.rgBuildSubjects = function () {
+    var wrap = $("rgSubjectWrap");
+    if (!wrap) return;
+    wrap.innerHTML =
+      '<button type="button" id="rgSubBtn" class="f-in" style="width:100%;text-align:left;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:8px" onclick="event.preventDefault();rgSubjectMenuToggle()">' +
+      '<span id="rgSubLabel">Select subjects…</span><span>▾</span></button>' +
+      '<div id="rgSubMenu" style="display:none;position:absolute;z-index:40;top:calc(100% + 4px);left:0;right:0;background:#fff;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 16px 40px rgba(15,23,42,.16);padding:10px;max-height:300px;overflow:auto">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">' +
+      '<strong style="font-size:13px;color:#0f172a">📚 Junior &amp; Senior subjects</strong>' +
+      '<span style="display:flex;gap:6px"><button type="button" class="btn sm ghost" onclick="rgSubjectSetAll(true)">Select all</button>' +
+      '<button type="button" class="btn sm ghost" onclick="rgSubjectSetAll(false)">Clear</button></span></div>' +
+      '<label style="display:flex;gap:8px;align-items:center;padding:7px 8px;border-radius:8px;background:#f0fdf4;border:1px solid #bbf7d0;margin-bottom:6px;cursor:pointer">' +
+      '<input type="checkbox" id="rgSubALL" onchange="rgSubjectSync()" /><strong>All subjects</strong></label>' +
+      SX_SUBJECTS.map(function (s) {
+        return '<label style="display:flex;gap:8px;align-items:center;padding:5px 8px;border-radius:8px;cursor:pointer"><input type="checkbox" class="rgSubChk" value="' + esc(s) + '" onchange="rgSubjectSync()" /><span style="font-size:14px">' + esc(s) + '</span></label>';
+      }).join("") +
+      '</div>';
+    rgSubjectSync();
+  };
+  window.rgSubjectMenuToggle = function () {
+    var menu = $("rgSubMenu");
+    if (menu) menu.style.display = menu.style.display === "none" ? "block" : "none";
+  };
+  window.rgSubjectSync = function () {
+    var btn = $("rgSubBtn");
+    if (!btn) return;
+    var all = $("rgSubALL");
+    var n = 0, first2 = [];
+    document.querySelectorAll("#rgSubMenu .rgSubChk").forEach(function (c) {
+      if (c.checked) { n++; if (first2.length < 2) first2.push(c.value); }
+    });
+    var label;
+    if (all && all.checked) label = "All subjects (" + SX_SUBJECTS.length + ")";
+    else if (!n) label = "Select subjects…";
+    else label = n + " selected — " + first2.join(", ") + (n > 2 ? "…" : "");
+    $("rgSubLabel").textContent = label;
+  };
+  window.rgSubjectSetAll = function (on) {
+    var all = $("rgSubALL");
+    if (all) all.checked = false;
+    document.querySelectorAll("#rgSubMenu .rgSubChk").forEach(function (c) { c.checked = !!on; });
+    rgSubjectSync();
+  };
+  window.rgSelectedSubjects = function () {
+    var all = $("rgSubALL");
+    if (all && all.checked) return ["ALL"];
+    var out = [];
+    document.querySelectorAll("#rgSubMenu .rgSubChk").forEach(function (c) { if (c.checked) out.push(c.value); });
+    return out;
+  };
+  document.addEventListener("click", function (ev) {
+    var menu = $("rgSubMenu"), btn = $("rgSubBtn");
+    if (menu && menu.style.display !== "none" && btn && !menu.contains(ev.target) && !btn.contains(ev.target)) menu.style.display = "none";
+  });
   window.regSubmit = function () {
-    var first = $("rgFirst").value.trim(), sur = $("rgSur").value.trim(), cls = $("rgClass").value, subj = $("rgSubject").value;
+    var first = $("rgFirst").value.trim(), sur = $("rgSur").value.trim(), cls = $("rgClass").value;
+    var subjArr = window.rgSelectedSubjects ? window.rgSelectedSubjects() : [];
     if (!first) return toastErr("Enter the first name.");
     if (!sur) return toastErr("Enter the surname.");
     if (!cls) return toastErr("Select the class.");
-    if (!subj) return toastErr("Select the subject.");
+    if (!subjArr.length) return toastErr("Select at least one subject (or All subjects).");
     cbtApi("/students/register", { method: "POST", body: {
       first_name: first, middle_name: $("rgMiddle").value.trim() || null, surname: sur,
-      class_name: cls, subject: subj,
+      class_name: cls, subjects: subjArr, subject: subjArr.indexOf("ALL") > -1 ? "ALL" : subjArr[0],
     } }).then(function (d) {
-      $("rgRegOut").value = d.reg_number || "(issues when the subject is scheduled)";
-      $("rgCodeOut").value = d.access_code || "(issues when the subject is scheduled)";
+      $("rgRegOut").value = d.reg_number || "";
+      $("rgCodeOut").value = d.access_code || "";
       var codeLine = d.reg_number
         ? '<br/>🔢 Registration Number: <code>' + esc(d.reg_number) + '</code> &nbsp; 🔑 Access Code: <code>' + esc(d.access_code) + '</code>'
-        : '<br/>🔑 Registration Number + Access Code will be issued automatically when <strong>' + esc(subj === "ALL" ? "any subject" : subj) + '</strong> is scheduled for ' + esc(cls) + ' (Exam Schedule → Save Schedule).';
-      $("rgDone").innerHTML = '<div class="mnote" style="margin-top:14px">✅ <strong>' + esc(d.full_name) + '</strong> registered' + (d.exams_assigned ? ' for ' + d.exams_assigned + ' exam(s) — ' + (d.subjects || []).map(function (s) { return esc(s); }).join(", ") : '') + '.' + codeLine + '</div>';
+        : '';
+      var picked = (d.requested_subjects && d.requested_subjects.length) ? d.requested_subjects : (d.subjects || []);
+      var pickedTxt = (picked.indexOf("ALL") > -1) ? "All subjects" : picked.map(function (s) { return esc(s); }).join(", ");
+      $("rgDone").innerHTML = '<div class="mnote" style="margin-top:14px">✅ <strong>' + esc(d.full_name) + '</strong> registered' + (d.exams_assigned ? ' for ' + d.exams_assigned + ' exam(s) — ' + pickedTxt : '') + '.' + codeLine +
+        (d.reg_number ? '<div style="margin-top:12px"><button class="btn green" onclick="printRegSlip(window.__lastReg)">🖨️ Print Registration Slip</button></div>' : '') + '</div>';
+      window.__lastReg = d;
       $("rgFirst").value = ""; $("rgMiddle").value = ""; $("rgSur").value = "";
       regRecent();
       toast("Student registered — details ready to print");
@@ -1160,6 +1215,50 @@ tr:last-child td{border-bottom:none}
     });
   };
 
+  /* — Reference-style registration slip for ONE student (Pass 7) — prints
+     the school header, student info, credentials box, subjects and the
+     CAPS-LOCK login note, exactly like the reference 'Print Registration
+     Form'. */
+  window.printRegSlip = function (d) {
+    if (!d || !d.reg_number) { toastErr("Nothing to print yet."); return; }
+    var school = (S && S.school && S.school.name) || (S && S.user && S.user.school_name) || "Scholaxia";
+    var subjects = (d.subjects && d.subjects.length ? d.subjects : (d.subject ? [d.subject] : []));
+    var subjHtml = subjects.map(function (s) {
+      return '<span style="background:#f0fdf4;color:#15803d;padding:6px 14px;border-radius:8px;font-size:14px;font-weight:600;border:1px solid #bbf7d0;display:inline-block;margin:0 6px 6px 0;">' + esc(s) + '</span>';
+    }).join("") || '<span style="color:#64748b;">(assigned at scheduling)</span>';
+    var w = window.open("", "_blank");
+    if (!w) { toastErr("Allow pop-ups to print the slip."); return; }
+    w.document.write('<html><head><title>Registration Slip — ' + esc(d.full_name || "") + '</title><style>' +
+      'body{font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff;margin:0;padding:24px}' +
+      '.slip{max-width:700px;margin:0 auto;background:#fff;border:1.5px solid #e2e8f0;border-radius:14px;overflow:hidden}' +
+      '.hd{background:linear-gradient(135deg,#15803d,#16a34a);padding:24px;text-align:center;color:#fff}' +
+      '.hd h2{margin:0;font-size:23px}.hd p{margin:5px 0 0;opacity:.92;font-size:14px}' +
+      '.bd{padding:24px}.sec{margin-bottom:20px}.sec h4{color:#15803d;margin:0 0 10px;font-size:15px}' +
+      '.bd p{margin:4px 0;font-weight:bold;font-size:14px}' +
+      '.cred{background:#f0fdf4;border:2px solid #bbf7d0;border-radius:12px;padding:14px 16px}' +
+      '.cred code{font-family:Consolas,monospace;font-size:16px;font-weight:800;color:#111;letter-spacing:.5px}' +
+      '.notes{font-size:12px;color:#64748b;line-height:1.6}.notes .warn{color:#b91c1c;font-weight:bold}' +
+      '.ft{text-align:center;padding:14px;border-top:2px solid #e2e8f0;font-weight:700;color:#15803d;font-size:13px}' +
+      '</style></head><body><div class="slip">' +
+      '<div class="hd"><h2>' + esc(school) + '</h2><p>Official Examination Registration Slip</p></div>' +
+      '<div class="bd">' +
+      '<div class="sec"><h4>📋 Student Information</h4>' +
+      '<p><strong>Full Name:</strong> ' + esc(d.full_name || "") + '</p>' +
+      '<p><strong>School:</strong> ' + esc(school) + '</p>' +
+      '<p><strong>Class:</strong> ' + esc((d.class_name || "").toUpperCase()) + '</p>' +
+      '<p><strong>Date:</strong> ' + new Date().toLocaleString() + '</p></div>' +
+      '<div class="sec"><div class="cred"><h4 style="color:#15803d;margin:0 0 10px">🔑 Examination Credentials</h4>' +
+      '<p><strong>Registration Number:</strong> <code>' + esc(d.reg_number) + '</code></p>' +
+      '<p><strong>Access Code:</strong> <code>' + esc(d.access_code || "") + '</code></p></div></div>' +
+      '<div class="sec"><h4>📚 Registered Subjects' + (subjects.length ? ' (' + subjects.length + ')' : '') + '</h4>' + subjHtml + '</div>' +
+      '<div class="notes"><p>✓ Keep this slip safe — you need the registration number and access code to log in.</p>' +
+      '<p>✓ Your access code works for every exam of your class scheduled by the school.</p>' +
+      '<p class="warn">✓ When logging in, ensure CAPS LOCK is ON and type both credentials in CAPITAL LETTERS.</p></div>' +
+      '</div><div class="ft">Scholaxia CBT Platform © ' + new Date().getFullYear() + '</div></div></body></html>');
+    w.document.close();
+    setTimeout(function () { try { w.focus(); w.print(); } catch (e) {} }, 350);
+  };
+
   /* — Exam Students tab: who is sitting for each exam — */
   /* — Exam Students page — reference 'Manage Exam Students': filter by
      class/subject, Pending Approvals (not taken) + Exam Taken tables — */
@@ -1186,7 +1285,9 @@ tr:last-child td{border-bottom:none}
   }
   function esRow(s, i, withExam) {
     var st = s.exam_taken ? '<span class="pill ok">Exam Taken</span>' : s.locked ? '<span class="pill bad">Locked</span>' : '<span class="pill warn">Pending</span>';
-    var acts = '<button class="btn sm ghost" onclick="resetCode(\'' + s.exam_id + '\',\'' + s.student_id + '\',\'' + esc(s.full_name).replace(/'/g, "") + '\')">↻ New code</button> ' +
+    var gi = (window.__exAll || []).indexOf(s);
+    var acts = '<button class="btn sm ghost" onclick="printRowSlip(' + gi + ')">🖨 Slip</button> ' +
+      '<button class="btn sm ghost" onclick="resetCode(\'' + s.exam_id + '\',\'' + s.student_id + '\',\'' + esc(s.full_name).replace(/'/g, "") + '\')">↻ New code</button> ' +
       '<button class="btn sm red" onclick="revokeCode(\'' + s.exam_id + '\',\'' + s.student_id + '\',\'' + esc(s.full_name).replace(/'/g, "") + '\')">Revoke</button>';
     return '<tr><td><code>' + esc(s.reg_number) + '</code></td><td><strong>' + esc(s.full_name) + '</strong></td><td><span class="pill violet">' + esc(s.class_name) + '</span></td>' +
       (withExam ? '<td><span class="pill blue">' + esc(s.subject) + '</span></td>' : '') +
@@ -1194,6 +1295,11 @@ tr:last-child td{border-bottom:none}
       (withExam ? '<td>' + (s.exam_taken ? '<span class="pill ok">Yes</span>' : '<span class="pill gray">No</span>') + '</td>' : '') +
       '<td style="white-space:nowrap">' + acts + '</td></tr>';
   }
+  window.printRowSlip = function (gi) {
+    var s = (window.__exAll || [])[gi];
+    if (!s) return toastErr("Student not found.");
+    printRegSlip({ full_name: s.full_name, class_name: s.class_name, subject: s.subject, subjects: [s.subject], reg_number: s.reg_number, access_code: s.access_code });
+  };
   window.examStudentsRender = function () {
     var cls = $("esCls") ? $("esCls").value : "ALL";
     var subj = $("esSubj") ? $("esSubj").value : "ALL";
@@ -1750,14 +1856,14 @@ tr:last-child td{border-bottom:none}
       $("setBody").innerHTML =
         '<div class="form-grid">' +
         '<div><label class="f-label">School name</label><input class="f-in" value="' + esc(s.name) + '" disabled /></div>' +
-        '<div><label class="f-label">Private link</label><input class="f-in" value="' + esc(d.private_link || "") + '" disabled /></div>' +
+        '<div><label class="f-label">School domain (hosted by Scholaxia admin)</label><input class="f-in" value="' + esc(d.custom_domain || "To be set — the admin buys & hosts your school\'s own domain, e.g. dove.com") + '" disabled /></div>' +
         '<div><label class="f-label">Type</label><input class="f-in" value="' + esc((s.school_type || "—") + (s.category && s.category !== "mixed" ? " · " + s.category + " only" : " · Mixed")) + '" disabled /></div>' +
         '<div><label class="f-label">Location</label><input class="f-in" value="' + esc([s.city, s.state].filter(Boolean).join(", ") || "—") + '" disabled /></div>' +
         '<div><label class="f-label">Contact email</label><input class="f-in" id="setEmail" value="' + esc(s.contact_email || "") + '" /></div>' +
         '<div><label class="f-label">Contact phone</label><input class="f-in" id="setPhone" value="' + esc(s.contact_phone || "") + '" /></div>' +
         '<div class="full"><label class="f-label">Address</label><input class="f-in" id="setAddr" value="' + esc(s.address || "") + '" /></div>' +
         '</div><button class="btn" onclick="saveSettings(this)">💾 Save changes</button>' +
-        '<p class="muted" style="margin-top:12px">School name, private link and logo are managed by the main Scholaxia admin — contact support to change them.</p>';
+        '<p class="muted" style="margin-top:12px">School name, domain and logo are managed by the main Scholaxia admin — the admin buys and hosts your school\'s own domain (e.g. dove.com); that payment is settled directly between the admin and your school.</p>';
     }).catch(function (e) { $("setBody").innerHTML = '<div class="empty">' + esc(errText(e)) + '</div>'; });
   };
   window.saveSettings = function (btn) {

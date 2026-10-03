@@ -57,6 +57,24 @@ ALL_FEATURES = (
     "communication", "staff_management",
 )
 
+# Pass 7 — the public registration page no longer shows pricing-plan cards.
+# Instead the school picks the FEATURES it wants from this catalog (a
+# multi-select dropdown); the Super Admin uses the request to pick the right
+# plan when approving the school.
+SCHOOL_FEATURE_CATALOG: tuple[tuple[str, str, str], ...] = (
+    ("students", "Manage students by class", "Student records, class rosters and promotion"),
+    ("subjects", "Give subjects to students", "Subject registration per class and student"),
+    ("results", "Enter scores & generate result sheets", "Score entry, report cards and result printing"),
+    ("scratch_cards", "Scratch cards for result checking", "PINs students/parents use to check results"),
+    ("cbt", "CBT exams", "Computer-based tests with reg number + access code, online or offline"),
+    ("attendance", "Daily attendance", "Daily class attendance registers"),
+    ("assignments", "Assignments / homework", "Assignments with submissions and grading"),
+    ("timetable", "Class timetable", "Weekly class timetables"),
+    ("fees", "School fees & online payment", "Fee records and online payments"),
+    ("communication", "SMS / WhatsApp / Email to parents", "Messages and notifications to parents"),
+    ("staff_management", "Staff management", "Teacher records and subject allocation"),
+)
+
 
 class SchoolSubscription(Base):
     """A school's current plan, renewed per term.
