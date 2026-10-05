@@ -2193,7 +2193,7 @@ tr:last-child td{border-bottom:none}
   window.upLoadSheet = function () {
     var cls = ($("upCls").value || "").trim().toUpperCase(), subj = ($("upSubj").value || "").trim();
     if (!cls || !subj) return toastErr("Enter class and subject first, then load the sheet.");
-    api("/" + slug + "/results/upload?class_name=" + encodeURIComponent(cls)).then(function (d) {
+    api("/results/upload?class_name=" + encodeURIComponent(cls)).then(function (d) {
       var sheet = (d.sheets || []).filter(function (s) { return (s.subject || "").toLowerCase() === subj.toLowerCase(); })[0];
       $("upRows").innerHTML = "";
       if (sheet) {
@@ -2216,7 +2216,7 @@ tr:last-child td{border-bottom:none}
         ca: parseFloat(row.querySelector(".up-ca").value) || 0, exam: parseFloat(row.querySelector(".up-ex").value) || 0 });
     });
     if (!rows.length) return toastErr("Add at least one student with a name.");
-    api("/" + slug + "/results/upload", { method: "POST", body: {
+    api("/results/upload", { method: "POST", body: {
       class_name: cls, subject: subj, term: $("upTerm").value, session: $("upSession").value.trim(),
       max_score: parseFloat($("upMax").value) || 100, rows: rows,
     } }).then(function (d) {
@@ -2225,7 +2225,7 @@ tr:last-child td{border-bottom:none}
     }).catch(toastErr);
   };
   function upSheets() {
-    api("/" + slug + "/results/upload").then(function (d) {
+    api("/results/upload").then(function (d) {
       var sheets = d.sheets || [];
       var box = $("upSheets"); if (!box) return;
       if (!sheets.length) { box.innerHTML = '<div class="empty">No sheets uploaded yet.</div>'; return; }
@@ -2236,7 +2236,7 @@ tr:last-child td{border-bottom:none}
     }).catch(function (e) { var b = $("upSheets"); if (b) b.innerHTML = '<div class="empty">' + esc(errText(e)) + '</div>'; });
   }
   window.upView = function (id) {
-    api("/" + slug + "/results/upload").then(function (d) {
+    api("/results/upload").then(function (d) {
       var s = (d.sheets || []).filter(function (x) { return x.id === id; })[0];
       if (!s) return;
       window.__upRows = s.rows || [];
@@ -2254,7 +2254,7 @@ tr:last-child td{border-bottom:none}
   window.upPrintAll = function () { printReportCards(window.__upRows || [], window.__upMeta || {}); };
   window.upPrintMaster = function () { printMasterList(window.__upRows || [], window.__upMeta || {}); };
   window.upPrintSheet = function (id) {
-    api("/" + slug + "/results/upload").then(function (d) {
+    api("/results/upload").then(function (d) {
       var s = (d.sheets || []).filter(function (x) { return x.id === id; })[0];
       if (!s) return toastErr("Sheet not found.");
       printMasterList(s.rows || [], { class_name: s.class_name, subject: s.subject, term: s.term, session: s.session, max_score: s.max_score });
@@ -2263,7 +2263,7 @@ tr:last-child td{border-bottom:none}
   window.upDel = function (id) {
     confirmModal("Delete sheet", "Delete this uploaded result sheet?", function (btn) {
       busy(btn, true);
-      api("/" + slug + "/results/upload/" + id, { method: "DELETE" }).then(function () {
+      api("/results/upload/" + id, { method: "DELETE" }).then(function () {
         closeModal(); toast("Sheet deleted"); upSheets();
       }).catch(function (e) { busy(btn, false, "Confirm"); mErr(errText(e)); });
     }, "Delete", true);
