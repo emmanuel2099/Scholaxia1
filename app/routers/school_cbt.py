@@ -2215,6 +2215,7 @@ async def registrations_list(
     exams = (
         await db.execute(select(SchoolExam).where(SchoolExam.school_id == sid))
     ).scalars().all()
+    published_by_class: set[str] = {(e.class_name or "").upper() for e in exams if e.is_published}
     code_by_student: dict[str, SchoolExamAccessCode] = {}
     for c in codes:
         code_by_student.setdefault(str(c.student_id), c)  # newest first wins
@@ -2245,7 +2246,10 @@ async def registrations_list(
         if needle and needle not in (u.full_name or "").lower() and needle not in ((cred.reg_number if cred else "") or "").lower():
             continue
         restricted = bool(cred.is_restricted if cred else False)
-        st = "restricted" if restricted else ("approved" if subjects else "pending")
+        # "Pending" only makes sense when the class has published exams the
+        # student is not attached to yet — with nothing scheduled there is
+        # nothing to approve, so a registered student counts as approved.
+        st = "restricted" if restricted else ("approved" if (subjects or cls not in published_by_class) else "pending")
         if status and status != "all" and st != status:
             continue
         out.append(
@@ -2341,7 +2345,6 @@ async def registration_approve(
             select(SchoolExam).where(
                 SchoolExam.school_id == sid,
                 func.upper(SchoolExam.class_name) == cls,
-                SchoolExam.is_published == True,  # noqa: E712
             )
         )
     ).scalars().all()
