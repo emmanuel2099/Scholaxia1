@@ -1281,9 +1281,7 @@ tr:last-child td{border-bottom:none}
     var subjHtml = subjects.map(function (s) {
       return '<span style="background:#f0fdf4;color:#15803d;padding:6px 14px;border-radius:8px;font-size:14px;font-weight:600;border:1px solid #bbf7d0;display:inline-block;margin:0 6px 6px 0;">' + esc(s) + '</span>';
     }).join("") || '<span style="color:#64748b;">(assigned at scheduling)</span>';
-    var w = window.open("", "_blank");
-    if (!w) { toastErr("Allow pop-ups to print the slip."); return; }
-    w.document.write('<html><head><title>Registration Slip — ' + esc(d.full_name || "") + '</title><style>' +
+    var slipCss =
       'body{font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff;margin:0;padding:24px}' +
       '.slip{max-width:700px;margin:0 auto;background:#fff;border:1.5px solid #e2e8f0;border-radius:14px;overflow:hidden}' +
       '.hd{background:linear-gradient(135deg,#15803d,#16a34a);padding:24px;text-align:center;color:#fff}' +
@@ -1293,8 +1291,8 @@ tr:last-child td{border-bottom:none}
       '.cred{background:#f0fdf4;border:2px solid #bbf7d0;border-radius:12px;padding:14px 16px}' +
       '.cred code{font-family:Consolas,monospace;font-size:16px;font-weight:800;color:#111;letter-spacing:.5px}' +
       '.notes{font-size:12px;color:#64748b;line-height:1.6}.notes .warn{color:#b91c1c;font-weight:bold}' +
-      '.ft{text-align:center;padding:14px;border-top:2px solid #e2e8f0;font-weight:700;color:#15803d;font-size:13px}' +
-      '</style></head><body><div class="slip">' +
+      '.ft{text-align:center;padding:14px;border-top:2px solid #e2e8f0;font-weight:700;color:#15803d;font-size:13px}';
+    printPreviewModal('Registration Slip — ' + (d.full_name || ""), '<div class="slip">' +
       '<div class="hd"><h2>' + esc(school) + '</h2><p>Official Examination Registration Slip</p></div>' +
       '<div class="bd">' +
       '<div class="sec"><h4>📋 Student Information</h4>' +
@@ -1309,9 +1307,7 @@ tr:last-child td{border-bottom:none}
       '<div class="notes"><p>✓ Keep this slip safe — you need the registration number and access code to log in.</p>' +
       '<p>✓ Your access code works for every exam of your class scheduled by the school.</p>' +
       '<p class="warn">✓ When logging in, ensure CAPS LOCK is ON and type both credentials in CAPITAL LETTERS.</p></div>' +
-      '</div><div class="ft">Scholaxia CBT Platform © ' + new Date().getFullYear() + '</div></div></body></html>');
-    w.document.close();
-    setTimeout(function () { try { w.focus(); w.print(); } catch (e) {} }, 350);
+      '</div><div class="ft">Scholaxia CBT Platform © ' + new Date().getFullYear() + '</div></div>', slipCss);
   };
 
   /* ═══ CONFIRM REGISTRATION HUB — every registered student, per class ═══
@@ -1712,8 +1708,10 @@ tr:last-child td{border-bottom:none}
     }).catch(function (e) { busy(btn, false, "💾 Save template"); toastErr(e); });
   };
   window.tplPreview = function () {
-    printReportCards([{ student_name: "Sample Student", reg_number: "SCHX/26/000000", ca: 9, exam: 55, total: 64, percentage: 64, grade: "B", remark: "" }],
-      { class_name: "SS 1", subject: "Sample Subject", term: "First Term", session: "2026/2027", max_score: 100 });
+    ensureTpl(function () {
+      printReportCards([{ student_name: "Sample Student", reg_number: "SCHX/26/000000", ca: 9, exam: 55, total: 64, percentage: 64, grade: "B", remark: "" }],
+        { class_name: "SS 1", subject: "Sample Subject", term: "First Term", session: "2026/2027", max_score: 100 });
+    });
   };
 
   /* ═══ PRINTING — report cards + master result list, styled by the
@@ -1735,12 +1733,13 @@ tr:last-child td{border-bottom:none}
     if (i === n - 1) return r.exam != null ? r.exam : "";
     return "";
   }
-  function tplPrintWindow(title, inner) {
+  /* Print without pop-ups: on-screen preview + hidden-iframe engine.
+     window.open is blocked in embedded browsers and by pop-up blockers —
+     the iframe approach works everywhere. The preview shows the exact
+     printed design (logo, colors, signatures) before printing. */
+  function tplDocCss() {
     var c = tplColors();
-    var w = window.open("", "_blank");
-    if (!w) { toastErr("Allow pop-ups for this site to print."); return null; }
-    w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>' + esc(title) + '</title><style>' +
-      '*{box-sizing:border-box}body{font-family:Georgia,serif;color:#1c2430;margin:0;padding:16px;background:#fff}' +
+    return '*{box-sizing:border-box}body{font-family:Georgia,serif;color:#1c2430;margin:0;padding:16px;background:#fff}' +
       '.rc{max-width:860px;margin:0 auto 16px;border:2px solid ' + c.bd + ';border-radius:10px;overflow:hidden;background:#fffdf8;page-break-after:always}' +
       '.rc:last-child{page-break-after:auto}' +
       '.rh{background:' + c.bg + ';color:' + c.fg + ';padding:14px 18px;display:flex;align-items:center;gap:12px;border-bottom:4px solid ' + c.ac + '}' +
@@ -1756,12 +1755,49 @@ tr:last-child td{border-bottom:none}
       '.sig{display:flex;gap:26px;margin-top:16px;flex-wrap:wrap}' +
       '.sig>div{text-align:center;font-size:12px}.sig img{height:42px;display:block;margin:0 auto 2px}' +
       '.ft{margin-top:10px;text-align:center;font-size:11px;color:#64748b;border-top:1px solid ' + c.bd + ';padding-top:8px}' +
-      'code{font-family:Consolas,monospace}' +
-      '</style></head><body>' + inner + '</body></html>');
-    w.document.close();
-    setTimeout(function () { try { w.focus(); w.print(); } catch (e) {} }, 400);
-    return w;
+      'code{font-family:Consolas,monospace}';
   }
+  function printViaIframe(docHtml) {
+    var f = document.createElement("iframe");
+    f.setAttribute("aria-hidden", "true");
+    f.style.cssText = "position:fixed;right:0;bottom:0;width:1px;height:1px;opacity:0;border:0;";
+    document.body.appendChild(f);
+    var d = f.contentWindow.document;
+    d.open(); d.write(docHtml); d.close();
+    var fired = false;
+    var go = function () {
+      if (fired) return; fired = true;
+      try { f.contentWindow.focus(); f.contentWindow.print(); } catch (e) {}
+      setTimeout(function () { if (f.parentNode) f.parentNode.removeChild(f); }, 60000);
+    };
+    var imgs = d.images || [], left = imgs.length;
+    if (!left) { setTimeout(go, 300); return; }
+    Array.prototype.forEach.call(imgs, function (im) {
+      if (im.complete) { left--; return; }
+      im.addEventListener("load", function () { left--; if (left <= 0) go(); });
+      im.addEventListener("error", function () { left--; if (left <= 0) go(); });
+    });
+    if (left <= 0) { setTimeout(go, 300); return; }
+    setTimeout(go, 3000);
+  }
+  function scopePrintCss(css, scope) {
+    return css.split("}").map(function (rule) {
+      if (!rule.trim()) return "";
+      var parts = rule.split("{");
+      if (parts.length < 2) return "";
+      return parts[0].split(",").map(function (s) { s = s.trim(); return s === "body" ? scope : scope + " " + s; }).join(",") + "{" + parts[1] + "}";
+    }).join("");
+  }
+  function printPreviewModal(title, inner, css) {
+    css = css || tplDocCss();
+    var docHtml = '<!doctype html><html><head><meta charset="utf-8"><title>' + esc(title) + '</title><style>' + css + '</style></head><body>' + inner + '</body></html>';
+    openModal("👁 " + esc(title),
+      '<style>' + scopePrintCss(css, ".pp-sheet") + '</style><div class="pp-sheet" style="max-height:56vh;overflow:auto;padding:12px;border-radius:10px;border:1px solid var(--line)">' + inner + '</div>' +
+      '<p class="mhint" style="margin-top:8px">Above is exactly what will print — logo, colors and signatures included. Click Print to send it to the printer.</p>',
+      '<button class="btn ghost" onclick="closeModal()">Close</button><button class="btn" id="ppGo">🖨 Print</button>', true);
+    $("ppGo").addEventListener("click", function () { printViaIframe(docHtml); });
+  }
+  function tplPrintWindow(title, inner) { printPreviewModal(title, inner); }
   function printReportCards(rows, meta) {
     if (!rows || !rows.length) { toastErr("Nothing to print."); return; }
     var c = tplColors();
@@ -1878,17 +1914,13 @@ tr:last-child td{border-bottom:none}
   window.printExamStudents = function () {
     var list = window.__exAll || [];
     if (!list.length) return toastErr("Nothing to print yet.");
-    var w = window.open("", "_blank");
-    if (!w) { toastErr("Allow pop-ups to print."); return; }
-    w.document.write('<html><head><title>Exam Students</title><style>' +
-      'body{font-family:Arial,sans-serif;margin:22px}h1{font-size:19px;margin:0 0 4px}p{color:#555;font-size:12px;margin:0 0 14px}' +
-      'table{width:100%;border-collapse:collapse;font-size:12.5px}th,td{border:1px solid #bbb;padding:7px 9px;text-align:left}th{background:#f0f4ff}' +
-      '</style></head><body><h1>Scholaxia — Exam Students</h1><p>Students log in at your-school-link/exam with their Registration Number + Access Code.</p>' +
+    var css = 'body{font-family:Arial,sans-serif;margin:22px}h1{font-size:19px;margin:0 0 4px}p{color:#555;font-size:12px;margin:0 0 14px}' +
+      'table{width:100%;border-collapse:collapse;font-size:12.5px}th,td{border:1px solid #bbb;padding:7px 9px;text-align:left}th{background:#f0f4ff}';
+    var inner = '<h1>Scholaxia — Exam Students</h1><p>Students log in at your-school-link/exam with their Registration Number + Access Code.</p>' +
       '<table><tr><th>Reg Number</th><th>Full Name</th><th>Class</th><th>Subject</th><th>Access Code</th><th>Exam Taken</th></tr>' +
       list.map(function (s) { return '<tr><td>' + s.reg_number + '</td><td>' + s.full_name + '</td><td>' + s.class_name + '</td><td>' + s.subject + '</td><td><b>' + s.access_code + '</b></td><td>' + (s.exam_taken ? "Yes" : "No") + '</td></tr>'; }).join("") +
-      '</table></body></html>');
-    w.document.close();
-    setTimeout(function () { try { w.focus(); w.print(); } catch (e) {} }, 350);
+      '</table>';
+    printPreviewModal("Exam Students", inner, css);
   };
 
   window.regenCodes = function () {
@@ -1924,23 +1956,19 @@ tr:last-child td{border-bottom:none}
   window.printCodeSlips = function () {
     var list = window.__exAll || [];
     if (!list.length) { toastErr("No registered students yet."); return; }
-    var w = window.open("", "_blank");
-    if (!w) { toastErr("Allow pop-ups to print slips."); return; }
-    w.document.write('<html><head><title>Exam slips</title><style>' +
-      'body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:24px}' +
+    var css = 'body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:24px}' +
       'h1{font-size:20px;margin-bottom:2px}p{color:#555;font-size:12.5px;margin:0 0 18px}' +
       '.slip{border:1.5px solid #bbb;border-radius:10px;padding:12px 16px;margin-bottom:12px;page-break-inside:avoid;display:flex;justify-content:space-between;gap:14px;align-items:center}' +
       '.sn b{font-size:16px}.cd{font-size:19px;font-weight:800;letter-spacing:.5px}' +
       '.lbl{font-size:10px;color:#777;text-transform:uppercase;letter-spacing:.08em}' +
-      '@media print{.slip{border-color:#999}}' +
-      '</style></head><body><h1>Scholaxia Examination Slips</h1><p>Students log in at your-school-link/exam with their Registration Number + Access Code.</p>' +
+      '@media print{.slip{border-color:#999}}';
+    var inner = '<h1>Scholaxia Examination Slips</h1><p>Students log in at your-school-link/exam with their Registration Number + Access Code.</p>' +
       list.map(function (c, i) {
         return '<div class="slip"><div><div class="lbl">Student</div><div class="sn"><b>' + (i + 1) + '. ' + c.full_name + '</b> — ' + (c.class_name || "") + '</div></div>' +
           '<div><div class="lbl">Registration Number</div><div class="cd">' + c.reg_number + '</div></div>' +
           '<div><div class="lbl">Access Code</div><div class="cd">' + c.access_code + '</div></div></div>';
-      }).join("") + '</body></html>');
-    w.document.close();
-    setTimeout(function () { try { w.focus(); w.print(); } catch (e) {} }, 350);
+      }).join("");
+    printPreviewModal("Exam Slips", inner, css);
   };
 
   /* — Confirm Registration page (reference): enter reg number + category →
@@ -2247,17 +2275,26 @@ tr:last-child td{border-bottom:none}
         })), '<button class="btn ghost" onclick="closeModal()">Close</button><button class="btn ghost" onclick="upPrintMaster()">📋 Master List</button><button class="btn" onclick="upPrintAll()">🖨 Report Cards (all)</button>', true);
     }).catch(toastErr);
   };
+  /* Printing needs the school's template (colors/categories/signatures) —
+     fetch it on demand so printing works from any page. */
+  function ensureTpl(then) {
+    if (window.__tpl && window.__tpl.categories && window.__tpl.categories.length) { then(); return; }
+    cbtApi("/results-template").then(function (d) {
+      window.__tpl = d.template || {};
+      then();
+    }).catch(function (e) { toastErr(e); });
+  }
   window.upPrintOne = function (i) {
     var r = (window.__upRows || [])[i];
-    if (r) printReportCards([r], window.__upMeta || {});
+    if (r) ensureTpl(function () { printReportCards([r], window.__upMeta || {}); });
   };
-  window.upPrintAll = function () { printReportCards(window.__upRows || [], window.__upMeta || {}); };
-  window.upPrintMaster = function () { printMasterList(window.__upRows || [], window.__upMeta || {}); };
+  window.upPrintAll = function () { ensureTpl(function () { printReportCards(window.__upRows || [], window.__upMeta || {}); }); };
+  window.upPrintMaster = function () { ensureTpl(function () { printMasterList(window.__upRows || [], window.__upMeta || {}); }); };
   window.upPrintSheet = function (id) {
     api("/results/upload").then(function (d) {
       var s = (d.sheets || []).filter(function (x) { return x.id === id; })[0];
       if (!s) return toastErr("Sheet not found.");
-      printMasterList(s.rows || [], { class_name: s.class_name, subject: s.subject, term: s.term, session: s.session, max_score: s.max_score });
+      ensureTpl(function () { printMasterList(s.rows || [], { class_name: s.class_name, subject: s.subject, term: s.term, session: s.session, max_score: s.max_score }); });
     }).catch(toastErr);
   };
   window.upDel = function (id) {
