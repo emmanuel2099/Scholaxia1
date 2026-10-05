@@ -254,6 +254,7 @@ input{font-family:inherit;font-size:15px}
       <div class="flagrow"><button class="flagbtn" id="flagBtn" onclick="toggleFlag()">⚑ Flag Question</button></div>
       <div class="qnum" id="qNum">Question 1</div>
       <div class="qtext" id="qText">—</div>
+      <img id="qImg" alt="Question image" style="display:none;max-width:100%;max-height:260px;margin:10px 0;border-radius:8px;border:1px solid #d7dcea;background:#fff" />
       <div id="qOpts"></div>
       <div class="qnav">
         <button class="btn-nav" id="btnPrev" onclick="move(-1)">← Previous</button>
@@ -678,6 +679,8 @@ input{font-family:inherit;font-size:15px}
     var q = R.questions[R.idx];
     $("qNum").textContent = "Question " + (R.idx + 1) + " of " + R.questions.length;
     $("qText").textContent = q.question_text;
+    var qi = $("qImg");
+    if (q.image_url) { qi.src = q.image_url; qi.style.display = "block"; } else { qi.removeAttribute("src"); qi.style.display = "none"; }
     $("flagBtn").classList.toggle("on", !!R.flags[q.id]);
     $("flagBtn").innerHTML = R.flags[q.id] ? "⚑ Flagged ✓" : "⚑ Flag Question";
     $("btnPrev").style.display = R.exam.allow_previous === false && R.idx === 0 ? "none" : "";

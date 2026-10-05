@@ -753,7 +753,7 @@ async def create_exam(
     await db.flush()
 
     # Source questions: hand-typed + bank selection (§11)
-    rows: list[tuple] = []  # (text, a,b,c,d, correct, type, topic, marks, bank_q_id)
+    rows: list[tuple] = []  # (text, a,b,c,d, correct, type, topic, marks, bank_q_id, image_url)
     for q in payload.questions:
         if not q.question_text.strip():
             continue
@@ -763,6 +763,7 @@ async def create_exam(
             (q.option_c or "").strip(), (q.option_d or "").strip(), copt,
             q.question_type or "mcq", (q.topic or "").strip() or None,
             max(1, min(int(q.marks or 1), 100)), None,
+            (q.image_url or "").strip() or None,
         ))
     if payload.bank_ids:
         bq = (
@@ -777,12 +778,12 @@ async def create_exam(
         for q in _pick_bank_questions(list(bq), payload.selected_question_ids, payload.topic_picks, payload.auto_pick_count):
             rows.append((
                 q.question_text, q.option_a, q.option_b, q.option_c, q.option_d, q.correct_option,
-                q.question_type, q.topic, q.marks, q.id,
+                q.question_type, q.topic, q.marks, q.id, q.image_url,
             ))
     if not rows:
         raise HTTPException(status_code=400, detail="Add questions — type them or pick from the Exam Bank")
 
-    for i, (txt, a, b, c, d, copt, qtype, topic, marks, bank_qid) in enumerate(rows):
+    for i, (txt, a, b, c, d, copt, qtype, topic, marks, bank_qid, img) in enumerate(rows):
         db.add(
             SchoolExamQuestion(
                 exam_id=exam.id,
@@ -797,6 +798,7 @@ async def create_exam(
                 question_type=qtype if qtype in ("mcq", "true_false", "multi_select", "theory") else "mcq",
                 topic=topic,
                 marks=marks,
+                image_url=img,
                 position=i,
             )
         )
@@ -1136,6 +1138,8 @@ async def class_roster(
                 "exams_taken": int(subs.get(str(su.id), 0)),
                 "reg_number": (codes.get(str(su.id)).reg_number if codes.get(str(su.id)) else None),
                 "has_code": bool(codes.get(str(su.id))),
+                "access_code": (codes.get(str(su.id)).access_code if codes.get(str(su.id)) else None),
+                "is_restricted": bool(codes.get(str(su.id)).is_restricted if codes.get(str(su.id)) else False),
             }
             for su in students
         ],
@@ -1552,6 +1556,7 @@ async def save_schedule(
                         question_type=q.question_type if q.question_type in ("mcq", "true_false", "multi_select", "theory") else "mcq",
                         topic=q.topic,
                         marks=q.marks,
+                        image_url=q.image_url,
                         position=i,
                     )
                 )
@@ -1896,6 +1901,7 @@ async def add_exam_questions(
                 correct_option=(q.correct_option or "A").upper(),
                 topic=(q.topic or "").strip() or None,
                 marks=max(1, min(int(q.marks or 1), 100)),
+                image_url=(q.image_url or "").strip() or None,
                 position=pos,
             )
         )
@@ -2173,6 +2179,585 @@ async def codes_student_directory(
 
 
 # ═════════════════════════════════════════════════════════════════════════
+# STAFF — Confirm Registration hub: registered students per class with
+# approval, restriction, edit and delete (each + all) + filters.
+# ═════════════════════════════════════════════════════════════════════════
+
+@router.get("/registrations")
+async def registrations_list(
+    class_name: Optional[str] = None,
+    subject: Optional[str] = None,
+    q: Optional[str] = Query(None, max_length=120),
+    status: Optional[str] = None,  # all | approved | pending | restricted
+    school_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Every registered exam student with their subjects, credentials and
+    status — powers the Confirm Registration hub. `status` filters:
+    pending (not assigned to any exam), approved, restricted."""
+    sid = _staff_school_id(current_user, school_id)
+    stu = (
+        await db.execute(
+            select(User, StudentProfile)
+            .join(StudentProfile, StudentProfile.user_id == User.id)
+            .where(User.school_id == sid, User.role == UserRole.student)
+            .order_by(User.full_name)
+        )
+    ).all()
+    codes = (
+        await db.execute(
+            select(SchoolExamAccessCode)
+            .where(SchoolExamAccessCode.school_id == sid)
+            .order_by(SchoolExamAccessCode.created_at.desc())
+        )
+    ).scalars().all()
+    exams = (
+        await db.execute(select(SchoolExam).where(SchoolExam.school_id == sid))
+    ).scalars().all()
+    code_by_student: dict[str, SchoolExamAccessCode] = {}
+    for c in codes:
+        code_by_student.setdefault(str(c.student_id), c)  # newest first wins
+    subj_by_exam = {str(e.id): e.subject for e in exams}
+    assigns = (
+        await db.execute(
+            select(SchoolExamAssignment).where(SchoolExamAssignment.school_id == sid)
+        )
+    ).scalars().all()
+    subj_by_student: dict[str, set[str]] = {}
+    for a in assigns:
+        subj_by_student.setdefault(str(a.student_id), set())
+        s = subj_by_exam.get(str(a.exam_id))
+        if s:
+            subj_by_student[str(a.student_id)].add(s)
+    needle = (q or "").strip().lower()
+    cls_filter = (class_name or "").strip().upper()
+    subj_filter = (subject or "").strip().lower()
+    out = []
+    for u, p in stu:
+        cred = code_by_student.get(str(u.id))
+        subjects = sorted(subj_by_student.get(str(u.id), set()))
+        cls = (p.education_level or "").upper() if p else ""
+        if cls_filter and cls_filter != "ALL" and cls != cls_filter:
+            continue
+        if subj_filter and subj_filter != "ALL" and not any(s.lower() == subj_filter for s in subjects):
+            continue
+        if needle and needle not in (u.full_name or "").lower() and needle not in ((cred.reg_number if cred else "") or "").lower():
+            continue
+        restricted = bool(cred.is_restricted if cred else False)
+        st = "restricted" if restricted else ("approved" if subjects else "pending")
+        if status and status != "all" and st != status:
+            continue
+        out.append(
+            {
+                "student_id": str(u.id),
+                "full_name": u.full_name,
+                "class_name": cls or None,
+                "email": u.email if u.email and "@students.scholaxia.local" not in u.email else None,
+                "school_student_id": getattr(p, "school_student_id", None) if p else None,
+                "subjects": subjects,
+                "subjects_text": ", ".join(subjects) if subjects else None,
+                "reg_number": cred.reg_number if cred else None,
+                "access_code": cred.access_code if cred else None,
+                "is_active": bool(u.is_active),
+                "is_restricted": restricted,
+                "status": st,
+                "created_at": (u.created_at.isoformat() if getattr(u, "created_at", None) else None),
+            }
+        )
+    return {
+        "students": out,
+        "counts": {
+            "all": len(out),
+            "approved": sum(1 for s in out if s["status"] == "approved"),
+            "pending": sum(1 for s in out if s["status"] == "pending"),
+            "restricted": sum(1 for s in out if s["status"] == "restricted"),
+        },
+    }
+
+
+class RegistrationEditIn(BaseModel):
+    """Edit student information from the Confirm Registration hub."""
+    full_name: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    class_name: Optional[str] = Field(default=None, min_length=1, max_length=40)
+    email: Optional[str] = Field(default=None, max_length=255)
+
+
+@router.patch("/registrations/{student_id}")
+async def registration_edit(
+    student_id: str,
+    payload: RegistrationEditIn,
+    school_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    sid = _staff_school_id(current_user, school_id)
+    u = (
+        await db.execute(
+            select(User).where(User.id == UUID(student_id), User.school_id == sid, User.role == UserRole.student)
+        )
+    ).scalar_one_or_none()
+    if not u:
+        raise HTTPException(status_code=404, detail="Student not found")
+    if payload.full_name and payload.full_name.strip():
+        u.full_name = payload.full_name.strip()[:120]
+    if payload.email is not None and payload.email.strip():
+        u.email = payload.email.strip().lower()
+    if payload.class_name and payload.class_name.strip():
+        p = (await db.execute(select(StudentProfile).where(StudentProfile.user_id == u.id))).scalar_one_or_none()
+        if p:
+            p.education_level = payload.class_name.strip().upper()
+    await db.flush()
+    return {"updated": True, "full_name": u.full_name}
+
+
+async def _own_student(db: AsyncSession, sid: UUID, student_id: str) -> User:
+    u = (
+        await db.execute(
+            select(User).where(User.id == UUID(student_id), User.school_id == sid, User.role == UserRole.student)
+        )
+    ).scalar_one_or_none()
+    if not u:
+        raise HTTPException(status_code=404, detail="Student not found")
+    return u
+
+
+@router.post("/registrations/{student_id}/approve")
+async def registration_approve(
+    student_id: str,
+    school_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Approve a registered student: issues their reg number + access code if
+    missing and attaches them to every published exam of their class."""
+    sid = _staff_school_id(current_user, school_id)
+    u = await _own_student(db, sid, student_id)
+    cred = await _mint_pending_credential(db, sid, u.id)
+    p = (await db.execute(select(StudentProfile).where(StudentProfile.user_id == u.id))).scalar_one_or_none()
+    cls = (p.education_level or "").upper() if p else ""
+    exams = (
+        await db.execute(
+            select(SchoolExam).where(
+                SchoolExam.school_id == sid,
+                func.upper(SchoolExam.class_name) == cls,
+                SchoolExam.is_published == True,  # noqa: E712
+            )
+        )
+    ).scalars().all()
+    attached = 0
+    for e in exams:
+        exists = (
+            await db.execute(
+                select(SchoolExamAssignment.id).where(
+                    SchoolExamAssignment.exam_id == e.id, SchoolExamAssignment.student_id == u.id
+                )
+            )
+        ).scalar_one_or_none()
+        if not exists:
+            db.add(SchoolExamAssignment(school_id=sid, exam_id=e.id, student_id=u.id, class_name=cls, subject=e.subject))
+            attached += 1
+    for e in exams:
+        await _ensure_access_codes(db, e)
+    if cred.is_restricted:
+        cred.is_restricted = False
+    await db.flush()
+    return {"approved": True, "attached": attached, "reg_number": cred.reg_number, "access_code": cred.access_code}
+
+
+@router.post("/registrations/approve-all")
+async def registrations_approve_all(
+    class_name: Optional[str] = Query(None),
+    school_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Approve every pending student (optionally of one class) at once."""
+    sid = _staff_school_id(current_user, school_id)
+    rows = (
+        await db.execute(
+            select(User.id, StudentProfile.education_level)
+            .join(StudentProfile, StudentProfile.user_id == User.id)
+            .where(User.school_id == sid, User.role == UserRole.student)
+        )
+    ).all()
+    cls_filter = (class_name or "").strip().upper()
+    assigned = {
+        str(r) for r in (
+            await db.execute(select(SchoolExamAssignment.student_id).where(SchoolExamAssignment.school_id == sid))
+        ).scalars().all()
+    }
+    approved, attached_total = 0, 0
+    for uid, edu in rows:
+        cls = (edu or "").upper()
+        if cls_filter and cls_filter != "ALL" and cls != cls_filter:
+            continue
+        if str(uid) in assigned:
+            continue
+        cred = await _mint_pending_credential(db, sid, uid)
+        exams = (
+            await db.execute(
+                select(SchoolExam).where(
+                    SchoolExam.school_id == sid,
+                    func.upper(SchoolExam.class_name) == cls,
+                    SchoolExam.is_published == True,  # noqa: E712
+                )
+            )
+        ).scalars().all()
+        for e in exams:
+            exists = (
+                await db.execute(
+                    select(SchoolExamAssignment.id).where(
+                        SchoolExamAssignment.exam_id == e.id, SchoolExamAssignment.student_id == uid
+                    )
+                )
+            ).scalar_one_or_none()
+            if not exists:
+                db.add(SchoolExamAssignment(school_id=sid, exam_id=e.id, student_id=uid, class_name=cls, subject=e.subject))
+                attached_total += 1
+        if cred.is_restricted:
+            cred.is_restricted = False
+        approved += 1
+    for e in (
+        await db.execute(select(SchoolExam).where(SchoolExam.school_id == sid, SchoolExam.is_published == True))  # noqa: E712
+    ).scalars().all():
+        await _ensure_access_codes(db, e)
+    await db.flush()
+    return {"approved": approved, "attached": attached_total}
+
+
+class RestrictIn(BaseModel):
+    restricted: bool
+    student_ids: Optional[list[str]] = Field(default=None, max_length=2000)  # omitted = ALL
+    class_name: Optional[str] = Field(default=None, max_length=40)
+
+
+@router.post("/registrations/restrict")
+async def registrations_restrict(
+    payload: RestrictIn,
+    school_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Restrict or unrestrict one student, several, a whole class — or all."""
+    sid = _staff_school_id(current_user, school_id)
+    if payload.student_ids:
+        targets = [UUID(x) for x in payload.student_ids]
+    else:
+        q = select(User.id).where(User.school_id == sid, User.role == UserRole.student)
+        if payload.class_name and payload.class_name.strip().upper() != "ALL":
+            q = q.join(StudentProfile, StudentProfile.user_id == User.id).where(
+                func.upper(StudentProfile.education_level) == payload.class_name.strip().upper()
+            )
+        targets = (await db.execute(q)).scalars().all()
+    changed = 0
+    for uid in targets:
+        for cred in (
+            await db.execute(select(SchoolExamAccessCode).where(SchoolExamAccessCode.student_id == uid))
+        ).scalars().all():
+            cred.is_restricted = bool(payload.restricted)
+            changed += 1
+    await db.flush()
+    return {"restricted": bool(payload.restricted), "codes_updated": changed, "students": len(targets)}
+
+
+@router.delete("/registrations/{student_id}")
+async def registration_delete_one(
+    student_id: str,
+    school_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete one registered exam student with all their exam data."""
+    sid = _staff_school_id(current_user, school_id)
+    u = await _own_student(db, sid, student_id)
+    await db.execute(delete(SchoolExamAnswer).where(SchoolExamAnswer.student_id == u.id))
+    await db.execute(delete(SchoolExamDownload).where(SchoolExamDownload.student_id == u.id))
+    await db.execute(delete(SchoolExamAttempt).where(SchoolExamAttempt.student_id == u.id))
+    await db.execute(delete(SchoolExamResult).where(SchoolExamResult.student_id == u.id))
+    await db.execute(delete(SchoolExamAccessCode).where(SchoolExamAccessCode.student_id == u.id))
+    await db.execute(delete(SchoolExamAssignment).where(SchoolExamAssignment.student_id == u.id))
+    await db.execute(delete(StudentProfile).where(StudentProfile.user_id == u.id))
+    await db.delete(u)
+    await db.flush()
+    return {"deleted": 1}
+
+
+class DeleteAllIn(BaseModel):
+    student_ids: Optional[list[str]] = Field(default=None, max_length=2000)  # omitted = ALL (filtered)
+    class_name: Optional[str] = Field(default=None, max_length=40)
+
+
+@router.post("/registrations/delete-all")
+async def registrations_delete_all(
+    payload: DeleteAllIn,
+    school_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """Delete several students, a whole class — or all registered students."""
+    sid = _staff_school_id(current_user, school_id)
+    if payload.student_ids:
+        ids = [UUID(x) for x in payload.student_ids]
+    else:
+        q = select(User.id).where(User.school_id == sid, User.role == UserRole.student)
+        if payload.class_name and payload.class_name.strip().upper() != "ALL":
+            q = q.join(StudentProfile, StudentProfile.user_id == User.id).where(
+                func.upper(StudentProfile.education_level) == payload.class_name.strip().upper()
+            )
+        ids = (await db.execute(q)).scalars().all()
+    n = 0
+    for uid in ids:
+        await db.execute(delete(SchoolExamAnswer).where(SchoolExamAnswer.student_id == uid))
+        await db.execute(delete(SchoolExamDownload).where(SchoolExamDownload.student_id == uid))
+        await db.execute(delete(SchoolExamAttempt).where(SchoolExamAttempt.student_id == uid))
+        await db.execute(delete(SchoolExamResult).where(SchoolExamResult.student_id == uid))
+        await db.execute(delete(SchoolExamAccessCode).where(SchoolExamAccessCode.student_id == uid))
+        await db.execute(delete(SchoolExamAssignment).where(SchoolExamAssignment.student_id == uid))
+        await db.execute(delete(StudentProfile).where(StudentProfile.user_id == uid))
+        await db.execute(delete(User).where(User.id == uid))
+        n += 1
+    await db.flush()
+    return {"deleted": n}
+
+
+class RegistrationsCsvIn(BaseModel):
+    student_ids: Optional[list[str]] = Field(default=None, max_length=2000)  # omitted = ALL
+
+
+@router.post("/registrations/export")
+async def registrations_export(
+    payload: RegistrationsCsvIn,
+    school_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    """CSV export of the registered-student table (name, class, subjects,
+    reg number, access code, status) — for printing or archiving."""
+    import csv as _csv
+    import io as _io
+
+    sid = _staff_school_id(current_user, school_id)
+    q = (
+        select(User, StudentProfile)
+        .join(StudentProfile, StudentProfile.user_id == User.id)
+        .where(User.school_id == sid, User.role == UserRole.student)
+        .order_by(User.full_name)
+    )
+    if payload.student_ids:
+        q = q.where(User.id.in_([UUID(x) for x in payload.student_ids]))
+    rows = (await db.execute(q)).all()
+    codes = {
+        str(c.student_id): c
+        for c in (
+            await db.execute(select(SchoolExamAccessCode).where(SchoolExamAccessCode.school_id == sid))
+        ).scalars().all()
+    }
+    exams = {str(e.id): e.subject for e in (
+        await db.execute(select(SchoolExam).where(SchoolExam.school_id == sid))
+    ).scalars().all()}
+    assigns = (
+        await db.execute(select(SchoolExamAssignment).where(SchoolExamAssignment.school_id == sid))
+    ).scalars().all()
+    subj: dict[str, set[str]] = {}
+    for a in assigns:
+        s = exams.get(str(a.exam_id))
+        if s:
+            subj.setdefault(str(a.student_id), set()).add(s)
+    buf = _io.StringIO()
+    w = _csv.writer(buf)
+    w.writerow(["Full Name", "Class", "Subjects", "Reg Number", "Access Code", "Status"])
+    for u, p in rows:
+        c = codes.get(str(u.id))
+        ss = sorted(subj.get(str(u.id), set()))
+        w.writerow(
+            [
+                u.full_name,
+                (p.education_level or "").upper() if p else "",
+                "; ".join(ss),
+                c.reg_number if c else "",
+                c.access_code if c else "",
+                "Restricted" if (c and c.is_restricted) else ("Approved" if ss else "Pending"),
+            ]
+        )
+    from fastapi.responses import Response
+
+    return Response(
+        content=buf.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="scholaxia-registered-students.csv"'},
+    )
+
+
+# ═════════════════════════════════════════════════════════════════════════
+# STAFF — Result card template (colors, logo, signatures, remarks,
+# category weights/percentages) + printable report data.
+# ═════════════════════════════════════════════════════════════════════════
+
+TEMPLATE_KEYS = {
+    "school_name", "tagline", "logo_url", "session_label", "term_label",
+    "accent_color", "header_bg", "header_text", "border_color", "band_color",
+    "show_photo", "show_qr", "show_position", "footer_note",
+    "categories", "remarks", "signatures",
+}
+
+
+def _clean_template(t: dict) -> dict:
+    return {k: v for k, v in (t or {}).items() if k in TEMPLATE_KEYS}
+
+
+@router.get("/results-template")
+async def results_template_get(
+    school_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    sid = _staff_school_id(current_user, school_id)
+    campus = (await db.execute(select(SchoolCampus).where(SchoolCampus.id == sid))).scalar_one_or_none()
+    if not campus:
+        raise HTTPException(status_code=404, detail="School not found")
+    tpl = _clean_template(getattr(campus, "result_template", None) or {})
+    tpl.setdefault("school_name", campus.name)
+    tpl.setdefault("logo_url", campus.logo_url)
+    tpl.setdefault(
+        "categories",
+        [
+            {"key": "ca1", "label": "CA 1", "percent": 10},
+            {"key": "ca2", "label": "CA 2", "percent": 10},
+            {"key": "mid_term", "label": "Mid-Term", "percent": 20},
+            {"key": "end_term", "label": "End-Term", "percent": 60},
+        ],
+    )
+    tpl.setdefault(
+        "remarks",
+        {"teacher": "", "head": "", "affective": [
+            {"label": "Attendance", "grade": ""}, {"label": "Conduct", "grade": ""},
+            {"label": "Class Participation", "grade": ""}, {"label": "Teamwork", "grade": ""},
+        ]},
+    )
+    tpl.setdefault(
+        "signatures",
+        [
+            {"name": "", "title": "Teacher (Signature)", "image_url": ""},
+            {"name": "", "title": "Head of School (Signature)", "image_url": ""},
+        ],
+    )
+    return {"template": tpl}
+
+
+class TemplateCategory(BaseModel):
+    key: str = Field(max_length=40)
+    label: str = Field(max_length=60)
+    percent: float = Field(ge=0, le=100)
+
+
+class TemplateSignature(BaseModel):
+    name: str = Field(default="", max_length=120)
+    title: str = Field(default="", max_length=120)
+    image_url: str = Field(default="", max_length=500)
+
+
+class TemplateAffective(BaseModel):
+    label: str = Field(max_length=60)
+    grade: str = Field(default="", max_length=60)
+
+
+class ResultTemplateIn(BaseModel):
+    school_name: Optional[str] = Field(default=None, max_length=255)
+    tagline: Optional[str] = Field(default=None, max_length=255)
+    logo_url: Optional[str] = Field(default=None, max_length=500)
+    session_label: Optional[str] = Field(default=None, max_length=40)
+    term_label: Optional[str] = Field(default=None, max_length=80)
+    accent_color: Optional[str] = Field(default=None, max_length=20)
+    header_bg: Optional[str] = Field(default=None, max_length=20)
+    header_text: Optional[str] = Field(default=None, max_length=20)
+    border_color: Optional[str] = Field(default=None, max_length=20)
+    band_color: Optional[str] = Field(default=None, max_length=20)
+    show_photo: Optional[bool] = None
+    show_qr: Optional[bool] = None
+    show_position: Optional[bool] = None
+    footer_note: Optional[str] = Field(default=None, max_length=500)
+    categories: Optional[list[TemplateCategory]] = Field(default=None, max_length=12)
+    remarks: Optional[dict] = None
+    signatures: Optional[list[TemplateSignature]] = Field(default=None, max_length=6)
+
+
+@router.put("/results-template")
+async def results_template_put(
+    payload: ResultTemplateIn,
+    school_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_school_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    sid = _staff_school_id(current_user, school_id)
+    campus = (await db.execute(select(SchoolCampus).where(SchoolCampus.id == sid))).scalar_one_or_none()
+    if not campus:
+        raise HTTPException(status_code=404, detail="School not found")
+    incoming = payload.model_dump(exclude_none=True)
+    cats = incoming.pop("categories", None)
+    sigs = incoming.pop("signatures", None)
+    rem = incoming.pop("remarks", None)
+    tpl = _clean_template(getattr(campus, "result_template", None) or {})
+    tpl.update(incoming)
+    if cats is not None:
+        total = sum(float(c.get("percent", 0)) for c in cats)
+        if abs(total - 100) > 0.5:
+            raise HTTPException(status_code=422, detail=f"Category percentages must add up to 100% (currently {total:g}%)")
+        tpl["categories"] = cats
+    if sigs is not None:
+        tpl["signatures"] = sigs
+    if rem is not None:
+        tpl["remarks"] = rem
+    campus.result_template = tpl
+    await db.flush()
+    return {"saved": True, "template": tpl}
+
+
+@router.post("/results-template/upload-logo")
+async def results_template_upload_logo(
+    file: UploadFile = File(...),
+    school_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_school_staff),
+):
+    """Upload the school logo for the report card (also saved on the campus)."""
+    name = (file.filename or "logo").strip()
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Logo too large (max 5MB).")
+    if not name.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".gif")):
+        raise HTTPException(status_code=400, detail="Upload a PNG, JPG, WebP or GIF image.")
+    from app.services.media_service import upload_file as _up
+
+    try:
+        result = _up(content, "logos", filename=name)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+    return {"logo_url": result["secure_url"]}
+
+
+@router.post("/results-template/upload-signature")
+async def results_template_upload_signature(
+    file: UploadFile = File(...),
+    school_id: Optional[str] = Query(None),
+    current_user: dict = Depends(require_school_staff),
+):
+    """Upload a signature stamp image (PNG with transparent background works best)."""
+    name = (file.filename or "signature").strip()
+    content = await file.read()
+    if len(content) > 3 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Signature image too large (max 3MB).")
+    if not name.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".gif")):
+        raise HTTPException(status_code=400, detail="Upload a PNG, JPG, WebP or GIF image.")
+    from app.services.media_service import upload_file as _up
+
+    try:
+        result = _up(content, "signatures", filename=name)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+    return {"image_url": result["secure_url"]}
+
+
+# ═════════════════════════════════════════════════════════════════════════
 # STAFF — Results (§29), publish (§22), Grant Exam Retake
 # ═════════════════════════════════════════════════════════════════════════
 
@@ -2343,6 +2928,8 @@ async def student_exam_login(
     student = (await db.execute(select(User).where(User.id == row.student_id))).scalar_one_or_none()
     if not student or not student.is_active:
         raise HTTPException(status_code=403, detail="This student account is not active")
+    if row.is_restricted:
+        raise HTTPException(status_code=403, detail="Access restricted — contact your school")
 
     # Success — reset the failure counter.
     row.failed_attempts = 0
@@ -2563,7 +3150,7 @@ async def download_exam(
                 "id": str(q.id),
                 "question_text": q.question_text,
                 "topic": q.topic,
-                "image_url": None,
+                "image_url": q.image_url,
                 "question_type": q.question_type,
                 "options": [
                     {"label": lbl, "text": txt}
@@ -2592,7 +3179,7 @@ async def download_exam(
             "id": str(q.id),
             "question_text": q.question_text,
             "topic": q.topic,
-            "image_url": None,
+            "image_url": q.image_url,
             "question_type": q.question_type,
             **_option_map_for(q, dl_options),
         }
@@ -2815,7 +3402,7 @@ async def start_attempt(
                 "question_text": q.question_text,
                 "topic": q.topic,
                 "question_type": q.question_type,
-                "image_url": None,
+                "image_url": q.image_url,
                 **_option_map_for(q, attempt.option_order),
                 "saved_answer": answers.get(str(q.id), {}).get("answer"),
                 "is_flagged": answers.get(str(q.id), {}).get("is_flagged", False),

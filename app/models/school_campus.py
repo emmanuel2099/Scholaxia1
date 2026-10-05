@@ -41,6 +41,9 @@ class SchoolCampus(Base):
     portal_classes: Mapped[list | None] = mapped_column(JSON, nullable=True)
     portal_attendance: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # date -> {student_id: status}
     portal_fees: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Report-card template: colors, logo, category weights (percentages),
+    # remarks, signatures — edited by the school on the Result Template tab.
+    result_template: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # Owner addition — uploaded result sheets, same self-contained JSON
     # pattern as portal_fees: [{id, class_name, subject, term, session,
     # max_score, uploaded_at, rows: [{student_name, reg_number, ca, exam,

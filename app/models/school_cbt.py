@@ -192,6 +192,8 @@ class SchoolExamQuestion(Base):
     topic: Mapped[str] = mapped_column(String(255), nullable=True)
     marks: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # Optional diagram/image shown with the question (bank snapshot)
+    image_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     exam: Mapped["SchoolExam"] = relationship("SchoolExam", back_populates="questions")
 
@@ -249,6 +251,8 @@ class SchoolExamAccessCode(Base):
     # Brute-force throttle (server-side, §14).
     failed_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     locked_until: Mapped[datetime] = mapped_column(DateTime, nullable=True)
+    # School can restrict a student (or all) from accessing their exams
+    is_restricted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     __table_args__ = (

@@ -1482,6 +1482,11 @@ class ResultRowIn(BaseModel):
     reg_number: str | None = Field(default=None, max_length=60)
     ca: float = Field(default=0, ge=0)          # continuous assessment
     exam: float = Field(default=0, ge=0)        # exam score
+    mid_term: float = Field(default=0, ge=0)    # optional mid-term score
+    remark: str | None = Field(default=None, max_length=120)
+    # Optional per-category scores keyed by the school's result-template
+    # categories (e.g. {"ca1": 9, "ca2": 8, "mid_term": 19, "end_term": 53}).
+    scores: dict[str, float] | None = None
 
 
 class ResultUploadIn(BaseModel):
@@ -1570,19 +1575,29 @@ async def portal_upload_results(
     max_total = float(payload.max_score or 100)
     rows = []
     for r in payload.rows[:300]:
-        total = round(float(r.ca or 0) + float(r.exam or 0), 2)
+        if r.scores:
+            scores = {str(k).strip(): round(float(v or 0), 2) for k, v in r.scores.items()}
+            total = round(sum(scores.values()), 2)
+        else:
+            scores = None
+            total = round(float(r.ca or 0) + float(r.exam or 0) + float(r.mid_term or 0), 2)
         pct = round(100 * total / max_total, 1) if max_total else 0
-        rows.append(
-            {
-                "student_name": r.student_name.strip(),
-                "reg_number": (r.reg_number or "").strip() or None,
-                "ca": round(float(r.ca or 0), 2),
-                "exam": round(float(r.exam or 0), 2),
-                "total": total,
-                "percentage": pct,
-                "grade": _grade_for(pct),
-            }
-        )
+        row = {
+            "student_name": r.student_name.strip(),
+            "reg_number": (r.reg_number or "").strip() or None,
+            "ca": round(float(r.ca or 0), 2),
+            "exam": round(float(r.exam or 0), 2),
+            "total": total,
+            "percentage": pct,
+            "grade": _grade_for(pct),
+        }
+        if scores is not None:
+            row["scores"] = scores
+        elif r.mid_term:
+            row["mid_term"] = round(float(r.mid_term), 2)
+        if (r.remark or "").strip():
+            row["remark"] = r.remark.strip()[:120]
+        rows.append(row)
 
     sheets = list(getattr(campus, "portal_results", None) or [])
     key = (

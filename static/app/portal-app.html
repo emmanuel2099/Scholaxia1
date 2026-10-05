@@ -509,13 +509,13 @@ tr:last-child td{border-bottom:none}
 
   /* ── APP SHELL ── */  var PAGES = [
     ["dashboard", "🏠", "Dashboard"], ["exreg", "🧾", "Register Student"],
-    ["exstudents", "👨‍🎓", "Exam Students"], ["exconfirm", "✅", "Confirm Registration"],
+    ["exstudents", "✅", "Confirm Registration"],
     ["exsched", "🗓️", "Exam Schedule"],
-    ["students", "👥", "Students"], ["teachers", "👨‍🏫", "Teachers"],
+    ["students", "👥", "Students per class"], ["teachers", "👨‍🏫", "Teachers"],
     ["classes", "🎓", "Classes"], ["subjects", "📚", "Subjects"],
     ["exresults", "🏆", "Exam Results"],
-    ["exbank", "🏦", "Access Subjects"], ["exretake", "🔄", "Grant Retake"],
-    ["exup", "📤", "Upload Results"],
+    ["exbank", "🏦", "Upload CBT Exams"], ["exretake", "🔄", "Grant Retake"],
+    ["exup", "📤", "Upload Results"], ["extpl", "🖨️", "Result Template"],
     ["results", "📊", "Results"], ["attendance", "🗓️", "Attendance"], ["fees", "💳", "Fees & Finance"],
     ["reports", "📈", "Reports"], ["settings", "⚙️", "Settings"],
   ];
@@ -819,13 +819,13 @@ tr:last-child td{border-bottom:none}
      Access Subjects, Exam Schedule, Exam Results…). ═══ */
   var EX_PAGE = "exsched";
   var EX_PAGES = [
-    ["exbank", "Access Subjects", "Question bank per class — JS1 to SS3 — upload questions", "<button class=\"btn\" onclick=\"uploadQuestionsModal()\">⬆ Upload Questions</button>"],
+    ["exbank", "Upload CBT Exams", "Upload questions and build CBT exams per class — JS1 to SS3", "<button class=\"btn\" onclick=\"uploadQuestionsModal()\">⬆ Upload Questions</button>"],
     ["exreg", "Register Student", "Register students for exams — reg number + access code", ""],
-    ["exstudents", "Exam Students", "Reg numbers, access codes, exam-taken status — manage per exam", ""],
-    ["exconfirm", "Confirm Registration", "Confirm a student's registration details", ""],
+    ["exstudents", "Confirm Registration", "Registered students per class — approve, restrict, edit or delete", ""],
     ["exsched", "Exam Schedule", "Schedule the class exams — subjects, questions, duration, date", ""],
     ["exretake", "Grant Retake", "Fetch a student by reg number and grant their retake", ""],
     ["exup", "Upload Results", "Result sheets per class, term and subject", ""],
+    ["extpl", "Result Template", "Report card design — logo, colors, signatures, remarks, category percentages", ""],
     ["exresults", "Exam Results", "Scores, grades, publish and Grant Retake", ""],
   ];
   function exShell(meta) {
@@ -838,15 +838,15 @@ tr:last-child td{border-bottom:none}
   function renderExPage() {
     if (EX_PAGE === "exbank") return bankList();
     if (EX_PAGE === "exreg") return exRegList();
-    if (EX_PAGE === "exstudents") return studentsList();
-    if (EX_PAGE === "exconfirm") return exConfirmList();
+    if (EX_PAGE === "exstudents") return confirmList();
     if (EX_PAGE === "exsched") return scheduleList();
+    if (EX_PAGE === "extpl") return templateList();
     if (EX_PAGE === "exretake") return retakeList();
     if (EX_PAGE === "exup") return upList();
     if (EX_PAGE === "exresults") return resultsList();
   }
   /* legacy aliases — older actions call exTab / renderExTab with old keys */
-  var EX_KEY_MAP = { exams: "exsched", bank: "exbank", exreg: "exreg", students: "exstudents", codes: "exstudents", schedule: "exsched", up: "exup", results: "exresults" };
+  var EX_KEY_MAP = { exams: "exsched", bank: "exbank", exreg: "exreg", students: "exstudents", codes: "exstudents", exconfirm: "exstudents", schedule: "exsched", up: "exup", results: "exresults" };
   window.exTab = function (t) { showPage(EX_KEY_MAP[t] || t); };
   window.showExPage = window.exTab;
   window.renderExTab = renderExPage;
@@ -1030,6 +1030,7 @@ tr:last-child td{border-bottom:none}
     return '<div class="qrow" data-qid="' + __qn + '">' +
       '<div class="qtop"><b>Question ' + __qn + '</b><button class="mb-x" style="width:26px;height:26px" onclick="this.closest(\'.qrow\').remove()" title="Remove">✕</button></div>' +
       '<textarea class="f-in qtext" placeholder="Type the question…"></textarea>' +
+      '<input class="f-in qimg" placeholder="Image / diagram URL for this question (optional)…" style="margin-top:6px" />' +
       '<div class="opts">' +
       '<div class="opt"><b>A</b><input class="f-in oa" placeholder="Option A" /></div>' +
       '<div class="opt"><b>B</b><input class="f-in ob" placeholder="Option B" /></div>' +
@@ -1116,7 +1117,7 @@ tr:last-child td{border-bottom:none}
       document.querySelectorAll("#qList .qrow").forEach(function (row) {
         var qt = row.querySelector(".qtext").value.trim();
         if (!qt) return;
-        qs.push({ question_text: qt, option_a: row.querySelector(".oa").value.trim() || "A", option_b: row.querySelector(".ob").value.trim() || "B", option_c: row.querySelector(".oc").value.trim() || "C", option_d: row.querySelector(".od").value.trim() || "D", correct_option: row.querySelector(".qco").value });
+        qs.push({ question_text: qt, option_a: row.querySelector(".oa").value.trim() || "A", option_b: row.querySelector(".ob").value.trim() || "B", option_c: row.querySelector(".oc").value.trim() || "C", option_d: row.querySelector(".od").value.trim() || "D", image_url: row.querySelector(".qimg").value.trim() || null, correct_option: row.querySelector(".qco").value });
       });
       var bankIds = Object.keys(window.__bankPicks || {}).filter(function (k) { return window.__bankPicks[k] > 0; });
       var mode = $("exMode").value;
@@ -1235,7 +1236,7 @@ tr:last-child td{border-bottom:none}
   window.openBank = function (id) {
     cbtApi("/banks/" + id + "/questions").then(function (d) {
       var rows = (d.questions || []).map(function (q, i) {
-        return '<tr><td>' + (i + 1) + '</td><td>' + esc(q.question_text.slice(0, 90)) + (q.question_text.length > 90 ? "…" : "") + '</td><td>' + esc(q.topic || "—") + '</td><td>' + esc(q.difficulty) + '</td><td><strong>' + esc(q.correct_option) + '</strong></td>' +
+        return '<tr><td>' + (i + 1) + '</td><td>' + (q.image_url ? '🖼 ' : "") + esc(q.question_text.slice(0, 90)) + (q.question_text.length > 90 ? "…" : "") + '</td><td>' + esc(q.topic || "—") + '</td><td>' + esc(q.difficulty) + '</td><td><strong>' + esc(q.correct_option) + '</strong></td>' +
           '<td><button class="btn sm red" onclick="delBankQ(\'' + id + '\',\'' + q.id + '\')">✕</button></td></tr>';
       });
       openModal("🏦 " + esc(d.bank.name) + " — " + (d.questions || []).length + " questions",
@@ -1259,7 +1260,7 @@ tr:last-child td{border-bottom:none}
       document.querySelectorAll("#qList .qrow").forEach(function (row) {
         var qt = row.querySelector(".qtext").value.trim();
         if (!qt) return;
-        qs.push({ question_text: qt, option_a: row.querySelector(".oa").value.trim() || "A", option_b: row.querySelector(".ob").value.trim() || "B", option_c: row.querySelector(".oc").value.trim() || "C", option_d: row.querySelector(".od").value.trim() || "D", correct_option: row.querySelector(".qco").value, topic: $("bqTopic").value.trim() || null, marks: parseInt($("bqMarks").value, 10) || 1 });
+        qs.push({ question_text: qt, option_a: row.querySelector(".oa").value.trim() || "A", option_b: row.querySelector(".ob").value.trim() || "B", option_c: row.querySelector(".oc").value.trim() || "C", option_d: row.querySelector(".od").value.trim() || "D", image_url: row.querySelector(".qimg").value.trim() || null, correct_option: row.querySelector(".qco").value, topic: $("bqTopic").value.trim() || null, marks: parseInt($("bqMarks").value, 10) || 1 });
       });
       if (!qs.length) return mErr("Write at least one complete question.");
       busy($("bqGo"), true);
@@ -1312,6 +1313,509 @@ tr:last-child td{border-bottom:none}
     w.document.close();
     setTimeout(function () { try { w.focus(); w.print(); } catch (e) {} }, 350);
   };
+
+  /* ═══ CONFIRM REGISTRATION HUB — every registered student, per class ═══
+     Filter bar (class / subject / search / status chips), subjects per
+     student under their name, approve one / all, restrict one / all,
+     edit info, delete one / all, CSV export, printable reg slips. */
+  window.__regAll = [];
+  window.__regSel = {};
+  window.__regF = { cls: "", subj: "", q: "", status: "all" };
+  window.__regPool = { classes: [], subjects: [] };
+  function regSelIds() { return Object.keys(window.__regSel).filter(function (k) { return window.__regSel[k]; }); }
+  function regById(id) { return (window.__regAll || []).filter(function (s) { return s.student_id === id; })[0]; }
+  function regVisibleIds() {
+    var st = window.__regF.status;
+    return (window.__regAll || []).filter(function (s) { return st === "all" || (s.status || "pending") === st; }).map(function (s) { return s.student_id; });
+  }
+  function regPoolUpdate(list) {
+    list.forEach(function (s) {
+      if (s.class_name && window.__regPool.classes.indexOf(s.class_name) < 0) window.__regPool.classes.push(s.class_name);
+      (s.subjects || []).forEach(function (x) { if (x && window.__regPool.subjects.indexOf(x) < 0) window.__regPool.subjects.push(x); });
+    });
+    window.__regPool.classes.sort();
+    window.__regPool.subjects.sort();
+  }
+  function confirmList() {
+    window.__regF = { cls: "", subj: "", q: "", status: "all" };
+    window.__regSel = {};
+    $("exBody").innerHTML =
+      '<div class="panel"><div class="form-grid">' +
+      '<div><label class="f-label">Class</label><select class="f-in" id="rgCls" onchange="regApply()"><option value="">All Classes</option></select></div>' +
+      '<div><label class="f-label">Subject</label><select class="f-in" id="rgSubj" onchange="regApply()"><option value="">All Subjects</option></select></div></div>' +
+      '<div class="form-grid"><div><label class="f-label">Search</label><input class="f-in" id="rgQ" placeholder="Name, reg number or email…" oninput="regDebounce()" /></div>' +
+      '<div><label class="f-label">&nbsp;</label><div class="radio-row"><button class="btn sm" onclick="regFetch()">🔍 Apply</button><button class="btn sm ghost" onclick="regClear()">Clear</button></div></div></div>' +
+      '<div class="radio-row" id="rgChips" style="flex-wrap:wrap"></div>' +
+      '<div class="radio-row" id="rgBulk" style="flex-wrap:wrap"></div>' +
+      '<div id="rgBody"><div class="empty">Loading registered students…</div></div></div>';
+    regFetch();
+  }
+  window.regFetch = function () {
+    var f = window.__regF;
+    var p = ["status=all"];
+    if (f.cls) p.push("class_name=" + encodeURIComponent(f.cls));
+    if (f.subj) p.push("subject=" + encodeURIComponent(f.subj));
+    if (f.q) p.push("q=" + encodeURIComponent(f.q));
+    var box = $("rgBody");
+    if (box) box.innerHTML = '<div class="empty">Loading…</div>';
+    cbtApi("/registrations?" + p.join("&")).then(function (d) {
+      window.__regAll = d.students || [];
+      window.__regCounts = d.counts || {};
+      regPoolUpdate(window.__regAll);
+      regRender();
+    }).catch(function (e) { if (box) box.innerHTML = '<div class="empty">' + esc(errText(e)) + '</div>'; });
+  };
+  window.regApply = function () {
+    window.__regF.cls = $("rgCls") ? $("rgCls").value : "";
+    window.__regF.subj = $("rgSubj") ? $("rgSubj").value : "";
+    window.__regF.q = ($("rgQ") && $("rgQ").value.trim()) || "";
+    window.__regSel = {};
+    regFetch();
+  };
+  window.regDebounce = function () { clearTimeout(window.__regT); window.__regT = setTimeout(regApply, 450); };
+  window.regClear = function () {
+    window.__regF = { cls: "", subj: "", q: "", status: "all" };
+    window.__regSel = {};
+    regFetch();
+  };
+  window.regChip = function (st) { window.__regF.status = st; regRender(); };
+  window.regToggle = function (id) { window.__regSel[id] = !window.__regSel[id]; regRender(); };
+  window.regSelectAll = function () {
+    var vis = regVisibleIds();
+    var any = vis.some(function (id) { return !window.__regSel[id]; });
+    vis.forEach(function (id) { window.__regSel[id] = any; });
+    regRender();
+  };
+  function regRefresh() { regFetch(); }
+
+  function regPills(arr) {
+    return (arr || []).map(function (x) { return '<span class="pill blue" style="display:inline-block;margin:2px 4px 0 0">' + esc(x) + '</span>'; }).join("") || '<span class="muted">—</span>';
+  }
+  function regStatusPill(st) {
+    if (st === "approved") return '<span class="pill ok">Approved</span>';
+    if (st === "restricted") return '<span class="pill bad">Restricted</span>';
+    return '<span class="pill warn">Pending</span>';
+  }
+  function regRow(s) {
+    var id = s.student_id, st = (s.status || "pending").toLowerCase();
+    var name = '<strong>' + esc(s.full_name) + '</strong>' +
+      (s.email ? '<div class="muted" style="font-size:12px">' + esc(s.email) + '</div>' : "") +
+      '<div style="margin-top:4px">' + regPills(s.subjects) + '</div>';
+    var acts = "";
+    if (st === "pending") acts += '<button class="btn sm" onclick="regApprove(\'' + id + '\',this)">✅ Approve</button> ';
+    else acts += '<button class="btn sm ' + (st === "restricted" ? "" : "ghost") + '" onclick="regRestrictOne(\'' + id + '\',' + (st === "restricted" ? "false" : "true") + ',this)">' + (st === "restricted" ? "🔓 Unrestrict" : "🚫 Restrict") + '</button> ';
+    acts += '<button class="btn sm ghost" onclick="regEdit(\'' + id + '\')" title="Edit info">✏️</button> ' +
+      '<button class="btn sm red" onclick="regDeleteOne(\'' + id + '\')" title="Delete">🗑</button>' +
+      (s.reg_number ? ' <button class="btn sm ghost" onclick="regSlip(\'' + id + '\')" title="Print registration slip">🖨</button>' : "");
+    return '<tr><td><input type="checkbox" ' + (window.__regSel[id] ? "checked" : "") + ' onchange="regToggle(\'' + id + '\')" /></td>' +
+      '<td><code>' + esc(s.reg_number || "—") + '</code></td>' +
+      '<td>' + name + '</td>' +
+      '<td>' + esc(s.class_name || "—") + '</td>' +
+      '<td><code>' + esc(s.access_code || "—") + '</code></td>' +
+      '<td>' + regStatusPill(st) + '</td>' +
+      '<td style="white-space:nowrap">' + acts + '</td></tr>';
+  }
+  window.regRender = function () {
+    var f = window.__regF, c = window.__regCounts || {};
+    var cls = $("rgCls"), subj = $("rgSubj");
+    if (cls) {
+      cls.innerHTML = '<option value="">All Classes</option>' + window.__regPool.classes.map(function (x) { return '<option value="' + esc(x) + '">' + esc(x) + '</option>'; }).join("");
+      cls.value = f.cls; if (cls.value !== f.cls) { cls.value = ""; window.__regF.cls = ""; }
+    }
+    if (subj) {
+      subj.innerHTML = '<option value="">All Subjects</option>' + window.__regPool.subjects.map(function (x) { return '<option value="' + esc(x) + '">' + esc(x) + '</option>'; }).join("");
+      subj.value = f.subj; if (subj.value !== f.subj) { subj.value = ""; window.__regF.subj = ""; }
+    }
+    var chips = [["all", "All", c.all], ["pending", "🟡 Pending", c.pending], ["approved", "🟢 Approved", c.approved], ["restricted", "🔴 Restricted", c.restricted]];
+    var ch = $("rgChips");
+    if (ch) ch.innerHTML = chips.map(function (x) {
+      return '<button class="btn sm ' + (f.status === x[0] ? "" : "ghost") + '" onclick="regChip(\'' + x[0] + '\")">' + x[1] + ' <span class="pill gray">' + (x[2] != null ? x[2] : 0) + '</span></button>';
+    }).join("");
+    var n = regSelIds().length;
+    var bk = $("rgBulk");
+    if (bk) bk.innerHTML =
+      '<button class="btn sm" onclick="regApproveAll(this)">✅ Approve All' + (f.cls ? " · " + esc(f.cls) : "") + '</button>' +
+      '<button class="btn sm ghost" onclick="regBulkRestrict(true)">🚫 Restrict' + (n ? " (" + n + ")" : "") + '</button>' +
+      '<button class="btn sm ghost" onclick="regBulkRestrict(false)">🔓 Unrestrict' + (n ? " (" + n + ")" : "") + '</button>' +
+      '<button class="btn sm red" onclick="regBulkDelete()">🗑 Delete' + (n ? " (" + n + ")" : "") + '</button>' +
+      '<button class="btn sm ghost" onclick="regExport(this)">⬇ Export CSV</button>' +
+      '<button class="btn sm ghost" onclick="regSelectAll()">☑ Select all</button>';
+    function sec(title, st) {
+      var rows = (window.__regAll || []).filter(function (s) { return (s.status || "pending").toLowerCase() === st; }).map(regRow);
+      return '<div class="panel" style="margin-top:14px"><h3>' + title + ' <span class="pill gray">' + rows.length + '</span></h3>' +
+        (rows.length ? '<div style="overflow-x:auto"><table><thead><tr><th></th><th>Reg Number</th><th>Student &amp; Subjects</th><th>Class</th><th>Access Code</th><th>Status</th><th>Actions</th></tr></thead><tbody>' + rows.join("") + '</tbody></table></div>' : '<div class="empty">None here.</div>') + '</div>';
+    }
+    var parts = [];
+    if (f.status === "all" || f.status === "pending") parts.push(sec("🟡 Pending Approvals", "pending"));
+    if (f.status === "all" || f.status === "approved") parts.push(sec("🟢 Approved Students", "approved"));
+    if (f.status === "all" || f.status === "restricted") parts.push(sec("🔴 Restricted Students", "restricted"));
+    var body = $("rgBody");
+    if (body) body.innerHTML = parts.join("") || '<div class="empty">Nothing in this view.</div>';
+  };
+
+  window.regApprove = function (id, btn) {
+    busy(btn, true);
+    cbtApi("/registrations/" + id + "/approve", { method: "POST" }).then(function (d) {
+      toast("✅ Approved — Reg " + (d.reg_number || "—") + " · Code " + (d.access_code || "—"));
+      regRefresh();
+    }).catch(function (e) { busy(btn, false, "✅ Approve"); toastErr(e); });
+  };
+  window.regApproveAll = function (btn) {
+    var pend = (window.__regAll || []).filter(function (s) { return (s.status || "pending").toLowerCase() === "pending"; }).length;
+    if (!pend) return toastErr("No pending approvals in this view.");
+    confirmModal("Approve all", "Approve <strong>" + pend + "</strong> pending student" + (pend === 1 ? "" : "s") + (window.__regF.cls ? " in <strong>" + esc(window.__regF.cls) + "</strong>" : " in the <strong>whole school</strong>") + "? Reg numbers and access codes are issued automatically.", function (b) {
+      busy(b, true);
+      cbtApi("/registrations/approve-all" + (window.__regF.cls ? "?class_name=" + encodeURIComponent(window.__regF.cls) : ""), { method: "POST" }).then(function (d) {
+        closeModal(); toast("✅ Approved " + (d.approved != null ? d.approved : pend) + " students"); regRefresh();
+      }).catch(function (e) { busy(b, false, "Confirm"); mErr(errText(e)); });
+    }, "Approve all");
+  };
+  window.regRestrictOne = function (id, restricted, btn) {
+    busy(btn, true);
+    cbtApi("/registrations/restrict", { method: "POST", body: { restricted: !!restricted, student_ids: [id] } }).then(function () {
+      toast(restricted ? "Student restricted" : "Restriction removed"); regRefresh();
+    }).catch(function (e) { busy(btn, false, restricted ? "🚫 Restrict" : "🔓 Unrestrict"); toastErr(e); });
+  };
+  window.regEdit = function (id) {
+    var s = regById(id); if (!s) return;
+    openModal("✏️ Edit student information",
+      '<label class="f-label">Full name</label><input class="f-in" id="reName" value="' + esc(s.full_name) + '" />' +
+      '<label class="f-label" style="margin-top:10px">Class</label><input class="f-in" id="reCls" value="' + esc(s.class_name || "") + '" />' +
+      '<label class="f-label" style="margin-top:10px">Email</label><input class="f-in" id="reMail" value="' + esc(s.email || "") + '" />' +
+      '<div class="merr"></div>',
+      '<button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="reGo">Save changes</button>');
+    $("reGo").addEventListener("click", function () {
+      var nm = $("reName").value.trim();
+      if (!nm) return mErr("Enter the student's full name.");
+      busy($("reGo"), true);
+      cbtApi("/registrations/" + id, { method: "PATCH", body: { full_name: nm, class_name: $("reCls").value.trim() || null, email: $("reMail").value.trim() || null } }).then(function () {
+        closeModal(); toast("Student updated"); regRefresh();
+      }).catch(function (e) { busy($("reGo"), false, "Save changes"); mErr(errText(e)); });
+    });
+  };
+  window.regDeleteOne = function (id) {
+    var s = regById(id); if (!s) return;
+    confirmModal("Delete student", "Delete <strong>" + esc(s.full_name) + "</strong> and ALL their exam data (attempts, results, access codes)? This cannot be undone.", function (b) {
+      busy(b, true);
+      cbtApi("/registrations/" + id, { method: "DELETE" }).then(function () { closeModal(); toast("Student deleted"); regRefresh(); })
+        .catch(function (e) { busy(b, false, "Confirm"); mErr(errText(e)); });
+    }, "Delete", true);
+  };
+  window.regBulkRestrict = function (restricted) {
+    var ids = regSelIds();
+    var body = { restricted: !!restricted };
+    var scope;
+    if (ids.length) { body.student_ids = ids; scope = "<strong>" + ids.length + "</strong> selected student" + (ids.length === 1 ? "" : "s"); }
+    else if (window.__regF.cls) { body.class_name = window.__regF.cls; scope = "every student in <strong>" + esc(window.__regF.cls) + "</strong>"; }
+    else { scope = "<strong>ALL registered students in the school</strong>"; }
+    confirmModal(restricted ? "Restrict students" : "Unrestrict students", (restricted ? "Restrict " : "Remove the restriction for ") + scope + "? Restricted students cannot log in until they are unrestricted.", function (b) {
+      busy(b, true);
+      cbtApi("/registrations/restrict", { method: "POST", body: body }).then(function (d) {
+        closeModal(); toast("✓ " + (d.codes_updated != null ? d.codes_updated + " " : "") + (restricted ? "restricted" : "unrestricted")); regRefresh();
+      }).catch(function (e) { busy(b, false, "Confirm"); mErr(errText(e)); });
+    }, restricted ? "Restrict" : "Unrestrict");
+  };
+  window.regBulkDelete = function () {
+    var ids = regSelIds();
+    var body = {};
+    var scope;
+    if (ids.length) { body.student_ids = ids; scope = "<strong>" + ids.length + "</strong> selected student" + (ids.length === 1 ? "" : "s"); }
+    else if (window.__regF.cls) { body.class_name = window.__regF.cls; scope = "every student in <strong>" + esc(window.__regF.cls) + "</strong>"; }
+    else { scope = "<strong>ALL registered students in the school</strong>"; }
+    confirmModal("Delete students", "Permanently delete " + scope + " with ALL their exam data? This cannot be undone.", function (b) {
+      busy(b, true);
+      cbtApi("/registrations/delete-all", { method: "POST", body: body }).then(function (d) {
+        closeModal(); toast("🗑 Deleted " + (d.deleted != null ? d.deleted : 0) + " student" + (d.deleted === 1 ? "" : "s")); regRefresh();
+      }).catch(function (e) { busy(b, false, "Confirm"); mErr(errText(e)); });
+    }, "Delete", true);
+  };
+  window.regExport = function (btn) {
+    var ids = regSelIds();
+    if (!ids.length) ids = (window.__regAll || []).map(function (s) { return s.student_id; });
+    if (!ids.length) return toastErr("Nothing to export yet.");
+    busy(btn, true, "⬇ Exporting…");
+    var sid = (S.user && S.user.school_id) ? "?school_id=" + encodeURIComponent(S.user.school_id) : "";
+    fetch(API + "/school-cbt/registrations/export" + sid, {
+      method: "POST", headers: _headers(true), body: JSON.stringify({ student_ids: ids }),
+    }).then(function (r) {
+      return r.text().then(function (t) {
+        if (!r.ok) { var msg = t || "Export failed (" + r.status + ")"; try { msg = detailOf(JSON.parse(t)) || msg; } catch (e) {} throw new Error(msg); }
+        return t;
+      });
+    }).then(function (t) {
+      var blob = new Blob([t], { type: "text/csv" });
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "registered-students-" + new Date().toISOString().slice(0, 10) + ".csv";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+      busy(btn, false, "⬇ Export CSV");
+      toast("CSV downloaded");
+    }).catch(function (e) { busy(btn, false, "⬇ Export CSV"); toastErr(e); });
+  };
+  window.regSlip = function (id) {
+    var s = regById(id); if (!s) return;
+    printRegSlip({ full_name: s.full_name, class_name: s.class_name, reg_number: s.reg_number, access_code: s.access_code, subjects: s.subjects || [] });
+  };
+
+  /* ═══ RESULT TEMPLATE — report card designer (logo, colors, category
+     percentages, affective remarks, signatures) + printable cards ═══ */
+  window.__tpl = null;
+  function templateList() {
+    $("exBody").innerHTML = '<div class="empty">Loading template…</div>';
+    cbtApi("/results-template").then(function (d) {
+      window.__tpl = d.template || {};
+      tplRenderForm();
+    }).catch(function (e) { $("exBody").innerHTML = '<div class="empty">' + esc(errText(e)) + '</div>'; });
+  }
+  function tplVal(id) { var e = $(id); return e ? e.value.trim() : ""; }
+  function tplCatRow(c) {
+    return '<div class="form-grid cat-row" style="grid-template-columns:1fr 110px 34px;align-items:center;gap:8px;margin-bottom:6px">' +
+      '<input class="f-in c-lab" placeholder="e.g. CA 1" value="' + esc(c.label || "") + '" />' +
+      '<input class="f-in c-pct" type="number" min="0" max="100" step="0.5" value="' + esc(c.percent != null ? c.percent : 0) + '" oninput="tplSum()" />' +
+      '<button class="mb-x" style="width:30px;height:30px" onclick="this.closest(\'.cat-row\').remove();tplSum()" title="Remove">✕</button></div>';
+  }
+  function tplAffRow(a) {
+    return '<div class="form-grid aff-row" style="grid-template-columns:1fr 1fr 34px;align-items:center;gap:8px;margin-bottom:6px">' +
+      '<input class="f-in a-lab" placeholder="e.g. Attendance" value="' + esc(a.label || "") + '" />' +
+      '<input class="f-in a-gr" placeholder="e.g. Excellent ★★★★★" value="' + esc(a.grade || "") + '" />' +
+      '<button class="mb-x" style="width:30px;height:30px" onclick="this.closest(\'.aff-row\').remove()" title="Remove">✕</button></div>';
+  }
+  function tplSigRow(sg) {
+    return '<div class="sig-row" style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:10px">' +
+      '<div class="form-grid"><div><label class="f-label">Name (printed under the signature)</label><input class="f-in s-name" value="' + esc(sg.name || "") + '" /></div>' +
+      '<div><label class="f-label">Title</label><input class="f-in s-title" value="' + esc(sg.title || "") + '" /></div></div>' +
+      '<input type="hidden" class="s-url" value="' + esc(sg.image_url || "") + '" />' +
+      '<div class="radio-row" style="margin-top:8px;align-items:center">' +
+      '<img class="s-img" src="' + esc(sg.image_url || "") + '" onerror="this.style.display=\'none\'" style="height:44px;background:#fff;border:1px solid var(--line);border-radius:6px;padding:2px" />' +
+      '<input type="file" accept="image/*" class="s-file" style="max-width:230px" />' +
+      '<button class="btn sm ghost" onclick="tplSigUpload(this)">⬆ Upload signature</button></div></div>';
+  }
+  function tplRenderForm() {
+    var t = window.__tpl || {};
+    var cats = t.categories || [], rem = t.remarks || {}, aff = rem.affective || [], sigs = t.signatures || [];
+    $("exBody").innerHTML =
+      '<div class="panel"><h3>🏫 School identity</h3>' +
+      '<div class="form-grid"><div><label class="f-label">School name on the report card</label><input class="f-in" id="tpSchool" value="' + esc(t.school_name || "") + '" /></div>' +
+      '<div><label class="f-label">Tagline / motto</label><input class="f-in" id="tpTag" value="' + esc(t.tagline || "") + '" /></div></div>' +
+      '<div class="form-grid"><div><label class="f-label">Session label</label><input class="f-in" id="tpSession" value="' + esc(t.session_label || "") + '" placeholder="e.g. 2026/2027" /></div>' +
+      '<div><label class="f-label">Term label</label><input class="f-in" id="tpTerm" value="' + esc(t.term_label || "") + '" placeholder="e.g. First Term" /></div></div>' +
+      '<div class="radio-row" style="margin-top:10px;align-items:center">' +
+      '<img id="tpLogoImg" src="' + esc(t.logo_url || "") + '" onerror="this.style.display=\'none\'" style="height:56px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:3px" />' +
+      '<input type="file" id="tpLogoFile" accept="image/*" style="max-width:240px" />' +
+      '<button class="btn sm ghost" onclick="tplLogoUpload(this)">⬆ Upload logo</button>' +
+      (t.logo_url ? '<span class="pill ok">Logo set</span>' : '<span class="pill gray">No logo yet</span>') + '</div>' +
+      '<p class="mhint">PNG with a transparent background looks best · max 5MB.</p></div>' +
+      '<div class="panel"><h3>🎨 Colors</h3><div class="form-grid">' +
+      '<div><label class="f-label">Header background</label><input type="color" class="f-in" id="tpHeaderBg" value="' + esc(t.header_bg || "#123a6b") + '" /></div>' +
+      '<div><label class="f-label">Header text</label><input type="color" class="f-in" id="tpHeaderText" value="' + esc(t.header_text || "#ffffff") + '" /></div>' +
+      '<div><label class="f-label">Accent line</label><input type="color" class="f-in" id="tpAccent" value="' + esc(t.accent_color || "#b8912f") + '" /></div>' +
+      '<div><label class="f-label">Table borders</label><input type="color" class="f-in" id="tpBorder" value="' + esc(t.border_color || "#d8c9a3") + '" /></div>' +
+      '<div><label class="f-label">Zebra band</label><input type="color" class="f-in" id="tpBand" value="' + esc(t.band_color || "#f5f0e1") + '" /></div></div></div>' +
+      '<div class="panel"><h3>📊 Result categories &amp; percentages</h3>' +
+      '<p class="mhint">Each subject\'s score is split into these categories and they must add up to 100% — e.g. CA 1 (10%) + CA 2 (10%) + Mid-Term (20%) + End-Term (60%).</p>' +
+      '<div id="tpCats"></div>' +
+      '<div class="radio-row" style="margin-top:8px"><button class="btn sm ghost" onclick="tplAddCat()">+ Add category</button><span id="tpSum" style="font-size:13.5px"></span></div></div>' +
+      '<div class="panel"><h3>🗣 Affective domains &amp; comments</h3>' +
+      '<div id="tpAff"></div>' +
+      '<button class="btn sm ghost" onclick="tplAddAff()">+ Add affective row</button>' +
+      '<div class="form-grid" style="margin-top:12px"><div><label class="f-label">Teacher\'s comment (default)</label><textarea class="f-in" id="tpTeacher" rows="2">' + esc(rem.teacher || "") + '</textarea></div>' +
+      '<div><label class="f-label">Head of School\'s comment</label><textarea class="f-in" id="tpHead" rows="2">' + esc(rem.head || "") + '</textarea></div></div></div>' +
+      '<div class="panel"><h3>✍️ Signatures</h3><div id="tpSig"></div><button class="btn sm ghost" onclick="tplAddSig()">+ Add signature</button><p class="mhint">Signature stamp images (PNG, max 3MB) print under the comments on every card.</p></div>' +
+      '<div class="panel"><h3>⚙️ Options</h3><div class="radio-row">' +
+      '<label><input type="checkbox" id="tpPhoto" ' + (t.show_photo ? "checked" : "") + ' /> Show student photo</label>' +
+      '<label><input type="checkbox" id="tpQr" ' + (t.show_qr ? "checked" : "") + ' /> Show verification QR</label>' +
+      '<label><input type="checkbox" id="tpPos" ' + (t.show_position ? "checked" : "") + ' /> Show class position</label></div>' +
+      '<label class="f-label" style="margin-top:10px">Footer note (prints at the bottom of every card)</label>' +
+      '<textarea class="f-in" id="tpFooter" rows="2">' + esc(t.footer_note || "") + '</textarea></div>' +
+      '<div class="radio-row" style="margin:16px 0"><button class="btn" onclick="tplSave(this)">💾 Save template</button>' +
+      '<button class="btn ghost" onclick="tplPreview()">👁 Preview a sample report card</button></div>';
+    $("tpCats").innerHTML = cats.map(tplCatRow).join("") || tplCatRow({});
+    $("tpAff").innerHTML = aff.map(tplAffRow).join("") || tplAffRow({});
+    $("tpSig").innerHTML = sigs.map(tplSigRow).join("") || tplSigRow({});
+    tplSum();
+  }
+  window.tplAddCat = function () { $("tpCats").insertAdjacentHTML("beforeend", tplCatRow({})); tplSum(); };
+  window.tplAddAff = function () { $("tpAff").insertAdjacentHTML("beforeend", tplAffRow({})); };
+  window.tplAddSig = function () { $("tpSig").insertAdjacentHTML("beforeend", tplSigRow({})); };
+  window.tplSum = function () {
+    var s = 0;
+    document.querySelectorAll("#tpCats .c-pct").forEach(function (i) { s += parseFloat(i.value) || 0; });
+    s = Math.round(s * 10) / 10;
+    var b = $("tpSum");
+    if (b) {
+      b.innerHTML = "Total: <strong>" + s + "%</strong>" + (Math.abs(s - 100) <= 0.5 ? " ✓" : " — must equal 100%");
+      b.style.color = Math.abs(s - 100) <= 0.5 ? "#15803d" : "#b91c1c";
+    }
+  };
+
+  window.tplLogoUpload = function (btn) {
+    var inp = $("tpLogoFile"), f = inp && inp.files && inp.files[0];
+    if (!f) return toastErr("Choose a logo image first.");
+    var fd = new FormData(); fd.append("file", f);
+    busy(btn, true, "Uploading…");
+    cbtApi("/results-template/upload-logo", { method: "POST", form: fd }).then(function (d) {
+      window.__tpl = window.__tpl || {};
+      window.__tpl.logo_url = d.logo_url || "";
+      var im = $("tpLogoImg"); if (im) { im.src = window.__tpl.logo_url; im.style.display = ""; }
+      busy(btn, false, "⬆ Upload logo");
+      toast("Logo uploaded — remember to save");
+    }).catch(function (e) { busy(btn, false, "⬆ Upload logo"); toastErr(e); });
+  };
+  window.tplSigUpload = function (btn) {
+    var row = btn.closest(".sig-row");
+    var inp = row.querySelector(".s-file"), f = inp && inp.files && inp.files[0];
+    if (!f) return toastErr("Choose the signature image first.");
+    var fd = new FormData(); fd.append("file", f);
+    busy(btn, true, "Uploading…");
+    cbtApi("/results-template/upload-signature", { method: "POST", form: fd }).then(function (d) {
+      row.querySelector(".s-url").value = d.image_url || "";
+      var im = row.querySelector(".s-img"); if (im) { im.src = d.image_url || ""; im.style.display = ""; }
+      busy(btn, false, "⬆ Upload signature");
+      toast("Signature uploaded — remember to save");
+    }).catch(function (e) { busy(btn, false, "⬆ Upload signature"); toastErr(e); });
+  };
+  window.tplSave = function (btn) {
+    var cats = [];
+    document.querySelectorAll("#tpCats .cat-row").forEach(function (r) {
+      var lab = r.querySelector(".c-lab").value.trim();
+      if (!lab) return;
+      cats.push({ key: lab.toLowerCase().replace(/[^a-z0-9]+/g, "_").slice(0, 40), label: lab, percent: parseFloat(r.querySelector(".c-pct").value) || 0 });
+    });
+    if (!cats.length) return toastErr("Add at least one result category.");
+    var sum = cats.reduce(function (a, c) { return a + c.percent; }, 0);
+    if (Math.abs(sum - 100) > 0.5) return toastErr("Category percentages must add up to 100% (currently " + (Math.round(sum * 10) / 10) + "%)");
+    var aff = [];
+    document.querySelectorAll("#tpAff .aff-row").forEach(function (r) {
+      var lab = r.querySelector(".a-lab").value.trim(); if (!lab) return;
+      aff.push({ label: lab, grade: r.querySelector(".a-gr").value.trim() });
+    });
+    var sigs = [];
+    document.querySelectorAll("#tpSig .sig-row").forEach(function (r) {
+      sigs.push({ name: r.querySelector(".s-name").value.trim(), title: r.querySelector(".s-title").value.trim(), image_url: r.querySelector(".s-url").value || "" });
+    });
+    var t = window.__tpl || {};
+    busy(btn, true, "Saving…");
+    cbtApi("/results-template", { method: "PUT", body: {
+      school_name: tplVal("tpSchool"), tagline: tplVal("tpTag"), session_label: tplVal("tpSession"), term_label: tplVal("tpTerm"),
+      logo_url: t.logo_url || "",
+      header_bg: tplVal("tpHeaderBg"), header_text: tplVal("tpHeaderText"), accent_color: tplVal("tpAccent"),
+      border_color: tplVal("tpBorder"), band_color: tplVal("tpBand"),
+      show_photo: !!($("tpPhoto") && $("tpPhoto").checked), show_qr: !!($("tpQr") && $("tpQr").checked), show_position: !!($("tpPos") && $("tpPos").checked),
+      footer_note: tplVal("tpFooter"), categories: cats,
+      remarks: { teacher: tplVal("tpTeacher"), head: tplVal("tpHead"), affective: aff },
+      signatures: sigs,
+    } }).then(function (d) {
+      if (d && d.template) window.__tpl = d.template;
+      busy(btn, false, "💾 Save template");
+      toast("✓ Result template saved");
+    }).catch(function (e) { busy(btn, false, "💾 Save template"); toastErr(e); });
+  };
+  window.tplPreview = function () {
+    printReportCards([{ student_name: "Sample Student", reg_number: "SCHX/26/000000", ca: 9, exam: 55, total: 64, percentage: 64, grade: "B", remark: "" }],
+      { class_name: "SS 1", subject: "Sample Subject", term: "First Term", session: "2026/2027", max_score: 100 });
+  };
+
+  /* ═══ PRINTING — report cards + master result list, styled by the
+     school's result template (logo, colors, signatures) ═══ */
+  function tplColors() {
+    var t = window.__tpl || {};
+    return {
+      bg: t.header_bg || "#123a6b", fg: t.header_text || "#ffffff", ac: t.accent_color || "#b8912f",
+      bd: t.border_color || "#d8c9a3", band: t.band_color || "#f5f0e1",
+      logo: t.logo_url || "", school: t.school_name || (S.school && S.school.name) || "School",
+      tagline: t.tagline || "", note: t.footer_note || "", tpl: t,
+    };
+  }
+  function tplCatCols() { return ((window.__tpl || {}).categories || []); }
+  function rowScore(r, cat, i, n) {
+    if (r.scores && r.scores[cat.key] != null && r.scores[cat.key] !== "") return r.scores[cat.key];
+    if (n === 1) return r.total != null ? r.total : "";
+    if (i === 0) return r.ca != null ? r.ca : "";
+    if (i === n - 1) return r.exam != null ? r.exam : "";
+    return "";
+  }
+  function tplPrintWindow(title, inner) {
+    var c = tplColors();
+    var w = window.open("", "_blank");
+    if (!w) { toastErr("Allow pop-ups for this site to print."); return null; }
+    w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>' + esc(title) + '</title><style>' +
+      '*{box-sizing:border-box}body{font-family:Georgia,serif;color:#1c2430;margin:0;padding:16px;background:#fff}' +
+      '.rc{max-width:860px;margin:0 auto 16px;border:2px solid ' + c.bd + ';border-radius:10px;overflow:hidden;background:#fffdf8;page-break-after:always}' +
+      '.rc:last-child{page-break-after:auto}' +
+      '.rh{background:' + c.bg + ';color:' + c.fg + ';padding:14px 18px;display:flex;align-items:center;gap:12px;border-bottom:4px solid ' + c.ac + '}' +
+      '.rh img{height:56px;width:56px;object-fit:contain;background:#fff;border-radius:8px;padding:2px}' +
+      '.rh h2{margin:0;font-size:20px}.rh p{margin:2px 0 0;font-size:12.5px;opacity:.92}' +
+      '.rb{padding:14px 18px}' +
+      '.band{background:' + c.band + ';border:1px solid ' + c.bd + ';border-radius:8px;padding:9px 14px;margin:10px 0;font-size:13px}' +
+      '.band b{color:' + c.bg + '}' +
+      'table{width:100%;border-collapse:collapse;margin:10px 0;font-size:12.5px}' +
+      'th{background:' + c.bg + ';color:' + c.fg + ';padding:7px 8px;text-align:left;font-size:11.5px}' +
+      'td{border:1px solid ' + c.bd + ';padding:6px 8px}' +
+      'tr:nth-child(even) td{background:' + c.band + '}' +
+      '.sig{display:flex;gap:26px;margin-top:16px;flex-wrap:wrap}' +
+      '.sig>div{text-align:center;font-size:12px}.sig img{height:42px;display:block;margin:0 auto 2px}' +
+      '.ft{margin-top:10px;text-align:center;font-size:11px;color:#64748b;border-top:1px solid ' + c.bd + ';padding-top:8px}' +
+      'code{font-family:Consolas,monospace}' +
+      '</style></head><body>' + inner + '</body></html>');
+    w.document.close();
+    setTimeout(function () { try { w.focus(); w.print(); } catch (e) {} }, 400);
+    return w;
+  }
+  function printReportCards(rows, meta) {
+    if (!rows || !rows.length) { toastErr("Nothing to print."); return; }
+    var c = tplColors();
+    var cats = tplCatCols();
+    var rem = c.tpl.remarks || {};
+    var html = rows.map(function (r) {
+      var h = '<div class="rc">' +
+        '<div class="rh">' + (c.logo ? '<img src="' + esc(c.logo) + '" />' : "") +
+        '<div><h2>' + esc(c.school) + '</h2><p>' + esc(c.tagline || "Official Result Report") + '</p>' +
+        '<p>' + esc(meta.subject || "") + (meta.term ? " · " + esc(meta.term) : "") + (meta.session ? " · " + esc(meta.session) : "") + '</p></div></div>' +
+        '<div class="rb">' +
+        '<div class="band"><b>' + esc(r.student_name) + '</b> &nbsp;·&nbsp; Class: <b>' + esc(meta.class_name || "—") + '</b> &nbsp;·&nbsp; Reg Number: <b>' + esc(r.reg_number || "—") + '</b>' +
+        (c.tpl.show_position && r.position != null ? ' &nbsp;·&nbsp; Position: <b>' + esc(r.position) + '</b>' : "") + '</div>' +
+        '<table><thead><tr><th>Subject</th>' + cats.map(function (ct) { return '<th>' + esc(ct.label) + ' (' + esc(ct.percent) + '%)</th>'; }).join("") + '<th>Total</th><th>Performance</th></tr></thead><tbody>' +
+        '<tr><td><strong>' + esc(meta.subject || "—") + '</strong></td>' +
+        cats.map(function (ct, i) { return '<td>' + esc(rowScore(r, ct, i, cats.length)) + '</td>'; }).join("") +
+        '<td><strong>' + esc(r.total != null ? r.total : "—") + '</strong>' + (meta.max_score ? '/' + esc(meta.max_score) : "") + '</td>' +
+        '<td><strong>' + esc(r.percentage != null ? r.percentage + "%" : "—") + '</strong> ' + esc(r.grade || "") + '</td></tr></tbody></table>';
+      if ((rem.affective || []).length) {
+        h += '<table><thead><tr><th>Affective Domain</th><th>Grade</th></tr></thead><tbody>' +
+          rem.affective.map(function (a) { return '<tr><td>' + esc(a.label) + '</td><td>' + esc(a.grade || "—") + '</td></tr>'; }).join("") + '</tbody></table>';
+      }
+      h += '<div class="band"><b>Teacher\'s Comment:</b> ' + esc(rem.teacher || r.remark || "") + '</div>' +
+        '<div class="band"><b>Head of School\'s Comment:</b> ' + esc(rem.head || "") + '</div>' +
+        '<div class="sig">' + ((c.tpl.signatures || []).map(function (sg) {
+          return '<div>' + (sg.image_url ? '<img src="' + esc(sg.image_url) + '" />' : "") + '<strong>' + esc(sg.name || "") + '</strong><br/><span style="font-size:11px">' + esc(sg.title || "") + '</span></div>';
+        }).join("")) + '</div>' +
+        (c.note ? '<div class="ft">' + esc(c.note) + '</div>' : "") +
+        '</div></div>';
+      return h;
+    }).join("");
+    tplPrintWindow("Report Cards — " + (meta.subject || ""), html);
+  }
+  function printMasterList(rows, meta) {
+    if (!rows || !rows.length) { toastErr("Nothing to print."); return; }
+    var c = tplColors();
+    var cats = tplCatCols();
+    var html = '<div class="rc"><div class="rh">' + (c.logo ? '<img src="' + esc(c.logo) + '" />' : "") +
+      '<div><h2>' + esc(c.school) + '</h2><p><b>' + esc(meta.subject || "") + '</b> — Master Result List · ' + esc(meta.class_name || "") +
+      (meta.term ? " · " + esc(meta.term) : "") + (meta.session ? " · " + esc(meta.session) : "") + '</p></div></div><div class="rb">' +
+      '<table><thead><tr><th>#</th><th>Reg Number</th><th>Student Name</th><th>Class</th>' +
+      cats.map(function (ct) { return '<th>' + esc(ct.label) + '</th>'; }).join("") + '<th>Total</th><th>%</th><th>Grade</th></tr></thead><tbody>' +
+      rows.map(function (r, i) {
+        return '<tr><td>' + (i + 1) + '</td><td><code>' + esc(r.reg_number || "—") + '</code></td><td><strong>' + esc(r.student_name) + '</strong></td><td>' + esc(meta.class_name || "") + '</td>' +
+          cats.map(function (ct, j) { return '<td>' + esc(rowScore(r, ct, j, cats.length)) + '</td>'; }).join("") +
+          '<td><strong>' + esc(r.total != null ? r.total : "—") + '</strong></td><td>' + esc(r.percentage != null ? r.percentage + "%" : "—") + '</td><td>' + esc(r.grade || "") + '</td></tr>';
+      }).join("") + '</tbody></table>' +
+      '<div class="sig">' + ((c.tpl.signatures || []).map(function (sg) {
+        return '<div>' + (sg.image_url ? '<img src="' + esc(sg.image_url) + '" />' : "") + '<strong>' + esc(sg.name || "") + '</strong><br/><span style="font-size:11px">' + esc(sg.title || "") + '</span></div>';
+      }).join("")) + '</div>' +
+      (c.note ? '<div class="ft">' + esc(c.note) + '</div>' : "") +
+      '</div></div>';
+    tplPrintWindow("Master List — " + (meta.subject || ""), html);
+  }
 
   /* — Exam Students tab: who is sitting for each exam — */
   /* — Exam Students page — reference 'Manage Exam Students': filter by
@@ -1522,8 +2026,8 @@ tr:last-child td{border-bottom:none}
       cbtApi("/roster/" + encodeURIComponent(cls)).then(function (rd) {
         var st = rd.students || [];
         var rb = $("scRoster");
-        if (rb) rb.innerHTML = st.length ? tbl(["Reg Number", "Student Name", "Status", "Subjects Registered"], st.map(function (s) {
-          return '<tr><td><code>' + esc(s.reg_number || "—") + '</code></td><td><strong>' + esc(s.full_name) + '</strong></td><td>' + (s.exam_count > 0 ? '<span class="pill ok">Registered</span>' : '<span class="pill warn">Pending</span>') + '</td><td>' + (s.subjects_registered || []).map(function (x) { return '<span class="pill blue">' + esc(x) + '</span>'; }).join(" ") + '</td></tr>';
+        if (rb) rb.innerHTML = st.length ? tbl(["Reg Number", "Access Code", "Student Name", "Status", "Subjects Registered"], st.map(function (s) {
+          return '<tr><td><code>' + esc(s.reg_number || "—") + '</code></td><td><code>' + esc(s.access_code || "—") + '</code></td><td><strong>' + esc(s.full_name) + '</strong></td><td>' + (s.exam_count > 0 ? '<span class="pill ok">Registered</span>' : '<span class="pill warn">Pending</span>') + '</td><td>' + (s.subjects_registered || []).map(function (x) { return '<span class="pill blue">' + esc(x) + '</span>'; }).join(" ") + '</td></tr>';
         })) : '<div class="empty">No students in ' + esc(cls) + ' yet — register them on the Register Student tab.</div>';
       }).catch(function () {});
     }).catch(toastErr);
@@ -1551,7 +2055,7 @@ tr:last-child td{border-bottom:none}
       if (d.updated) parts.push(d.updated + " updated");
       if (d.removed) parts.push(d.removed + " removed");
       var msg = "✓ Schedule saved — " + (parts.join(", ") || "no changes");
-      if ((d.missing_questions || []).length) msg += " · no questions in bank for: " + d.missing_questions.join(", ") + " (upload them under Access Subjects)";
+      if ((d.missing_questions || []).length) msg += " · no questions in bank for: " + d.missing_questions.join(", ") + " (upload them under Upload CBT Exams)";
       toast(msg);
       schLoadCurrent(cls);
     }).catch(function (e) { toastErr(e); }).finally(function () {});
@@ -1727,7 +2231,7 @@ tr:last-child td{border-bottom:none}
       if (!sheets.length) { box.innerHTML = '<div class="empty">No sheets uploaded yet.</div>'; return; }
       box.innerHTML = tbl(["Class", "Subject", "Term", "Session", "Students", "Uploaded", ""], sheets.map(function (s) {
         return '<tr><td><span class="pill violet">' + esc(s.class_name) + '</span></td><td><span class="pill blue">' + esc(s.subject) + '</span></td><td>' + esc(s.term || "—") + '</td><td>' + esc(s.session || "—") + '</td><td>' + s.count + '</td><td>' + dOnly(s.uploaded_at) + '</td>' +
-          '<td style="white-space:nowrap"><button class="btn sm ghost" onclick="upView(\'' + s.id + '\')">👁 View</button> <button class="btn sm red" onclick="upDel(\'' + s.id + '\')">Delete</button></td></tr>';
+          '<td style="white-space:nowrap"><button class="btn sm ghost" onclick="upView(\'' + s.id + '\')">👁 View</button> <button class="btn sm ghost" onclick="upPrintSheet(\'' + s.id + '\')" title="Print master result list">🖨</button> <button class="btn sm red" onclick="upDel(\'' + s.id + '\')">Delete</button></td></tr>';
       }));
     }).catch(function (e) { var b = $("upSheets"); if (b) b.innerHTML = '<div class="empty">' + esc(errText(e)) + '</div>'; });
   }
@@ -1735,10 +2239,25 @@ tr:last-child td{border-bottom:none}
     api("/" + slug + "/results/upload").then(function (d) {
       var s = (d.sheets || []).filter(function (x) { return x.id === id; })[0];
       if (!s) return;
+      window.__upRows = s.rows || [];
+      window.__upMeta = { class_name: s.class_name, subject: s.subject, term: s.term, session: s.session, max_score: s.max_score };
       openModal("Result sheet — " + esc(s.class_name) + " · " + esc(s.subject),
-        tbl(["Student", "Reg Number", "CA", "Exam", "Total", "%", "Grade"], (s.rows || []).map(function (r) {
-          return '<tr><td><strong>' + esc(r.student_name) + '</strong></td><td>' + esc(r.reg_number || "—") + '</td><td>' + r.ca + '</td><td>' + r.exam + '</td><td><strong>' + r.total + '</strong></td><td>' + r.percentage + '%</td><td><span class="pill ' + (r.percentage >= 50 ? "ok" : "bad") + '">' + esc(r.grade) + '</span></td></tr>';
-        })), '<button class="btn ghost" onclick="closeModal()">Close</button>', true);
+        tbl(["Student", "Reg Number", "CA", "Exam", "Total", "%", "Grade", ""], (s.rows || []).map(function (r, i) {
+          return '<tr><td><strong>' + esc(r.student_name) + '</strong></td><td>' + esc(r.reg_number || "—") + '</td><td>' + r.ca + '</td><td>' + r.exam + '</td><td><strong>' + r.total + '</strong></td><td>' + r.percentage + '%</td><td><span class="pill ' + (r.percentage >= 50 ? "ok" : "bad") + '">' + esc(r.grade) + '</span></td><td><button class="btn sm ghost" onclick="upPrintOne(' + i + ')" title="Print this report card">🖨</button></td></tr>';
+        })), '<button class="btn ghost" onclick="closeModal()">Close</button><button class="btn ghost" onclick="upPrintMaster()">📋 Master List</button><button class="btn" onclick="upPrintAll()">🖨 Report Cards (all)</button>', true);
+    }).catch(toastErr);
+  };
+  window.upPrintOne = function (i) {
+    var r = (window.__upRows || [])[i];
+    if (r) printReportCards([r], window.__upMeta || {});
+  };
+  window.upPrintAll = function () { printReportCards(window.__upRows || [], window.__upMeta || {}); };
+  window.upPrintMaster = function () { printMasterList(window.__upRows || [], window.__upMeta || {}); };
+  window.upPrintSheet = function (id) {
+    api("/" + slug + "/results/upload").then(function (d) {
+      var s = (d.sheets || []).filter(function (x) { return x.id === id; })[0];
+      if (!s) return toastErr("Sheet not found.");
+      printMasterList(s.rows || [], { class_name: s.class_name, subject: s.subject, term: s.term, session: s.session, max_score: s.max_score });
     }).catch(toastErr);
   };
   window.upDel = function (id) {
